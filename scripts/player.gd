@@ -63,6 +63,7 @@ const JUMP_BUFFER := 0.10
 var bullet_scene := preload("res://scenes/bullet.tscn")
 var grenade_scene := preload("res://scenes/grenade.tscn")
 var rocket_scene := preload("res://scenes/rocket.tscn")
+const SoldierArt = preload("res://scripts/soldier_art.gd")
 
 
 func _ready() -> void:
@@ -84,19 +85,19 @@ func _ready() -> void:
 	else:
 		cam.enabled = false
 	jet_particles = CPUParticles2D.new()
-	jet_particles.amount = 34
-	jet_particles.lifetime = 0.4
+	jet_particles.amount = 46
+	jet_particles.lifetime = 0.5
 	jet_particles.one_shot = false
 	jet_particles.explosiveness = 0.0
 	jet_particles.emitting = false
 	jet_particles.direction = Vector2(0, 1)
-	jet_particles.spread = 16.0
-	jet_particles.gravity = Vector2(0, 340)
-	jet_particles.initial_velocity_min = 60.0
-	jet_particles.initial_velocity_max = 170.0
+	jet_particles.spread = 22.0
+	jet_particles.gravity = Vector2(0, 360)
+	jet_particles.initial_velocity_min = 90.0
+	jet_particles.initial_velocity_max = 210.0
 	jet_particles.scale_amount_min = 2.0
-	jet_particles.scale_amount_max = 4.5
-	jet_particles.color = Color(0.35, 0.75, 1.0)
+	jet_particles.scale_amount_max = 5.5
+	jet_particles.color = Color(1.0, 0.55, 0.18)
 	add_child(jet_particles)
 
 
@@ -115,7 +116,7 @@ func _physics_process(delta: float) -> void:
 	if has_peer and not is_multiplayer_authority():
 		muzzle_t = maxf(0.0, muzzle_t - delta * 10.0)
 		jet_particles.emitting = jet_on and not dead
-		jet_particles.position = Vector2(facing * -14.0, 4.0)
+		jet_particles.position = Vector2(-facing * 8.0, 4.0)
 		queue_redraw()
 		return
 
@@ -222,7 +223,7 @@ func _physics_process(delta: float) -> void:
 		Sfx.jet(false)
 	was_jet = jet_on
 	jet_particles.emitting = jet_on
-	jet_particles.position = Vector2(facing * -14.0, 4.0)
+	jet_particles.position = Vector2(-facing * 8.0, 4.0)
 
 	# camera shake decay
 	if shake > 0.0:
@@ -466,32 +467,19 @@ func _spawn_ragdoll() -> void:
 
 
 func _draw() -> void:
-	var body_col := color if not dead else color.darkened(0.4)
-	if jet_on and not dead:
-		var fl := 24.0 + sin(Time.get_ticks_msec() * 0.05) * 7.0
-		var back := facing * -1.0
-		draw_polygon(
-			PackedVector2Array([
-				Vector2(back * 14.0 - 4.0, 2.0),
-				Vector2(back * 14.0 + 4.0, 2.0),
-				Vector2(back * (14.0 + fl), 2.0 + sin(Time.get_ticks_msec() * 0.07) * 5.0)
-			]),
-			PackedColorArray([
-				Color(0.3, 0.7, 1.0, 0.9),
-				Color(0.3, 0.7, 1.0, 0.9),
-				Color(1.0, 1.0, 1.0, 0.0)
-			])
-		)
-	draw_rect(Rect2(-9, 0, 7, 10), body_col.darkened(0.3))
-	draw_rect(Rect2(2, 0, 7, 10), body_col.darkened(0.3))
-	draw_rect(Rect2(-11, -30, 22, 30), body_col)
-	draw_circle(Vector2(facing * 2.0, -34), 6.0, body_col.lightened(0.15))
-	draw_rect(Rect2(-facing * 16.0 - 3.0, -26, 5, 18), body_col.darkened(0.15))
 	var w = weapons[weapon_index]
-	draw_line(Vector2(facing * 4.0, -22.0), Vector2(facing * 4.0, -22.0) + aim_dir * 20.0, w["color"], 3.0)
-	if muzzle_t > 0.0:
-		draw_circle(aim_dir * 30.0, 4.0 + muzzle_t * 30.0, Color(1.0, 0.95, 0.5, clampf(muzzle_t * 9.0, 0.0, 1.0)))
-	draw_rect(Rect2(-16, -48, 32, 4), Color(0.0, 0.0, 0.0, 0.55))
-	draw_rect(Rect2(-16, -48, 32.0 * clampf(health / 100.0, 0.0, 1.0), 4), Color(0.9, 0.2, 0.2))
-	draw_rect(Rect2(-16, -43, 32, 3), Color(0.0, 0.0, 0.0, 0.55))
-	draw_rect(Rect2(-16, -43, 32.0 * clampf(fuel / 100.0, 0.0, 1.0), 3), Color(0.3, 0.7, 1.0))
+	SoldierArt.draw_soldier(
+		self,
+		color,
+		facing,
+		aim_dir,
+		velocity,
+		jet_on,
+		dead,
+		w["color"],
+		str(w.get("kind", "bullet")),
+		muzzle_t,
+		health,
+		fuel,
+		true,
+	)

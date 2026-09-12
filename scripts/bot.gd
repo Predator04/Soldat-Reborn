@@ -20,6 +20,7 @@ var was_jet := false
 var dead := false
 var fire_cd := 0.5
 var jump_cd := 0.0
+var muzzle_t := 0.0
 var target: Node2D = null
 
 # grenades
@@ -42,6 +43,9 @@ const ENGAGE_RANGE := 720.0
 var bullet_scene := preload("res://scenes/bullet.tscn")
 var grenade_scene := preload("res://scenes/grenade.tscn")
 var rocket_scene := preload("res://scenes/rocket.tscn")
+const SoldierArt = preload("res://scripts/soldier_art.gd")
+
+var jet_particles: CPUParticles2D
 
 
 func _ready() -> void:
@@ -51,6 +55,20 @@ func _ready() -> void:
 	rect.size = Vector2(22, 40)
 	shape.shape = rect
 	add_child(shape)
+	jet_particles = CPUParticles2D.new()
+	jet_particles.amount = 34
+	jet_particles.lifetime = 0.45
+	jet_particles.one_shot = false
+	jet_particles.emitting = false
+	jet_particles.direction = Vector2(0, 1)
+	jet_particles.spread = 22.0
+	jet_particles.gravity = Vector2(0, 340)
+	jet_particles.initial_velocity_min = 80.0
+	jet_particles.initial_velocity_max = 190.0
+	jet_particles.scale_amount_min = 2.0
+	jet_particles.scale_amount_max = 5.0
+	jet_particles.color = Color(1.0, 0.55, 0.18)
+	add_child(jet_particles)
 
 
 func _physics_process(delta: float) -> void:
@@ -108,6 +126,8 @@ func _physics_process(delta: float) -> void:
 	elif not jet_on and was_jet:
 		Sfx.jet(false)
 	was_jet = jet_on
+	jet_particles.emitting = jet_on
+	jet_particles.position = Vector2(-facing * 8.0, 4.0)
 	if on_floor:
 		fuel = minf(100.0, fuel + 32.0 * delta)
 
@@ -130,6 +150,7 @@ func _physics_process(delta: float) -> void:
 
 	# shoot with lead aim
 	fire_cd -= delta
+	muzzle_t = maxf(0.0, muzzle_t - delta * 10.0)
 	if is_instance_valid(target) and fire_cd <= 0.0:
 		var to_t: Vector2 = target.global_position - global_position
 		if to_t.length() < ENGAGE_RANGE:
@@ -204,6 +225,7 @@ func _shoot(to_t: Vector2) -> void:
 		b.weapon_name = "AK-74"
 		get_parent().add_child(b)
 		fire_cd = 0.45
+	muzzle_t = 0.08
 
 
 func take_damage(amount: float, killer := "", weapon := "", killer_team := -1) -> void:
@@ -289,26 +311,24 @@ func _spawn_ragdoll() -> void:
 
 
 func _draw() -> void:
-	var body_col := color
-	draw_rect(Rect2(-9, 0, 7, 10), body_col.darkened(0.3))
-	draw_rect(Rect2(2, 0, 7, 10), body_col.darkened(0.3))
-	draw_rect(Rect2(-11, -30, 22, 30), body_col)
-	draw_circle(Vector2(facing * 2.0, -34), 6.0, body_col.lightened(0.15))
-	draw_rect(Rect2(-facing * 16.0 - 3.0, -26, 5, 18), body_col.darkened(0.15))
-	if jet_on:
-		var fl := 24.0 + sin(Time.get_ticks_msec() * 0.05) * 6.0
-		var back := facing * -1.0
-		draw_polygon(
-			PackedVector2Array([
-				Vector2(back * 14.0 - 4.0, 2.0),
-				Vector2(back * 14.0 + 4.0, 2.0),
-				Vector2(back * (14.0 + fl), 2.0)
-			]),
-			PackedColorArray([
-				Color(1.0, 0.6, 0.2, 0.9),
-				Color(1.0, 0.6, 0.2, 0.9),
-				Color(1.0, 1.0, 1.0, 0.0)
-			])
-		)
-	draw_rect(Rect2(-16, -48, 32, 4), Color(0.0, 0.0, 0.0, 0.55))
-	draw_rect(Rect2(-16, -48, 32.0 * clampf(health / 100.0, 0.0, 1.0), 4), Color(0.9, 0.2, 0.2))
+	# Aim direction: bots don't track aim_dir as a var — reconstruct it from facing + target.
+	var aim: Vector2 = Vector2(facing, 0.0)
+	if is_instance_valid(target):
+		aim = (target.global_position - global_position).normalized()
+	var weapon_col := Color(0.85, 0.55, 0.35) if loadout == "LAW" else Color(0.72, 0.72, 0.78)
+	var weapon_kind := "rocket" if loadout == "LAW" else "bullet"
+	SoldierArt.draw_soldier(
+		self,
+		color,
+		facing,
+		aim,
+		velocity,
+		jet_on,
+		dead,
+		weapon_col,
+		weapon_kind,
+		muzzle_t,
+		health,
+		fuel,
+		false,
+	)

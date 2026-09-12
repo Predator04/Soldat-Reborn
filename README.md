@@ -52,7 +52,7 @@ Prints `SMOKE-HOST peers=N players=M` / `SMOKE-JOIN id=... mode=2 players=M` and
 
 ## What's in it
 
-- **Soldier** — run, jump, bunny hop (ground jumps give a speed boost), jet boots with a fuel bar that regens on ground
+- **Soldier** — run, jump, bunny hop (ground jumps give a speed boost), jet boots with a fuel bar that regens on ground. Procedural body art (head + helmet visor, rounded torso, jetpack, running-cycle legs, front + back arms, held weapon) — shared renderer used by both players and bots.
 - **Weapons** — Deagles, AK-74, MP5, Spas-12, LAW rocket (heavy recoil enables rocket-jumping); per-weapon damage / rate / spread / mag / reload
 - **Grenades** — arc throw, bounce, fuse, area damage
 - **3 AI bots** (SP only) — lead aim, dodge-jump, jet up to reach you, lob grenades

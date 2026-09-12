@@ -20,6 +20,7 @@ A 2026-quality port of Soldat's *feel* in Godot 4 (run-and-gun, jet boots, bunny
 - [x] Screen shake (shoot / explosion / death)
 - [x] Muzzle flash + bullet trails
 - [x] Jetpack flame as particles (CPUParticles2D), not just drawn triangle
+- [x] Procedural soldier art — head (with helmet + visor), rounded torso, jetpack, running-cycle legs, front-arm holding weapon, back-arm — shared renderer `scripts/soldier_art.gd` used by both player.gd and bot.gd. Layered muzzle flash (three concentric halos) + three-color jet flame cone.
 
 ### Combat (P0)
 - [x] Weapon system: Deagles / AK-74 / MP5 / Spas-12 / LAW — switch (1-5 or scroll), reload (R), ammo per mag
