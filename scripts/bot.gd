@@ -1,6 +1,8 @@
 extends CharacterBody2D
 ## Bot — AI soldier: leads its aim, circle-strafes, dodge-jumps, lobs grenades, jet-boots up.
 
+signal died
+
 @export var color := Color(0.85, 0.3, 0.25)
 var team := 1
 var display_name := "Bot"
@@ -210,6 +212,7 @@ func _die() -> void:
 	# defer FX spawn out of the physics flush (bullet body_entered → take_damage path)
 	_spawn_gibs.call_deferred()
 	_spawn_ragdoll.call_deferred()
+	died.emit()
 	queue_free()
 
 

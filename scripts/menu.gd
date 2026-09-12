@@ -1,13 +1,17 @@
 extends Control
 ## Main menu — Play (vs bots), Host, Join, Settings, Quit.
 
+const MAP_NAMES := ["Ascent", "Towers", "Pillars"]
+
 var _menu_box: VBoxContainer
 var _settings_panel: VBoxContainer
 var _join_panel: VBoxContainer
+var _host_panel: VBoxContainer
 var _status_label: Label
 var _ip_edit: LineEdit
 var _port_edit: LineEdit
 var _connect_btn: Button
+var _map_pick: OptionButton
 var _connecting := false
 
 
@@ -19,12 +23,14 @@ func _ready() -> void:
 	_build_title()
 	_build_menu()
 	_build_settings()
+	_build_host()
 	_build_join()
 	_build_status()
 	_build_footer()
 	Net.status_changed.connect(_on_net_status_changed)
 	Net.connected.connect(_on_net_connected)
 	Net.disconnected.connect(_on_net_disconnected)
+	Net.map_received.connect(_on_map_received)
 
 
 func _build_backdrop() -> void:
@@ -74,8 +80,8 @@ func _build_menu() -> void:
 
 	var host := _make_button("HOST GAME")
 	host.pressed.connect(func() -> void:
-		if Net.host_game():
-			get_tree().change_scene_to_file("res://scenes/main.tscn"))
+		_menu_box.visible = false
+		_host_panel.visible = true)
 	_menu_box.add_child(host)
 
 	var join := _make_button("JOIN GAME")
@@ -149,6 +155,52 @@ func _build_settings() -> void:
 		_settings_panel.visible = false
 		_menu_box.visible = true)
 	_settings_panel.add_child(back)
+
+
+func _build_host() -> void:
+	_host_panel = VBoxContainer.new()
+	_host_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_host_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_host_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_host_panel.add_theme_constant_override("separation", 10)
+	_host_panel.custom_minimum_size = Vector2(400, 0)
+	_host_panel.visible = false
+	add_child(_host_panel)
+
+	var head := Label.new()
+	head.text = "HOST GAME"
+	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	head.add_theme_font_size_override("font_size", 26)
+	head.add_theme_color_override("font_color", Color(0.95, 0.82, 0.4))
+	_host_panel.add_child(head)
+
+	var map_lbl := Label.new()
+	map_lbl.text = "Map"
+	map_lbl.add_theme_font_size_override("font_size", 15)
+	_host_panel.add_child(map_lbl)
+
+	_map_pick = OptionButton.new()
+	for name in MAP_NAMES:
+		_map_pick.add_item(name)
+	_map_pick.selected = clampi(Settings.map_index, 0, MAP_NAMES.size() - 1)
+	_map_pick.custom_minimum_size = Vector2(0, 36)
+	_host_panel.add_child(_map_pick)
+
+	var start := _make_button("START HOSTING")
+	start.pressed.connect(func() -> void:
+		var idx := _map_pick.get_selected_id()
+		if idx < 0:
+			idx = _map_pick.selected
+		idx = clampi(idx, 0, MAP_NAMES.size() - 1)
+		if Net.host_game(Net.DEFAULT_PORT, idx):
+			get_tree().change_scene_to_file("res://scenes/main.tscn"))
+	_host_panel.add_child(start)
+
+	var back := _make_button("BACK")
+	back.pressed.connect(func() -> void:
+		_host_panel.visible = false
+		_menu_box.visible = true)
+	_host_panel.add_child(back)
 
 
 func _build_join() -> void:
@@ -253,6 +305,11 @@ func _on_net_status_changed() -> void:
 
 
 func _on_net_connected() -> void:
+	# Client waits for the host's map RPC before loading main.tscn — see _on_map_received.
+	pass
+
+
+func _on_map_received() -> void:
 	if Net.is_client() and _connecting:
 		_connecting = false
 		get_tree().change_scene_to_file("res://scenes/main.tscn")

@@ -36,7 +36,9 @@ A 2026-quality port of Soldat's *feel* in Godot 4 (run-and-gun, jet boots, bunny
 ### Systems (P2)
 - [x] Sound: generated SFX (shoot / jump / jet / gib / reload / empty / explode) — procedural PCM in scripts/sfx.gd (autoload `Sfx`)
 - [x] Death ragdoll: physics gib pieces (RigidBody2D chunks + particle gore)
-- [x] Multiplayer (Godot ENet high-level): host/join menu, spawn/despawn sync, bullets, grenades, kill-feed replicated. Fixed map (Ascent) so host + client match without extra state sync. Autoload `Net` (scripts/net.gd). Headless smoke tests via `--smoke-host` / `--smoke-join`.
+- [x] Multiplayer (Godot ENet high-level): host/join menu, spawn/despawn sync, bullets, grenades, kill-feed replicated. Autoload `Net` (scripts/net.gd). Headless smoke tests via `--smoke-host` / `--smoke-join`.
+- [x] Multiplayer map sync: host picks a map on the HOST GAME panel; `Net.net_set_map` RPC pushes the chosen index to each joining peer BEFORE they load main.tscn, so terrain matches on both sides.
+- [x] Match / score / round system: team scores on every kill, 5-min round timer OR first-to-20-kills wins, scoreboard + timer + winner banner in the HUD, auto-restart 4s after round end. Host-authoritative in MP (broadcast at 5Hz via `net_match_state`). Bots respawn on their slot after 2s so score can accumulate against them.
 - [x] Main menu + settings (SFX volume / screen shake / fullscreen — persisted via autoload `Settings` to user://settings.cfg)
 - [x] More maps (3 layouts — Ascent / Towers / Pillars — data-driven in main.gd, cycled per game)
 
@@ -49,5 +51,5 @@ A 2026-quality port of Soldat's *feel* in Godot 4 (run-and-gun, jet boots, bunny
 
 ## Known bugs
 - Multiplayer uses per-frame full-state RPCs (position/velocity/aim/etc.) at physics rate — fine for 2 players on LAN, will not scale; swap for MultiplayerSynchronizer if peer counts grow.
-- Multiplayer forces the Ascent map for both peers (no map vote / sync yet).
 - Kill feed on clients only reflects networked kills — bots (SP-only) still fire the local `kill` signal.
+- Round reset does not restore player HP/ammo/position; players just fight on with the timer reset. Feels fine in practice but not "clean slate".

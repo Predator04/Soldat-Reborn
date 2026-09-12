@@ -15,6 +15,19 @@ var _map: Dictionary = {}
 var _players_by_id: Dictionary = {}  # peer_id -> player node (host only, but also mirrored on clients)
 var _ready_peers: Dictionary = {}    # peer_id -> true (host only, gate for outbound state RPCs)
 
+# ── Match state (host-authoritative in MP) ─────────────
+const SCORE_TO_WIN := 20
+const ROUND_TIME := 300.0
+const WINNER_DISPLAY := 4.0
+const MATCH_SYNC_HZ := 5.0           # host → clients broadcast rate for scoreboard
+
+var scores: Dictionary = {}          # team_id -> int
+var time_left := ROUND_TIME
+var round_active := true
+var winner_team := -1
+var winner_end_t := 0.0
+var _match_sync_cd := 0.0
+
 const MAP_W := 3200.0
 const MAP_H := 1200.0
 const GROUND_Y := 1150.0
@@ -66,8 +79,9 @@ const MAPS := [
 
 func _ready() -> void:
 	if Net.is_networked():
-		# Multiplayer: use a fixed map (Ascent) so host + client match without extra sync.
-		_map = MAPS[0]
+		# Host picks the map (via Net.chosen_map_index). Clients receive it before
+		# reaching this scene, so both peers build the same terrain.
+		_map = MAPS[Net.chosen_map_index % MAPS.size()]
 	else:
 		_map = MAPS[Settings.map_index % MAPS.size()]
 		Settings.map_index = (Settings.map_index + 1) % MAPS.size()
@@ -75,6 +89,7 @@ func _ready() -> void:
 	_build_parallax()
 	_build_terrain()
 	_build_hud()
+	kill.connect(_on_kill_scored)
 
 	if Net.is_networked():
 		multiplayer.peer_disconnected.connect(_on_net_peer_disconnected)
@@ -158,11 +173,21 @@ func _on_player_died() -> void:
 func _spawn_bots() -> void:
 	var spots: Array = _map["bot_spawns"]
 	for i in spots.size():
-		var b := bot_scene.instantiate()
-		b.position = spots[i]
-		b.team = 1
-		b.display_name = "Bot %d" % (i + 1)
-		add_child(b)
+		_spawn_bot(spots[i], 1, "Bot %d" % (i + 1))
+
+
+func _spawn_bot(pos: Vector2, team: int, bname: String) -> void:
+	if not is_inside_tree():
+		return
+	var b := bot_scene.instantiate()
+	b.position = pos
+	b.team = team
+	b.display_name = bname
+	# Bots respawn on the same slot so the match can accumulate score.
+	b.died.connect(func() -> void:
+		get_tree().create_timer(2.0).timeout.connect(func() -> void:
+			_spawn_bot(pos, team, bname)))
+	add_child(b)
 
 
 # ── Shared ────────────────────────────────────────────
@@ -268,3 +293,81 @@ func net_despawn_player(peer_id: int) -> void:
 @rpc("any_peer", "call_local", "reliable")
 func net_kill_feed(killer_name: String, victim_name: String, weapon_name: String, killer_team: int) -> void:
 	kill.emit(killer_name, victim_name, weapon_name, killer_team)
+
+
+# ── Match / score / round ─────────────────────────────
+
+func _process(delta: float) -> void:
+	# Client: state is driven entirely by host's net_match_state RPCs.
+	if Net.is_networked() and not Net.is_host():
+		return
+	if round_active:
+		time_left = maxf(0.0, time_left - delta)
+		if time_left <= 0.0:
+			_end_round_by_time()
+	else:
+		winner_end_t = maxf(0.0, winner_end_t - delta)
+		if winner_end_t <= 0.0:
+			_reset_round()
+	if Net.is_networked() and Net.is_host():
+		_match_sync_cd -= delta
+		if _match_sync_cd <= 0.0:
+			_match_sync_cd = 1.0 / MATCH_SYNC_HZ
+			_broadcast_match_state()
+
+
+func _on_kill_scored(_killer_name: String, _victim_name: String, _weapon_name: String, killer_team: int) -> void:
+	if Net.is_networked() and not Net.is_host():
+		return
+	if not round_active or killer_team < 0:
+		return
+	scores[killer_team] = int(scores.get(killer_team, 0)) + 1
+	if scores[killer_team] >= SCORE_TO_WIN:
+		_end_round(killer_team)
+	elif Net.is_networked() and Net.is_host():
+		_broadcast_match_state()
+
+
+func _end_round(team: int) -> void:
+	winner_team = team
+	round_active = false
+	winner_end_t = WINNER_DISPLAY
+	if Net.is_networked() and Net.is_host():
+		_broadcast_match_state()
+
+
+func _end_round_by_time() -> void:
+	var top_team := -1
+	var top_score := -1
+	for t in scores.keys():
+		var s := int(scores[t])
+		if s > top_score:
+			top_score = s
+			top_team = int(t)
+	_end_round(top_team)
+
+
+func _reset_round() -> void:
+	scores.clear()
+	time_left = ROUND_TIME
+	winner_team = -1
+	winner_end_t = 0.0
+	round_active = true
+	if Net.is_networked() and Net.is_host():
+		_broadcast_match_state()
+
+
+func _broadcast_match_state() -> void:
+	if not Net.is_host():
+		return
+	for pid in _ready_peers.keys():
+		rpc_id(int(pid), "net_match_state", scores, time_left, round_active, winner_team, winner_end_t)
+
+
+@rpc("authority", "reliable")
+func net_match_state(new_scores: Dictionary, tl: float, active: bool, winner: int, we: float) -> void:
+	scores = new_scores.duplicate(true)
+	time_left = tl
+	round_active = active
+	winner_team = winner
+	winner_end_t = we

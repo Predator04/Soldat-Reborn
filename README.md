@@ -26,9 +26,9 @@ A Godot 4.7 rebuild of the classic Soldat *feel*: run-and-gun with jet boots, bu
 
 ## Main menu
 
-- **PLAY vs BOTS** — offline arena vs 3 AI bots (map cycles Ascent → Towers → Pillars each round).
-- **HOST GAME** — start a listen server on port `7777`, load the Ascent map, wait for peers.
-- **JOIN GAME** — enter host IP + port, connect. On connect the client is transported into the game.
+- **PLAY vs BOTS** — offline arena vs bots (map cycles Ascent → Towers → Pillars each round). Bots respawn on their spawn slot 2s after death so the match keeps flowing.
+- **HOST GAME** — pick a map, then start a listen server on port `7777`. The chosen map is pushed to every joining client so both sides play the same terrain.
+- **JOIN GAME** — enter host IP + port, connect. Client waits for the host's map RPC and then loads the arena.
 - **SETTINGS** — SFX volume, screen shake, fullscreen (persisted to `user://settings.cfg`).
 - **QUIT** — exit.
 
@@ -59,8 +59,9 @@ Prints `SMOKE-HOST peers=N players=M` / `SMOKE-JOIN id=... mode=2 players=M` and
 - **Bullets** — hit opposing team, die on terrain, muzzle recoil
 - **Gibs & ragdoll** — blood particle burst + rigid-body gib chunks on death, auto-respawn
 - **Arena** — 3200-wide arena, gradient sky + stars, parallax hill layers, ground, platforms, walls
-- **HUD** — health / fuel / ammo / weapon / grenades, team-colored kill feed, map name, net status
-- **Networking** — ENet host/join, per-peer authority, state-sync + spawn/despawn RPCs
+- **Match** — team scoring on every kill (5-min round timer OR first-to-20 wins), scoreboard + timer + winner banner in the HUD, auto-restart 4s after the round ends. Host-authoritative in multiplayer.
+- **HUD** — health / fuel / ammo / weapon / grenades, team-colored kill feed, scoreboard, round timer, map name, net status
+- **Networking** — ENet host/join, per-peer authority, state-sync + spawn/despawn RPCs, host-picked map replicated to clients on join
 
 ## Project layout
 

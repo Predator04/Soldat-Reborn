@@ -6,6 +6,7 @@ extends Node
 signal status_changed
 signal connected
 signal disconnected
+signal map_received
 
 enum Mode { SINGLEPLAYER, HOST, CLIENT }
 
@@ -14,6 +15,8 @@ const MAX_PEERS := 8
 
 var mode: int = Mode.SINGLEPLAYER
 var status := ""
+var chosen_map_index := 0     # host's picked map; clients receive it via net_set_map
+var _map_synced := false      # client-side: true once host has told us the map
 
 
 func _ready() -> void:
@@ -46,7 +49,7 @@ func _smoke_host() -> void:
 
 
 func _smoke_join() -> void:
-	connected.connect(func() -> void:
+	map_received.connect(func() -> void:
 		get_tree().change_scene_to_file("res://scenes/main.tscn"))
 	join_game("127.0.0.1", DEFAULT_PORT)
 	get_tree().create_timer(4.0).timeout.connect(func() -> void:
@@ -58,7 +61,7 @@ func _smoke_join() -> void:
 		get_tree().quit())
 
 
-func host_game(port: int = DEFAULT_PORT) -> bool:
+func host_game(port: int = DEFAULT_PORT, map_index: int = 0) -> bool:
 	leave()
 	var peer := ENetMultiplayerPeer.new()
 	var e := peer.create_server(port, MAX_PEERS)
@@ -67,6 +70,8 @@ func host_game(port: int = DEFAULT_PORT) -> bool:
 		return false
 	multiplayer.multiplayer_peer = peer
 	mode = Mode.HOST
+	chosen_map_index = map_index
+	_map_synced = true
 	_set_status("Hosting on port %d · you are peer 1" % port)
 	return true
 
@@ -80,6 +85,7 @@ func join_game(ip: String, port: int = DEFAULT_PORT) -> bool:
 		return false
 	multiplayer.multiplayer_peer = peer
 	mode = Mode.CLIENT
+	_map_synced = false
 	_set_status("Connecting to %s:%d..." % [ip, port])
 	return true
 
@@ -93,7 +99,12 @@ func leave() -> void:
 		multiplayer.multiplayer_peer.close()
 		multiplayer.multiplayer_peer = null
 	mode = Mode.SINGLEPLAYER
+	_map_synced = false
 	_set_status("")
+
+
+func is_map_synced() -> bool:
+	return _map_synced
 
 
 func is_networked() -> bool:
@@ -122,6 +133,8 @@ func _set_status(s: String) -> void:
 func _on_peer_connected(id: int) -> void:
 	if is_host():
 		_set_status("Peer %d joined · hosting" % id)
+		# Push chosen map to the new peer immediately so they build the same terrain.
+		rpc_id(id, "net_set_map", chosen_map_index)
 
 
 func _on_peer_disconnected(id: int) -> void:
@@ -146,3 +159,10 @@ func _on_server_disconnected() -> void:
 	multiplayer.multiplayer_peer = null
 	mode = Mode.SINGLEPLAYER
 	disconnected.emit()
+
+
+@rpc("authority", "reliable")
+func net_set_map(idx: int) -> void:
+	chosen_map_index = idx
+	_map_synced = true
+	map_received.emit()

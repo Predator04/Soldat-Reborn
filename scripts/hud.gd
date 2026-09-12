@@ -1,5 +1,5 @@
 extends CanvasLayer
-## HUD — health, fuel, ammo, weapon, grenades, kill feed.
+## HUD — health, fuel, ammo, weapon, grenades, kill feed, scoreboard, round timer, winner banner.
 
 var player: Node2D
 var map_name := ""
@@ -10,6 +10,9 @@ var lbl_weapon: Label
 var lbl_grenades: Label
 var lbl_map: Label
 var lbl_status: Label
+var lbl_timer: Label
+var lbl_score: RichTextLabel
+var lbl_winner: Label
 var feed: VBoxContainer
 
 const FEED_MAX := 5
@@ -52,6 +55,40 @@ func _ready() -> void:
 	lbl_status.add_theme_constant_override("outline_size", 3)
 	add_child(lbl_status)
 
+	lbl_timer = Label.new()
+	lbl_timer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl_timer.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	lbl_timer.offset_top = 52
+	lbl_timer.offset_bottom = 82
+	lbl_timer.add_theme_font_size_override("font_size", 22)
+	lbl_timer.add_theme_color_override("font_color", Color(1.0, 0.92, 0.55))
+	lbl_timer.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	lbl_timer.add_theme_constant_override("outline_size", 4)
+	add_child(lbl_timer)
+
+	lbl_score = RichTextLabel.new()
+	lbl_score.bbcode_enabled = true
+	lbl_score.fit_content = true
+	lbl_score.scroll_active = false
+	lbl_score.autowrap_mode = TextServer.AUTOWRAP_OFF
+	lbl_score.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	lbl_score.offset_top = 82
+	lbl_score.offset_bottom = 112
+	lbl_score.add_theme_font_size_override("normal_font_size", 18)
+	lbl_score.add_theme_font_size_override("bold_font_size", 18)
+	add_child(lbl_score)
+
+	lbl_winner = Label.new()
+	lbl_winner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl_winner.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl_winner.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	lbl_winner.add_theme_font_size_override("font_size", 64)
+	lbl_winner.add_theme_color_override("font_color", Color(1.0, 0.92, 0.5))
+	lbl_winner.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	lbl_winner.add_theme_constant_override("outline_size", 12)
+	lbl_winner.visible = false
+	add_child(lbl_winner)
+
 
 func _make_label(pos: Vector2, col: Color) -> Label:
 	var l := Label.new()
@@ -90,6 +127,7 @@ func _on_kill(killer_name: String, victim_name: String, weapon_name: String, kil
 func _process(_delta: float) -> void:
 	lbl_map.text = map_name
 	lbl_status.text = Net.status if Net.is_networked() else ""
+	_update_match_ui()
 	if not is_instance_valid(player):
 		return
 	lbl_health.text = "HP  %d" % int(player.health)
@@ -99,3 +137,70 @@ func _process(_delta: float) -> void:
 	lbl_ammo.text = "%d / %d" % [mag, int(w["mag"])] + ("  · RELOADING" if player.reloading else "")
 	lbl_weapon.text = str(w["name"])
 	lbl_grenades.text = "GRENADES %d" % player.grenades
+
+
+func _update_match_ui() -> void:
+	var main := get_parent()
+	if main == null or main.get("scores") == null:
+		return
+	var tl: float = main.time_left
+	var active: bool = main.round_active
+	var winner: int = main.winner_team
+	var scores: Dictionary = main.scores
+	# Timer MM:SS
+	var s := int(maxf(0.0, tl))
+	lbl_timer.text = "%d:%02d" % [s / 60, s % 60]
+	# Scoreboard (team_id → "name score" with color), sorted by team_id for stability.
+	var entries: Array = []
+	# ensure all teams currently on the field appear, even at 0-0
+	for soldier in get_tree().get_nodes_in_group("soldier"):
+		if not is_instance_valid(soldier):
+			continue
+		var t: int = int(soldier.team)
+		if not scores.has(t):
+			entries.append(t)
+	for k in scores.keys():
+		entries.append(int(k))
+	var seen: Dictionary = {}
+	var ordered: Array = []
+	for e in entries:
+		if seen.has(e):
+			continue
+		seen[e] = true
+		ordered.append(e)
+	ordered.sort()
+	var parts: PackedStringArray = PackedStringArray()
+	for team in ordered:
+		var info := _team_display_info(team)
+		var col: Color = info["color"]
+		var col_hex: String = col.to_html(false)
+		var pts: int = int(scores.get(team, 0))
+		parts.append("[color=#%s][b]%s[/b] %d[/color]" % [col_hex, info["name"], pts])
+	lbl_score.text = "[center]" + "   ·   ".join(parts) + "[/center]"
+	# Winner banner
+	if not active and winner >= 0:
+		var info := _team_display_info(winner)
+		lbl_winner.text = "%s WINS" % info["name"]
+		lbl_winner.add_theme_color_override("font_color", info["color"])
+		lbl_winner.visible = true
+	elif not active and winner < 0:
+		lbl_winner.text = "DRAW"
+		lbl_winner.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9))
+		lbl_winner.visible = true
+	else:
+		lbl_winner.visible = false
+
+
+func _team_display_info(team_id: int) -> Dictionary:
+	if not Net.is_networked():
+		if team_id == 0:
+			return {"name": "YOU", "color": Color(0.35, 0.85, 0.5)}
+		return {"name": "BOTS", "color": Color(0.9, 0.35, 0.3)}
+	# MP: reuse the soldier's own color + display_name for their team.
+	for s in get_tree().get_nodes_in_group("soldier"):
+		if not is_instance_valid(s):
+			continue
+		if int(s.team) == team_id:
+			return {"name": str(s.display_name).to_upper(), "color": s.color}
+	# Fallback for teams whose only soldier already left / died mid-round.
+	return {"name": "P%d" % team_id, "color": Color(0.7, 0.7, 0.75)}
