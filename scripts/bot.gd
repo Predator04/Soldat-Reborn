@@ -332,4 +332,6 @@ func _draw() -> void:
 		fuel,
 		false,
 		loadout,
+		is_on_floor(),
+		false,
 	)

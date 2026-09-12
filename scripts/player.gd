@@ -483,4 +483,6 @@ func _draw() -> void:
 		fuel,
 		true,
 		str(w["name"]),
+		is_on_floor(),
+		reloading,
 	)

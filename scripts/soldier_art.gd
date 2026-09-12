@@ -24,7 +24,7 @@ static func draw_soldier(
 	body_color: Color,
 	facing: float,
 	aim_dir: Vector2,
-	_vel: Vector2,
+	vel: Vector2,
 	jet_on: bool,
 	dead: bool,
 	weapon_color: Color,
@@ -33,7 +33,9 @@ static func draw_soldier(
 	health: float,
 	fuel: float,
 	show_fuel: bool,
-	weapon_name: String = ""
+	weapon_name: String = "",
+	on_floor: bool = true,
+	reloading: bool = false,
 ) -> void:
 	if jet_on and not dead:
 		_draw_jet_flame(node, facing)
@@ -44,11 +46,24 @@ static func draw_soldier(
 	node.draw_rect(Rect2(pack_x - 3.0, -22.0, 6.0, 15.0), pack_col)
 	node.draw_rect(Rect2(pack_x - 4.0, -22.0, 8.0, 3.0), pack_col.darkened(0.2))
 
-	# Real body sprites (klata/morda/helm/legs/arms).
-	Gostek.draw_body(node, facing, body_color, dead)
+	# Real body sprites, driven by .poa keyframes.
+	var gs := {
+		"facing": facing,
+		"aim_dir": aim_dir,
+		"velocity": vel,
+		"on_floor": on_floor,
+		"jet_on": jet_on,
+		"reloading": reloading,
+		"dead": dead,
+	}
+	Gostek.draw_body(node, gs, body_color)
 
-	# Weapon sprite along aim_dir, mounted at the front shoulder.
-	var shoulder: Vector2 = Vector2(facing * 3.0, -19.0)
+	# Weapon sprite along aim_dir, mounted at the animated right wrist
+	# (skeleton joint 16). Fall back to a fixed shoulder point if the
+	# skeleton hasn't produced a valid position yet.
+	var shoulder: Vector2 = Gostek.joint_pos(node, 16)
+	if shoulder.is_zero_approx():
+		shoulder = Vector2(facing * 3.0, -19.0)
 	var barrel_end: Vector2 = _draw_weapon_sprite(node, shoulder, aim_dir, weapon_name, weapon_color, weapon_kind)
 
 	# Muzzle flash on top of the sprite.

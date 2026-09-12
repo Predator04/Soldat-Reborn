@@ -52,7 +52,7 @@ Prints `SMOKE-HOST peers=N players=M` / `SMOKE-JOIN id=... mode=2 players=M` and
 
 ## What's in it
 
-- **Soldier** — run, jump, bunny hop (ground jumps give a speed boost), jet boots with a fuel bar that regens on ground. Body is assembled from the real Soldat `gostek-gfx` PNGs (klata / morda / helm / biodro / udo / noga / stopa / ramie / reka / dlon / kamizelka) via `scripts/gostek.gd`; mirror-image `*2.png` variants are used when facing left. Weapon is the real sprite from `assets/weapons-gfx/` rotated along aim.
+- **Soldier** — run, jump, bunny hop (ground jumps give a speed boost), jet boots with a fuel bar that regens on ground. Body is assembled from the real Soldat `gostek-gfx` PNGs (klata / morda / helm / biodro / udo / noga / stopa / ramie / reka / dlon) via `scripts/gostek.gd`, **driven by the original `.poa` keyframe animations** — stand / run / run-back / jump / fall / jet-takeoff / reload / dead — parsed by `scripts/poa_loader.gd` from `assets/anims/*.poa`. Mirror-image `*2.png` variants are used when facing left. Weapon is the real sprite from `assets/weapons-gfx/` anchored to the animated right-wrist joint and rotated along aim.
 - **Weapons** — Deagles, AK-74, MP5, Spas-12, LAW rocket (heavy recoil enables rocket-jumping); per-weapon damage / rate / spread / mag / reload. Each fires and reloads with its authentic Soldat sample (`deserteagle-fire.wav`, `ak74-fire.wav`, `mp5-fire.wav`, `spas12-fire.wav`, `m79-fire.wav`).
 - **Grenades** — arc throw, bounce, fuse, area damage
 - **3 AI bots** (SP only) — lead aim, dodge-jump, jet up to reach you, lob grenades
@@ -75,14 +75,15 @@ Prints `SMOKE-HOST peers=N players=M` / `SMOKE-JOIN id=... mode=2 players=M` and
   - `hud.gd`, `sky.gd`, `parallax.gd` — presentation
   - `net.gd` — autoload ENet wrapper (`Net`) + `--smoke-host`/`--smoke-join` harness
   - `sfx.gd` — autoload SFX (`Sfx`); real `.wav` playback from `assets/sfx/`
-  - `soldier_art.gd` — shared soldier renderer (delegates the body to `gostek.gd`)
-  - `gostek.gd` — static body assembly from `assets/gostek-gfx/*.png`
+  - `soldier_art.gd` — shared soldier renderer (delegates the body to `gostek.gd`, anchors the weapon to the animated wrist joint)
+  - `gostek.gd` — .poa-driven gostek rig: state machine → anim, phase clock, per-part sprite draw between two skeleton joints
+  - `poa_loader.gd` — parser for Soldat's .poa keyframe files (see `references/poa-format.md`)
   - `settings.gd` — autoload persisted user prefs (`Settings`)
 - `assets/` — Soldat base assets (see [CREDITS.md](CREDITS.md))
   - `sfx/` — weapon fire / reload, jump, gib, explosion, jet loop
   - `weapons-gfx/` — weapon sprites drawn along aim direction
   - `gostek-gfx/` — body parts assembled into the standing soldier
-  - `anims/` — 51 `.poa` animation files (format documented in `references/poa-format.md`; not yet driving live animation)
+  - `anims/` — 51 `.poa` animation files, loaded by `scripts/poa_loader.gd` and driving the live gostek rig (spec: `references/poa-format.md`)
 - `references/` — engineering notes (`.poa` reverse-engineering, etc.)
 - `build/` — exported Windows .exe
 
@@ -97,7 +98,8 @@ textures are cached statically the first time they draw.
 
 ## Next steps (ideas)
 
-- Drive the gostek from `.poa` frames (walk / aim / reload / jump)
+- Overlay a per-frame upper-body rotation so the arms visibly track aim (currently only the weapon sprite tracks; arms play the canned anim)
+- Wire in the optional gostek pieces (vest / dogtag chain / helmet-off hair / cygar / grenade-on-belt / secondary-weapon-on-back) from `GostekGraphics.inc`
 - Terrain textures from `assets/textures/`, sparks from `assets/sparks-gfx/`
 - MultiplayerSpawner / MultiplayerSynchronizer to replace hand-rolled state RPCs
 - Dedicated server mode + server browser

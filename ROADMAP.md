@@ -24,8 +24,9 @@ A 2026-quality port of Soldat's *feel* in Godot 4 (run-and-gun, jet boots, bunny
 - [x] Real Soldat assets ported from github.com/Soldat/base (CC BY 4.0):
   - **Sounds** — `scripts/sfx.gd` plays real `.wav` samples from `assets/sfx/` (weapon fire / reload per weapon, jump, gib, explosion, jet loop, empty click) with the same public API the old procedural module had.
   - **Weapon sprites** — `soldier_art.gd` draws each weapon as the actual `assets/weapons-gfx/<name>.png` rotated along aim_dir (Deagles / AK-74 / MP5 / Spas-12 / LAW), vertically flipped when aiming left. Muzzle flash draws on top of the sprite.
-  - **Gostek body** — `scripts/gostek.gd` assembles klata / morda / helm / biodro / udo / noga / stopa / ramie / reka / dlon into a static standing pose; `*2.png` mirror variants used when facing left. Team color modulates the torso pieces; skin parts stay their painted tone.
-  - **.poa format** — reverse-engineered in `references/poa-format.md`: 20 parts × 4 lines per frame, `NEXTFRAME` delimiters, `ENDFILE` terminator, planar rig (middle float is ~0), first/third floats are X/Y in engine units. Full `.poa`-driven animation rig is a follow-up.
+  - **Gostek body** — `scripts/gostek.gd` renders each body part as an oriented sprite between two of the 20 skeleton joints from the current .poa frame; `*2.png` mirror variants used when facing left. Team color modulates the torso pieces; skin parts stay their painted tone.
+  - **.poa format** — verified against the MIT Soldat source (shared/Anims.pas + client/GostekGraphics.pas/.inc) in `references/poa-format.md`. `scripts/poa_loader.gd` parses .poa files into `Array[PackedVector2Array]` frames, applying the exact Anims.pas transform (X = -3·raw/1.1, Y = -3·raw_z). All required anims are preloaded on match boot.
+  - **Animated gostek** — `scripts/gostek.gd` now drives the body from those .poa frames: state machine picks stoi / biega / biegatyl / skok / spada / takeoff / laduje / lezy per soldier state (velocity, on_floor, jet_on, reloading, dead); phase clock advances per-instance; the primary weapon sprite is anchored to the right-wrist skeleton joint each frame.
   - **Credit + license** — `CREDITS.md` at project root attributes Soldat + Michał Marcinkowski and links back to the upstream repo per CC BY 4.0.
 
 ### Combat (P0)
@@ -61,6 +62,7 @@ A 2026-quality port of Soldat's *feel* in Godot 4 (run-and-gun, jet boots, bunny
 - Multiplayer uses per-frame full-state RPCs (position/velocity/aim/etc.) at physics rate — fine for 2 players on LAN, will not scale; swap for MultiplayerSynchronizer if peer counts grow.
 - Kill feed on clients only reflects networked kills — bots (SP-only) still fire the local `kill` signal.
 - Round reset does not restore player HP/ammo/position; players just fight on with the timer reset. Feels fine in practice but not "clean slate".
-- Gostek pose is static — legs do not cycle when running yet, arms do not track aim (weapon sprite rotates on its own along `aim_dir`). Full `.poa`-driven rig is the next asset-pass milestone.
-- Gostek part-id → body-part mapping in `references/poa-format.md` is inferred, not verified against the Soldat gostek.pas source. The static pose uses hand-tuned pixel offsets rather than `.poa` positions, so the mapping unknown does not block current draws.
+- Gostek arms do not physically track aim_dir — the weapon sprite rotates along aim, but the arm sprites play the canned anim frames. Same behavior as original Soldat, but a per-frame upper-body rotation overlay would tighten it.
+- Only the "base visible" body sprites (chest, hip, head, helmet, both arms/hands, both legs/feet) are drawn — dreadlocks / cygar / dogtag chain / vest / dmg blood overlays / grenade-on-belt / secondary-weapon-on-back are documented in GostekGraphics.inc but not wired in.
+- Run-cycle phase is time-driven, not tied to horizontal displacement — at very high or very low speeds the stride can look slightly out of sync with actual movement.
 - `assets/textures/` (map tile art) is on disk but not yet integrated — arena still uses solid ColorRects. Same for `assets/sparks-gfx/` and `assets/interface-gfx/`.
