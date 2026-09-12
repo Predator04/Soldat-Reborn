@@ -263,6 +263,8 @@ func _throw_grenade() -> void:
 
 
 func _shake(amount: float) -> void:
+	if not Settings.screen_shake:
+		return
 	shake = maxf(shake, amount)
 
 

@@ -2,11 +2,13 @@ extends CanvasLayer
 ## HUD — health, fuel, ammo, weapon, grenades, kill feed.
 
 var player: Node2D
+var map_name := ""
 var lbl_health: Label
 var lbl_fuel: Label
 var lbl_ammo: Label
 var lbl_weapon: Label
 var lbl_grenades: Label
+var lbl_map: Label
 var feed: VBoxContainer
 
 const FEED_MAX := 5
@@ -28,6 +30,16 @@ func _ready() -> void:
 	feed.alignment = BoxContainer.ALIGNMENT_END
 	feed.add_theme_constant_override("separation", 3)
 	add_child(feed)
+	lbl_map = Label.new()
+	lbl_map.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl_map.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	lbl_map.offset_top = 8
+	lbl_map.offset_bottom = 30
+	lbl_map.add_theme_font_size_override("font_size", 16)
+	lbl_map.add_theme_color_override("font_color", Color(0.75, 0.78, 0.88))
+	lbl_map.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	lbl_map.add_theme_constant_override("outline_size", 3)
+	add_child(lbl_map)
 
 
 func _make_label(pos: Vector2, col: Color) -> Label:
@@ -65,6 +77,7 @@ func _on_kill(killer_name: String, victim_name: String, weapon_name: String, kil
 
 
 func _process(_delta: float) -> void:
+	lbl_map.text = map_name
 	if not is_instance_valid(player):
 		return
 	lbl_health.text = "HP  %d" % int(player.health)

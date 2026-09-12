@@ -47,6 +47,9 @@ func jump() -> void:
 
 func jet(on: bool) -> void:
 	if on:
+		if Settings.sfx_volume <= 0.0:
+			return
+		_jet_player.volume_db = -9.0 + _master_db()
 		if not _jet_player.playing:
 			_jet_player.play()
 	else:
@@ -72,14 +75,18 @@ func empty() -> void:
 # ── Internals ───────────────────────────────────────────
 
 func _play(name: String, vol_db := -6.0, pitch := 1.0) -> void:
-	if not _streams.has(name):
+	if Settings.sfx_volume <= 0.0 or not _streams.has(name):
 		return
 	var p := _players[_idx]
 	_idx = (_idx + 1) % _players.size()
 	p.stream = _streams[name]
-	p.volume_db = vol_db
+	p.volume_db = vol_db + _master_db()
 	p.pitch_scale = pitch
 	p.play()
+
+
+func _master_db() -> float:
+	return linear_to_db(clampf(Settings.sfx_volume, 0.0001, 1.0))
 
 
 func _make_wav(samples: PackedFloat32Array, loop := false) -> AudioStreamWAV:

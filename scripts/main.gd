@@ -11,14 +11,60 @@ signal kill(killer_name: String, victim_name: String, weapon_name: String, kille
 
 var player: Node2D = null
 var hud: CanvasLayer = null
-var spawn_point := Vector2(200, 1050)
+var _map: Dictionary = {}
 
 const MAP_W := 3200.0
 const MAP_H := 1200.0
 const GROUND_Y := 1150.0
 
+const MAPS := [
+	{
+		"name": "Ascent",
+		"platforms": [
+			{"p": Vector2(450, 900), "s": Vector2(260, 22)},
+			{"p": Vector2(900, 760), "s": Vector2(240, 22)},
+			{"p": Vector2(1350, 640), "s": Vector2(240, 22)},
+			{"p": Vector2(1800, 540), "s": Vector2(240, 22)},
+			{"p": Vector2(2250, 660), "s": Vector2(240, 22)},
+			{"p": Vector2(2700, 800), "s": Vector2(240, 22)},
+		],
+		"player_spawn": Vector2(200, 1050),
+		"bot_spawns": [Vector2(1000, 1050), Vector2(1600, 500), Vector2(2400, 1050), Vector2(2900, 760)],
+	},
+	{
+		"name": "Towers",
+		"platforms": [
+			{"p": Vector2(500, 900), "s": Vector2(220, 22)},
+			{"p": Vector2(500, 700), "s": Vector2(220, 22)},
+			{"p": Vector2(2700, 900), "s": Vector2(220, 22)},
+			{"p": Vector2(2700, 700), "s": Vector2(220, 22)},
+			{"p": Vector2(1600, 620), "s": Vector2(620, 22)},
+			{"p": Vector2(1000, 980), "s": Vector2(180, 22)},
+			{"p": Vector2(2200, 980), "s": Vector2(180, 22)},
+		],
+		"player_spawn": Vector2(200, 1050),
+		"bot_spawns": [Vector2(500, 640), Vector2(2700, 640), Vector2(1600, 560), Vector2(1600, 1050)],
+	},
+	{
+		"name": "Pillars",
+		"platforms": [
+			{"p": Vector2(800, 920), "s": Vector2(70, 22)},
+			{"p": Vector2(1200, 800), "s": Vector2(70, 22)},
+			{"p": Vector2(1600, 700), "s": Vector2(70, 22)},
+			{"p": Vector2(2000, 800), "s": Vector2(70, 22)},
+			{"p": Vector2(2400, 920), "s": Vector2(70, 22)},
+			{"p": Vector2(600, 880), "s": Vector2(130, 22)},
+			{"p": Vector2(2600, 880), "s": Vector2(130, 22)},
+		],
+		"player_spawn": Vector2(200, 1050),
+		"bot_spawns": [Vector2(800, 860), Vector2(1600, 640), Vector2(2400, 860), Vector2(1600, 1050)],
+	},
+]
+
 
 func _ready() -> void:
+	_map = MAPS[Settings.map_index % MAPS.size()]
+	Settings.map_index = (Settings.map_index + 1) % MAPS.size()
 	_build_sky()
 	_build_parallax()
 	_build_terrain()
@@ -70,19 +116,15 @@ func _make_platform(pos: Vector2, size: Vector2, col: Color) -> StaticBody2D:
 
 func _build_terrain() -> void:
 	_make_platform(Vector2(MAP_W / 2.0, GROUND_Y), Vector2(MAP_W + 200, 200), Color(0.22, 0.26, 0.32))
-	_make_platform(Vector2(450, 900), Vector2(260, 22), Color(0.28, 0.32, 0.4))
-	_make_platform(Vector2(900, 760), Vector2(240, 22), Color(0.28, 0.32, 0.4))
-	_make_platform(Vector2(1350, 640), Vector2(240, 22), Color(0.28, 0.32, 0.4))
-	_make_platform(Vector2(1800, 540), Vector2(240, 22), Color(0.28, 0.32, 0.4))
-	_make_platform(Vector2(2250, 660), Vector2(240, 22), Color(0.28, 0.32, 0.4))
-	_make_platform(Vector2(2700, 800), Vector2(240, 22), Color(0.28, 0.32, 0.4))
+	for pl in _map["platforms"]:
+		_make_platform(pl["p"], pl["s"], Color(0.28, 0.32, 0.4))
 	_make_platform(Vector2(0, MAP_H / 2.0), Vector2(40, MAP_H * 2.0), Color(0.2, 0.23, 0.28))
 	_make_platform(Vector2(MAP_W, MAP_H / 2.0), Vector2(40, MAP_H * 2.0), Color(0.2, 0.23, 0.28))
 
 
 func _spawn_player() -> void:
 	var p := player_scene.instantiate()
-	p.position = spawn_point
+	p.position = _map["player_spawn"]
 	p.team = 0
 	p.died.connect(_on_player_died)
 	add_child(p)
@@ -100,7 +142,7 @@ func _on_player_died() -> void:
 
 
 func _spawn_bots() -> void:
-	var spots := [Vector2(1000, 1050), Vector2(1600, 500), Vector2(2400, 1050), Vector2(2900, 760)]
+	var spots: Array = _map["bot_spawns"]
 	for i in spots.size():
 		var b := bot_scene.instantiate()
 		b.position = spots[i]
@@ -114,4 +156,5 @@ func _build_hud() -> void:
 	hud.set_script(hud_script)
 	add_child(hud)
 	hud.player = player
+	hud.map_name = str(_map["name"])
 	kill.connect(hud._on_kill)

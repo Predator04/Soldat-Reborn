@@ -37,8 +37,8 @@ A 2026-quality port of Soldat's *feel* in Godot 4 (run-and-gun, jet boots, bunny
 - [x] Sound: generated SFX (shoot / jump / jet / gib / reload / empty / explode) — procedural PCM in scripts/sfx.gd (autoload `Sfx`)
 - [x] Death ragdoll: physics gib pieces (RigidBody2D chunks + particle gore)
 - [ ] Multiplayer (Godot ENet high-level): spawn/despawn sync, bullets, grenades
-- [ ] Main menu + settings
-- [ ] More maps
+- [x] Main menu + settings (SFX volume / screen shake / fullscreen — persisted via autoload `Settings` to user://settings.cfg)
+- [x] More maps (3 layouts — Ascent / Towers / Pillars — data-driven in main.gd, cycled per game)
 
 ## Rules (hard)
 1. **Preserve the Soldat feel** — bunny-hop momentum, jet fuel management, weapon balance. Don't make it floaty.
