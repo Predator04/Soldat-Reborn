@@ -16,26 +16,26 @@ A 2026-quality port of Soldat's *feel* in Godot 4 (run-and-gun, jet boots, bunny
 ## Backlog (work top-down; do 1-2 per pass, verify after each)
 
 ### Feel & juice (P0)
-- [ ] Coyote time (~0.08s) + jump buffering (~0.1s)
-- [ ] Screen shake (shoot / explosion / death)
-- [ ] Muzzle flash + bullet trails
-- [ ] Jetpack flame as particles (CPUParticles2D), not just drawn triangle
+- [x] Coyote time (~0.08s) + jump buffering (~0.1s)
+- [x] Screen shake (shoot / explosion / death)
+- [x] Muzzle flash + bullet trails
+- [x] Jetpack flame as particles (CPUParticles2D), not just drawn triangle
 
 ### Combat (P0)
-- [ ] Weapon system: Deagles / AK-74 / MP5 / Spas-12 — switch (1-4 or scroll), reload (R), ammo per mag
-- [ ] Grenades: arc throw, bounce, explode, area damage (Soldat's signature)
+- [x] Weapon system: Deagles / AK-74 / MP5 / Spas-12 — switch (1-4 or scroll), reload (R), ammo per mag
+- [x] Grenades: arc throw, bounce, explode, area damage (Soldat's signature)
 
 ### Presentation (P1)
-- [ ] Camera follow + smoothing + bigger map
+- [x] Camera follow + smoothing + bigger map (3200px)
 - [ ] Parallax background layers
-- [ ] HUD: health / ammo / fuel / weapon name / kill feed
+- [ ] HUD: kill feed (health / ammo / fuel / weapon name already done)
 
 ### Bots (P1)
-- [ ] Lead aim, dodge, use grenades
+- [x] Lead aim, dodge, use grenades
 
 ### Systems (P2)
 - [ ] Sound: generated SFX (shoot / jump / jet / gib)
-- [ ] Death ragdoll: physics gib pieces, not just particles
+- [x] Death ragdoll: physics gib pieces (RigidBody2D chunks + particle gore)
 - [ ] Multiplayer (Godot ENet high-level): spawn/despawn sync, bullets, grenades
 - [ ] Main menu + settings
 - [ ] More maps

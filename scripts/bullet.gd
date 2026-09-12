@@ -8,6 +8,7 @@ var team := 0
 
 
 func _ready() -> void:
+	add_to_group("bullet")
 	body_entered.connect(_on_body_entered)
 	var shape := CollisionShape2D.new()
 	var cs := CircleShape2D.new()

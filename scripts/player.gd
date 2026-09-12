@@ -258,7 +258,9 @@ func _die() -> void:
 	if dead:
 		return
 	dead = true
-	_spawn_gibs()
+	# defer FX spawn out of the physics flush (bullet body_entered → take_damage path)
+	_spawn_gibs.call_deferred()
+	_spawn_ragdoll.call_deferred()
 	died.emit()
 	queue_free()
 
@@ -281,6 +283,35 @@ func _spawn_gibs() -> void:
 	p.color = Color(0.9, 0.15, 0.15)
 	get_parent().add_child(p)
 	get_tree().create_timer(1.3).timeout.connect(p.queue_free)
+
+
+func _spawn_ragdoll() -> void:
+	# physics gib chunks: rigid bodies that fly out and settle on terrain
+	var count := 8
+	for _i in count:
+		var body := RigidBody2D.new()
+		body.position = global_position + Vector2(randf_range(-8.0, 8.0), randf_range(-20.0, 0.0))
+		var shape := CollisionShape2D.new()
+		var rect := RectangleShape2D.new()
+		rect.size = Vector2(randf_range(5.0, 12.0), randf_range(5.0, 12.0))
+		shape.shape = rect
+		body.add_child(shape)
+		var vis := Polygon2D.new()
+		var s := rect.size
+		vis.polygon = PackedVector2Array([
+			Vector2(-s.x / 2.0, -s.y / 2.0),
+			Vector2(s.x / 2.0, -s.y / 2.0),
+			Vector2(s.x / 2.0, s.y / 2.0),
+			Vector2(-s.x / 2.0, s.y / 2.0),
+		])
+		vis.color = color.darkened(randf_range(0.0, 0.35))
+		body.add_child(vis)
+		body.linear_damp = 0.4
+		body.angular_damp = 1.5
+		get_parent().add_child(body)
+		body.linear_velocity = Vector2(randf_range(-280.0, 280.0), randf_range(-560.0, -140.0))
+		body.angular_velocity = randf_range(-15.0, 15.0)
+		get_tree().create_timer(2.5).timeout.connect(body.queue_free)
 
 
 func _draw() -> void:

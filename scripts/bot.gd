@@ -1,5 +1,5 @@
 extends CharacterBody2D
-## Bot — simple AI soldier: chases the player, jet-boots up, shoots.
+## Bot — AI soldier: leads its aim, circle-strafes, dodge-jumps, lobs grenades, jet-boots up.
 
 @export var color := Color(0.85, 0.3, 0.25)
 var team := 1
@@ -13,13 +13,25 @@ var fire_cd := 0.5
 var jump_cd := 0.0
 var target: Node2D = null
 
+# grenades
+var grenades := 3
+var grenade_cd := 0.0
+
+# strafe / dodge
+var strafe_dir := 1.0
+var strafe_t := 0.0
+var dodge_cd := 0.0
+
 const GRAVITY := 1700.0
 const RUN_SPEED := 230.0
 const JUMP_VEL := -430.0
 const JET_THRUST := -1050.0
 const MAX_FALL := 1300.0
+const BULLET_SPEED := 720.0
+const ENGAGE_RANGE := 720.0
 
 var bullet_scene := preload("res://scenes/bullet.tscn")
+var grenade_scene := preload("res://scenes/grenade.tscn")
 
 
 func _ready() -> void:
@@ -35,31 +47,43 @@ func _physics_process(delta: float) -> void:
 	if dead:
 		return
 
-	# Acquire the nearest enemy soldier (team 0)
-	if not is_instance_valid(target):
-		target = null
-		for s in get_tree().get_nodes_in_group("soldier"):
-			if s.get("team") == 0 and s != self:
-				target = s
-				break
+	_refresh_target()
+
+	var on_floor := is_on_floor()
+	var dx := 0.0
+	var dy := 0.0
+	if is_instance_valid(target):
+		dx = target.global_position.x - global_position.x
+		dy = target.global_position.y - global_position.y
+
+	# circle-strafe: flip lateral direction periodically while engaged
+	strafe_t -= delta
+	if strafe_t <= 0.0:
+		strafe_dir = 1.0 if randf() < 0.5 else -1.0
+		strafe_t = randf_range(0.5, 1.2)
 
 	var dir := 0.0
 	if is_instance_valid(target):
-		var dx: float = target.global_position.x - global_position.x
-		if absf(dx) > 70.0:
-			dir = 1.0 if dx > 0.0 else -1.0
+		if absf(dx) > 120.0:
+			dir = signf(dx)
+		else:
+			dir = strafe_dir  # close in → strafe around
 	else:
 		dir = 1.0  # idle wander toward the right
 
-	var on_floor := is_on_floor()
-
 	velocity.x = move_toward(velocity.x, dir * RUN_SPEED, 1300.0 * delta)
 
-	# Jump / jet toward the target when it's above us
+	# dodge-jump when an enemy bullet is closing in
+	dodge_cd -= delta
+	if dodge_cd <= 0.0 and _bullet_incoming():
+		if on_floor:
+			velocity.y = JUMP_VEL
+		dodge_cd = 0.5
+
+	# jump / jet toward the target when it's above us
 	jet_on = false
 	jump_cd -= delta
 	if is_instance_valid(target):
-		var dy: float = target.global_position.y - global_position.y
 		if dy < -50.0 and on_floor and jump_cd <= 0.0:
 			velocity.y = JUMP_VEL
 			jump_cd = 0.9
@@ -79,21 +103,73 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 
-	# Shoot at the player when reasonably close
+	# lob a grenade at mid-range
+	grenade_cd -= delta
+	if is_instance_valid(target) and grenade_cd <= 0.0 and grenades > 0:
+		var dist: float = sqrt(dx * dx + dy * dy)
+		if dist > 300.0 and dist < 560.0:
+			_throw_grenade(dx, dy, dist)
+			grenade_cd = 2.5
+
+	# shoot with lead aim
 	fire_cd -= delta
 	if is_instance_valid(target) and fire_cd <= 0.0:
 		var to_t: Vector2 = target.global_position - global_position
-		if to_t.length() < 720.0:
-			var aim := to_t.normalized()
-			var b := bullet_scene.instantiate()
-			b.global_position = global_position + aim * 26.0
-			b.direction = aim
-			b.speed = 720.0
-			b.team = team
-			get_parent().add_child(b)
-			fire_cd = 0.45
+		if to_t.length() < ENGAGE_RANGE:
+			_shoot(to_t)
 
 	queue_redraw()
+
+
+func _refresh_target() -> void:
+	if is_instance_valid(target) and not target.get("dead"):
+		return
+	target = null
+	for s in get_tree().get_nodes_in_group("soldier"):
+		if s.get("team") != team and s != self and not s.get("dead"):
+			target = s
+			break
+
+
+func _bullet_incoming() -> bool:
+	for b in get_tree().get_nodes_in_group("bullet"):
+		if not is_instance_valid(b) or int(b.get("team")) == team:
+			continue
+		var to_b: Vector2 = b.global_position - global_position
+		var d: float = to_b.length()
+		if d < 150.0 and d > 1.0:
+			var bvel: Vector2 = b.get("direction") * float(b.get("speed"))
+			if to_b.normalized().dot(bvel.normalized()) > 0.6:
+				return true
+	return false
+
+
+func _throw_grenade(dx: float, dy: float, dist: float) -> void:
+	grenades -= 1
+	var g := grenade_scene.instantiate()
+	g.global_position = global_position + Vector2(signf(dx) * 10.0, -8.0)
+	g.team = team
+	var toss := (Vector2(dx, dy) / dist + Vector2(0, -0.6)).normalized()
+	g.linear_velocity = toss * 460.0
+	g.angular_velocity = randf_range(-8.0, 8.0)
+	get_parent().add_child(g)
+
+
+func _shoot(to_t: Vector2) -> void:
+	var aim := to_t.normalized()
+	# lead the target by its velocity (predictive aim)
+	if is_instance_valid(target) and target is CharacterBody2D:
+		var t_est: float = to_t.length() / BULLET_SPEED
+		var lead: Vector2 = target.global_position + target.velocity * t_est
+		aim = (lead - global_position).normalized()
+	var b := bullet_scene.instantiate()
+	b.global_position = global_position + aim * 26.0
+	b.direction = aim
+	b.speed = BULLET_SPEED
+	b.damage = 12.0
+	b.team = team
+	get_parent().add_child(b)
+	fire_cd = 0.45
 
 
 func take_damage(amount: float) -> void:
@@ -108,7 +184,9 @@ func _die() -> void:
 	if dead:
 		return
 	dead = true
-	_spawn_gibs()
+	# defer FX spawn out of the physics flush (bullet body_entered → take_damage path)
+	_spawn_gibs.call_deferred()
+	_spawn_ragdoll.call_deferred()
 	queue_free()
 
 
@@ -130,6 +208,35 @@ func _spawn_gibs() -> void:
 	p.color = Color(0.9, 0.15, 0.15)
 	get_parent().add_child(p)
 	get_tree().create_timer(1.3).timeout.connect(p.queue_free)
+
+
+func _spawn_ragdoll() -> void:
+	# physics gib chunks: rigid bodies that fly out and settle on terrain
+	var count := 7
+	for _i in count:
+		var body := RigidBody2D.new()
+		body.position = global_position + Vector2(randf_range(-8.0, 8.0), randf_range(-20.0, 0.0))
+		var shape := CollisionShape2D.new()
+		var rect := RectangleShape2D.new()
+		rect.size = Vector2(randf_range(5.0, 12.0), randf_range(5.0, 12.0))
+		shape.shape = rect
+		body.add_child(shape)
+		var vis := Polygon2D.new()
+		var s := rect.size
+		vis.polygon = PackedVector2Array([
+			Vector2(-s.x / 2.0, -s.y / 2.0),
+			Vector2(s.x / 2.0, -s.y / 2.0),
+			Vector2(s.x / 2.0, s.y / 2.0),
+			Vector2(-s.x / 2.0, s.y / 2.0),
+		])
+		vis.color = color.darkened(randf_range(0.0, 0.35))
+		body.add_child(vis)
+		body.linear_damp = 0.4
+		body.angular_damp = 1.5
+		get_parent().add_child(body)
+		body.linear_velocity = Vector2(randf_range(-260.0, 260.0), randf_range(-520.0, -120.0))
+		body.angular_velocity = randf_range(-14.0, 14.0)
+		get_tree().create_timer(2.5).timeout.connect(body.queue_free)
 
 
 func _draw() -> void:
