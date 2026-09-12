@@ -2,6 +2,7 @@ extends RigidBody2D
 ## Grenade — bounces, fuses, explodes with area damage.
 
 var team := 0
+var killer_name := ""
 var fuse := 1.7
 var damage := 72.0
 var blast_radius := 120.0
@@ -30,7 +31,7 @@ func _explode() -> void:
 			continue
 		var d: float = global_position.distance_to(s.global_position)
 		if d < blast_radius:
-			s.take_damage(damage * (1.0 - d / blast_radius))
+			s.take_damage(damage * (1.0 - d / blast_radius), killer_name, "Grenade", team)
 	var p := CPUParticles2D.new()
 	p.amount = 55
 	p.lifetime = 0.5

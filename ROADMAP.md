@@ -27,8 +27,8 @@ A 2026-quality port of Soldat's *feel* in Godot 4 (run-and-gun, jet boots, bunny
 
 ### Presentation (P1)
 - [x] Camera follow + smoothing + bigger map (3200px)
-- [ ] Parallax background layers
-- [ ] HUD: kill feed (health / ammo / fuel / weapon name already done)
+- [x] Parallax background layers (3 depth layers, camera-relative drift)
+- [x] HUD: kill feed (killer ▸ victim + weapon, team-colored, auto-fade)
 
 ### Bots (P1)
 - [x] Lead aim, dodge, use grenades

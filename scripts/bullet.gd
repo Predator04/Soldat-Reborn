@@ -5,6 +5,8 @@ var direction := Vector2.RIGHT
 var speed := 900.0
 var damage := 12.0
 var team := 0
+var killer_name := ""
+var weapon_name := ""
 
 
 func _ready() -> void:
@@ -26,7 +28,7 @@ func _physics_process(delta: float) -> void:
 func _on_body_entered(body: Node) -> void:
 	if body is CharacterBody2D:
 		if body.get("team") != team and body.has_method("take_damage"):
-			body.take_damage(damage)
+			body.take_damage(damage, killer_name, weapon_name, team)
 			queue_free()
 			return
 		return

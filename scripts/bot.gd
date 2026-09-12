@@ -3,6 +3,11 @@ extends CharacterBody2D
 
 @export var color := Color(0.85, 0.3, 0.25)
 var team := 1
+var display_name := "Bot"
+
+var last_killer := ""
+var last_weapon := ""
+var last_killer_team := -1
 
 var health := 100.0
 var fuel := 100.0
@@ -149,6 +154,7 @@ func _throw_grenade(dx: float, dy: float, dist: float) -> void:
 	var g := grenade_scene.instantiate()
 	g.global_position = global_position + Vector2(signf(dx) * 10.0, -8.0)
 	g.team = team
+	g.killer_name = display_name
 	var toss := (Vector2(dx, dy) / dist + Vector2(0, -0.6)).normalized()
 	g.linear_velocity = toss * 460.0
 	g.angular_velocity = randf_range(-8.0, 8.0)
@@ -168,14 +174,20 @@ func _shoot(to_t: Vector2) -> void:
 	b.speed = BULLET_SPEED
 	b.damage = 12.0
 	b.team = team
+	b.killer_name = display_name
+	b.weapon_name = "AK-74"
 	get_parent().add_child(b)
 	fire_cd = 0.45
 
 
-func take_damage(amount: float) -> void:
+func take_damage(amount: float, killer := "", weapon := "", killer_team := -1) -> void:
 	if dead:
 		return
 	health -= amount
+	if killer != "":
+		last_killer = killer
+		last_weapon = weapon
+		last_killer_team = killer_team
 	if health <= 0.0:
 		_die()
 
@@ -184,10 +196,19 @@ func _die() -> void:
 	if dead:
 		return
 	dead = true
+	_emit_kill()
 	# defer FX spawn out of the physics flush (bullet body_entered → take_damage path)
 	_spawn_gibs.call_deferred()
 	_spawn_ragdoll.call_deferred()
 	queue_free()
+
+
+func _emit_kill() -> void:
+	if last_killer == "":
+		return
+	var parent := get_parent()
+	if parent != null and parent.has_signal("kill"):
+		parent.emit_signal("kill", last_killer, display_name, last_weapon, last_killer_team)
 
 
 func _spawn_gibs() -> void:

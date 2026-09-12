@@ -4,7 +4,10 @@ extends Node2D
 var player_scene := preload("res://scenes/player.tscn")
 var bot_scene := preload("res://scenes/bot.tscn")
 var sky_script := preload("res://scripts/sky.gd")
+var parallax_script := preload("res://scripts/parallax.gd")
 var hud_script := preload("res://scripts/hud.gd")
+
+signal kill(killer_name: String, victim_name: String, weapon_name: String, killer_team: int)
 
 var player: Node2D = null
 var hud: CanvasLayer = null
@@ -17,6 +20,7 @@ const GROUND_Y := 1150.0
 
 func _ready() -> void:
 	_build_sky()
+	_build_parallax()
 	_build_terrain()
 	_spawn_player()
 	_spawn_bots()
@@ -30,6 +34,16 @@ func _build_sky() -> void:
 	var layer := CanvasLayer.new()
 	layer.layer = -20
 	layer.add_child(sky)
+	add_child(layer)
+
+
+func _build_parallax() -> void:
+	var par := Node2D.new()
+	par.name = "Parallax"
+	par.set_script(parallax_script)
+	var layer := CanvasLayer.new()
+	layer.layer = -15
+	layer.add_child(par)
 	add_child(layer)
 
 
@@ -87,10 +101,11 @@ func _on_player_died() -> void:
 
 func _spawn_bots() -> void:
 	var spots := [Vector2(1000, 1050), Vector2(1600, 500), Vector2(2400, 1050), Vector2(2900, 760)]
-	for s in spots:
+	for i in spots.size():
 		var b := bot_scene.instantiate()
-		b.position = s
+		b.position = spots[i]
 		b.team = 1
+		b.display_name = "Bot %d" % (i + 1)
 		add_child(b)
 
 
@@ -99,3 +114,4 @@ func _build_hud() -> void:
 	hud.set_script(hud_script)
 	add_child(hud)
 	hud.player = player
+	kill.connect(hud._on_kill)
