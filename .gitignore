@@ -2,3 +2,8 @@
 build/
 *.exe
 GodotEngine/
+
+# Large / deferred asset dirs — kept on disk for the follow-up integration
+# pass but excluded from the repo to keep it lean.
+assets/textures/
+assets/interface-gfx/
