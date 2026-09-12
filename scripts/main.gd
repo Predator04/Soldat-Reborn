@@ -6,6 +6,7 @@ var bot_scene := preload("res://scenes/bot.tscn")
 var sky_script := preload("res://scripts/sky.gd")
 var parallax_script := preload("res://scripts/parallax.gd")
 var hud_script := preload("res://scripts/hud.gd")
+const PoaLoader = preload("res://scripts/poa_loader.gd")
 
 signal kill(killer_name: String, victim_name: String, weapon_name: String, killer_team: int)
 
@@ -78,6 +79,7 @@ const MAPS := [
 
 
 func _ready() -> void:
+	PoaLoader.preload_all()
 	if Net.is_networked():
 		# Host picks the map (via Net.chosen_map_index). Clients receive it before
 		# reaching this scene, so both peers build the same terrain.
