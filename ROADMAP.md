@@ -34,7 +34,7 @@ A 2026-quality port of Soldat's *feel* in Godot 4 (run-and-gun, jet boots, bunny
 - [x] Lead aim, dodge, use grenades
 
 ### Systems (P2)
-- [ ] Sound: generated SFX (shoot / jump / jet / gib)
+- [x] Sound: generated SFX (shoot / jump / jet / gib / reload / empty / explode) — procedural PCM in scripts/sfx.gd (autoload `Sfx`)
 - [x] Death ragdoll: physics gib pieces (RigidBody2D chunks + particle gore)
 - [ ] Multiplayer (Godot ENet high-level): spawn/despawn sync, bullets, grenades
 - [ ] Main menu + settings

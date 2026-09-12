@@ -15,6 +15,7 @@ var health := 100.0
 var fuel := 100.0
 var facing := 1.0
 var jet_on := false
+var was_jet := false
 var dead := false
 var aim_dir := Vector2.RIGHT
 
@@ -138,6 +139,7 @@ func _physics_process(delta: float) -> void:
 		velocity.x = clampf(velocity.x * 1.06, -BUNNY_SPEED, BUNNY_SPEED)
 		coyote_t = 0.0
 		jump_buffer_t = 0.0
+		Sfx.jump()
 
 	if not on_floor:
 		velocity.y += GRAVITY * delta
@@ -181,12 +183,21 @@ func _physics_process(delta: float) -> void:
 			reloading = false
 			ammo[weapon_index] = int(weapons[weapon_index]["mag"])
 	else:
-		if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and fire_cd <= 0.0 and ammo[weapon_index] > 0:
-			_shoot()
+		if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and fire_cd <= 0.0:
+			if ammo[weapon_index] > 0:
+				_shoot()
+			else:
+				Sfx.empty()
+				fire_cd = 0.25
 
 	muzzle_t = maxf(0.0, muzzle_t - delta * 10.0)
 
 	# jet particles follow the back
+	if jet_on and not was_jet:
+		Sfx.jet(true)
+	elif not jet_on and was_jet:
+		Sfx.jet(false)
+	was_jet = jet_on
 	jet_particles.emitting = jet_on
 	jet_particles.position = Vector2(facing * -14.0, 4.0)
 
@@ -213,6 +224,7 @@ func _start_reload() -> void:
 		return
 	reloading = true
 	reload_t = float(w["reload"])
+	Sfx.reload()
 
 
 func _shoot() -> void:
@@ -221,6 +233,7 @@ func _shoot() -> void:
 	fire_cd = float(w["rate"])
 	muzzle_t = 0.08
 	_shake(3.5)
+	Sfx.shoot(str(w["name"]))
 	for _i in int(w["pellets"]):
 		var bdir := aim_dir.rotated(randf_range(-float(w["spread"]), float(w["spread"])))
 		var b := bullet_scene.instantiate()
@@ -270,6 +283,7 @@ func _die() -> void:
 	if dead:
 		return
 	dead = true
+	Sfx.gib()
 	_emit_kill()
 	# defer FX spawn out of the physics flush (bullet body_entered → take_damage path)
 	_spawn_gibs.call_deferred()

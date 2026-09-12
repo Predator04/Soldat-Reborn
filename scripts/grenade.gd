@@ -26,6 +26,7 @@ func _physics_process(_delta: float) -> void:
 
 
 func _explode() -> void:
+	Sfx.explode()
 	for s in get_tree().get_nodes_in_group("soldier"):
 		if not is_instance_valid(s) or s.get("team") == team:
 			continue

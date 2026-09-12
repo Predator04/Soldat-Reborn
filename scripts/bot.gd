@@ -13,6 +13,7 @@ var health := 100.0
 var fuel := 100.0
 var facing := 1.0
 var jet_on := false
+var was_jet := false
 var dead := false
 var fire_cd := 0.5
 var jump_cd := 0.0
@@ -83,6 +84,7 @@ func _physics_process(delta: float) -> void:
 	if dodge_cd <= 0.0 and _bullet_incoming():
 		if on_floor:
 			velocity.y = JUMP_VEL
+			Sfx.jump()
 		dodge_cd = 0.5
 
 	# jump / jet toward the target when it's above us
@@ -92,10 +94,16 @@ func _physics_process(delta: float) -> void:
 		if dy < -50.0 and on_floor and jump_cd <= 0.0:
 			velocity.y = JUMP_VEL
 			jump_cd = 0.9
+			Sfx.jump()
 		elif dy < -80.0 and not on_floor and fuel > 0.0:
 			velocity.y += JET_THRUST * delta
 			fuel = maxf(0.0, fuel - 40.0 * delta)
 			jet_on = true
+	if jet_on and not was_jet:
+		Sfx.jet(true)
+	elif not jet_on and was_jet:
+		Sfx.jet(false)
+	was_jet = jet_on
 	if on_floor:
 		fuel = minf(100.0, fuel + 32.0 * delta)
 
@@ -163,6 +171,7 @@ func _throw_grenade(dx: float, dy: float, dist: float) -> void:
 
 func _shoot(to_t: Vector2) -> void:
 	var aim := to_t.normalized()
+	Sfx.shoot("AK-74")
 	# lead the target by its velocity (predictive aim)
 	if is_instance_valid(target) and target is CharacterBody2D:
 		var t_est: float = to_t.length() / BULLET_SPEED
@@ -196,6 +205,7 @@ func _die() -> void:
 	if dead:
 		return
 	dead = true
+	Sfx.gib()
 	_emit_kill()
 	# defer FX spawn out of the physics flush (bullet body_entered → take_damage path)
 	_spawn_gibs.call_deferred()
