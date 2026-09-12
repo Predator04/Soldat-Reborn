@@ -1,5 +1,5 @@
 extends CharacterBody2D
-## Soldier — Soldat-style movement: run, bunny hop, jet boots, shoot.
+## Soldier — Soldat-style movement + weapon system (2026 feel).
 
 signal died
 
@@ -11,9 +11,32 @@ var fuel := 100.0
 var facing := 1.0
 var jet_on := false
 var dead := false
-var fire_cd := 0.0
 var aim_dir := Vector2.RIGHT
 
+# ── Weapons ────────────────────────────────────────────
+var weapons := [
+	{"name": "Deagles", "damage": 34.0, "rate": 0.30, "mag": 14, "reload": 1.5, "auto": false, "spread": 0.02, "speed": 1200.0, "pellets": 1, "color": Color(0.92, 0.78, 0.35)},
+	{"name": "AK-74",   "damage": 22.0, "rate": 0.11, "mag": 30, "reload": 2.0, "auto": true,  "spread": 0.055, "speed": 1050.0, "pellets": 1, "color": Color(0.72, 0.72, 0.78)},
+	{"name": "MP5",     "damage": 13.0, "rate": 0.075, "mag": 32, "reload": 1.8, "auto": true,  "spread": 0.085, "speed": 950.0, "pellets": 1, "color": Color(0.5, 0.62, 0.8)},
+	{"name": "Spas-12", "damage": 9.0,  "rate": 0.6,  "mag": 8,  "reload": 2.5, "auto": false, "spread": 0.26, "speed": 850.0, "pellets": 8, "color": Color(0.88, 0.58, 0.3)},
+]
+var ammo: Array[int] = []
+var weapon_index := 1
+var fire_cd := 0.0
+var reloading := false
+var reload_t := 0.0
+var grenades := 3
+var grenade_cd := 0.0
+var muzzle_t := 0.0
+
+# ── Feel ───────────────────────────────────────────────
+var coyote_t := 0.0
+var jump_buffer_t := 0.0
+var shake := 0.0
+var cam: Camera2D
+var jet_particles: CPUParticles2D
+
+# ── Physics ────────────────────────────────────────────
 const GRAVITY := 1700.0
 const RUN_SPEED := 330.0
 const BUNNY_SPEED := 640.0
@@ -26,19 +49,42 @@ const JET_THRUST := -1250.0
 const JET_DRAIN := 40.0
 const JET_REGEN := 32.0
 const MAX_FALL := 1300.0
-const BULLET_SPEED := 950.0
-const FIRE_RATE := 0.11
+const COYOTE_TIME := 0.09
+const JUMP_BUFFER := 0.10
 
 var bullet_scene := preload("res://scenes/bullet.tscn")
+var grenade_scene := preload("res://scenes/grenade.tscn")
 
 
 func _ready() -> void:
 	add_to_group("soldier")
+	for w in weapons:
+		ammo.append(int(w["mag"]))
 	var shape := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
 	rect.size = Vector2(22, 40)
 	shape.shape = rect
 	add_child(shape)
+	cam = Camera2D.new()
+	cam.position_smoothing_enabled = true
+	cam.position_smoothing_speed = 8.0
+	cam.zoom = Vector2(1.35, 1.35)
+	add_child(cam)
+	jet_particles = CPUParticles2D.new()
+	jet_particles.amount = 34
+	jet_particles.lifetime = 0.4
+	jet_particles.one_shot = false
+	jet_particles.explosiveness = 0.0
+	jet_particles.emitting = false
+	jet_particles.direction = Vector2(0, 1)
+	jet_particles.spread = 16.0
+	jet_particles.gravity = Vector2(0, 340)
+	jet_particles.initial_velocity_min = 60.0
+	jet_particles.initial_velocity_max = 170.0
+	jet_particles.scale_amount_min = 2.0
+	jet_particles.scale_amount_max = 4.5
+	jet_particles.color = Color(0.35, 0.75, 1.0)
+	add_child(jet_particles)
 
 
 func _physics_process(delta: float) -> void:
@@ -48,7 +94,7 @@ func _physics_process(delta: float) -> void:
 
 	var left := Input.is_physical_key_pressed(KEY_A)
 	var right := Input.is_physical_key_pressed(KEY_D)
-	var jump := Input.is_physical_key_pressed(KEY_SPACE) or Input.is_physical_key_pressed(KEY_W)
+	var jump_pressed := Input.is_physical_key_pressed(KEY_SPACE) or Input.is_physical_key_pressed(KEY_W)
 
 	var dir := 0.0
 	if left:
@@ -58,7 +104,11 @@ func _physics_process(delta: float) -> void:
 
 	var on_floor := is_on_floor()
 
-	# Horizontal acceleration (weaker in air so bunny-hopping carries momentum)
+	# coyote time + jump buffering
+	coyote_t = COYOTE_TIME if on_floor else maxf(0.0, coyote_t - delta)
+	jump_buffer_t = JUMP_BUFFER if jump_pressed else maxf(0.0, jump_buffer_t - delta)
+
+	# horizontal
 	var accel := GROUND_ACCEL if on_floor else AIR_ACCEL
 	var cap := RUN_SPEED if on_floor else BUNNY_SPEED
 	if dir != 0.0:
@@ -68,26 +118,27 @@ func _physics_process(delta: float) -> void:
 		velocity.x = move_toward(velocity.x, 0.0, fr * delta)
 	velocity.x = clampf(velocity.x, -cap, cap)
 
-	# Jet boots — hold jump in the air to thrust; fuel regens on ground
+	# jet boots
 	jet_on = false
-	if jump and not on_floor and fuel > 0.0:
+	if jump_pressed and not on_floor and fuel > 0.0:
 		velocity.y += JET_THRUST * delta
 		fuel = maxf(0.0, fuel - JET_DRAIN * delta)
 		jet_on = true
 	elif on_floor:
 		fuel = minf(100.0, fuel + JET_REGEN * delta)
 
-	# Jump / bunny hop — a small speed boost on each ground jump
-	if jump and on_floor:
+	# jump / bunny hop (coyote + buffer aware)
+	if jump_buffer_t > 0.0 and coyote_t > 0.0:
 		velocity.y = JUMP_VEL
 		velocity.x = clampf(velocity.x * 1.06, -BUNNY_SPEED, BUNNY_SPEED)
+		coyote_t = 0.0
+		jump_buffer_t = 0.0
 
-	# Gravity
 	if not on_floor:
 		velocity.y += GRAVITY * delta
 		velocity.y = minf(velocity.y, MAX_FALL)
 
-	# Aim from mouse, face the aim direction
+	# aim
 	var mouse := get_global_mouse_position()
 	var to_mouse := mouse - global_position
 	if to_mouse.length() > 1.0:
@@ -97,27 +148,108 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 
-	# Shooting
+	# weapon switching
+	if Input.is_physical_key_pressed(KEY_1):
+		_switch_weapon(0)
+	elif Input.is_physical_key_pressed(KEY_2):
+		_switch_weapon(1)
+	elif Input.is_physical_key_pressed(KEY_3):
+		_switch_weapon(2)
+	elif Input.is_physical_key_pressed(KEY_4):
+		_switch_weapon(3)
+
+	# reload
+	if Input.is_physical_key_pressed(KEY_R) and not reloading:
+		_start_reload()
+
+	# grenade
+	grenade_cd -= delta
+	if Input.is_physical_key_pressed(KEY_G) and grenade_cd <= 0.0 and grenades > 0:
+		_throw_grenade()
+		grenade_cd = 0.6
+
+	# shooting
 	fire_cd -= delta
-	if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and fire_cd <= 0.0:
-		_shoot()
+	if reloading:
+		reload_t -= delta
+		if reload_t <= 0.0:
+			reloading = false
+			ammo[weapon_index] = int(weapons[weapon_index]["mag"])
+	else:
+		if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and fire_cd <= 0.0 and ammo[weapon_index] > 0:
+			_shoot()
+
+	muzzle_t = maxf(0.0, muzzle_t - delta * 10.0)
+
+	# jet particles follow the back
+	jet_particles.emitting = jet_on
+	jet_particles.position = Vector2(facing * -14.0, 4.0)
+
+	# camera shake decay
+	if shake > 0.0:
+		cam.offset = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * shake
+		shake = maxf(0.0, shake - delta * 26.0)
+	else:
+		cam.offset = Vector2.ZERO
+
+	queue_redraw()
+
+
+func _switch_weapon(idx: int) -> void:
+	if idx == weapon_index or reloading:
+		return
+	weapon_index = idx
+	fire_cd = 0.15
+
+
+func _start_reload() -> void:
+	var w = weapons[weapon_index]
+	if ammo[weapon_index] >= int(w["mag"]):
+		return
+	reloading = true
+	reload_t = float(w["reload"])
 
 
 func _shoot() -> void:
-	var b := bullet_scene.instantiate()
-	b.global_position = global_position + aim_dir * 26.0
-	b.direction = aim_dir
-	b.speed = BULLET_SPEED
-	b.team = team
-	get_parent().add_child(b)
-	fire_cd = FIRE_RATE
-	velocity -= aim_dir * 40.0  # slight recoil
+	var w = weapons[weapon_index]
+	ammo[weapon_index] -= 1
+	fire_cd = float(w["rate"])
+	muzzle_t = 0.08
+	_shake(3.5)
+	for _i in int(w["pellets"]):
+		var bdir := aim_dir.rotated(randf_range(-float(w["spread"]), float(w["spread"])))
+		var b := bullet_scene.instantiate()
+		b.global_position = global_position + bdir * 26.0
+		b.direction = bdir
+		b.speed = float(w["speed"])
+		b.damage = float(w["damage"])
+		b.team = team
+		get_parent().add_child(b)
+	velocity -= aim_dir * 35.0
+	if ammo[weapon_index] <= 0:
+		_start_reload()
+
+
+func _throw_grenade() -> void:
+	grenades -= 1
+	var g := grenade_scene.instantiate()
+	g.global_position = global_position + aim_dir * 22.0
+	g.team = team
+	var toss := (aim_dir + Vector2(0, -0.55)).normalized()
+	g.linear_velocity = toss * 480.0
+	g.angular_velocity = randf_range(-8.0, 8.0)
+	get_parent().add_child(g)
+
+
+func _shake(amount: float) -> void:
+	shake = maxf(shake, amount)
 
 
 func take_damage(amount: float) -> void:
 	if dead:
 		return
 	health -= amount
+	_shake(7.0)
 	if health <= 0.0:
 		_die()
 
@@ -133,8 +265,8 @@ func _die() -> void:
 
 func _spawn_gibs() -> void:
 	var p := CPUParticles2D.new()
-	p.amount = 46
-	p.lifetime = 0.7
+	p.amount = 60
+	p.lifetime = 0.8
 	p.explosiveness = 1.0
 	p.one_shot = true
 	p.emitting = true
@@ -142,10 +274,10 @@ func _spawn_gibs() -> void:
 	p.direction = Vector2(0, -1)
 	p.spread = 180.0
 	p.gravity = Vector2(0, 620)
-	p.initial_velocity_min = 120.0
-	p.initial_velocity_max = 440.0
+	p.initial_velocity_min = 140.0
+	p.initial_velocity_max = 480.0
 	p.scale_amount_min = 2.0
-	p.scale_amount_max = 5.0
+	p.scale_amount_max = 6.0
 	p.color = Color(0.9, 0.15, 0.15)
 	get_parent().add_child(p)
 	get_tree().create_timer(1.3).timeout.connect(p.queue_free)
@@ -153,18 +285,9 @@ func _spawn_gibs() -> void:
 
 func _draw() -> void:
 	var body_col := color if not dead else color.darkened(0.4)
-	# legs
-	draw_rect(Rect2(-9, 0, 7, 10), body_col.darkened(0.3))
-	draw_rect(Rect2(2, 0, 7, 10), body_col.darkened(0.3))
-	# torso
-	draw_rect(Rect2(-11, -30, 22, 30), body_col)
-	# head
-	draw_circle(Vector2(facing * 2.0, -34), 6.0, body_col.lightened(0.15))
-	# jetpack on the back
-	draw_rect(Rect2(-facing * 16.0 - 3.0, -26, 5, 18), body_col.darkened(0.15))
-	# jet flame
+	# jet flame triangle
 	if jet_on and not dead:
-		var fl := 26.0 + sin(Time.get_ticks_msec() * 0.05) * 7.0
+		var fl := 24.0 + sin(Time.get_ticks_msec() * 0.05) * 7.0
 		var back := facing * -1.0
 		draw_polygon(
 			PackedVector2Array([
@@ -178,9 +301,20 @@ func _draw() -> void:
 				Color(1.0, 1.0, 1.0, 0.0)
 			])
 		)
-	# health bar
+	# legs / torso / head / jetpack
+	draw_rect(Rect2(-9, 0, 7, 10), body_col.darkened(0.3))
+	draw_rect(Rect2(2, 0, 7, 10), body_col.darkened(0.3))
+	draw_rect(Rect2(-11, -30, 22, 30), body_col)
+	draw_circle(Vector2(facing * 2.0, -34), 6.0, body_col.lightened(0.15))
+	draw_rect(Rect2(-facing * 16.0 - 3.0, -26, 5, 18), body_col.darkened(0.15))
+	# gun barrel toward aim
+	var w = weapons[weapon_index]
+	draw_line(Vector2(facing * 4.0, -22.0), Vector2(facing * 4.0, -22.0) + aim_dir * 20.0, w["color"], 3.0)
+	# muzzle flash
+	if muzzle_t > 0.0:
+		draw_circle(aim_dir * 30.0, 4.0 + muzzle_t * 30.0, Color(1.0, 0.95, 0.5, clampf(muzzle_t * 9.0, 0.0, 1.0)))
+	# health / fuel bars
 	draw_rect(Rect2(-16, -48, 32, 4), Color(0.0, 0.0, 0.0, 0.55))
 	draw_rect(Rect2(-16, -48, 32.0 * clampf(health / 100.0, 0.0, 1.0), 4), Color(0.9, 0.2, 0.2))
-	# fuel bar
 	draw_rect(Rect2(-16, -43, 32, 3), Color(0.0, 0.0, 0.0, 0.55))
 	draw_rect(Rect2(-16, -43, 32.0 * clampf(fuel / 100.0, 0.0, 1.0), 3), Color(0.3, 0.7, 1.0))

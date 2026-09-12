@@ -1,5 +1,5 @@
 extends Area2D
-## Bullet — fast projectile that damages opposing-team soldiers and dies on terrain.
+## Bullet — fast projectile with a tracer trail.
 
 var direction := Vector2.RIGHT
 var speed := 900.0
@@ -19,6 +19,7 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	position += direction * speed * delta
+	queue_redraw()
 
 
 func _on_body_entered(body: Node) -> void:
@@ -27,11 +28,10 @@ func _on_body_entered(body: Node) -> void:
 			body.take_damage(damage)
 			queue_free()
 			return
-		# Same-team soldier (e.g. the shooter) — pass through
 		return
-	# Terrain / walls
 	queue_free()
 
 
 func _draw() -> void:
+	draw_line(-direction * 34.0, Vector2.ZERO, Color(1.0, 0.9, 0.4, 0.55), 2.0)
 	draw_circle(Vector2.ZERO, 2.5, Color(1.0, 0.92, 0.4))
