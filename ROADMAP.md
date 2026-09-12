@@ -1,9 +1,9 @@
 # Soldat Reborn — Roadmap (overnight build queue)
 
-**Project:** /mnt/c/Users/Admin/Desktop/soldat/game
+**Project:** /mnt/c/Users/Admin/Desktop/soldat reborn/game
 **Godot (headless verify):** `~/godot/Godot_v4.7.2-stable_linux.x86_64`
-**Verify command:** `cd /mnt/c/Users/Admin/Desktop/soldat/game && ~/godot/Godot_v4.7.2-stable_linux.x86_64 --headless --quit-after 900` (must print ZERO lines matching error/invalid/nil/failed/attempt)
-**Export command:** `cd /mnt/c/Users/Admin/Desktop/soldat/game && ~/godot/Godot_v4.7.2-stable_linux.x86_64 --headless --export-release "Windows Desktop" build/SoldatReborn.exe`
+**Verify command:** `cd "/mnt/c/Users/Admin/Desktop/soldat reborn/game" && ~/godot/Godot_v4.7.2-stable_linux.x86_64 --headless --quit-after 900` (must print ZERO lines matching error/invalid/nil/failed/attempt)
+**Export command:** `cd "/mnt/c/Users/Admin/Desktop/soldat reborn/game" && ~/godot/Godot_v4.7.2-stable_linux.x86_64 --headless --export-release "Windows Desktop" build/SoldatReborn.exe`
 
 ## Goal
 A 2026-quality port of Soldat's *feel* in Godot 4 (run-and-gun, jet boots, bunny hopping, ragdoll gibs, weapon balance). Same DNA, modern juice.
