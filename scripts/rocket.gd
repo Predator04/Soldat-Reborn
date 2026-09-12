@@ -63,7 +63,7 @@ func _explode() -> void:
 			continue
 		# Rockets damage everyone within blast radius (including own team — you can rocket-jump yourself).
 		var scaled: float = damage * (1.0 - d / blast_radius)
-		if s.has_method("take_damage") and s.is_multiplayer_authority():
+		if s.has_method("take_damage") and (multiplayer.multiplayer_peer == null or s.is_multiplayer_authority()):
 			s.take_damage(scaled, killer_name, weapon_name, team)
 	var p := CPUParticles2D.new()
 	p.amount = 70

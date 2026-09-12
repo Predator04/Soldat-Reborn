@@ -80,7 +80,7 @@ func _ready() -> void:
 	cam.position_smoothing_speed = 8.0
 	cam.zoom = Vector2(1.35, 1.35)
 	add_child(cam)
-	if is_multiplayer_authority():
+	if multiplayer.multiplayer_peer == null or is_multiplayer_authority():
 		cam.make_current()
 	else:
 		cam.enabled = false
