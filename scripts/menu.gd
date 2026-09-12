@@ -270,7 +270,7 @@ func _build_status() -> void:
 
 func _build_footer() -> void:
 	var foot := Label.new()
-	foot.text = "WASD move · SPACE/W jet · mouse aim · LMB shoot · 1-4 weapons · R reload · G grenade"
+	foot.text = "WASD move · SPACE/W jet · mouse aim · LMB shoot · 1-5 weapons (5 = LAW) · R reload · G grenade"
 	foot.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	foot.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	foot.offset_top = -40

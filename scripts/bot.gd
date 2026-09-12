@@ -6,6 +6,7 @@ signal died
 @export var color := Color(0.85, 0.3, 0.25)
 var team := 1
 var display_name := "Bot"
+var loadout := "AK-74"  # or "LAW" — set by Main._spawn_bot before add_child
 
 var last_killer := ""
 var last_weapon := ""
@@ -40,6 +41,7 @@ const ENGAGE_RANGE := 720.0
 
 var bullet_scene := preload("res://scenes/bullet.tscn")
 var grenade_scene := preload("res://scenes/grenade.tscn")
+var rocket_scene := preload("res://scenes/rocket.tscn")
 
 
 func _ready() -> void:
@@ -173,22 +175,35 @@ func _throw_grenade(dx: float, dy: float, dist: float) -> void:
 
 func _shoot(to_t: Vector2) -> void:
 	var aim := to_t.normalized()
-	Sfx.shoot("AK-74")
+	Sfx.shoot(loadout)
 	# lead the target by its velocity (predictive aim)
+	var speed_est: float = 720.0 if loadout != "LAW" else 720.0
 	if is_instance_valid(target) and target is CharacterBody2D:
-		var t_est: float = to_t.length() / BULLET_SPEED
+		var t_est: float = to_t.length() / speed_est
 		var lead: Vector2 = target.global_position + target.velocity * t_est
 		aim = (lead - global_position).normalized()
-	var b := bullet_scene.instantiate()
-	b.global_position = global_position + aim * 26.0
-	b.direction = aim
-	b.speed = BULLET_SPEED
-	b.damage = 12.0
-	b.team = team
-	b.killer_name = display_name
-	b.weapon_name = "AK-74"
-	get_parent().add_child(b)
-	fire_cd = 0.45
+	if loadout == "LAW":
+		var r := rocket_scene.instantiate()
+		r.global_position = global_position + aim * 26.0
+		r.direction = aim
+		r.speed = 720.0
+		r.damage = 90.0
+		r.team = team
+		r.killer_name = display_name
+		r.weapon_name = "LAW"
+		get_parent().add_child(r)
+		fire_cd = 1.6  # slow rocket bots so they aren't oppressive
+	else:
+		var b := bullet_scene.instantiate()
+		b.global_position = global_position + aim * 26.0
+		b.direction = aim
+		b.speed = BULLET_SPEED
+		b.damage = 12.0
+		b.team = team
+		b.killer_name = display_name
+		b.weapon_name = "AK-74"
+		get_parent().add_child(b)
+		fire_cd = 0.45
 
 
 func take_damage(amount: float, killer := "", weapon := "", killer_team := -1) -> void:

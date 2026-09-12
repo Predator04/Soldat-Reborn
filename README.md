@@ -20,7 +20,7 @@ A Godot 4.7 rebuild of the classic Soldat *feel*: run-and-gun with jet boots, bu
 | SPACE / W | Jump (ground) · jet boots (hold in air) |
 | Mouse | Aim |
 | Left click | Shoot |
-| 1–4 | Switch weapon (Deagles / AK-74 / MP5 / Spas-12) |
+| 1–5 | Switch weapon (Deagles / AK-74 / MP5 / Spas-12 / LAW rocket) |
 | R | Reload |
 | G | Throw grenade |
 
@@ -53,7 +53,7 @@ Prints `SMOKE-HOST peers=N players=M` / `SMOKE-JOIN id=... mode=2 players=M` and
 ## What's in it
 
 - **Soldier** — run, jump, bunny hop (ground jumps give a speed boost), jet boots with a fuel bar that regens on ground
-- **Weapons** — Deagles, AK-74, MP5, Spas-12; per-weapon damage / rate / spread / mag / reload
+- **Weapons** — Deagles, AK-74, MP5, Spas-12, LAW rocket (heavy recoil enables rocket-jumping); per-weapon damage / rate / spread / mag / reload
 - **Grenades** — arc throw, bounce, fuse, area damage
 - **3 AI bots** (SP only) — lead aim, dodge-jump, jet up to reach you, lob grenades
 - **Bullets** — hit opposing team, die on terrain, muzzle recoil

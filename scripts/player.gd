@@ -20,11 +20,13 @@ var dead := false
 var aim_dir := Vector2.RIGHT
 
 # ── Weapons ────────────────────────────────────────────
+# `kind` = "hitscan-ish" bullet (default) OR "rocket" (LAW: slow, explodes, splash).
 var weapons := [
-	{"name": "Deagles", "damage": 34.0, "rate": 0.30, "mag": 14, "reload": 1.5, "auto": false, "spread": 0.02, "speed": 1200.0, "pellets": 1, "color": Color(0.92, 0.78, 0.35)},
-	{"name": "AK-74",   "damage": 22.0, "rate": 0.11, "mag": 30, "reload": 2.0, "auto": true,  "spread": 0.055, "speed": 1050.0, "pellets": 1, "color": Color(0.72, 0.72, 0.78)},
-	{"name": "MP5",     "damage": 13.0, "rate": 0.075, "mag": 32, "reload": 1.8, "auto": true,  "spread": 0.085, "speed": 950.0, "pellets": 1, "color": Color(0.5, 0.62, 0.8)},
-	{"name": "Spas-12", "damage": 9.0,  "rate": 0.6,  "mag": 8,  "reload": 2.5, "auto": false, "spread": 0.26, "speed": 850.0, "pellets": 8, "color": Color(0.88, 0.58, 0.3)},
+	{"name": "Deagles", "damage": 34.0, "rate": 0.30, "mag": 14, "reload": 1.5, "auto": false, "spread": 0.02, "speed": 1200.0, "pellets": 1, "color": Color(0.92, 0.78, 0.35), "kind": "bullet"},
+	{"name": "AK-74",   "damage": 22.0, "rate": 0.11, "mag": 30, "reload": 2.0, "auto": true,  "spread": 0.055, "speed": 1050.0, "pellets": 1, "color": Color(0.72, 0.72, 0.78), "kind": "bullet"},
+	{"name": "MP5",     "damage": 13.0, "rate": 0.075, "mag": 32, "reload": 1.8, "auto": true,  "spread": 0.085, "speed": 950.0, "pellets": 1, "color": Color(0.5, 0.62, 0.8), "kind": "bullet"},
+	{"name": "Spas-12", "damage": 9.0,  "rate": 0.6,  "mag": 8,  "reload": 2.5, "auto": false, "spread": 0.26, "speed": 850.0, "pellets": 8, "color": Color(0.88, 0.58, 0.3), "kind": "bullet"},
+	{"name": "LAW",     "damage": 90.0, "rate": 1.1,  "mag": 1,  "reload": 3.0, "auto": false, "spread": 0.0,  "speed": 720.0, "pellets": 1, "color": Color(0.85, 0.55, 0.35), "kind": "rocket"},
 ]
 var ammo: Array[int] = []
 var weapon_index := 1
@@ -60,6 +62,7 @@ const JUMP_BUFFER := 0.10
 
 var bullet_scene := preload("res://scenes/bullet.tscn")
 var grenade_scene := preload("res://scenes/grenade.tscn")
+var rocket_scene := preload("res://scenes/rocket.tscn")
 
 
 func _ready() -> void:
@@ -182,6 +185,8 @@ func _physics_process(delta: float) -> void:
 		_switch_weapon(2)
 	elif Input.is_physical_key_pressed(KEY_4):
 		_switch_weapon(3)
+	elif Input.is_physical_key_pressed(KEY_5):
+		_switch_weapon(4)
 
 	# reload
 	if Input.is_physical_key_pressed(KEY_R) and not reloading:
@@ -261,7 +266,8 @@ func _shoot() -> void:
 	var w = weapons[weapon_index]
 	ammo[weapon_index] -= 1
 	fire_cd = float(w["rate"])
-	velocity -= aim_dir * 35.0
+	var recoil := 240.0 if str(w.get("kind", "bullet")) == "rocket" else 35.0
+	velocity -= aim_dir * recoil
 	var dirs := PackedVector2Array()
 	for _i in int(w["pellets"]):
 		dirs.append(aim_dir.rotated(randf_range(-float(w["spread"]), float(w["spread"]))))
@@ -364,20 +370,32 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int) -> vo
 	if weapon_i < 0 or weapon_i >= weapons.size():
 		return
 	var w = weapons[weapon_i]
-	muzzle_t = 0.08
-	_shake(3.5)
+	muzzle_t = 0.10 if str(w.get("kind", "bullet")) == "rocket" else 0.08
+	_shake(6.0 if str(w.get("kind", "bullet")) == "rocket" else 3.5)
 	Sfx.shoot(str(w["name"]))
+	var kind := str(w.get("kind", "bullet"))
 	for i in dirs.size():
 		var bdir: Vector2 = dirs[i]
-		var b := bullet_scene.instantiate()
-		b.global_position = shot_pos + bdir * 26.0
-		b.direction = bdir
-		b.speed = float(w["speed"])
-		b.damage = float(w["damage"])
-		b.team = team
-		b.killer_name = display_name
-		b.weapon_name = str(w["name"])
-		get_parent().add_child(b)
+		if kind == "rocket":
+			var r := rocket_scene.instantiate()
+			r.global_position = shot_pos + bdir * 26.0
+			r.direction = bdir
+			r.speed = float(w["speed"])
+			r.damage = float(w["damage"])
+			r.team = team
+			r.killer_name = display_name
+			r.weapon_name = str(w["name"])
+			get_parent().add_child(r)
+		else:
+			var b := bullet_scene.instantiate()
+			b.global_position = shot_pos + bdir * 26.0
+			b.direction = bdir
+			b.speed = float(w["speed"])
+			b.damage = float(w["damage"])
+			b.team = team
+			b.killer_name = display_name
+			b.weapon_name = str(w["name"])
+			get_parent().add_child(b)
 
 
 @rpc("authority", "call_local", "reliable")

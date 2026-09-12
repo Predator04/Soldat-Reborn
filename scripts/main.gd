@@ -173,20 +173,23 @@ func _on_player_died() -> void:
 func _spawn_bots() -> void:
 	var spots: Array = _map["bot_spawns"]
 	for i in spots.size():
-		_spawn_bot(spots[i], 1, "Bot %d" % (i + 1))
+		# Last bot gets the LAW so at least one rocket-bot is always in the mix.
+		var loadout := "LAW" if i == spots.size() - 1 else "AK-74"
+		_spawn_bot(spots[i], 1, "Bot %d" % (i + 1), loadout)
 
 
-func _spawn_bot(pos: Vector2, team: int, bname: String) -> void:
+func _spawn_bot(pos: Vector2, team: int, bname: String, loadout: String = "AK-74") -> void:
 	if not is_inside_tree():
 		return
 	var b := bot_scene.instantiate()
 	b.position = pos
 	b.team = team
 	b.display_name = bname
+	b.loadout = loadout
 	# Bots respawn on the same slot so the match can accumulate score.
 	b.died.connect(func() -> void:
 		get_tree().create_timer(2.0).timeout.connect(func() -> void:
-			_spawn_bot(pos, team, bname)))
+			_spawn_bot(pos, team, bname, loadout)))
 	add_child(b)
 
 

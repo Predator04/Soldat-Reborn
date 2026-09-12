@@ -22,8 +22,9 @@ A 2026-quality port of Soldat's *feel* in Godot 4 (run-and-gun, jet boots, bunny
 - [x] Jetpack flame as particles (CPUParticles2D), not just drawn triangle
 
 ### Combat (P0)
-- [x] Weapon system: Deagles / AK-74 / MP5 / Spas-12 — switch (1-4 or scroll), reload (R), ammo per mag
+- [x] Weapon system: Deagles / AK-74 / MP5 / Spas-12 / LAW — switch (1-5 or scroll), reload (R), ammo per mag
 - [x] Grenades: arc throw, bounce, explode, area damage (Soldat's signature)
+- [x] LAW rocket launcher: slow projectile, splash damage, heavy recoil (rocket-jumping). Bot loadout support (last bot spawns with LAW). Multiplayer wired via existing net_shoot.
 
 ### Presentation (P1)
 - [x] Camera follow + smoothing + bigger map (3200px)
