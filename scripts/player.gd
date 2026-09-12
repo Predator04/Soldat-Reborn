@@ -482,4 +482,5 @@ func _draw() -> void:
 		health,
 		fuel,
 		true,
+		str(w["name"]),
 	)

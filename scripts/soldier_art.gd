@@ -1,8 +1,19 @@
 extends RefCounted
-## Shared procedural soldier renderer (head/torso/arms/legs/weapon + jet flame + muzzle flash).
-## Preloaded from player.gd and bot.gd (not a class_name — reload-time resolution flakes across scene changes).
+## Shared soldier renderer.
+## Body is procedural (kept as-is until the full gostek rig lands); weapons draw
+## as the real assets/weapons-gfx/*.png sprites so they read as Soldat weapons.
 
 const HP_BAR_Y := -50.0
+
+const WEAPON_SPRITE := {
+	"Deagles": "res://assets/weapons-gfx/deserteagle.png",
+	"AK-74": "res://assets/weapons-gfx/ak74.png",
+	"MP5": "res://assets/weapons-gfx/mp5.png",
+	"Spas-12": "res://assets/weapons-gfx/spas12.png",
+	"LAW": "res://assets/weapons-gfx/law.png",
+}
+
+static var _tex_cache: Dictionary = {}
 
 
 static func draw_soldier(
@@ -18,7 +29,8 @@ static func draw_soldier(
 	muzzle_t: float,
 	health: float,
 	fuel: float,
-	show_fuel: bool
+	show_fuel: bool,
+	weapon_name: String = ""
 ) -> void:
 	var col := body_color if not dead else body_color.darkened(0.4)
 	var pants_col := col.darkened(0.45)
@@ -45,11 +57,10 @@ static func draw_soldier(
 	var rf: Vector2 = Vector2(3.0 - swing, 9.0)
 	node.draw_line(Vector2(-3.0, -2.0), lf, pants_col, 5.0)
 	node.draw_line(Vector2(3.0, -2.0), rf, pants_col, 5.0)
-	# shoes point in the facing direction
 	node.draw_line(lf, lf + Vector2(facing * 3.5, 1.0), shoe_col, 4.0)
 	node.draw_line(rf, rf + Vector2(facing * 3.5, 1.0), shoe_col, 4.0)
 
-	# Torso — rounded polygon, slight darkening at the belt.
+	# Torso.
 	var torso := PackedVector2Array([
 		Vector2(-8.0, -22.0),
 		Vector2(8.0, -22.0),
@@ -68,7 +79,7 @@ static func draw_soldier(
 	])
 	node.draw_polygon(torso, torso_cols)
 
-	# Head — circle with a helmet cap and a visor stripe.
+	# Head.
 	var head_pos: Vector2 = Vector2(facing * 1.5, -29.0)
 	node.draw_circle(head_pos, 6.5, skin_col)
 	node.draw_polygon(
@@ -82,25 +93,16 @@ static func draw_soldier(
 	)
 	node.draw_line(head_pos + Vector2(-5.0, -1.0), head_pos + Vector2(5.0, -1.0), visor_col, 2.6)
 
-	# Weapon — line in aim_dir, thicker/stumpier for rockets, drawn behind the flash.
+	# Weapon — real sprite from assets/weapons-gfx.
 	var shoulder: Vector2 = Vector2(facing * 3.0, -19.0)
-	var grip: Vector2 = shoulder + aim_dir * 5.0
-	var barrel_len := 22.0 if weapon_kind != "rocket" else 18.0
-	var barrel_thick := 6.5 if weapon_kind == "rocket" else 3.4
-	var barrel_end: Vector2 = shoulder + aim_dir * barrel_len
-	node.draw_line(grip, barrel_end, weapon_color, barrel_thick)
-	if weapon_kind == "rocket":
-		# tube muzzle ring
-		node.draw_circle(barrel_end, 3.6, weapon_color.darkened(0.25))
-	# stock
-	node.draw_line(shoulder, grip - aim_dir * 2.0, weapon_color.darkened(0.35), barrel_thick * 0.7)
-	# front arm reaches for the grip
-	node.draw_line(shoulder, grip, col.lightened(0.1), 4.0)
-	# back arm dangles a bit toward the pack
+	var barrel_end: Vector2 = _draw_weapon_sprite(node, shoulder, aim_dir, weapon_name, weapon_color, weapon_kind)
+	# Front arm reaches for the grip along the aim line.
+	node.draw_line(shoulder, shoulder + aim_dir * 10.0, col.lightened(0.1), 4.0)
+	# Back arm dangles a bit toward the pack.
 	var back_hand: Vector2 = Vector2(-facing * 6.0, -10.0)
 	node.draw_line(Vector2(-facing * 2.0, -18.0), back_hand, col.lightened(0.05), 3.5)
 
-	# Muzzle flash — layered additive-ish glow (three concentric halos)
+	# Muzzle flash — draws in world space on top of the sprite.
 	if muzzle_t > 0.0:
 		var flash_pos: Vector2 = barrel_end + aim_dir * 3.0
 		var m := muzzle_t
@@ -108,7 +110,7 @@ static func draw_soldier(
 		node.draw_circle(flash_pos, 2.4 + m * 22.0, Color(1.0, 0.8, 0.35, m * 0.6))
 		node.draw_circle(flash_pos, 1.6 + m * 14.0, Color(1.0, 1.0, 0.7, m * 0.85))
 
-	# HP + optional fuel bar (kept above the head).
+	# HP + optional fuel bar.
 	node.draw_rect(Rect2(-16.0, HP_BAR_Y, 32.0, 4.0), Color(0.0, 0.0, 0.0, 0.55))
 	node.draw_rect(Rect2(-16.0, HP_BAR_Y, 32.0 * clampf(health / 100.0, 0.0, 1.0), 4.0), Color(0.9, 0.2, 0.2))
 	if show_fuel:
@@ -116,9 +118,52 @@ static func draw_soldier(
 		node.draw_rect(Rect2(-16.0, HP_BAR_Y + 5.0, 32.0 * clampf(fuel / 100.0, 0.0, 1.0), 3.0), Color(0.3, 0.7, 1.0))
 
 
+# Returns the barrel-tip position in the node's local space so callers can put the flash there.
+static func _draw_weapon_sprite(
+	node: CanvasItem,
+	shoulder: Vector2,
+	aim_dir: Vector2,
+	weapon_name: String,
+	fallback_color: Color,
+	weapon_kind: String
+) -> Vector2:
+	var tex := _weapon_texture(weapon_name)
+	if tex == null:
+		# Fallback to the old procedural barrel if the sprite is missing.
+		var barrel_len := 22.0 if weapon_kind != "rocket" else 18.0
+		var barrel_thick := 6.5 if weapon_kind == "rocket" else 3.4
+		var end: Vector2 = shoulder + aim_dir * barrel_len
+		node.draw_line(shoulder, end, fallback_color, barrel_thick)
+		return end
+
+	var size := tex.get_size()
+	# The Soldat sprites face right; the grip sits ~20% in from the left edge.
+	var grip_offset := size.x * 0.2
+	var barrel_len := size.x - grip_offset
+	var angle := aim_dir.angle()
+	# Flip vertically when aiming to the left so the sprite doesn't appear upside-down.
+	var flip_y := -1.0 if aim_dir.x < 0.0 else 1.0
+
+	node.draw_set_transform(shoulder, angle, Vector2(1.0, flip_y))
+	node.draw_texture_rect(tex, Rect2(Vector2(-grip_offset, -size.y * 0.5), size), false)
+	node.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+	return shoulder + aim_dir * barrel_len
+
+
+static func _weapon_texture(weapon_name: String) -> Texture2D:
+	if not WEAPON_SPRITE.has(weapon_name):
+		return null
+	if _tex_cache.has(weapon_name):
+		return _tex_cache[weapon_name]
+	var path: String = WEAPON_SPRITE[weapon_name]
+	var tex := load(path) as Texture2D if ResourceLoader.exists(path) else null
+	_tex_cache[weapon_name] = tex
+	return tex
+
+
 static func _draw_jet_flame(node: CanvasItem, facing: float) -> void:
 	var t := Time.get_ticks_msec() * 0.001
-	# Origin is behind the pack.
 	var origin: Vector2 = Vector2(-facing * 8.0, 3.0)
 	var length := 22.0 + sin(t * 26.0) * 4.5
 	var wobble := cos(t * 18.0) * 1.2
@@ -126,7 +171,6 @@ static func _draw_jet_flame(node: CanvasItem, facing: float) -> void:
 	var w1 := 3.4 + wobble * 0.7
 	var w2 := 1.9
 
-	# Outer red-orange cone (transparent tip)
 	node.draw_polygon(
 		PackedVector2Array([
 			origin + Vector2(-w0, 0.0),
@@ -139,7 +183,6 @@ static func _draw_jet_flame(node: CanvasItem, facing: float) -> void:
 			Color(1.0, 0.25, 0.05, 0.0),
 		])
 	)
-	# Mid orange cone
 	node.draw_polygon(
 		PackedVector2Array([
 			origin + Vector2(-w1, 0.0),
@@ -152,7 +195,6 @@ static func _draw_jet_flame(node: CanvasItem, facing: float) -> void:
 			Color(1.0, 0.72, 0.28, 0.0),
 		])
 	)
-	# Inner yellow-white core
 	node.draw_polygon(
 		PackedVector2Array([
 			origin + Vector2(-w2, 0.0),

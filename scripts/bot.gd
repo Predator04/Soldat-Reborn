@@ -331,4 +331,5 @@ func _draw() -> void:
 		health,
 		fuel,
 		false,
+		loadout,
 	)
