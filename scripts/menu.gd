@@ -1,18 +1,30 @@
 extends Control
-## Main menu — title, Play, Settings (SFX volume / screen shake / fullscreen), Quit.
+## Main menu — Play (vs bots), Host, Join, Settings, Quit.
 
 var _menu_box: VBoxContainer
 var _settings_panel: VBoxContainer
+var _join_panel: VBoxContainer
+var _status_label: Label
+var _ip_edit: LineEdit
+var _port_edit: LineEdit
+var _connect_btn: Button
+var _connecting := false
 
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	Settings.apply_display()
+	Net.leave()  # clean state on returning to menu from a game
 	_build_backdrop()
 	_build_title()
 	_build_menu()
 	_build_settings()
+	_build_join()
+	_build_status()
 	_build_footer()
+	Net.status_changed.connect(_on_net_status_changed)
+	Net.connected.connect(_on_net_connected)
+	Net.disconnected.connect(_on_net_disconnected)
 
 
 func _build_backdrop() -> void:
@@ -27,8 +39,8 @@ func _build_title() -> void:
 	title.text = "SOLDAT REBORN"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	title.offset_top = 70
-	title.offset_bottom = 150
+	title.offset_top = 60
+	title.offset_bottom = 140
 	title.add_theme_font_size_override("font_size", 60)
 	title.add_theme_color_override("font_color", Color(0.95, 0.82, 0.4))
 	title.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
@@ -36,11 +48,11 @@ func _build_title() -> void:
 	add_child(title)
 
 	var sub := Label.new()
-	sub.text = "jet boots · bunny hop · ragdoll gibs"
+	sub.text = "jet boots · bunny hop · ragdoll gibs · online"
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	sub.offset_top = 155
-	sub.offset_bottom = 185
+	sub.offset_top = 145
+	sub.offset_bottom = 175
 	sub.add_theme_font_size_override("font_size", 16)
 	sub.add_theme_color_override("font_color", Color(0.65, 0.7, 0.82))
 	add_child(sub)
@@ -51,13 +63,26 @@ func _build_menu() -> void:
 	_menu_box.set_anchors_preset(Control.PRESET_CENTER)
 	_menu_box.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_menu_box.grow_vertical = Control.GROW_DIRECTION_BOTH
-	_menu_box.add_theme_constant_override("separation", 14)
+	_menu_box.add_theme_constant_override("separation", 12)
 	add_child(_menu_box)
 
-	var play := _make_button("PLAY")
+	var play := _make_button("PLAY vs BOTS")
 	play.pressed.connect(func() -> void:
+		Net.set_singleplayer()
 		get_tree().change_scene_to_file("res://scenes/main.tscn"))
 	_menu_box.add_child(play)
+
+	var host := _make_button("HOST GAME")
+	host.pressed.connect(func() -> void:
+		if Net.host_game():
+			get_tree().change_scene_to_file("res://scenes/main.tscn"))
+	_menu_box.add_child(host)
+
+	var join := _make_button("JOIN GAME")
+	join.pressed.connect(func() -> void:
+		_menu_box.visible = false
+		_join_panel.visible = true)
+	_menu_box.add_child(join)
 
 	var settings := _make_button("SETTINGS")
 	settings.pressed.connect(func() -> void:
@@ -126,6 +151,71 @@ func _build_settings() -> void:
 	_settings_panel.add_child(back)
 
 
+func _build_join() -> void:
+	_join_panel = VBoxContainer.new()
+	_join_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_join_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_join_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_join_panel.add_theme_constant_override("separation", 10)
+	_join_panel.custom_minimum_size = Vector2(400, 0)
+	_join_panel.visible = false
+	add_child(_join_panel)
+
+	var head := Label.new()
+	head.text = "JOIN GAME"
+	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	head.add_theme_font_size_override("font_size", 26)
+	head.add_theme_color_override("font_color", Color(0.95, 0.82, 0.4))
+	_join_panel.add_child(head)
+
+	var ip_lbl := Label.new()
+	ip_lbl.text = "Host IP"
+	ip_lbl.add_theme_font_size_override("font_size", 15)
+	_join_panel.add_child(ip_lbl)
+
+	_ip_edit = LineEdit.new()
+	_ip_edit.text = "127.0.0.1"
+	_ip_edit.placeholder_text = "127.0.0.1"
+	_ip_edit.custom_minimum_size = Vector2(0, 36)
+	_join_panel.add_child(_ip_edit)
+
+	var port_lbl := Label.new()
+	port_lbl.text = "Port"
+	port_lbl.add_theme_font_size_override("font_size", 15)
+	_join_panel.add_child(port_lbl)
+
+	_port_edit = LineEdit.new()
+	_port_edit.text = str(Net.DEFAULT_PORT)
+	_port_edit.custom_minimum_size = Vector2(0, 36)
+	_join_panel.add_child(_port_edit)
+
+	_connect_btn = _make_button("CONNECT")
+	_connect_btn.pressed.connect(_on_connect_pressed)
+	_join_panel.add_child(_connect_btn)
+
+	var back := _make_button("BACK")
+	back.pressed.connect(func() -> void:
+		Net.leave()
+		_connecting = false
+		_connect_btn.disabled = false
+		_join_panel.visible = false
+		_menu_box.visible = true)
+	_join_panel.add_child(back)
+
+
+func _build_status() -> void:
+	_status_label = Label.new()
+	_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_status_label.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	_status_label.offset_top = -78
+	_status_label.offset_bottom = -58
+	_status_label.add_theme_font_size_override("font_size", 14)
+	_status_label.add_theme_color_override("font_color", Color(0.7, 0.9, 1.0))
+	_status_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	_status_label.add_theme_constant_override("outline_size", 3)
+	add_child(_status_label)
+
+
 func _build_footer() -> void:
 	var foot := Label.new()
 	foot.text = "WASD move · SPACE/W jet · mouse aim · LMB shoot · 1-4 weapons · R reload · G grenade"
@@ -141,6 +231,34 @@ func _build_footer() -> void:
 func _make_button(text: String) -> Button:
 	var b := Button.new()
 	b.text = text
-	b.custom_minimum_size = Vector2(300, 52)
+	b.custom_minimum_size = Vector2(300, 48)
 	b.add_theme_font_size_override("font_size", 22)
 	return b
+
+
+func _on_connect_pressed() -> void:
+	var ip := _ip_edit.text.strip_edges()
+	if ip == "":
+		ip = "127.0.0.1"
+	var port := int(_port_edit.text) if _port_edit.text.is_valid_int() else Net.DEFAULT_PORT
+	_connecting = true
+	_connect_btn.disabled = true
+	if not Net.join_game(ip, port):
+		_connecting = false
+		_connect_btn.disabled = false
+
+
+func _on_net_status_changed() -> void:
+	_status_label.text = Net.status
+
+
+func _on_net_connected() -> void:
+	if Net.is_client() and _connecting:
+		_connecting = false
+		get_tree().change_scene_to_file("res://scenes/main.tscn")
+
+
+func _on_net_disconnected() -> void:
+	_connecting = false
+	if is_instance_valid(_connect_btn):
+		_connect_btn.disabled = false

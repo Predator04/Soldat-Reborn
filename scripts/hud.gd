@@ -9,6 +9,7 @@ var lbl_ammo: Label
 var lbl_weapon: Label
 var lbl_grenades: Label
 var lbl_map: Label
+var lbl_status: Label
 var feed: VBoxContainer
 
 const FEED_MAX := 5
@@ -40,6 +41,16 @@ func _ready() -> void:
 	lbl_map.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
 	lbl_map.add_theme_constant_override("outline_size", 3)
 	add_child(lbl_map)
+	lbl_status = Label.new()
+	lbl_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl_status.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	lbl_status.offset_top = 30
+	lbl_status.offset_bottom = 52
+	lbl_status.add_theme_font_size_override("font_size", 13)
+	lbl_status.add_theme_color_override("font_color", Color(0.7, 0.9, 1.0))
+	lbl_status.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	lbl_status.add_theme_constant_override("outline_size", 3)
+	add_child(lbl_status)
 
 
 func _make_label(pos: Vector2, col: Color) -> Label:
@@ -78,6 +89,7 @@ func _on_kill(killer_name: String, victim_name: String, weapon_name: String, kil
 
 func _process(_delta: float) -> void:
 	lbl_map.text = map_name
+	lbl_status.text = Net.status if Net.is_networked() else ""
 	if not is_instance_valid(player):
 		return
 	lbl_health.text = "HP  %d" % int(player.health)

@@ -36,7 +36,7 @@ A 2026-quality port of Soldat's *feel* in Godot 4 (run-and-gun, jet boots, bunny
 ### Systems (P2)
 - [x] Sound: generated SFX (shoot / jump / jet / gib / reload / empty / explode) — procedural PCM in scripts/sfx.gd (autoload `Sfx`)
 - [x] Death ragdoll: physics gib pieces (RigidBody2D chunks + particle gore)
-- [ ] Multiplayer (Godot ENet high-level): spawn/despawn sync, bullets, grenades
+- [x] Multiplayer (Godot ENet high-level): host/join menu, spawn/despawn sync, bullets, grenades, kill-feed replicated. Fixed map (Ascent) so host + client match without extra state sync. Autoload `Net` (scripts/net.gd). Headless smoke tests via `--smoke-host` / `--smoke-join`.
 - [x] Main menu + settings (SFX volume / screen shake / fullscreen — persisted via autoload `Settings` to user://settings.cfg)
 - [x] More maps (3 layouts — Ascent / Towers / Pillars — data-driven in main.gd, cycled per game)
 
@@ -48,4 +48,6 @@ A 2026-quality port of Soldat's *feel* in Godot 4 (run-and-gun, jet boots, bunny
 5. Update this file: check off what you did, add bugs you find to "Known bugs".
 
 ## Known bugs
-- (none logged yet — add here)
+- Multiplayer uses per-frame full-state RPCs (position/velocity/aim/etc.) at physics rate — fine for 2 players on LAN, will not scale; swap for MultiplayerSynchronizer if peer counts grow.
+- Multiplayer forces the Ascent map for both peers (no map vote / sync yet).
+- Kill feed on clients only reflects networked kills — bots (SP-only) still fire the local `kill` signal.

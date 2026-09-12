@@ -32,7 +32,9 @@ func _explode() -> void:
 			continue
 		var d: float = global_position.distance_to(s.global_position)
 		if d < blast_radius:
-			s.take_damage(damage * (1.0 - d / blast_radius), killer_name, "Grenade", team)
+			# Damage only on target's authority peer (each peer applies to its own local player).
+			if s.is_multiplayer_authority():
+				s.take_damage(damage * (1.0 - d / blast_radius), killer_name, "Grenade", team)
 	var p := CPUParticles2D.new()
 	p.amount = 55
 	p.lifetime = 0.5

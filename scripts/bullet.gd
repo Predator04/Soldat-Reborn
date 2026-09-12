@@ -28,7 +28,9 @@ func _physics_process(delta: float) -> void:
 func _on_body_entered(body: Node) -> void:
 	if body is CharacterBody2D:
 		if body.get("team") != team and body.has_method("take_damage"):
-			body.take_damage(damage, killer_name, weapon_name, team)
+			# Damage is applied only on the target's authority peer (SP: default authority == local == damage runs).
+			if body.is_multiplayer_authority():
+				body.take_damage(damage, killer_name, weapon_name, team)
 			queue_free()
 			return
 		return

@@ -20,25 +20,66 @@ A Godot 4.7 rebuild of the classic Soldat *feel*: run-and-gun with jet boots, bu
 | SPACE / W | Jump (ground) · jet boots (hold in air) |
 | Mouse | Aim |
 | Left click | Shoot |
+| 1–4 | Switch weapon (Deagles / AK-74 / MP5 / Spas-12) |
+| R | Reload |
+| G | Throw grenade |
+
+## Main menu
+
+- **PLAY vs BOTS** — offline arena vs 3 AI bots (map cycles Ascent → Towers → Pillars each round).
+- **HOST GAME** — start a listen server on port `7777`, load the Ascent map, wait for peers.
+- **JOIN GAME** — enter host IP + port, connect. On connect the client is transported into the game.
+- **SETTINGS** — SFX volume, screen shake, fullscreen (persisted to `user://settings.cfg`).
+- **QUIT** — exit.
+
+## Multiplayer (LAN / direct IP)
+
+Uses Godot's high-level ENet multiplayer.
+
+1. On the host: launch, click **HOST GAME**. You'll load the Ascent map immediately.
+2. On each client: launch, click **JOIN GAME**, enter the host's IP (default `127.0.0.1` for same machine) and port `7777`, click **CONNECT**.
+3. Up to 8 players (host + 7 clients). Everyone spawns as their own team so bullets damage everyone else (FFA).
+4. To leave: quit and relaunch — this returns you to the menu and clears the network state.
+
+**Headless smoke test:**
+
+```
+~/godot/Godot_v4.7.2-stable_linux.x86_64 --headless --path . -- --smoke-host   # in one terminal
+~/godot/Godot_v4.7.2-stable_linux.x86_64 --headless --path . -- --smoke-join   # in another
+```
+
+Prints `SMOKE-HOST peers=N players=M` / `SMOKE-JOIN id=... mode=2 players=M` and quits.
 
 ## What's in it
 
 - **Soldier** — run, jump, bunny hop (ground jumps give a speed boost), jet boots with a fuel bar that regens on ground
-- **3 AI bots** — chase you, jet up to reach you, shoot
+- **Weapons** — Deagles, AK-74, MP5, Spas-12; per-weapon damage / rate / spread / mag / reload
+- **Grenades** — arc throw, bounce, fuse, area damage
+- **3 AI bots** (SP only) — lead aim, dodge-jump, jet up to reach you, lob grenades
 - **Bullets** — hit opposing team, die on terrain, muzzle recoil
-- **Gibs** — blood particle burst on death, auto-respawn
-- **Arena** — gradient sky + stars, ground, platforms, walls
+- **Gibs & ragdoll** — blood particle burst + rigid-body gib chunks on death, auto-respawn
+- **Arena** — 3200-wide arena, gradient sky + stars, parallax hill layers, ground, platforms, walls
+- **HUD** — health / fuel / ammo / weapon / grenades, team-colored kill feed, map name, net status
+- **Networking** — ENet host/join, per-peer authority, state-sync + spawn/despawn RPCs
 
 ## Project layout
 
-- `scenes/` — main, player, bullet, bot scenes
-- `scripts/` — main.gd (arena builder), player.gd, bot.gd, bullet.gd, sky.gd
+- `scenes/` — menu, main, player, bullet, bot, grenade scenes
+- `scripts/`
+  - `menu.gd` — main menu + host/join UI
+  - `main.gd` — arena builder + spawn/despawn (SP and networked paths)
+  - `player.gd` — soldier controller + weapon system + net-state RPCs
+  - `bot.gd` — SP-only AI
+  - `bullet.gd`, `grenade.gd` — projectiles
+  - `hud.gd`, `sky.gd`, `parallax.gd` — presentation
+  - `net.gd` — autoload ENet wrapper (`Net`) + `--smoke-host`/`--smoke-join` harness
+  - `sfx.gd` — autoload procedural SFX (`Sfx`)
+  - `settings.gd` — autoload persisted user prefs (`Settings`)
 - `build/` — exported Windows .exe
 
 ## Next steps (ideas)
 
 - Proper sprites/art (currently programmer-art rectangles)
-- Weapon variety + reload
-- Real maps (larger, camera follow)
-- Multiplayer (Godot high-level ENet)
-- Jetpack flame particles + screen shake + sound
+- MultiplayerSpawner / MultiplayerSynchronizer to replace hand-rolled state RPCs
+- Map vote / sync for multiplayer (currently pinned to Ascent)
+- Dedicated server mode + server browser

@@ -1,5 +1,5 @@
 extends Node2D
-## Main — sky, terrain, player, bots, HUD.
+## Main — sky, terrain, players, bots, HUD. Handles singleplayer + networked flows.
 
 var player_scene := preload("res://scenes/player.tscn")
 var bot_scene := preload("res://scenes/bot.tscn")
@@ -9,9 +9,11 @@ var hud_script := preload("res://scripts/hud.gd")
 
 signal kill(killer_name: String, victim_name: String, weapon_name: String, killer_team: int)
 
-var player: Node2D = null
+var player: Node2D = null            # LOCAL player (whichever peer owns us)
 var hud: CanvasLayer = null
 var _map: Dictionary = {}
+var _players_by_id: Dictionary = {}  # peer_id -> player node (host only, but also mirrored on clients)
+var _ready_peers: Dictionary = {}    # peer_id -> true (host only, gate for outbound state RPCs)
 
 const MAP_W := 3200.0
 const MAP_H := 1200.0
@@ -63,14 +65,27 @@ const MAPS := [
 
 
 func _ready() -> void:
-	_map = MAPS[Settings.map_index % MAPS.size()]
-	Settings.map_index = (Settings.map_index + 1) % MAPS.size()
+	if Net.is_networked():
+		# Multiplayer: use a fixed map (Ascent) so host + client match without extra sync.
+		_map = MAPS[0]
+	else:
+		_map = MAPS[Settings.map_index % MAPS.size()]
+		Settings.map_index = (Settings.map_index + 1) % MAPS.size()
 	_build_sky()
 	_build_parallax()
 	_build_terrain()
-	_spawn_player()
-	_spawn_bots()
 	_build_hud()
+
+	if Net.is_networked():
+		multiplayer.peer_disconnected.connect(_on_net_peer_disconnected)
+		if Net.is_host():
+			_spawn_networked_player(1)  # host is peer 1
+		else:
+			# Client asks the host to spawn us; host also mirrors any existing players.
+			rpc_id(1, "net_client_ready")
+	else:
+		_spawn_player()
+		_spawn_bots()
 
 
 func _build_sky() -> void:
@@ -122,6 +137,8 @@ func _build_terrain() -> void:
 	_make_platform(Vector2(MAP_W, MAP_H / 2.0), Vector2(40, MAP_H * 2.0), Color(0.2, 0.23, 0.28))
 
 
+# ── Singleplayer spawn path ───────────────────────────
+
 func _spawn_player() -> void:
 	var p := player_scene.instantiate()
 	p.position = _map["player_spawn"]
@@ -129,10 +146,7 @@ func _spawn_player() -> void:
 	p.died.connect(_on_player_died)
 	add_child(p)
 	player = p
-	p.cam.limit_left = 0
-	p.cam.limit_right = int(MAP_W)
-	p.cam.limit_top = -500
-	p.cam.limit_bottom = int(GROUND_Y + 200)
+	_bind_local_camera(p)
 	if hud:
 		hud.player = p
 
@@ -151,6 +165,8 @@ func _spawn_bots() -> void:
 		add_child(b)
 
 
+# ── Shared ────────────────────────────────────────────
+
 func _build_hud() -> void:
 	hud = CanvasLayer.new()
 	hud.set_script(hud_script)
@@ -158,3 +174,97 @@ func _build_hud() -> void:
 	hud.player = player
 	hud.map_name = str(_map["name"])
 	kill.connect(hud._on_kill)
+
+
+func _bind_local_camera(p: Node) -> void:
+	if p == null or p.get("cam") == null:
+		return
+	p.cam.limit_left = 0
+	p.cam.limit_right = int(MAP_W)
+	p.cam.limit_top = -500
+	p.cam.limit_bottom = int(GROUND_Y + 200)
+
+
+# ── Networked spawn path ──────────────────────────────
+
+func _spawn_networked_player(peer_id: int) -> void:
+	var base: Vector2 = _map["player_spawn"]
+	var spawn_pos := base + Vector2(randf_range(-140.0, 140.0), 0.0)
+	var display_name := "Host" if peer_id == 1 else "Player %d" % peer_id
+	rpc("net_spawn_player", peer_id, spawn_pos, display_name)
+
+
+func _respawn_peer(peer_id: int) -> void:
+	if not Net.is_host():
+		return
+	# still connected?
+	if peer_id != 1 and not multiplayer.get_peers().has(peer_id):
+		return
+	_spawn_networked_player(peer_id)
+
+
+func _on_net_peer_disconnected(id: int) -> void:
+	if Net.is_host():
+		_ready_peers.erase(id)
+		rpc("net_despawn_player", id)
+
+
+func ready_peer_ids() -> Array:
+	return _ready_peers.keys()
+
+
+@rpc("any_peer", "reliable")
+func net_client_ready() -> void:
+	if not Net.is_host():
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	# tell the new peer about all currently living players
+	for existing_id in _players_by_id.keys():
+		var p: Node = _players_by_id[existing_id]
+		if not is_instance_valid(p):
+			continue
+		rpc_id(sender, "net_spawn_player", existing_id, p.position, p.display_name)
+	# then spawn a body for the new peer on everyone
+	_spawn_networked_player(sender)
+	# only NOW do we start sending state to this peer — their Main scene is loaded
+	# and their Player nodes exist, so net_state RPCs will resolve their target path.
+	_ready_peers[sender] = true
+
+
+@rpc("authority", "call_local", "reliable")
+func net_spawn_player(peer_id: int, spawn_pos: Vector2, display_name: String) -> void:
+	# Free stale record if this peer had a prior body (e.g., on respawn).
+	if _players_by_id.has(peer_id):
+		var old = _players_by_id[peer_id]
+		if is_instance_valid(old):
+			old.queue_free()
+		_players_by_id.erase(peer_id)
+	var p := player_scene.instantiate()
+	p.name = "Player_%d" % peer_id
+	p.position = spawn_pos
+	p.display_name = display_name
+	p.team = peer_id  # FFA: each peer owns their own team so bullets damage everyone else
+	p.set_multiplayer_authority(peer_id)
+	add_child(p)
+	_players_by_id[peer_id] = p
+	if peer_id == Net.local_id():
+		player = p
+		_bind_local_camera(p)
+		if hud:
+			hud.player = p
+
+
+@rpc("authority", "call_local", "reliable")
+func net_despawn_player(peer_id: int) -> void:
+	if _players_by_id.has(peer_id):
+		var p = _players_by_id[peer_id]
+		if is_instance_valid(p):
+			p.queue_free()
+		_players_by_id.erase(peer_id)
+	if peer_id == Net.local_id():
+		player = null
+
+
+@rpc("any_peer", "call_local", "reliable")
+func net_kill_feed(killer_name: String, victim_name: String, weapon_name: String, killer_team: int) -> void:
+	kill.emit(killer_name, victim_name, weapon_name, killer_team)

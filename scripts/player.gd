@@ -1,5 +1,5 @@
 extends CharacterBody2D
-## Soldier — Soldat-style movement + weapon system (2026 feel).
+## Soldier — Soldat-style movement + weapon system. Net-aware (multiplayer authority).
 
 signal died
 
@@ -76,6 +76,10 @@ func _ready() -> void:
 	cam.position_smoothing_speed = 8.0
 	cam.zoom = Vector2(1.35, 1.35)
 	add_child(cam)
+	if is_multiplayer_authority():
+		cam.make_current()
+	else:
+		cam.enabled = false
 	jet_particles = CPUParticles2D.new()
 	jet_particles.amount = 34
 	jet_particles.lifetime = 0.4
@@ -96,6 +100,20 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	if dead:
 		velocity = Vector2.ZERO
+		return
+
+	# During teardown (server disconnect / quit), the peer may be gone for a frame.
+	# Skip everything cleanly rather than throwing "No multiplayer peer" errors.
+	var has_peer := multiplayer.has_multiplayer_peer()
+	if Net.is_networked() and not has_peer:
+		return
+
+	# Non-authority replica: state is set by net_state RPCs; just visual bookkeeping.
+	if has_peer and not is_multiplayer_authority():
+		muzzle_t = maxf(0.0, muzzle_t - delta * 10.0)
+		jet_particles.emitting = jet_on and not dead
+		jet_particles.position = Vector2(facing * -14.0, 4.0)
+		queue_redraw()
 		return
 
 	var left := Input.is_physical_key_pressed(KEY_A)
@@ -192,7 +210,7 @@ func _physics_process(delta: float) -> void:
 
 	muzzle_t = maxf(0.0, muzzle_t - delta * 10.0)
 
-	# jet particles follow the back
+	# jet particles + sfx transitions
 	if jet_on and not was_jet:
 		Sfx.jet(true)
 	elif not jet_on and was_jet:
@@ -209,6 +227,18 @@ func _physics_process(delta: float) -> void:
 		cam.offset = Vector2.ZERO
 
 	queue_redraw()
+
+	# Broadcast authoritative state to peers who have finished handshake (spawned us).
+	# On host: parent Main tracks ready peers. On client: peer 1 (host) is always ready
+	# because we only spawn locally after receiving spawn RPCs from host.
+	if Net.is_networked() and multiplayer.has_multiplayer_peer():
+		if Net.is_host():
+			var m := get_parent()
+			if m != null and m.has_method("ready_peer_ids"):
+				for pid in m.ready_peer_ids():
+					rpc_id(pid, "net_state", position, velocity, aim_dir, facing, jet_on, health, fuel, weapon_index, ammo[weapon_index], reloading, grenades)
+		else:
+			rpc_id(1, "net_state", position, velocity, aim_dir, facing, jet_on, health, fuel, weapon_index, ammo[weapon_index], reloading, grenades)
 
 
 func _switch_weapon(idx: int) -> void:
@@ -231,35 +261,28 @@ func _shoot() -> void:
 	var w = weapons[weapon_index]
 	ammo[weapon_index] -= 1
 	fire_cd = float(w["rate"])
-	muzzle_t = 0.08
-	_shake(3.5)
-	Sfx.shoot(str(w["name"]))
-	for _i in int(w["pellets"]):
-		var bdir := aim_dir.rotated(randf_range(-float(w["spread"]), float(w["spread"])))
-		var b := bullet_scene.instantiate()
-		b.global_position = global_position + bdir * 26.0
-		b.direction = bdir
-		b.speed = float(w["speed"])
-		b.damage = float(w["damage"])
-		b.team = team
-		b.killer_name = display_name
-		b.weapon_name = str(w["name"])
-		get_parent().add_child(b)
 	velocity -= aim_dir * 35.0
+	var dirs := PackedVector2Array()
+	for _i in int(w["pellets"]):
+		dirs.append(aim_dir.rotated(randf_range(-float(w["spread"]), float(w["spread"]))))
+	if Net.is_networked():
+		rpc("net_shoot", global_position, dirs, weapon_index)
+	else:
+		net_shoot(global_position, dirs, weapon_index)
 	if ammo[weapon_index] <= 0:
 		_start_reload()
 
 
 func _throw_grenade() -> void:
 	grenades -= 1
-	var g := grenade_scene.instantiate()
-	g.global_position = global_position + aim_dir * 22.0
-	g.team = team
-	g.killer_name = display_name
 	var toss := (aim_dir + Vector2(0, -0.55)).normalized()
-	g.linear_velocity = toss * 480.0
-	g.angular_velocity = randf_range(-8.0, 8.0)
-	get_parent().add_child(g)
+	var g_pos := global_position + aim_dir * 22.0
+	var g_vel := toss * 480.0
+	var g_ang := randf_range(-8.0, 8.0)
+	if Net.is_networked():
+		rpc("net_grenade", g_pos, g_vel, g_ang)
+	else:
+		net_grenade(g_pos, g_vel, g_ang)
 
 
 func _shake(amount: float) -> void:
@@ -278,7 +301,10 @@ func take_damage(amount: float, killer := "", weapon := "", killer_team := -1) -
 		last_weapon = weapon
 		last_killer_team = killer_team
 	if health <= 0.0:
-		_die()
+		if Net.is_networked():
+			rpc("net_die", last_killer, last_weapon, last_killer_team)
+		else:
+			_die()
 
 
 func _die() -> void:
@@ -286,11 +312,23 @@ func _die() -> void:
 		return
 	dead = true
 	Sfx.gib()
-	_emit_kill()
+	if Net.is_networked():
+		if is_multiplayer_authority():
+			var m := get_parent()
+			if m != null:
+				m.rpc("net_kill_feed", last_killer, display_name, last_weapon, last_killer_team)
+	else:
+		_emit_kill()
 	# defer FX spawn out of the physics flush (bullet body_entered → take_damage path)
 	_spawn_gibs.call_deferred()
 	_spawn_ragdoll.call_deferred()
 	died.emit()
+	if Net.is_networked() and Net.is_host():
+		var peer_id := get_multiplayer_authority()
+		var m := get_parent()
+		get_tree().create_timer(2.0).timeout.connect(func() -> void:
+			if is_instance_valid(m) and m.has_method("_respawn_peer"):
+				m._respawn_peer(peer_id))
 	queue_free()
 
 
@@ -300,6 +338,65 @@ func _emit_kill() -> void:
 	var parent := get_parent()
 	if parent != null and parent.has_signal("kill"):
 		parent.emit_signal("kill", last_killer, display_name, last_weapon, last_killer_team)
+
+
+# ── RPCs ──────────────────────────────────────────────
+
+@rpc("authority", "call_remote", "unreliable_ordered")
+func net_state(pos: Vector2, vel: Vector2, aim: Vector2, face: float, jetting: bool, hp: float, fuel_val: float, wi: int, mag: int, is_reloading: bool, grens: int) -> void:
+	position = pos
+	velocity = vel
+	aim_dir = aim
+	facing = face
+	jet_on = jetting
+	health = hp
+	fuel = fuel_val
+	if wi >= 0 and wi < weapons.size():
+		weapon_index = wi
+		if ammo.size() > wi:
+			ammo[wi] = mag
+	reloading = is_reloading
+	grenades = grens
+
+
+@rpc("authority", "call_local", "reliable")
+func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int) -> void:
+	if weapon_i < 0 or weapon_i >= weapons.size():
+		return
+	var w = weapons[weapon_i]
+	muzzle_t = 0.08
+	_shake(3.5)
+	Sfx.shoot(str(w["name"]))
+	for i in dirs.size():
+		var bdir: Vector2 = dirs[i]
+		var b := bullet_scene.instantiate()
+		b.global_position = shot_pos + bdir * 26.0
+		b.direction = bdir
+		b.speed = float(w["speed"])
+		b.damage = float(w["damage"])
+		b.team = team
+		b.killer_name = display_name
+		b.weapon_name = str(w["name"])
+		get_parent().add_child(b)
+
+
+@rpc("authority", "call_local", "reliable")
+func net_grenade(g_pos: Vector2, g_vel: Vector2, g_ang: float) -> void:
+	var g := grenade_scene.instantiate()
+	g.global_position = g_pos
+	g.team = team
+	g.killer_name = display_name
+	g.linear_velocity = g_vel
+	g.angular_velocity = g_ang
+	get_parent().add_child(g)
+
+
+@rpc("authority", "call_local", "reliable")
+func net_die(killer: String, weapon: String, killer_team: int) -> void:
+	last_killer = killer
+	last_weapon = weapon
+	last_killer_team = killer_team
+	_die()
 
 
 func _spawn_gibs() -> void:
@@ -323,7 +420,6 @@ func _spawn_gibs() -> void:
 
 
 func _spawn_ragdoll() -> void:
-	# physics gib chunks: rigid bodies that fly out and settle on terrain
 	var count := 8
 	for _i in count:
 		var body := RigidBody2D.new()
@@ -353,7 +449,6 @@ func _spawn_ragdoll() -> void:
 
 func _draw() -> void:
 	var body_col := color if not dead else color.darkened(0.4)
-	# jet flame triangle
 	if jet_on and not dead:
 		var fl := 24.0 + sin(Time.get_ticks_msec() * 0.05) * 7.0
 		var back := facing * -1.0
@@ -369,19 +464,15 @@ func _draw() -> void:
 				Color(1.0, 1.0, 1.0, 0.0)
 			])
 		)
-	# legs / torso / head / jetpack
 	draw_rect(Rect2(-9, 0, 7, 10), body_col.darkened(0.3))
 	draw_rect(Rect2(2, 0, 7, 10), body_col.darkened(0.3))
 	draw_rect(Rect2(-11, -30, 22, 30), body_col)
 	draw_circle(Vector2(facing * 2.0, -34), 6.0, body_col.lightened(0.15))
 	draw_rect(Rect2(-facing * 16.0 - 3.0, -26, 5, 18), body_col.darkened(0.15))
-	# gun barrel toward aim
 	var w = weapons[weapon_index]
 	draw_line(Vector2(facing * 4.0, -22.0), Vector2(facing * 4.0, -22.0) + aim_dir * 20.0, w["color"], 3.0)
-	# muzzle flash
 	if muzzle_t > 0.0:
 		draw_circle(aim_dir * 30.0, 4.0 + muzzle_t * 30.0, Color(1.0, 0.95, 0.5, clampf(muzzle_t * 9.0, 0.0, 1.0)))
-	# health / fuel bars
 	draw_rect(Rect2(-16, -48, 32, 4), Color(0.0, 0.0, 0.0, 0.55))
 	draw_rect(Rect2(-16, -48, 32.0 * clampf(health / 100.0, 0.0, 1.0), 4), Color(0.9, 0.2, 0.2))
 	draw_rect(Rect2(-16, -43, 32, 3), Color(0.0, 0.0, 0.0, 0.55))
