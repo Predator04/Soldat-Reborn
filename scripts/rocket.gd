@@ -31,7 +31,7 @@ func _ready() -> void:
 	_smoke.amount = 22
 	_smoke.lifetime = 0.55
 	_smoke.one_shot = false
-	_smoke.emitting = true
+	_smoke.emitting = not Settings.lofi
 	_smoke.direction = Vector2(-1, 0)
 	_smoke.spread = 22.0
 	_smoke.gravity = Vector2(0, -40)
@@ -90,23 +90,24 @@ func _explode() -> void:
 		var scaled: float = damage * (1.0 - d / blast_radius)
 		if s.has_method("take_damage") and (multiplayer.multiplayer_peer == null or s.is_multiplayer_authority()):
 			s.take_damage(scaled, killer_name, weapon_name, team)
-	var p := CPUParticles2D.new()
-	p.amount = 70
-	p.lifetime = 0.55
-	p.explosiveness = 1.0
-	p.one_shot = true
-	p.emitting = true
-	p.global_position = global_position
-	p.direction = Vector2(0, -1)
-	p.spread = 180.0
-	p.gravity = Vector2(0, 260)
-	p.initial_velocity_min = 140.0
-	p.initial_velocity_max = 520.0
-	p.scale_amount_min = 3.0
-	p.scale_amount_max = 7.0
-	p.color = Color(1.0, 0.55, 0.2)
-	get_parent().add_child(p)
-	get_tree().create_timer(0.9).timeout.connect(p.queue_free)
+	if not Settings.lofi:
+		var p := CPUParticles2D.new()
+		p.amount = 70
+		p.lifetime = 0.55
+		p.explosiveness = 1.0
+		p.one_shot = true
+		p.emitting = true
+		p.global_position = global_position
+		p.direction = Vector2(0, -1)
+		p.spread = 180.0
+		p.gravity = Vector2(0, 260)
+		p.initial_velocity_min = 140.0
+		p.initial_velocity_max = 520.0
+		p.scale_amount_min = 3.0
+		p.scale_amount_max = 7.0
+		p.color = Color(1.0, 0.55, 0.2)
+		get_parent().add_child(p)
+		get_tree().create_timer(0.9).timeout.connect(p.queue_free)
 	queue_free()
 
 

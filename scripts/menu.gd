@@ -212,6 +212,14 @@ func _build_settings() -> void:
 		Settings.apply_display())
 	_settings_panel.add_child(fs)
 
+	var lo := CheckButton.new()
+	lo.text = "Lo-fi mode (no particles/gibs — low-end PCs)"
+	lo.button_pressed = Settings.lofi
+	lo.toggled.connect(func(on: bool) -> void:
+		Settings.lofi = on
+		Settings.save())
+	_settings_panel.add_child(lo)
+
 	var back := _make_button("BACK")
 	back.pressed.connect(func() -> void:
 		_settings_panel.visible = false

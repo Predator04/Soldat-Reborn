@@ -45,23 +45,25 @@ func _explode() -> void:
 				continue
 			if multiplayer.multiplayer_peer == null or s.is_multiplayer_authority():
 				s.take_damage(damage * float(Settings.mod_damage) * (1.0 - d / blast_radius), killer_name, wname, team)
-	var p := CPUParticles2D.new()
-	p.amount = 55
-	p.lifetime = 0.5
-	p.explosiveness = 1.0
-	p.one_shot = true
-	p.emitting = true
-	p.global_position = global_position
-	p.direction = Vector2(0, -1)
-	p.spread = 180.0
-	p.gravity = Vector2(0, 300)
-	p.initial_velocity_min = 100.0
-	p.initial_velocity_max = 420.0
-	p.scale_amount_min = 2.0
-	p.scale_amount_max = 6.0
-	p.color = Color(1.0, 0.6, 0.2)
-	get_parent().add_child(p)
-	get_tree().create_timer(0.8).timeout.connect(p.queue_free)
+	# Lo-fi (#25): skip the CPUParticles2D flame burst. The Sfx call above still fires.
+	if not Settings.lofi:
+		var p := CPUParticles2D.new()
+		p.amount = 55
+		p.lifetime = 0.5
+		p.explosiveness = 1.0
+		p.one_shot = true
+		p.emitting = true
+		p.global_position = global_position
+		p.direction = Vector2(0, -1)
+		p.spread = 180.0
+		p.gravity = Vector2(0, 300)
+		p.initial_velocity_min = 100.0
+		p.initial_velocity_max = 420.0
+		p.scale_amount_min = 2.0
+		p.scale_amount_max = 6.0
+		p.color = Color(1.0, 0.6, 0.2)
+		get_parent().add_child(p)
+		get_tree().create_timer(0.8).timeout.connect(p.queue_free)
 	# Cluster parent spawns 5 fragment sub-grenades on death; short random fuses cascade the pops.
 	if cluster:
 		var parent := get_parent()

@@ -7,6 +7,7 @@ var sfx_volume := 1.0          # 0.0 = muted, 1.0 = full
 var screen_shake := true
 var fullscreen := false
 var map_index := 0             # which map layout the next game loads
+var lofi := false              # low-end mode: no particles, no gib meshes, no glow
 
 # Game mode: 0 = Deathmatch, 1 = Teammatch, 2 = CTF, 3 = Infiltration,
 # 4 = Hold the Flag, 5 = Rambomatch, 6 = Pointmatch, 7 = Domination,
@@ -62,6 +63,7 @@ func load_settings() -> void:
 	realistic = bool(cf.get_value("game", "realistic", false))
 	survival = bool(cf.get_value("game", "survival", false))
 	advance = bool(cf.get_value("game", "advance", false))
+	lofi = bool(cf.get_value("video", "lofi", false))
 	mod_gravity = clampf(float(cf.get_value("mods", "gravity", 1.0)), 0.5, 2.0)
 	mod_jet = clampf(float(cf.get_value("mods", "jet", 1.0)), 0.5, 2.0)
 	mod_damage = clampf(float(cf.get_value("mods", "damage", 1.0)), 0.5, 2.0)
@@ -78,6 +80,7 @@ func save() -> void:
 	cf.set_value("game", "realistic", realistic)
 	cf.set_value("game", "survival", survival)
 	cf.set_value("game", "advance", advance)
+	cf.set_value("video", "lofi", lofi)
 	cf.set_value("mods", "gravity", mod_gravity)
 	cf.set_value("mods", "jet", mod_jet)
 	cf.set_value("mods", "damage", mod_damage)

@@ -459,7 +459,7 @@ func _physics_process(delta: float) -> void:
 	elif not jet_on and was_jet:
 		Sfx.jet(false)
 	was_jet = jet_on
-	jet_particles.emitting = jet_on
+	jet_particles.emitting = jet_on and not Settings.lofi
 	jet_particles.position = Vector2(-facing * 3.3, 1.7)
 
 	# camera shake decay
@@ -899,8 +899,10 @@ func _die() -> void:
 	else:
 		_emit_kill()
 	# defer FX spawn out of the physics flush (bullet body_entered → take_damage path)
-	_spawn_gibs.call_deferred()
-	_spawn_ragdoll.call_deferred()
+	# Lo-fi (#25): skip the CPUParticles2D burst + physics gib pieces on low-end PCs.
+	if not Settings.lofi:
+		_spawn_gibs.call_deferred()
+		_spawn_ragdoll.call_deferred()
 	died.emit()
 	if Net.is_networked() and Net.is_host():
 		var peer_id := get_multiplayer_authority()
