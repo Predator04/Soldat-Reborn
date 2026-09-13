@@ -9,6 +9,7 @@ var lbl_ammo: Label
 var lbl_weapon: Label
 var lbl_grenades: Label
 var lbl_map: Label
+var lbl_rec: Label
 var lbl_status: Label
 var lbl_timer: Label
 var lbl_score: RichTextLabel
@@ -142,6 +143,17 @@ func _ready() -> void:
 	lbl_respawn.add_theme_constant_override("outline_size", 6)
 	lbl_respawn.visible = false
 	add_child(lbl_respawn)
+
+	# GIF-recording indicator — visible only while the recorder is running.
+	lbl_rec = Label.new()
+	lbl_rec.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	lbl_rec.position = Vector2(14, 132)
+	lbl_rec.add_theme_font_size_override("font_size", 16)
+	lbl_rec.add_theme_color_override("font_color", Color(1.0, 0.35, 0.35))
+	lbl_rec.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	lbl_rec.add_theme_constant_override("outline_size", 3)
+	lbl_rec.visible = false
+	add_child(lbl_rec)
 
 	# /command line — hidden until the local player presses "/".
 	command_line = LineEdit.new()
@@ -351,7 +363,22 @@ func _on_kill(killer_name: String, victim_name: String, weapon_name: String, kil
 			lbl.queue_free())
 
 
+func _input(event: InputEvent) -> void:
+	# F9 — toggle GIF recording. Kept on the HUD (rather than the player) so it
+	# still works from the death screen or in menus during a match.
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.physical_keycode == KEY_F9:
+			GifRecorder.toggle()
+
+
 func _process(delta: float) -> void:
+	# GIF indicator — mirrors the recorder's live state.
+	if lbl_rec != null:
+		if GifRecorder.is_recording():
+			lbl_rec.text = "● REC (F9 stop)"
+			lbl_rec.visible = true
+		else:
+			lbl_rec.visible = false
 	if _dead:
 		if _death_remaining < 0.0:
 			# Survival: no respawn until the round resets. The desaturated overlay
