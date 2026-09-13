@@ -1590,8 +1590,54 @@ func _reset_round() -> void:
 					s.queue_free()
 			call_deferred("_spawn_player")
 			call_deferred("_spawn_bots")
+	else:
+		# Non-survival (#58): the round ended but soldiers keep running around
+		# with mid-fight HP/ammo/pos. Give every LIVING soldier a clean slate —
+		# full HP, refilled ammo, teleport to a spawn slot. Dead-and-respawning
+		# soldiers keep their own scheduled timer (no double-spawn) and come back
+		# fresh the normal way.
+		if Net.is_networked():
+			if Net.is_host():
+				rpc("net_round_reset")
+				_restore_living_soldiers_local()
+		else:
+			_restore_living_soldiers_local()
 	if Net.is_networked() and Net.is_host():
 		_broadcast_match_state()
+
+
+func _restore_living_soldiers_local() -> void:
+	# Each peer restores only bodies it has authority over (host owns its own
+	# player + bots; clients own their own player). Non-authority replicas will
+	# receive the fresh state via the usual net_state / net_bot_state broadcasts.
+	for s in get_tree().get_nodes_in_group("soldier"):
+		if not is_instance_valid(s) or bool(s.get("dead")):
+			continue
+		if multiplayer.multiplayer_peer != null and not s.is_multiplayer_authority():
+			continue
+		if not s.has_method("restore_for_round"):
+			continue
+		s.position = _safe_spawn_near(_round_spawn_pos_for_team(int(s.get("team"))), int(s.get("team")))
+		s.restore_for_round()
+
+
+func _round_spawn_pos_for_team(t: int) -> Vector2:
+	# Mirrors _spawn_networked_player's slot picker: team modes use the shared
+	# player_spawn; FFA picks a random bot_spawns entry so respawning peers land
+	# in the action instead of a corner. Small jitter avoids stacking on top.
+	var base: Vector2 = _map["player_spawn"]
+	if not Settings.is_team_mode():
+		var bs: Array = _map.get("bot_spawns", [])
+		if not bs.is_empty():
+			base = bs[randi() % bs.size()]
+	return base + Vector2(randf_range(-140.0, 140.0), 0.0)
+
+
+@rpc("authority", "call_remote", "reliable")
+func net_round_reset() -> void:
+	# Host-triggered non-survival round reset (#58). Runs on every client so
+	# each peer restores the state of the soldier it owns.
+	_restore_living_soldiers_local()
 
 
 func _broadcast_match_state() -> void:

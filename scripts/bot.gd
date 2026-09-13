@@ -501,6 +501,25 @@ func _emit_kill() -> void:
 		parent.emit_signal("kill", last_killer, display_name, last_weapon, last_killer_team, team)
 
 
+# Between-round clean-slate reset (issue #58). Called by main.gd::_reset_round for
+# every LIVING bot in non-survival modes. Position is set by the caller.
+func restore_for_round() -> void:
+	if dead:
+		return
+	health = 100.0
+	fuel = 100.0
+	velocity = Vector2.ZERO
+	ammo = int(AMMO_STATS.get(loadout, AMMO_STATS["AK-74"])["mag"])
+	reloading = false
+	reload_t = 0.0
+	fire_cd = 0.5
+	grenades = 3
+	grenade_cd = 0.0
+	muzzle_t = 0.0
+	bink_t = 0.0
+	ceasefire_t = 3.0
+
+
 func _spawn_gibs() -> void:
 	var p := CPUParticles2D.new()
 	p.amount = 46

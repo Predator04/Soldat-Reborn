@@ -1002,6 +1002,36 @@ func _emit_kill() -> void:
 		parent.emit_signal("kill", last_killer, display_name, last_weapon, last_killer_team, team)
 
 
+# Between-round clean-slate reset (issue #58). Called by main.gd::_reset_round for
+# every LIVING soldier in non-survival modes so the next round doesn't start with
+# mid-fight HP/ammo. Dead-and-respawning soldiers keep their existing timer path.
+# Position is set by the caller (spawn-slot picker); this only restores state.
+func restore_for_round() -> void:
+	if dead:
+		return
+	health = 100.0
+	fuel = 100.0
+	velocity = Vector2.ZERO
+	for i in ammo.size():
+		ammo[i] = int(weapons[i]["mag"])
+	for i in secondary_ammo.size():
+		secondary_ammo[i] = int(secondary[i]["mag"])
+	grenades = 3
+	reloading = false
+	reload_t = 0.0
+	fire_cd = 0.0
+	spin_up_t = 0.0
+	lmb_prev = true
+	muzzle_t = 0.0
+	gesture_anim = ""
+	gesture_t = 0.0
+	bink_t = 0.0
+	roll_t = 0.0
+	roll_cd = 0.0
+	melee_swing_t = 0.0
+	ceasefire_t = CEASEFIRE_SECS
+
+
 # ── RPCs ──────────────────────────────────────────────
 
 @rpc("authority", "call_remote", "unreliable_ordered")
