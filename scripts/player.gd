@@ -300,7 +300,13 @@ func _physics_process(delta: float) -> void:
 		var startup: float = float(w_active.get("startup", 0.0))
 		if lmb:
 			if startup > 0.0:
+				# Play the spin-up tell on the rising edge of the trigger (before ramping)
+				# and add a small wobble so the shake reads visually while ramping.
+				if spin_up_t <= 0.0:
+					Sfx.spinup(str(w_active["name"]))
 				spin_up_t = minf(spin_up_t + delta, startup + 0.5)
+				if spin_up_t < startup:
+					_shake(1.2)
 		else:
 			spin_up_t = 0.0
 		if lmb and fire_cd <= 0.0:

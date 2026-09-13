@@ -15,6 +15,15 @@ const EVENT_FILES := {
 	"empty": "minigun-empty",
 	"jet_loop": "hum",
 	"reload_generic": "clipin",
+	"melee_swing": "knife",
+	"m79_thump": "m79-explosion",
+	"grenade_throw": "grenade-throw",
+	"minigun_spinup": "minigun-start",
+	"barrett_spinup": "changespin",
+	"flame_fire": "flamer",
+	"bow_fire": "bow-fire",
+	"bow_reload": "bow-reload",
+	"cluster_explode": "cluster-explosion",
 }
 
 const WEAPON_FIRE := {
@@ -121,6 +130,24 @@ func reload(weapon_name := "") -> void:
 
 func empty() -> void:
 	_play_event("empty", -8.0, 1.0)
+
+
+# Wind-up tell for Barrett/Minigun — plays once when the trigger is first pulled.
+func spinup(weapon_name: String) -> void:
+	if weapon_name == "Minigun":
+		_play_event("minigun_spinup", -6.0, 1.0)
+	elif weapon_name == "Barrett":
+		_play_event("barrett_spinup", -6.0, 1.0)
+
+
+# Melee swing (Knife) — tuned quieter than a fire sample.
+func melee_swing() -> void:
+	_play_event("melee_swing", -8.0, randf_range(0.95, 1.05))
+
+
+# Grenade throw arm-swing.
+func grenade_throw() -> void:
+	_play_event("grenade_throw", -10.0, 1.0)
 
 
 # Fired-once UI/menu blip. Kept as a no-op if no matching sample exists so callers stay simple.
