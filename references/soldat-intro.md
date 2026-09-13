@@ -54,12 +54,17 @@ Stationary Gun (M2 MG) · Punch
 - Default secondary is set from the Player menu.
 - Rapid select with 1–9/0 (primary) or CTRL+1/2/3/4 (secondary) while waiting to respawn.
 
-## Notes for the rebuild
-- Our Soldat Reborn currently ships Deathmatch-style play only. The other modes
-  (CTF/Infiltration/Hold the Flag/Rambomatch/Pointmatch/Teammatch) are future work.
-- We implement 5 of the primaries (Deagles, MP5, AK-74, Spas-12) + LAW (as primary #5
-  for now; it's a secondary in real Soldat). Missing: Steyr, Ruger, M79, Barrett,
-  Minimi, Minigun + the full secondary set + grenade variants + stationary gun.
-- Registration cosmetics (colored jet flames, custom UI) map to our jet-flame
-  color and interface theming — future polish.
+## Notes for the rebuild (as of v1.2.0)
+- All 7 main modes ship: Deathmatch, Teammatch, Capture the Flag, Infiltration,
+  Hold the Flag, Rambomatch, Pointmatch. Realistic / Survival / Advance sub-modes
+  are wired into the menu chips.
+- Full 10-primary roster + 4 secondaries. Primaries 1–0: Deagles, MP5, AK-74,
+  Steyr AUG, Spas-12, Ruger 77, M79, Barrett M82A1, FN Minimi, XM214 Minigun.
+  Secondaries (Q to swap): USSOCOM, Combat Knife, Chainsaw, M72 LAW. Extras:
+  Flamethrower, Rambo Bow, Frag + Cluster grenades, M2 stationary gun.
+- Gestures via /command console: /victory, /smoke, /takeoff, /kill, /brutalkill,
+  /mercy. Chat: T=global, Y=team, ALT+key=canned taunts. Roll on crouch-while-
+  running. Ceasefire on respawn + head arrow.
+- Not yet: /tabac, /pause, backflip, prone-cancel / superman / cannonball,
+  registration cosmetics (jet-flame color, custom UI theming).
 

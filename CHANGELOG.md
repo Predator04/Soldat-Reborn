@@ -2,40 +2,66 @@
 
 All notable changes to Soldat Reborn.
 
-## [Unreleased]
+## [1.2.0] — 2026-09-12
+
+Retail-polish release. Rounds out Soldat's mode/weapon/movement surface: all
+7 main game modes ship, the primary roster is complete, and Soldat's gesture /
+chat / taunt loop is playable end to end.
 
 ### Added
 - **Full Soldat weapon roster (10 primaries + 4 secondaries).** Steyr AUG (4),
   Ruger 77 (6), M79 (7), Barrett M82A1 (8), FN Minimi (9), XM214 Minigun (0)
   join Deagles/MP5/AK-74/Spas-12. Stats derived from `server/configs/weapons.ini`
   (60 ticks/sec → real seconds; damage ≈ `Damage × Speed`; speed ≈ `Soldat Speed × 44`).
-- **Secondary weapon slot + Q swap.** Every soldier now carries one primary and one
-  secondary. Secondaries: USSOCOM (semi pistol), Combat Knife (melee arc, ~55 dmg),
-  Chainsaw (continuous melee, ~30 dps), M72 LAW (moved out of the primary slot).
-  Q toggles the active slot; the HUD and fire logic follow.
-- **Barrett / Minigun wind-up.** Both weapons need a short spin-up (0.32s / 0.42s)
-  before the first shot fires while LMB is held. Releasing LMB resets the timer.
-- **Melee handling.** Knife/Chainsaw scan a short forward arc (~70°) and damage
-  any enemy soldier in range; per-peer authority guard mirrors bullet/rocket damage.
+- **Secondary slot + Q swap.** Secondaries: USSOCOM, Combat Knife, Chainsaw,
+  M72 LAW. Melee (Knife / Chainsaw) sweeps a short forward arc.
+- **Barrett / Minigun wind-up.** Both weapons need a short spin-up
+  (0.32 s / 0.42 s) before the first shot; releasing LMB resets. Rising-edge SFX
+  + shake ramp signal the tell.
 - **Crouch (S hold) and prone (X toggle).** Crouch shrinks the collision box
-  (20×42 → 22×28) and slows the ground cap to 0.6×. Prone flattens it (36×14)
-  and drops to 0.28×. W/Space or another X press stands you up from prone.
-  New gostek anims: `kuca` / `kucaidzie` / `kucaidzietyl` / `lezy` / `lezyidzie`.
+  and slows to 0.6× ground cap; prone flattens further to 0.28×. New gostek
+  anims: `kuca` / `kucaidzie` / `kucaidzietyl` / `lezy` / `lezyidzie`.
+- **Roll.** Crouch while running fires a short forward burst.
+- **All 7 main game modes.** Deathmatch (existing) + Teammatch, Capture the Flag,
+  Infiltration, Hold the Flag, Rambomatch, Pointmatch. Realistic / Survival /
+  Advance sub-modes wired into the menu chips (Realistic: no jet, no ammo/fuel
+  HUD, head-shot 1HK; Survival: no respawns until round ends; Advance: weapon
+  unlock ladder starting from the knife).
+- **Chat + taunts.** T = global, Y = team, ALT + key = canned taunts from
+  `TAUNTS.TXT`.
+- **Gesture /commands.** `/victory /smoke /takeoff /kill /brutalkill /mercy` play
+  their .poa anims (or gib the player, for the suicide variants).
+- **Weapon throw / pickup.** F drops the active weapon as a physics item that
+  other soldiers can pick up.
+- **Ceasefire spawn protection.** 3 s of invulnerability with a pulsing cyan aura.
+- **M2 stationary gun.** Per-map mount points with a clamped-elevation turret.
+- **Extra weapons.** Flamethrower, Rambo Bow, Cluster grenade.
+- **Bink.** High-Bink weapons punish a victim's aim on hit.
+- **Networked hosting.** Host-authoritative teams, flag-state RPC, mode entities
+  spawned on both peers so scoring stays in sync.
 
 ### Changed
-- Primary hotkeys extended to `1..9,0` (was `1..5`). LAW moved from primary
-  slot 5 to the secondary slot; Spas-12 is now the primary #5. HUD, menu footer,
-  and README controls table all reflect the new mapping.
-- `net_state` / `net_shoot` RPC signatures extended to carry the secondary
-  slot + stance flags across peers.
-- Soldier rescaled to exact Soldat 1:1 (POA_TO_PIXEL 2.4→1.0). The .poa loader
-  already produces joint positions in Soldat's native pixel space; the extra
-  2.4x multiplier was making the soldier 1.46x too big. All procedural draw
-  constants (jetpack, muzzle flash, HP bar, jet flame) and collision box
-  rescaled to match.
-- Maps enlarged to 4800x2000 to match original Soldat scale. All 3 layouts
-  redesigned with more platforms and terrain spanning the full width and
-  height; camera limits updated to match.
+- Primary hotkeys extended to `1..9,0`. LAW moved from primary #5 to the
+  secondary slot; Spas-12 is now primary #5. HUD, menu footer, README updated.
+- `net_state` / `net_shoot` RPC signatures extended for secondary slot + stance.
+- Soldier rescaled to exact Soldat 1:1 (`POA_TO_PIXEL` 2.4→1.0); collision box,
+  jetpack, muzzle flash, HP bar, jet flame all rescaled to match.
+- Maps enlarged to 4800×2000; all three layouts redesigned; camera limits track.
+- Kill feed colors names by their actual team, not "us vs. everyone else".
+
+### Fixed
+- Bots gate shots on line-of-sight (no more shooting through terrain).
+- Bot respawn shifts horizontally if an enemy is standing on the slot.
+- Death HUD shows the real respawn delay, not a hardcoded 2 s.
+- Menu version and subtitle labels no longer overlap.
+- Chainsaw honors its ammo count and reload.
+- Survival respawns are correctly gated on `round_active` (MP + suicide paths).
+
+## [1.1.0] — 2026-09-12
+
+Interim scale/asset pass — see git history `574781d..5cc6e7a`. Highlights:
+Soldat 1:1 sprite scale, weapon grip pivots, death screen + team arrow, mouse
+crosshair, full 21-weapon roster kickoff, larger maps, RMB jet default.
 
 ## [1.0.0] — 2026-09-12
 
