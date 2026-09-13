@@ -20,7 +20,7 @@ var dead := false
 var aim_dir := Vector2.RIGHT
 
 # ── Weapons ────────────────────────────────────────────
-# `kind`: "bullet" (default) | "rocket" (slow, explodes) | "melee" (single-swing arc) | "melee_cont" (chainsaw).
+# `kind`: "bullet" (default) | "rocket" (slow, straight, explodes) | "launcher" (rocket + gravity arc, e.g. M79) | "melee" (single-swing arc) | "melee_cont" (chainsaw).
 # `startup` (optional, seconds): Barrett/Minigun wind-up before the first shot fires while LMB held.
 var weapons := [
 	{"name": "Deagles",   "damage": 34.0,  "rate": 0.30,  "mag": 14,  "reload": 1.5,  "auto": false, "spread": 0.02,  "speed": 1200.0, "pellets": 1, "color": Color(0.92, 0.78, 0.35), "kind": "bullet"},
@@ -29,7 +29,7 @@ var weapons := [
 	{"name": "Steyr AUG", "damage": 18.0,  "rate": 0.117, "mag": 25,  "reload": 2.08, "auto": true,  "spread": 0.075, "speed": 1150.0, "pellets": 1, "color": Color(0.72, 0.68, 0.55), "kind": "bullet"},
 	{"name": "Spas-12",   "damage": 9.0,   "rate": 0.6,   "mag": 8,   "reload": 2.5,  "auto": false, "spread": 0.26,  "speed": 850.0,  "pellets": 8, "color": Color(0.88, 0.58, 0.3),  "kind": "bullet"},
 	{"name": "Ruger 77",  "damage": 82.0,  "rate": 0.65,  "mag": 4,   "reload": 1.4,  "auto": false, "spread": 0.0,   "speed": 1450.0, "pellets": 1, "color": Color(0.78, 0.68, 0.5),  "kind": "bullet"},
-	{"name": "M79",       "damage": 90.0,  "rate": 0.10,  "mag": 1,   "reload": 2.97, "auto": false, "spread": 0.0,   "speed": 470.0,  "pellets": 1, "color": Color(0.55, 0.5, 0.32),  "kind": "rocket"},
+	{"name": "M79",       "damage": 90.0,  "rate": 0.10,  "mag": 1,   "reload": 2.97, "auto": false, "spread": 0.0,   "speed": 470.0,  "pellets": 1, "color": Color(0.55, 0.5, 0.32),  "kind": "launcher", "gravity": 980.0},
 	{"name": "Barrett",   "damage": 245.0, "rate": 3.75,  "mag": 10,  "reload": 1.17, "auto": false, "spread": 0.0,   "speed": 2400.0, "pellets": 1, "color": Color(0.55, 0.55, 0.6),  "kind": "bullet", "startup": 0.32},
 	{"name": "Minimi",    "damage": 23.0,  "rate": 0.15,  "mag": 50,  "reload": 4.17, "auto": true,  "spread": 0.064, "speed": 1180.0, "pellets": 1, "color": Color(0.5, 0.55, 0.4),   "kind": "bullet"},
 	{"name": "Minigun",   "damage": 13.0,  "rate": 0.05,  "mag": 100, "reload": 8.0,  "auto": true,  "spread": 0.3,   "speed": 1275.0, "pellets": 1, "color": Color(0.75, 0.72, 0.78), "kind": "bullet", "startup": 0.42},
@@ -438,7 +438,8 @@ func _shoot() -> void:
 	var w := _active_weapon()
 	_dec_active_mag()
 	fire_cd = float(w["rate"])
-	var recoil := 240.0 if str(w.get("kind", "bullet")) == "rocket" else 35.0
+	var kind_s := str(w.get("kind", "bullet"))
+	var recoil := 240.0 if (kind_s == "rocket" or kind_s == "launcher") else 35.0
 	velocity -= aim_dir * recoil
 	var dirs := PackedVector2Array()
 	for _i in int(w["pellets"]):
@@ -607,8 +608,9 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int) -> vo
 			return
 		w = weapons[weapon_i]
 	var kind := str(w.get("kind", "bullet"))
-	muzzle_t = 0.10 if kind == "rocket" else 0.08
-	_shake(6.0 if kind == "rocket" else 3.5)
+	var is_explosive := kind == "rocket" or kind == "launcher"
+	muzzle_t = 0.10 if is_explosive else 0.08
+	_shake(6.0 if is_explosive else 3.5)
 	Sfx.shoot(str(w["name"]))
 	if kind == "melee" or kind == "melee_cont":
 		var swing: Vector2 = dirs[0] if dirs.size() > 0 else aim_dir
@@ -632,7 +634,7 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int) -> vo
 		return
 	for i in dirs.size():
 		var bdir: Vector2 = dirs[i]
-		if kind == "rocket":
+		if kind == "rocket" or kind == "launcher":
 			var r := rocket_scene.instantiate()
 			r.global_position = shot_pos + bdir * 4.0
 			r.direction = bdir
@@ -641,6 +643,8 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int) -> vo
 			r.team = team
 			r.killer_name = display_name
 			r.weapon_name = str(w["name"])
+			# M79 (launcher) lobs — gravity>0 flips rocket.gd into ballistic mode.
+			r.gravity = float(w.get("gravity", 0.0))
 			get_parent().add_child(r)
 		else:
 			var b := bullet_scene.instantiate()
