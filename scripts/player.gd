@@ -82,7 +82,12 @@ func _ready() -> void:
 	cam = Camera2D.new()
 	cam.position_smoothing_enabled = true
 	cam.position_smoothing_speed = 8.0
-	cam.zoom = Vector2(1.35, 1.35)
+	cam.zoom = Vector2(1.0, 1.0)
+	# Clamp the camera to the map bounds (Soldat renders 1:1 with no outside-map view).
+	cam.limit_left = 0
+	cam.limit_top = 0
+	cam.limit_right = 3200
+	cam.limit_bottom = 1200
 	add_child(cam)
 	if multiplayer.multiplayer_peer == null or is_multiplayer_authority():
 		cam.make_current()
