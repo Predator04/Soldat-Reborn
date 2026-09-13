@@ -321,7 +321,10 @@ func _hide_death() -> void:
 
 
 func _on_kill(killer_name: String, victim_name: String, weapon_name: String, killer_team: int, _victim_team: int) -> void:
-	var kcol := Color(0.45, 0.95, 0.45) if killer_team == 0 else Color(1.0, 0.45, 0.45)
+	# Reuse the scoreboard's team palette so BLUE/RED kills read as their team
+	# color instead of everyone-not-us collapsing to red.
+	var info := _team_display_info(killer_team)
+	var kcol: Color = info.get("color", Color(1.0, 0.45, 0.45))
 	var lbl := Label.new()
 	lbl.text = "%s  [%s]  %s" % [killer_name, weapon_name, victim_name]
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
