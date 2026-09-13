@@ -802,6 +802,12 @@ func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: Str
 		if not carrier_is_killer:
 			return
 	scores[killer_team] = int(scores.get(killer_team, 0)) + 1
+	# Advance: bump the local player's kill counter and auto-equip any new tier.
+	if Settings.advance and is_instance_valid(player) and str(player.display_name) == killer_name:
+		var unlocked: PackedStringArray = player.advance_receive_kill()
+		for name in unlocked:
+			if hud != null and hud.has_method("post_chat"):
+				hud.post_chat("ADVANCE", "Unlocked: %s" % name, false)
 	if scores[killer_team] >= SCORE_TO_WIN:
 		_end_round(killer_team)
 	elif Settings.survival:

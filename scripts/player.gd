@@ -87,6 +87,14 @@ const CEASEFIRE_SECS := 3.0
 # M2 mount — set to the M2 node while mounted. Skips all normal movement /
 # firing paths; m2.gd drives position + fires directly.
 var mounted_m2: Node2D = null
+
+# Advance mode — kill count and per-slot unlock kill thresholds. Only enforced
+# when Settings.advance is on; otherwise every weapon is available from spawn.
+var advance_kills := 0
+# Indexed by weapon_index — 12 primaries (matches `weapons` array size).
+const ADV_PRIMARY_UNLOCK := [10, 4, 6, 8, 12, 14, 20, 22, 18, 24, 28, 30]
+# Indexed by secondary_index — 4 slots (USSOCOM, Knife, Chainsaw, LAW).
+const ADV_SECONDARY_UNLOCK := [2, 0, 26, 16]
 # Input lock — HUD sets this while the chat/command LineEdit is focused so held
 # WASD keys don't leak into movement while the player is typing.
 var input_locked := false
@@ -573,7 +581,49 @@ func net_gesture(cmd: String) -> void:
 			pass
 
 
+func _is_primary_unlocked(idx: int) -> bool:
+	if not Settings.advance:
+		return true
+	if idx < 0 or idx >= ADV_PRIMARY_UNLOCK.size():
+		return false
+	return advance_kills >= ADV_PRIMARY_UNLOCK[idx]
+
+
+func _is_secondary_unlocked(idx: int) -> bool:
+	if not Settings.advance:
+		return true
+	if idx < 0 or idx >= ADV_SECONDARY_UNLOCK.size():
+		return false
+	return advance_kills >= ADV_SECONDARY_UNLOCK[idx]
+
+
+func advance_receive_kill() -> PackedStringArray:
+	# Called by Main._on_kill_scored on the killer. Bumps the kill counter and
+	# auto-equips any weapon that just unlocked so the player can try it now.
+	var out := PackedStringArray()
+	if not Settings.advance:
+		return out
+	advance_kills += 1
+	for i in ADV_PRIMARY_UNLOCK.size():
+		if advance_kills == ADV_PRIMARY_UNLOCK[i]:
+			out.append(str(weapons[i]["name"]))
+			weapon_index = i
+			ammo[i] = int(weapons[i]["mag"])
+			using_secondary = false
+			reloading = false
+			reload_t = 0.0
+	for i in ADV_SECONDARY_UNLOCK.size():
+		if advance_kills == ADV_SECONDARY_UNLOCK[i]:
+			out.append(str(secondary[i]["name"]))
+			secondary_index = i
+			secondary_ammo[i] = int(secondary[i]["mag"])
+	return out
+
+
 func _switch_weapon(idx: int) -> void:
+	# Advance: block hotkeys pointing to still-locked primaries.
+	if Settings.advance and not _is_primary_unlocked(idx):
+		return
 	# Any primary hotkey while holding secondary swaps us back to a primary AND
 	# picks the requested slot — Soldat's classic behavior.
 	if using_secondary:
@@ -596,6 +646,12 @@ func _switch_weapon(idx: int) -> void:
 
 
 func _toggle_secondary() -> void:
+	# Advance: don't swap into a slot whose weapon isn't unlocked yet.
+	if Settings.advance:
+		if using_secondary and not _is_primary_unlocked(weapon_index):
+			return
+		if not using_secondary and not _is_secondary_unlocked(secondary_index):
+			return
 	using_secondary = not using_secondary
 	if reloading:
 		reloading = false
