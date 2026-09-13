@@ -53,6 +53,9 @@ const ANIM_META := {
 	"gora":            {"speed": 2, "loop": false},
 	"goraodrzut":      {"speed": 1, "loop": false},
 	"takeoff":         {"speed": 2, "loop": false},
+	"cieszy":          {"speed": 2, "loop": false},
+	"cigar":           {"speed": 3, "loop": false},
+	"smoke":           {"speed": 3, "loop": false},
 }
 
 # Anims the gameplay layer needs preloaded on boot.

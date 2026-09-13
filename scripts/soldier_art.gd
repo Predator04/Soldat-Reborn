@@ -70,6 +70,7 @@ static func draw_soldier(
 	crouching: bool = false,
 	prone: bool = false,
 	melee_swing: bool = false,
+	gesture_anim: String = "",
 ) -> void:
 	if jet_on and not dead:
 		_draw_jet_flame(node, facing)
@@ -92,6 +93,7 @@ static func draw_soldier(
 		"crouching": crouching,
 		"prone": prone,
 		"melee_swing": melee_swing,
+		"gesture_anim": gesture_anim,
 	}
 	Gostek.draw_body(node, gs, body_color)
 

@@ -22,6 +22,10 @@ var lbl_respawn: Label
 var _death_remaining := 0.0
 var _dead := false
 
+# /command line for gestures (opened by player.gd when the "/" key is pressed).
+var command_line: LineEdit
+var _command_visible := false
+
 const FEED_MAX := 5
 const FEED_TTL := 4.0
 
@@ -132,6 +136,57 @@ func _ready() -> void:
 	lbl_respawn.add_theme_constant_override("outline_size", 6)
 	lbl_respawn.visible = false
 	add_child(lbl_respawn)
+
+	# /command line — hidden until the local player presses "/".
+	command_line = LineEdit.new()
+	command_line.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	command_line.offset_left = 12
+	command_line.offset_right = -12
+	command_line.offset_top = -110
+	command_line.offset_bottom = -80
+	command_line.placeholder_text = "/victory  /smoke  /tabac  /takeoff  /mercy  /kill  /brutalkill"
+	command_line.custom_minimum_size = Vector2(0, 28)
+	command_line.visible = false
+	command_line.text_submitted.connect(_on_command_submitted)
+	command_line.gui_input.connect(_on_command_gui_input)
+	add_child(command_line)
+
+
+func open_command(prefill: String = "/") -> void:
+	if not is_instance_valid(player) or bool(player.get("dead")):
+		return
+	if _command_visible:
+		return
+	_command_visible = true
+	command_line.text = prefill
+	command_line.visible = true
+	command_line.grab_focus()
+	command_line.caret_column = command_line.text.length()
+	player.set("input_locked", true)
+
+
+func _close_command() -> void:
+	_command_visible = false
+	command_line.visible = false
+	command_line.text = ""
+	command_line.release_focus()
+	if is_instance_valid(player):
+		player.set("input_locked", false)
+
+
+func _on_command_submitted(text: String) -> void:
+	var t := text.strip_edges()
+	if is_instance_valid(player) and t != "":
+		# Only "/…" strings run as gestures for now; chat is issue #12.
+		if t.begins_with("/") and player.has_method("apply_gesture"):
+			player.apply_gesture(t)
+	_close_command()
+
+
+func _on_command_gui_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_ESCAPE:
+			_close_command()
 
 
 func _make_label(pos: Vector2, col: Color) -> Label:

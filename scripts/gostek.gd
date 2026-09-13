@@ -203,6 +203,11 @@ static func _tick(node: CanvasItem, gs: Dictionary) -> PackedVector2Array:
 static func _pick_anim(gs: Dictionary) -> String:
 	if bool(gs.get("dead", false)):
 		return "lezy"
+	# Gestures (from /commands) win over everything except death — they should
+	# read clearly regardless of what the soldier is otherwise doing.
+	var gest: String = str(gs.get("gesture_anim", ""))
+	if gest != "":
+		return gest
 	# Melee swing (Knife/Chainsaw) takes priority over reload/run so the punch pose reads.
 	if bool(gs.get("melee_swing", false)):
 		return "bije"

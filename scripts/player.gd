@@ -69,6 +69,12 @@ var melee_swing_t := 0.0  # short window (~0.25s) after a Knife/Chainsaw strike 
 # Bink — extra aim spread applied when the *victim* takes damage from a bink weapon.
 # Barrett's 65 is intentionally punishing; most rifles land 20-30. Decays over ~0.6s.
 var bink_t := 0.0
+# Gesture (/commands) — overrides the anim state machine while active.
+var gesture_anim := ""
+var gesture_t := 0.0
+# Input lock — HUD sets this while the chat/command LineEdit is focused so held
+# WASD keys don't leak into movement while the player is typing.
+var input_locked := false
 
 # ── Feel ───────────────────────────────────────────────
 var coyote_t := 0.0
@@ -170,8 +176,32 @@ func _physics_process(delta: float) -> void:
 	# Non-authority replica: state is set by net_state RPCs; just visual bookkeeping.
 	if has_peer and not is_multiplayer_authority():
 		muzzle_t = maxf(0.0, muzzle_t - delta * 10.0)
+		if gesture_t > 0.0:
+			gesture_t = maxf(0.0, gesture_t - delta)
+			if gesture_t <= 0.0:
+				gesture_anim = ""
 		jet_particles.emitting = jet_on and not dead
 		jet_particles.position = Vector2(-facing * 3.3, 1.7)
+		queue_redraw()
+		return
+
+	# If the HUD command/chat line is open, freeze inputs: drop x-velocity, apply
+	# gravity so we still fall to ground, and skip all movement/shooting handling.
+	if input_locked:
+		velocity.x = move_toward(velocity.x, 0.0, GROUND_FRICTION * delta)
+		if not is_on_floor():
+			velocity.y += GRAVITY * delta
+			velocity.y = minf(velocity.y, MAX_FALL)
+		jet_on = false
+		if was_jet:
+			Sfx.jet(false)
+			was_jet = false
+		jet_particles.emitting = false
+		move_and_slide()
+		if gesture_t > 0.0:
+			gesture_t = maxf(0.0, gesture_t - delta)
+			if gesture_t <= 0.0:
+				gesture_anim = ""
 		queue_redraw()
 		return
 
@@ -347,6 +377,10 @@ func _physics_process(delta: float) -> void:
 	melee_swing_t = maxf(0.0, melee_swing_t - delta)
 	# Bink recovery: at 100 units/sec, a 65-Bink Barrett hit (0.65s) clears in ~2/3 second.
 	bink_t = maxf(0.0, bink_t - delta * 100.0)
+	if gesture_t > 0.0:
+		gesture_t = maxf(0.0, gesture_t - delta)
+		if gesture_t <= 0.0:
+			gesture_anim = ""
 
 	# jet particles + sfx transitions
 	if jet_on and not was_jet:
@@ -379,6 +413,67 @@ func _physics_process(delta: float) -> void:
 			# Broadcast so the host relays to other clients (Godot's server_relay).
 			# Using rpc_id(1, ...) would freeze non-host peers' views of this body.
 			rpc("net_state", position, velocity, aim_dir, facing, jet_on, health, fuel, weapon_index, ammo[weapon_index], reloading, grenades, secondary_index, secondary_ammo[secondary_index], using_secondary, crouching, prone)
+
+
+# ── /command console (gestures) ────────────────────────
+
+func _unhandled_input(event: InputEvent) -> void:
+	if dead:
+		return
+	# Only the local (authority) player opens the console.
+	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
+		return
+	if input_locked:
+		return
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.physical_keycode == KEY_SLASH:
+			var parent := get_parent()
+			if parent != null and parent.get("hud") != null:
+				parent.hud.open_command()
+				get_viewport().set_input_as_handled()
+
+
+func apply_gesture(cmd_raw: String) -> void:
+	# Local + broadcast in MP. `cmd_raw` is stripped, lower-cased, no leading slash.
+	var cmd := cmd_raw.strip_edges().to_lower()
+	if cmd.begins_with("/"):
+		cmd = cmd.substr(1)
+	if cmd == "":
+		return
+	if Net.is_networked():
+		rpc("net_gesture", cmd)
+	else:
+		net_gesture(cmd)
+
+
+@rpc("authority", "call_local", "reliable")
+func net_gesture(cmd: String) -> void:
+	match cmd:
+		"victory":
+			gesture_anim = "cieszy"
+			gesture_t = 1.6
+		"smoke", "tabac":
+			gesture_anim = "cigar"
+			gesture_t = 2.4
+		"takeoff":
+			gesture_anim = "wyrzuca"
+			gesture_t = 1.4
+		"mercy":
+			gesture_anim = "bije"
+			gesture_t = 0.6
+			# Delay the harakiri so the punch/mercy anim reads before we drop.
+			if multiplayer.multiplayer_peer == null or is_multiplayer_authority():
+				get_tree().create_timer(0.6).timeout.connect(func() -> void:
+					if is_instance_valid(self) and not dead:
+						take_damage(999.0, display_name, "Mercy", team))
+		"kill":
+			if multiplayer.multiplayer_peer == null or is_multiplayer_authority():
+				take_damage(999.0, display_name, "Suicide", team)
+		"brutalkill":
+			if multiplayer.multiplayer_peer == null or is_multiplayer_authority():
+				take_damage(999.0, display_name, "Brutal", team)
+		_:
+			pass
 
 
 func _switch_weapon(idx: int) -> void:
@@ -809,4 +904,5 @@ func _draw() -> void:
 		crouching,
 		prone,
 		melee_swing_t > 0.0,
+		gesture_anim,
 	)
