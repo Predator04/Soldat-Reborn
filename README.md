@@ -1,16 +1,18 @@
-# Soldat Reborn — Godot 4 prototype
+# Soldat Reborn
 
-A Godot 4.7 rebuild of the classic Soldat *feel*: run-and-gun with jet boots, bunny hopping, and gibs.
+A Godot 4.7 rebuild of the classic 2D run-and-gun shooter **Soldat** — jet boots,
+bunny-hop momentum, ragdoll gibs, grenades, and online multiplayer — rebuilt with
+Soldat's own art and sound (CC BY 4.0) and an animated skeletal soldier.
 
-## Run it
+## Features
 
-**Easiest — double-click the build:**
-`game\build\SoldatReborn.exe`
-
-**Or in the editor (to iterate):**
-1. Open `game\GodotEngine\Godot_v4.7.2-stable_win64.exe` (the editor, in the GodotEngine folder)
-2. Import/Open the `game` folder as a project
-3. Press **F5** to run
+- Run / bunny-hop / jet boots with fuel management
+- 5 weapons: Deagles, AK-74, MP5, Spas-12, and the LAW rocket launcher (rocket-jumping)
+- Grenades (arc throw, bounce, splash damage)
+- 3 maps: Ascent / Towers / Pillars (cycled per game)
+- Match system: team score, 5-minute round timer or first-to-20 wins, winner banner
+- Single-player vs 3 AI bots, plus ENet multiplayer (host / join)
+- Real Soldat assets: skeletal soldier animation (`.poa` rig), weapon sprites, sound effects
 
 ## Controls
 
@@ -20,86 +22,54 @@ A Godot 4.7 rebuild of the classic Soldat *feel*: run-and-gun with jet boots, bu
 | SPACE / W | Jump (ground) · jet boots (hold in air) |
 | Mouse | Aim |
 | Left click | Shoot |
-| 1–5 | Switch weapon (Deagles / AK-74 / MP5 / Spas-12 / LAW rocket) |
+| 1–5 | Switch weapon (5 = LAW) |
 | R | Reload |
 | G | Throw grenade |
 
-## Main menu
+## Run it
 
-- **PLAY vs BOTS** — offline arena vs bots (map cycles Ascent → Towers → Pillars each round). Bots respawn on their spawn slot 2s after death so the match keeps flowing.
-- **HOST GAME** — pick a map, then start a listen server on port `7777`. The chosen map is pushed to every joining client so both sides play the same terrain.
-- **JOIN GAME** — enter host IP + port, connect. Client waits for the host's map RPC and then loads the arena.
-- **SETTINGS** — SFX volume, screen shake, fullscreen (persisted to `user://settings.cfg`).
-- **QUIT** — exit.
+- **Easiest:** double-click `build/SoldatReborn.exe`, or download the `.exe` from the
+  [latest GitHub release](https://github.com/Predator04/Soldat-Reborn/releases).
+- **In the editor:** open the project in Godot 4.7.2 (GL Compatibility renderer) and press **F5**.
 
-## Multiplayer (LAN / direct IP)
+## Build from source
 
-Uses Godot's high-level ENet multiplayer.
+Requires Godot 4.7.2.
 
-1. On the host: launch, click **HOST GAME**. You'll load the Ascent map immediately.
-2. On each client: launch, click **JOIN GAME**, enter the host's IP (default `127.0.0.1` for same machine) and port `7777`, click **CONNECT**.
-3. Up to 8 players (host + 7 clients). Everyone spawns as their own team so bullets damage everyone else (FFA).
-4. To leave: quit and relaunch — this returns you to the menu and clears the network state.
+```sh
+# Headless verify (must print ZERO lines matching error|invalid|nil|failed|attempt)
+godot --headless --path . --quit-after 900
 
-**Headless smoke test:**
-
-```
-~/godot/Godot_v4.7.2-stable_linux.x86_64 --headless --path . -- --smoke-host   # in one terminal
-~/godot/Godot_v4.7.2-stable_linux.x86_64 --headless --path . -- --smoke-join   # in another
+# Windows export
+godot --headless --export-release "Windows Desktop" build/SoldatReborn.exe
 ```
 
-Prints `SMOKE-HOST peers=N players=M` / `SMOKE-JOIN id=... mode=2 players=M` and quits.
+CI runs the headless verify on every push (`.github/workflows/ci.yml`).
 
-## What's in it
+## Multiplayer
 
-- **Soldier** — run, jump, bunny hop (ground jumps give a speed boost), jet boots with a fuel bar that regens on ground. Body is assembled from the real Soldat `gostek-gfx` PNGs (klata / morda / helm / biodro / udo / noga / stopa / ramie / reka / dlon) via `scripts/gostek.gd`, **driven by the original `.poa` keyframe animations** — stand / run / run-back / jump / fall / jet-takeoff / reload / dead — parsed by `scripts/poa_loader.gd` from `assets/anims/*.poa`. Mirror-image `*2.png` variants are used when facing left. Weapon is the real sprite from `assets/weapons-gfx/` anchored to the animated right-wrist joint and rotated along aim.
-- **Weapons** — Deagles, AK-74, MP5, Spas-12, LAW rocket (heavy recoil enables rocket-jumping); per-weapon damage / rate / spread / mag / reload. Each fires and reloads with its authentic Soldat sample (`deserteagle-fire.wav`, `ak74-fire.wav`, `mp5-fire.wav`, `spas12-fire.wav`, `m79-fire.wav`).
-- **Grenades** — arc throw, bounce, fuse, area damage
-- **3 AI bots** (SP only) — lead aim, dodge-jump, jet up to reach you, lob grenades
-- **Bullets** — hit opposing team, die on terrain, muzzle recoil
-- **Gibs & ragdoll** — blood particle burst + rigid-body gib chunks on death, auto-respawn
-- **Arena** — 3200-wide arena, gradient sky + stars, parallax hill layers, ground, platforms, walls
-- **Match** — team scoring on every kill (5-min round timer OR first-to-20 wins), scoreboard + timer + winner banner in the HUD, auto-restart 4s after the round ends. Host-authoritative in multiplayer.
-- **HUD** — health / fuel / ammo / weapon / grenades, team-colored kill feed, scoreboard, round timer, map name, net status
-- **Networking** — ENet host/join, per-peer authority, state-sync + spawn/despawn RPCs, host-picked map replicated to clients on join
+- **HOST GAME** — pick a map, then share your IP/port (default `7777`).
+- **JOIN GAME** — enter host IP + port.
+- LAN-scale: per-frame state sync. See *Known limitations* in `ROADMAP.md`.
 
 ## Project layout
 
-- `scenes/` — menu, main, player, bullet, bot, grenade scenes
-- `scripts/`
-  - `menu.gd` — main menu + host/join UI
-  - `main.gd` — arena builder + spawn/despawn (SP and networked paths)
-  - `player.gd` — soldier controller + weapon system + net-state RPCs
-  - `bot.gd` — SP-only AI
-  - `bullet.gd`, `grenade.gd` — projectiles
-  - `hud.gd`, `sky.gd`, `parallax.gd` — presentation
-  - `net.gd` — autoload ENet wrapper (`Net`) + `--smoke-host`/`--smoke-join` harness
-  - `sfx.gd` — autoload SFX (`Sfx`); real `.wav` playback from `assets/sfx/`
-  - `soldier_art.gd` — shared soldier renderer (delegates the body to `gostek.gd`, anchors the weapon to the animated wrist joint)
-  - `gostek.gd` — .poa-driven gostek rig: state machine → anim, phase clock, per-part sprite draw between two skeleton joints
-  - `poa_loader.gd` — parser for Soldat's .poa keyframe files (see `references/poa-format.md`)
-  - `settings.gd` — autoload persisted user prefs (`Settings`)
-- `assets/` — Soldat base assets (see [CREDITS.md](CREDITS.md))
-  - `sfx/` — weapon fire / reload, jump, gib, explosion, jet loop
-  - `weapons-gfx/` — weapon sprites drawn along aim direction
-  - `gostek-gfx/` — body parts assembled into the standing soldier
-  - `anims/` — 51 `.poa` animation files, loaded by `scripts/poa_loader.gd` and driving the live gostek rig (spec: `references/poa-format.md`)
-- `references/` — engineering notes (`.poa` reverse-engineering, etc.)
-- `build/` — exported Windows .exe
+- `scripts/` — game code (`player.gd`, `bot.gd`, `gostek.gd`, `poa_loader.gd`,
+  `soldier_art.gd`, `sfx.gd`, `net.gd`, `main.gd`, `hud.gd`, `menu.gd`, `settings.gd`, …)
+- `scenes/` — `.tscn` scene files
+- `assets/` — ported Soldat assets: `gostek-gfx/` (soldier parts), `weapons-gfx/`,
+  `sfx/` (sounds), `anims/` (`.poa` animation data), `textures/`, `sparks-gfx/`
+- `references/poa-format.md` — the `.poa` animation format, verified against Soldat's MIT source
+- `ROADMAP.md` — what's done, backlog, and known issues
+- `CHANGELOG.md` — release history
 
-## Asset pipeline
+## License
 
-Assets ship in the source layout under `assets/`. On first project open
-the Godot editor generates `.import` sidecars; after that `load()` in
-GDScript resolves the resource path directly. Sound playback uses a
-cached `AudioStreamPlayer` pool in `scripts/sfx.gd` — samples are
-lazy-loaded, not preloaded, so startup stays quick. Weapon and gostek
-textures are cached statically the first time they draw.
+- **Code** — MIT (`LICENSE.md`)
+- **Assets** — Creative Commons Attribution 4.0 (CC BY 4.0), ported from
+  [github.com/Soldat/base](https://github.com/Soldat/base). Attribution in `CREDITS.md`.
 
-## Next steps (ideas)
+## Credits
 
-- Overlay a per-frame upper-body rotation so the arms visibly track aim (currently only the weapon sprite tracks; arms play the canned anim)
-- Wire in the optional gostek pieces (vest / dogtag chain / helmet-off hair / cygar / grenade-on-belt / secondary-weapon-on-back) from `GostekGraphics.inc`
-- Terrain textures from `assets/textures/`, sparks from `assets/sparks-gfx/`
-- MultiplayerSpawner / MultiplayerSynchronizer to replace hand-rolled state RPCs
-- Dedicated server mode + server browser
+Soldat © Michał Marcinkowski / Transhuman Design and contributors. This is an
+unofficial fan rebuild; the Godot port and code are original.
