@@ -65,6 +65,7 @@ static func draw_soldier(
 	reloading: bool = false,
 	crouching: bool = false,
 	prone: bool = false,
+	melee_swing: bool = false,
 ) -> void:
 	if jet_on and not dead:
 		_draw_jet_flame(node, facing)
@@ -86,6 +87,7 @@ static func draw_soldier(
 		"dead": dead,
 		"crouching": crouching,
 		"prone": prone,
+		"melee_swing": melee_swing,
 	}
 	Gostek.draw_body(node, gs, body_color)
 

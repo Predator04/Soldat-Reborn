@@ -58,6 +58,7 @@ var q_prev := false     # prev-frame Q — swap on rising edge only, not every p
 var x_prev := false     # prev-frame X — prone toggle on rising edge
 var crouching := false
 var prone := false
+var melee_swing_t := 0.0  # short window (~0.25s) after a Knife/Chainsaw strike — drives the "bije" pose
 
 # ── Feel ───────────────────────────────────────────────
 var coyote_t := 0.0
@@ -321,6 +322,7 @@ func _physics_process(delta: float) -> void:
 		lmb_prev = lmb
 
 	muzzle_t = maxf(0.0, muzzle_t - delta * 10.0)
+	melee_swing_t = maxf(0.0, melee_swing_t - delta)
 
 	# jet particles + sfx transitions
 	if jet_on and not was_jet:
@@ -468,6 +470,8 @@ func _perform_melee() -> void:
 		rpc("net_shoot", muzzle, dirs, slot)
 	else:
 		net_shoot(muzzle, dirs, slot)
+	# Show a brief punch pose (bije) on each swing — clears itself in _physics_process.
+	melee_swing_t = 0.25
 	# Chainsaw taps its 200-mag "fuel" per swing; Knife is effectively unlimited.
 	if kind_m == "melee_cont":
 		_dec_active_mag()
@@ -743,4 +747,5 @@ func _draw() -> void:
 		reloading,
 		crouching,
 		prone,
+		melee_swing_t > 0.0,
 	)

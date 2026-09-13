@@ -203,6 +203,9 @@ static func _tick(node: CanvasItem, gs: Dictionary) -> PackedVector2Array:
 static func _pick_anim(gs: Dictionary) -> String:
 	if bool(gs.get("dead", false)):
 		return "lezy"
+	# Melee swing (Knife/Chainsaw) takes priority over reload/run so the punch pose reads.
+	if bool(gs.get("melee_swing", false)):
+		return "bije"
 	if bool(gs.get("reloading", false)):
 		return "laduje"
 	var on_floor: bool = bool(gs.get("on_floor", true))
