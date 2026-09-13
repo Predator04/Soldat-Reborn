@@ -100,7 +100,7 @@ const MAPS := [
 
 func _ready() -> void:
 	# Crosshair cursor = the mouse; aiming follows it (Soldat-style).
-	Input.set_custom_mouse_cursor(load("res://assets/interface-gfx/cursor.png"), Input.CURSOR_ARROW, Vector2(85, 85))
+	Input.set_custom_mouse_cursor(load("res://assets/interface-gfx/cursor.png"), Input.CURSOR_ARROW, Vector2(24, 24))
 	PoaLoader.preload_all()
 	if Net.is_networked():
 		# Host picks the map (via Net.chosen_map_index). Clients receive it before
