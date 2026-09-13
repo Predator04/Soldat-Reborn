@@ -2,6 +2,49 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.11.0] — 2026-09-13
+
+Vote system + bonus pickups.
+
+### Added
+- **Vote system** (`/votemap`, `/votekick`, `/votecancel`; F1/F2 rebindable; host-authoritative tally; 30s cooldown) — fixes #77.
+- **Bonus pickups** (Predator / Berserker / Bulletproof Vest / Cluster Grenades crates, ~30s timed effects, MP-replicated, per-slot respawn) — fixes #78.
+
+## [1.10.0] — 2026-09-13
+
+Spectator mode + kill-streak announcements.
+
+### Added
+- **Spectator mode** (follow-cam + free-cam while dead, cycle living players, SP + MP) — fixes #75.
+- **Kill-streak banners** (Double Kill → Ultra Godlike, streak-ended feed line) — fixes #76.
+
+## [1.9.0] — 2026-09-13
+
+Weapon HUD, settings/music/controls overhaul, host admin menu.
+
+### Added
+- **Weapon-selection HUD** (Soldat LimboMenu: primary/secondary list, green highlight, hover tooltip) — fixes #70.
+- **Settings redesign** (glassmorphism accordion; mouse sensitivity, show-FPS, blood intensity, shake slider) — fixes #73.
+- **Music** (3 Soldat tracks converted to .ogg, looping, volume/mute) — fixes #73.
+- **Rebindable command + GIF keys** (`/` and `F9` promoted to real actions) — fixes #73.
+- **Host admin menu** (host-authoritative gravity/friendly-fire/damage/speed/bots/mode/map, live sync, restart match) — fixes #74.
+
+### Fixed
+- **Secondary weapon anchor** — back-slung gun now hip→shoulder instead of hanging like a penis — fixes #71.
+- **Floating soldiers** — collision box resized to the real sprite and feet-anchored, so soldiers stand on the ground/platforms — fixes #72.
+
+## [1.8.0] — 2026-09-13
+
+Classic maps, bots, weather, MP desync fix.
+
+### Added
+- **All 99 classic Soldat maps** ported (up from 10) — fixes #66.
+- **Bot count + difficulty** (skill 1–5) — fixes #67.
+- **Weather** (per-map rain/snow) — fixes #68.
+
+### Fixed
+- **MP RPC desync** (bot grenades + weapon pickups no longer spew node-not-found) — fixes #69.
+
 ## [1.7.0] — 2026-09-13
 
 Round-boundary hygiene, gostek fidelity, and MP projectile parity.

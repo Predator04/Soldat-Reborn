@@ -1,5 +1,7 @@
 # Soldat Reborn — Roadmap (overnight build queue)
 
+> **Current status: v1.11.0** — see CHANGELOG.md for the full history. Feature-complete vs original Soldat's core loop: 99 classic maps, 16 weapons, bots (count + skill 1–5), weather, music, spectator mode, kill-streak banners, vote system, bonus pickups (Predator/Berserker/Vest/Cluster), host-authoritative admin menu, rebindable controls, glass settings UI. **Remaining (deferred):** server browser / lobby / ranked matchmaking (#33) — needs a lobby server; vote kick+map and host admin are in, but there is no public server list.
+
 **Project:** /mnt/c/Users/Admin/Desktop/soldat reborn/game
 **Godot (headless verify):** `~/godot/Godot_v4.7.2-stable_linux.x86_64`
 **Verify command:** `cd "/mnt/c/Users/Admin/Desktop/soldat reborn/game" && ~/godot/Godot_v4.7.2-stable_linux.x86_64 --headless --quit-after 900` (must print ZERO lines matching error/invalid/nil/failed/attempt)
