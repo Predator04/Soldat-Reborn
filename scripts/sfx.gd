@@ -150,6 +150,26 @@ func grenade_throw() -> void:
 	_play_event("grenade_throw", -10.0, 1.0)
 
 
+# M79 grenade impact — distinct, thumpier than the generic frag explosion.
+func m79_thump() -> void:
+	_play_event("m79_thump", -2.0, 1.0)
+
+
+# Cluster grenade explosion + child fragment cascade.
+func cluster_explode() -> void:
+	_play_event("cluster_explode", -2.0, 1.0)
+
+
+# Flame short-range spray tick (looped by weapon, one call per shot).
+func flame_fire() -> void:
+	_play_event("flame_fire", -8.0, randf_range(0.95, 1.05))
+
+
+# Bow shot.
+func bow_fire() -> void:
+	_play_event("bow_fire", -6.0, 1.0)
+
+
 # Fired-once UI/menu blip. Kept as a no-op if no matching sample exists so callers stay simple.
 func ui() -> void:
 	_play_key("menuclick", -8.0, 1.0)

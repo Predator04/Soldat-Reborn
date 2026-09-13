@@ -507,6 +507,7 @@ func _perform_melee() -> void:
 
 func _throw_grenade() -> void:
 	grenades -= 1
+	Sfx.grenade_throw()
 	var toss := (aim_dir + Vector2(0, -0.55)).normalized()
 	var target_pos := global_position + aim_dir * 22.0
 	# Short raycast so point-blank wall throws don't spawn the RigidBody2D inside geometry.

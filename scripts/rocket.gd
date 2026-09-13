@@ -71,7 +71,10 @@ func _explode() -> void:
 	if _exploded:
 		return
 	_exploded = true
-	Sfx.explode()
+	if weapon_name == "M79":
+		Sfx.m79_thump()
+	else:
+		Sfx.explode()
 	for s in get_tree().get_nodes_in_group("soldier"):
 		if not is_instance_valid(s):
 			continue

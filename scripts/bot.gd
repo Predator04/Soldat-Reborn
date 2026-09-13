@@ -220,6 +220,7 @@ func _bullet_incoming() -> bool:
 
 func _throw_grenade(dx: float, dy: float, dist: float) -> void:
 	grenades -= 1
+	Sfx.grenade_throw()
 	var g := grenade_scene.instantiate()
 	# Spawn outside the bot's 11×20 half-extent so physics depenetration doesn't kick the grenade sideways.
 	g.global_position = global_position + Vector2(signf(dx) * 20.0, -8.0)
