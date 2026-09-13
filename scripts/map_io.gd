@@ -148,11 +148,29 @@ static func load_from_file(path: String) -> Dictionary:
 
 
 # Filenames (without extension) bundled under res://assets/maps/ — the classic
-# .pms maps converted by tools/pms_to_map.py (closes #53). Order here is the
+# .pms maps converted by tools/pms_to_map.py (closes #53/#66). Order here is the
 # order they appear in the map picker.
 const BUNDLED_CLASSICS := [
 	"nuubia", "maya", "aftermath", "hormone", "viet",
 	"scorpion", "warehouse", "baire", "airpirates", "bunker",
+	"abel", "aero", "amnesia", "april", "arch",
+	"arena", "arena2", "arena3", "argy", "ash",
+	"b2b", "belltower", "bigfalls", "biologic", "blade",
+	"blox", "boxed", "bridge", "cambodia", "campeche",
+	"changeling", "cobra", "crackedboot", "crucifix", "daybreak",
+	"death", "desert", "desertwind", "division", "dorothy",
+	"dropdown", "dusk", "equinox", "erbium", "factory",
+	"feast", "flashback", "flute", "fortress", "guardian",
+	"hh", "icebeam", "industrial", "island2k5", "jungle",
+	"kampf", "krab", "lagrange", "lanubya", "laos",
+	"leaf", "mayapan", "messner", "mfm", "moonshine",
+	"mossy", "motheaten", "mrsnowman", "muygen", "niall",
+	"nuclear", "outpost", "prison", "raspberry", "ratcave",
+	"rescue", "rise", "rok", "rotten", "rr",
+	"rubik", "ruins", "run", "shau", "snakebite",
+	"star", "steel", "tower", "triumph", "tropiccave",
+	"unlim", "veoto", "void", "voland", "vortex",
+	"warlock", "wretch", "x", "zajacz",
 ]
 
 
