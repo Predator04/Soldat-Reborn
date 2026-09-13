@@ -410,6 +410,12 @@ func _process(delta: float) -> void:
 		tags.append("ADV")
 	if tags.size() > 0:
 		mode_str = mode_str + "[" + "/".join(tags) + "] "
+	# Battle Royale: pin the zone radius to the mode string so shrink pace is legible.
+	if Settings.game_mode == Settings.MODE_BR:
+		var main2 := get_parent()
+		if main2 != null and main2.has_method("br_zone"):
+			var z: Dictionary = main2.br_zone()
+			mode_str = "BR · zone %dm · " % int(z.get("radius", 0.0) / 10.0)
 	lbl_map.text = mode_str + map_name
 	lbl_status.text = Net.status if Net.is_networked() else ""
 	_update_match_ui()
