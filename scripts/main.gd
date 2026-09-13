@@ -664,22 +664,28 @@ func _safe_spawn_near(pos: Vector2, team: int) -> Vector2:
 
 func _spawn_bots() -> void:
 	var spots: Array = _map["bot_spawns"]
+	# #67: bot_count -1 = "every spawn slot" (legacy). Otherwise cap to the setting.
+	# We recycle spawn positions round-robin if the user asks for more bots than slots.
+	var desired: int = spots.size() if Settings.bot_count < 0 else Settings.bot_count
+	if desired <= 0 or spots.is_empty():
+		return
 	var mode: int = Settings.game_mode
-	for i in spots.size():
-		var loadout := "LAW" if i == spots.size() - 1 else "AK-74"
+	for i in desired:
+		var slot: Vector2 = spots[i % spots.size()]
+		var loadout := "LAW" if i == desired - 1 else "AK-74"
 		if Settings.is_team_mode():
 			if mode == Settings.MODE_INF:
 				# INF: bots are attackers (RED). Player defends solo on BLUE.
-				_spawn_bot(spots[i], TEAM_RED, "Red Bot %d" % (i + 1), loadout)
+				_spawn_bot(slot, TEAM_RED, "Red Bot %d" % (i + 1), loadout)
 			else:
 				# TDM/CTF/HTF/PM: split bots BLUE/RED evenly.
-				var on_blue: bool = i < spots.size() / 2
+				var on_blue: bool = i < desired / 2
 				var t: int = TEAM_BLUE if on_blue else TEAM_RED
 				var nm := "Blue Bot %d" % (i + 1) if on_blue else "Red Bot %d" % (i + 1)
-				_spawn_bot(spots[i], t, nm, loadout)
+				_spawn_bot(slot, t, nm, loadout)
 		else:
 			# DM/RM: bot team 99 is a dedicated non-peer id → hostile to any human peer.
-			_spawn_bot(spots[i], 99, "Bot %d" % (i + 1), loadout)
+			_spawn_bot(slot, 99, "Bot %d" % (i + 1), loadout)
 
 
 func _spawn_bot(pos: Vector2, team: int, bname: String, loadout: String = "AK-74") -> void:

@@ -81,6 +81,14 @@ var bullet_scene := preload("res://scenes/bullet.tscn")
 var grenade_scene := preload("res://scenes/grenade.tscn")
 var rocket_scene := preload("res://scenes/rocket.tscn")
 
+# #67 — difficulty. skill 1 = very easy (wide aim, slow to react, low fire cadence),
+# skill 5 = expert (tight aim, snaps to targets, tighter fire cadence). Baked in
+# _ready from Settings.bot_skill so a mid-match change doesn't yank existing bots.
+var _skill_aim_spread := 0.09      # radians of random aim jitter per shot
+var _skill_target_cd := 1.2        # seconds between target refresh
+var _skill_fire_delay := 0.0       # additional fire_cd added at spawn
+var _skill_engage_range := ENGAGE_RANGE
+
 # #61: shared counter to name bot-fired projectiles consistently across peers.
 var _next_proj_id: int = 1
 const SoldierArt = preload("res://scripts/soldier_art.gd")
@@ -92,6 +100,7 @@ var jet_particles: CPUParticles2D
 func _ready() -> void:
 	add_to_group("soldier")
 	tree_exited.connect(func() -> void: Gostek.forget(self))
+	_apply_skill()
 	if cosmetics.is_empty():
 		var heads := ["helm", "kap", "hair1", "hair2", "hair3", "hair4"]
 		var chains := ["none", "silver", "gold"]
@@ -126,6 +135,24 @@ func _ready() -> void:
 	jet_particles.scale_amount_max = 2.1
 	jet_particles.color = Color(1.0, 0.55, 0.18)
 	add_child(jet_particles)
+
+
+func _apply_skill() -> void:
+	# Skill 1..5. Baked here so the whole match uses one difficulty and adjusting
+	# mid-match doesn't retro-tune existing bots. Skill 3 preserves prior behavior.
+	var s: int = clampi(int(Settings.bot_skill), 1, 5)
+	# Aim spread: 0.30 rad at skill 1 → 0.02 rad at skill 5. This is applied AFTER
+	# the target-lead calculation so a low-skill bot's aim drifts wide, not blind.
+	_skill_aim_spread = lerpf(0.30, 0.02, float(s - 1) / 4.0)
+	# Target refresh: at skill 1 bots re-pick every 2s (slow to react to a new
+	# threat); at skill 5 every 0.4s (snaps onto a fresh target almost instantly).
+	_skill_target_cd = lerpf(2.0, 0.4, float(s - 1) / 4.0)
+	# Extra delay on first shot after target acquired — low skill = hesitation.
+	_skill_fire_delay = lerpf(0.6, 0.0, float(s - 1) / 4.0)
+	# Engagement range: low-skill bots don't shoot as far.
+	_skill_engage_range = lerpf(ENGAGE_RANGE * 0.55, ENGAGE_RANGE, float(s - 1) / 4.0)
+	fire_cd = maxf(fire_cd, _skill_fire_delay)
+	_target_refresh_cd = _skill_target_cd
 
 
 func _physics_process(delta: float) -> void:
@@ -252,7 +279,7 @@ func _physics_process(delta: float) -> void:
 		# LAW bots refuse point-blank shots — rocket blast radius 130 would splash themselves to death.
 		if loadout == "LAW" and t_len < ROCKET_MIN_RANGE:
 			pass
-		elif t_len < ENGAGE_RANGE and _has_line_of_sight(target):
+		elif t_len < _skill_engage_range and _has_line_of_sight(target):
 			_shoot(to_t)
 
 	queue_redraw()
@@ -280,7 +307,7 @@ func _refresh_target(delta: float = 0.0) -> void:
 	# (or force a re-pick if we're stuck on geometry).
 	if is_instance_valid(target) and not target.get("dead") and _target_refresh_cd > 0.0 and not stuck:
 		return
-	_target_refresh_cd = 1.2
+	_target_refresh_cd = _skill_target_cd
 	_stuck_t = 0.0
 	var best: Node2D = null
 	var best_d2: float = INF
@@ -367,6 +394,10 @@ func _shoot(to_t: Vector2) -> void:
 	# Bink shakes the bot's aim if they were recently shot.
 	if bink_t > 0.0:
 		aim = aim.rotated(randf_range(-1.0, 1.0) * (bink_t / 100.0) * 0.18)
+	# #67: bake per-shot aim jitter from bot skill on TOP of bink. Low skill
+	# widens the cone so shots miss; high skill barely wavers.
+	if _skill_aim_spread > 0.0:
+		aim = aim.rotated(randf_range(-1.0, 1.0) * _skill_aim_spread)
 	var muzzle: Vector2 = global_position + SoldierArt.muzzle_local(self, aim, facing, loadout) + aim * 4.0
 	# MP: broadcast so clients spawn the tracer/rocket + play sfx (mirrors player.net_shoot).
 	# Damage is gated per-victim in bullet.gd/rocket.gd via is_multiplayer_authority();

@@ -54,6 +54,11 @@ var mod_jet := 1.0            # 0.5–2.0. Scales jet regen (higher = faster ref
 var mod_damage := 1.0         # 0.5–2.0. Multiplies outgoing bullet / rocket / melee damage.
 var mod_speed := 1.0          # 0.5–1.5. Player horizontal cap and accel.
 
+# Bots (#67). bot_count -1 = "use every map spawn" (previous behavior); 0-8 caps
+# the number spawned. bot_skill 1-5 scales aim precision + reaction — see bot.gd.
+var bot_count := -1
+var bot_skill := 3
+
 # Convenience: DM / Rambo / Battle Royale are FFA (friendly-fire on), teams disable friendly damage.
 func friendly_fire_on() -> bool:
 	return game_mode == MODE_DM or game_mode == MODE_RM or game_mode == MODE_BR
@@ -94,6 +99,8 @@ func load_settings() -> void:
 	mod_jet = clampf(float(cf.get_value("mods", "jet", 1.0)), 0.5, 2.0)
 	mod_damage = clampf(float(cf.get_value("mods", "damage", 1.0)), 0.5, 2.0)
 	mod_speed = clampf(float(cf.get_value("mods", "speed", 1.0)), 0.5, 1.5)
+	bot_count = clampi(int(cf.get_value("bots", "count", -1)), -1, 8)
+	bot_skill = clampi(int(cf.get_value("bots", "skill", 3)), 1, 5)
 
 
 func save() -> void:
@@ -118,6 +125,8 @@ func save() -> void:
 	cf.set_value("mods", "jet", mod_jet)
 	cf.set_value("mods", "damage", mod_damage)
 	cf.set_value("mods", "speed", mod_speed)
+	cf.set_value("bots", "count", bot_count)
+	cf.set_value("bots", "skill", bot_skill)
 	cf.save(PATH)
 
 

@@ -347,12 +347,19 @@ func _build_mods() -> void:
 			Settings.mod_speed = v
 			Settings.save())
 
+	# #67 — bot count. -1 keeps the legacy "one bot per spawn slot" behavior; 0-8
+	# caps the roster. Label formats -1 as "Auto".
+	_add_bot_count_row()
+	_add_bot_skill_row()
+
 	var reset := _make_button("RESET TO STOCK")
 	reset.pressed.connect(func() -> void:
 		Settings.mod_gravity = 1.0
 		Settings.mod_jet = 1.0
 		Settings.mod_damage = 1.0
 		Settings.mod_speed = 1.0
+		Settings.bot_count = -1
+		Settings.bot_skill = 3
 		Settings.save()
 		# Rebuild the panel so slider values reflect the reset.
 		for c in _mods_panel.get_children():
@@ -394,6 +401,62 @@ func _add_mod_slider(label_text: String, mn: float, mx: float, step: float,
 	slider.value_changed.connect(func(v: float) -> void:
 		val_lbl.text = "%.2fx" % v
 		set_val.call(v))
+
+
+func _add_bot_count_row() -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	_mods_panel.add_child(row)
+	var lbl := Label.new()
+	lbl.text = "Bots"
+	lbl.custom_minimum_size = Vector2(160, 0)
+	lbl.add_theme_font_size_override("font_size", 15)
+	row.add_child(lbl)
+	var slider := HSlider.new()
+	slider.min_value = -1
+	slider.max_value = 8
+	slider.step = 1
+	slider.value = float(Settings.bot_count)
+	slider.custom_minimum_size = Vector2(220, 0)
+	row.add_child(slider)
+	var val_lbl := Label.new()
+	val_lbl.text = "Auto" if Settings.bot_count < 0 else str(int(Settings.bot_count))
+	val_lbl.custom_minimum_size = Vector2(56, 0)
+	val_lbl.add_theme_font_size_override("font_size", 14)
+	row.add_child(val_lbl)
+	slider.value_changed.connect(func(v: float) -> void:
+		var n: int = int(round(v))
+		val_lbl.text = "Auto" if n < 0 else str(n)
+		Settings.bot_count = n
+		Settings.save())
+
+
+func _add_bot_skill_row() -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	_mods_panel.add_child(row)
+	var lbl := Label.new()
+	lbl.text = "Bot skill"
+	lbl.custom_minimum_size = Vector2(160, 0)
+	lbl.add_theme_font_size_override("font_size", 15)
+	row.add_child(lbl)
+	var slider := HSlider.new()
+	slider.min_value = 1
+	slider.max_value = 5
+	slider.step = 1
+	slider.value = float(Settings.bot_skill)
+	slider.custom_minimum_size = Vector2(220, 0)
+	row.add_child(slider)
+	var val_lbl := Label.new()
+	val_lbl.text = str(int(Settings.bot_skill))
+	val_lbl.custom_minimum_size = Vector2(56, 0)
+	val_lbl.add_theme_font_size_override("font_size", 14)
+	row.add_child(val_lbl)
+	slider.value_changed.connect(func(v: float) -> void:
+		var n: int = clampi(int(round(v)), 1, 5)
+		val_lbl.text = str(n)
+		Settings.bot_skill = n
+		Settings.save())
 
 
 var _stats_body: RichTextLabel = null
