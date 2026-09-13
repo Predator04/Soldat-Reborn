@@ -5,7 +5,15 @@ const MapIO = preload("res://scripts/map_io.gd")
 const MapGen = preload("res://scripts/map_gen.gd")
 const ControlsMenu = preload("res://scripts/controls_menu.gd")
 
-const MAP_NAMES := ["Ascent", "Towers", "Pillars"]
+# Slots 0..2 are the three procedural remakes; slots 3..12 are the classic
+# Soldat maps bundled from res://assets/maps/*.json (see MapIO.BUNDLED_CLASSICS
+# and #53). Order mirrors the append order in main.gd _ready(), so Settings.map_index
+# resolves to the same map at host time and at scene-load time.
+const MAP_NAMES := [
+	"Ascent", "Towers", "Pillars",
+	"Nuubia", "Maya", "Aftermath", "Hormone", "Viet",
+	"Scorpion", "Warehouse", "Baire", "Airpirates", "Bunker",
+]
 const MODE_NAMES := [
 	"Deathmatch", "Teammatch", "Capture the Flag",
 	"Infiltration", "Hold the Flag", "Rambomatch", "Pointmatch",

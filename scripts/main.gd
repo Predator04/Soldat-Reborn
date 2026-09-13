@@ -254,12 +254,22 @@ var MAPS := [
 
 func _ready() -> void:
 	# Dev override: `--mode=N` on the command line sets game_mode for headless smoke tests.
+	# `--map=N` forces a specific MAPS index (useful for verifying each classic).
 	for arg in OS.get_cmdline_args():
 		if arg.begins_with("--mode="):
 			Settings.game_mode = int(arg.substr(7))
+		elif arg.begins_with("--map="):
+			Settings.map_index = int(arg.substr(6))
+			Settings.custom_map_path = ""
 	# Crosshair cursor = the mouse; aiming follows it (Soldat-style).
 	Input.set_custom_mouse_cursor(load("res://assets/interface-gfx/cursor.png"), Input.CURSOR_ARROW, Vector2(12, 12))
 	PoaLoader.preload_all()
+	# Append the classic Soldat maps (ported from .pms via tools/pms_to_map.py)
+	# to the built-in rotation. The three procedural remakes (Ascent / Towers /
+	# Pillars) stay in slots 0–2 so existing Settings.map_index values still
+	# resolve to the same map for players who had one pinned. (#53)
+	for classic in MapIO.load_bundled_classics():
+		MAPS.append(classic)
 	if Net.is_networked():
 		# Host picks the map (via Net.chosen_map_index). Clients receive it before
 		# reaching this scene, so both peers build the same terrain. Networked

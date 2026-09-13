@@ -99,6 +99,8 @@ static func json_to_map(text: String) -> Dictionary:
 	for key in ["terrain_texture", "floor_texture"]:
 		if parsed.has(key):
 			m[key] = str(parsed[key])
+	if parsed.has("ctf_ground_y"):
+		m["ctf_ground_y"] = float(parsed["ctf_ground_y"])
 	return m
 
 
@@ -123,6 +125,39 @@ static func load_from_file(path: String) -> Dictionary:
 	var t := f.get_as_text()
 	f.close()
 	return json_to_map(t)
+
+
+# Filenames (without extension) bundled under res://assets/maps/ — the classic
+# .pms maps converted by tools/pms_to_map.py (closes #53). Order here is the
+# order they appear in the map picker.
+const BUNDLED_CLASSICS := [
+	"nuubia", "maya", "aftermath", "hormone", "viet",
+	"scorpion", "warehouse", "baire", "airpirates", "bunker",
+]
+
+
+static func load_bundled_classics() -> Array:
+	# Loads the bundled classic maps from res://assets/maps/*.json. Returns
+	# each as a Dictionary matching the MAPS entry shape used in main.gd.
+	var out: Array = []
+	for stem in BUNDLED_CLASSICS:
+		var path := "res://assets/maps/%s.json" % stem
+		if not ResourceLoader.exists(path) and not FileAccess.file_exists(path):
+			continue
+		var f := FileAccess.open(path, FileAccess.READ)
+		if f == null:
+			continue
+		var t := f.get_as_text()
+		f.close()
+		var m := json_to_map(t)
+		if m.is_empty():
+			continue
+		# json_to_map defaults player_spawn if missing but we already have it.
+		# Ensure platforms is at least an empty array (main.gd iterates it).
+		if not m.has("platforms"):
+			m["platforms"] = []
+		out.append(m)
+	return out
 
 
 static func list_files() -> Array:
