@@ -670,6 +670,43 @@ func _on_net_disconnected() -> void:
 		_connect_btn.disabled = false
 
 
+func _unhandled_input(event: InputEvent) -> void:
+	# ESC in the main menu = back-out. Sub-panels return to the main list; from
+	# the root list we quit the game.
+	if not (event is InputEventKey) or not event.pressed or event.echo:
+		return
+	if event.keycode != KEY_ESCAPE:
+		return
+	var focused := get_viewport().gui_get_focus_owner()
+	if focused != null and focused is LineEdit:
+		return
+	if _settings_panel != null and _settings_panel.visible:
+		_settings_panel.visible = false
+		_menu_box.visible = true
+	elif _mods_panel != null and _mods_panel.visible:
+		_mods_panel.visible = false
+		_menu_box.visible = true
+	elif _cos_panel != null and _cos_panel.visible:
+		_cos_panel.visible = false
+		_menu_box.visible = true
+	elif _stats_panel != null and _stats_panel.visible:
+		_stats_panel.visible = false
+		_menu_box.visible = true
+	elif _host_panel != null and _host_panel.visible:
+		_host_panel.visible = false
+		_menu_box.visible = true
+	elif _join_panel != null and _join_panel.visible:
+		Net.leave()
+		_connecting = false
+		if is_instance_valid(_connect_btn):
+			_connect_btn.disabled = false
+		_join_panel.visible = false
+		_menu_box.visible = true
+	else:
+		get_tree().quit()
+	get_viewport().set_input_as_handled()
+
+
 # ── SP map picker ─────────────────────────────────────
 
 func _refresh_sp_map_pick() -> void:

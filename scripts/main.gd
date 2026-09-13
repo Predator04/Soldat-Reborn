@@ -6,6 +6,7 @@ var bot_scene := preload("res://scenes/bot.tscn")
 var sky_script := preload("res://scripts/sky.gd")
 var parallax_script := preload("res://scripts/parallax.gd")
 var hud_script := preload("res://scripts/hud.gd")
+var pause_menu_script := preload("res://scripts/pause_menu.gd")
 const PoaLoader = preload("res://scripts/poa_loader.gd")
 const WeaponPickup = preload("res://scripts/weapon_pickup.gd")
 const MapIO = preload("res://scripts/map_io.gd")
@@ -172,6 +173,7 @@ func _ready() -> void:
 	_build_parallax()
 	_build_terrain()
 	_build_hud()
+	_build_pause_menu()
 	_spawn_mode_entities()
 	kill.connect(_on_kill_scored)
 
@@ -445,6 +447,15 @@ func _build_hud() -> void:
 	hud.player = player
 	hud.map_name = str(_map["name"])
 	kill.connect(hud._on_kill)
+
+
+func _build_pause_menu() -> void:
+	# Pause overlay lives above the HUD so ESC can freeze the round without
+	# stealing input while the death screen / arrow / crosshair remain visible.
+	var pm := CanvasLayer.new()
+	pm.name = "PauseMenu"
+	pm.set_script(pause_menu_script)
+	add_child(pm)
 
 
 func _spawn_flags() -> void:
