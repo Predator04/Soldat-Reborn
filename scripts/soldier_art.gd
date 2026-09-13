@@ -14,6 +14,15 @@ const WEAPON_SPRITE := {
 	"LAW": "res://assets/weapons-gfx/law.png",
 }
 
+# Grip pivot (cx, cy) per weapon — matches Soldat's GostekGraphics.inc values.
+const WEAPON_PIVOT := {
+	"Deagles": [0.10, 0.80],
+	"AK-74":   [0.15, 0.50],
+	"MP5":     [0.15, 0.60],
+	"Spas-12": [0.10, 0.60],
+	"LAW":     [0.10, 0.60],
+}
+
 static var _tex_cache: Dictionary = {}
 
 const Gostek = preload("res://scripts/gostek.gd")
@@ -102,8 +111,10 @@ static func _draw_weapon_sprite(
 		return end
 
 	var size := tex.get_size()
-	# Grip pivot sits ~20% in from the left edge of the sprite.
-	var grip_offset := size.x * 0.2
+	# Grip pivot matches Soldat's per-weapon cx/cy (GostekGraphics.inc).
+	var pivot: Array = WEAPON_PIVOT.get(weapon_name, [0.15, 0.5])
+	var grip_offset := size.x * float(pivot[0])
+	var cy_offset := size.y * float(pivot[1])
 	var barrel_len := size.x - grip_offset
 	var angle := aim_dir.angle()
 	# Base the vertical flip on soldier facing, not aim.x — avoids "popping" flips
@@ -111,9 +122,24 @@ static func _draw_weapon_sprite(
 	var flip_y := -1.0 if facing < 0.0 else 1.0
 
 	node.draw_set_transform(shoulder, angle, Vector2(1.0, flip_y))
-	node.draw_texture_rect(tex, Rect2(Vector2(-grip_offset, -size.y * 0.5), size), false)
+	node.draw_texture_rect(tex, Rect2(Vector2(-grip_offset, -cy_offset), size), false)
 	node.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
+	return shoulder + aim_dir * barrel_len
+
+
+# Muzzle (barrel-tip) position in the node's LOCAL space. Used by both the
+# muzzle flash and the bullet spawn so shots originate from the gun itself.
+static func muzzle_local(node: CanvasItem, aim_dir: Vector2, facing: float, weapon_name: String) -> Vector2:
+	var shoulder: Vector2 = Gostek.joint_pos(node, 16)
+	if not Gostek.has_frame(node):
+		shoulder = Vector2(facing * 1.2, -8.0)
+	var tex := _weapon_texture(weapon_name)
+	if tex == null:
+		return shoulder + aim_dir * 22.0
+	var size := tex.get_size()
+	var pivot: Array = WEAPON_PIVOT.get(weapon_name, [0.15, 0.5])
+	var barrel_len := size.x * (1.0 - float(pivot[0]))
 	return shoulder + aim_dir * barrel_len
 
 

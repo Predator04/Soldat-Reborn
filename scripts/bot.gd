@@ -238,7 +238,7 @@ func _shoot(to_t: Vector2) -> void:
 		aim = (lead - global_position).normalized()
 	if loadout == "LAW":
 		var r := rocket_scene.instantiate()
-		r.global_position = global_position + aim * 26.0
+		r.global_position = global_position + SoldierArt.muzzle_local(self, aim, facing, loadout) + aim * 4.0
 		r.direction = aim
 		r.speed = ROCKET_SPEED
 		r.damage = 90.0
@@ -249,7 +249,7 @@ func _shoot(to_t: Vector2) -> void:
 		fire_cd = 1.6  # slow rocket bots so they aren't oppressive
 	else:
 		var b := bullet_scene.instantiate()
-		b.global_position = global_position + aim * 26.0
+		b.global_position = global_position + SoldierArt.muzzle_local(self, aim, facing, loadout) + aim * 4.0
 		b.direction = aim
 		b.speed = BULLET_SPEED
 		b.damage = 12.0

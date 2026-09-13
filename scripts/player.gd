@@ -293,10 +293,11 @@ func _shoot() -> void:
 	var dirs := PackedVector2Array()
 	for _i in int(w["pellets"]):
 		dirs.append(aim_dir.rotated(randf_range(-float(w["spread"]), float(w["spread"]))))
+	var muzzle: Vector2 = global_position + SoldierArt.muzzle_local(self, aim_dir, facing, str(w["name"]))
 	if Net.is_networked():
-		rpc("net_shoot", global_position, dirs, weapon_index)
+		rpc("net_shoot", muzzle, dirs, weapon_index)
 	else:
-		net_shoot(global_position, dirs, weapon_index)
+		net_shoot(muzzle, dirs, weapon_index)
 	if ammo[weapon_index] <= 0:
 		_start_reload()
 
@@ -420,7 +421,7 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int) -> vo
 		var bdir: Vector2 = dirs[i]
 		if kind == "rocket":
 			var r := rocket_scene.instantiate()
-			r.global_position = shot_pos + bdir * 26.0
+			r.global_position = shot_pos + bdir * 4.0
 			r.direction = bdir
 			r.speed = float(w["speed"])
 			r.damage = float(w["damage"])
@@ -430,7 +431,7 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int) -> vo
 			get_parent().add_child(r)
 		else:
 			var b := bullet_scene.instantiate()
-			b.global_position = shot_pos + bdir * 26.0
+			b.global_position = shot_pos + bdir * 4.0
 			b.direction = bdir
 			b.speed = float(w["speed"])
 			b.damage = float(w["damage"])
