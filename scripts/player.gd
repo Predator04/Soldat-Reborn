@@ -23,13 +23,13 @@ var aim_dir := Vector2.RIGHT
 # `kind` = "hitscan-ish" bullet (default) OR "rocket" (LAW: slow, explodes, splash).
 var weapons := [
 	{"name": "Deagles", "damage": 34.0, "rate": 0.30, "mag": 14, "reload": 1.5, "auto": false, "spread": 0.02, "speed": 1200.0, "pellets": 1, "color": Color(0.92, 0.78, 0.35), "kind": "bullet"},
-	{"name": "AK-74",   "damage": 22.0, "rate": 0.11, "mag": 30, "reload": 2.0, "auto": true,  "spread": 0.055, "speed": 1050.0, "pellets": 1, "color": Color(0.72, 0.72, 0.78), "kind": "bullet"},
 	{"name": "MP5",     "damage": 13.0, "rate": 0.075, "mag": 32, "reload": 1.8, "auto": true,  "spread": 0.085, "speed": 950.0, "pellets": 1, "color": Color(0.5, 0.62, 0.8), "kind": "bullet"},
+	{"name": "AK-74",   "damage": 22.0, "rate": 0.11, "mag": 30, "reload": 2.0, "auto": true,  "spread": 0.055, "speed": 1050.0, "pellets": 1, "color": Color(0.72, 0.72, 0.78), "kind": "bullet"},
 	{"name": "Spas-12", "damage": 9.0,  "rate": 0.6,  "mag": 8,  "reload": 2.5, "auto": false, "spread": 0.26, "speed": 850.0, "pellets": 8, "color": Color(0.88, 0.58, 0.3), "kind": "bullet"},
 	{"name": "LAW",     "damage": 90.0, "rate": 1.1,  "mag": 1,  "reload": 3.0, "auto": false, "spread": 0.0,  "speed": 720.0, "pellets": 1, "color": Color(0.85, 0.55, 0.35), "kind": "rocket"},
 ]
 var ammo: Array[int] = []
-var weapon_index := 1
+var weapon_index := 2  # default = AK-74 (Soldat's #3)
 var fire_cd := 0.0
 var reloading := false
 var reload_t := 0.0
@@ -159,9 +159,10 @@ func _physics_process(delta: float) -> void:
 		velocity.x = move_toward(velocity.x, 0.0, fr * delta)
 	velocity.x = clampf(velocity.x, -cap, cap)
 
-	# jet boots
+	# jet boots (RMB, matching Soldat's default controls)
+	var jet_pressed := Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
 	jet_on = false
-	if jump_pressed and not on_floor and fuel > 0.0:
+	if jet_pressed and not on_floor and fuel > 0.0:
 		velocity.y += JET_THRUST * delta
 		fuel = maxf(0.0, fuel - JET_DRAIN * delta)
 		jet_on = true
@@ -209,7 +210,7 @@ func _physics_process(delta: float) -> void:
 
 	# grenade
 	grenade_cd -= delta
-	if Input.is_physical_key_pressed(KEY_G) and grenade_cd <= 0.0 and grenades > 0:
+	if Input.is_physical_key_pressed(KEY_E) and grenade_cd <= 0.0 and grenades > 0:
 		_throw_grenade()
 		grenade_cd = 0.6
 

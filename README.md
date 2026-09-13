@@ -19,12 +19,13 @@ Soldat's own art and sound (CC BY 4.0) and an animated skeletal soldier.
 | Key | Action |
 |-----|--------|
 | A / D | Move left / right |
-| SPACE / W | Jump (ground) · jet boots (hold in air) |
+| W (or SPACE) | Jump |
+| Right click | Jet boots (hold in air) |
 | Mouse | Aim |
 | Left click | Shoot |
-| 1–5 | Switch weapon (5 = LAW) |
+| 1–5 | Switch weapon (2 = MP5, 3 = AK-74, 5 = LAW) |
 | R | Reload |
-| G | Throw grenade |
+| E | Throw grenade |
 
 ## Run it
 
