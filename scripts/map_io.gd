@@ -94,13 +94,33 @@ static func json_to_map(text: String) -> Dictionary:
 			while i + 1 < flat.size():
 				pts.append(Vector2(float(flat[i]), float(flat[i + 1])))
 				i += 2
-			polys.append({"points": pts})
+			var entry := {"points": pts}
+			# Per-vertex UVs (tile-space) — ported .pms maps carry these so the
+			# terrain can be textured with the map's original texture.
+			var uv_flat: Array = poly.get("uvs", [])
+			if uv_flat.size() == flat.size():
+				var uvs := PackedVector2Array()
+				var j := 0
+				while j + 1 < uv_flat.size():
+					uvs.append(Vector2(float(uv_flat[j]), float(uv_flat[j + 1])))
+					j += 2
+				entry["uvs"] = uvs
+			polys.append(entry)
 		m["polys"] = polys
 	for key in ["terrain_texture", "floor_texture"]:
 		if parsed.has(key):
 			m[key] = str(parsed[key])
 	if parsed.has("ctf_ground_y"):
 		m["ctf_ground_y"] = float(parsed["ctf_ground_y"])
+	# Passed through untouched — main.gd reads _scenery_hints to spawn the
+	# original Soldat prop list for ported maps.
+	if parsed.has("_scenery_hints"):
+		m["_scenery_hints"] = parsed["_scenery_hints"]
+	# _source carries the transform scale used when the .pms was ported; the
+	# scenery renderer multiplies each prop's scale by this so sprites stay
+	# proportional to the terrain (both were scaled by the same factor).
+	if parsed.has("_source"):
+		m["_source"] = parsed["_source"]
 	return m
 
 

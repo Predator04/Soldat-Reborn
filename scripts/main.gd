@@ -375,9 +375,11 @@ func _make_platform(pos: Vector2, size: Vector2, col: Color, tex_path: String = 
 	return body
 
 
-func _make_polygon_body(points: PackedVector2Array, col: Color, tex_path: String = "") -> StaticBody2D:
+func _make_polygon_body(points: PackedVector2Array, col: Color, tex_path: String = "",
+		uvs_norm: PackedVector2Array = PackedVector2Array(), draw_outline: bool = true) -> StaticBody2D:
 	# World-space polygon terrain. Enables hills / mountains / tunnel walls
-	# without stacking dozens of small rectangles.
+	# without stacking dozens of small rectangles. `uvs_norm` are tile-space
+	# UVs (from the .pms) that get scaled by texture size for tiled sampling.
 	if points.size() < 3:
 		return null
 	var body := StaticBody2D.new()
@@ -388,25 +390,38 @@ func _make_polygon_body(points: PackedVector2Array, col: Color, tex_path: String
 	var vis := Polygon2D.new()
 	vis.polygon = points
 	vis.color = col
+	var textured := false
 	if tex_path != "" and ResourceLoader.exists(tex_path):
 		var tex: Texture2D = load(tex_path) as Texture2D
 		if tex != null:
 			vis.texture = tex
 			vis.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
-			vis.color = Color(0.9, 0.88, 0.9, 1.0)
+			if uvs_norm.size() == points.size():
+				# Ported .pms map: tile-space UVs. Multiply by texture size so
+				# Godot samples at the same density Soldat did.
+				var ts := tex.get_size()
+				var uv_px := PackedVector2Array()
+				for uv in uvs_norm:
+					uv_px.append(Vector2(uv.x * ts.x, uv.y * ts.y))
+				vis.uv = uv_px
+				vis.color = Color(1, 1, 1, 1)
+			else:
+				# Legacy remake maps: no per-poly UVs, tint darker so the tiled
+				# texture blends with the terrain color.
+				vis.color = Color(0.9, 0.88, 0.9, 1.0)
+			textured = true
 	body.add_child(vis)
-	# Subtle darkened top-edge outline so hills read against the sky at distance.
-	var outline := Line2D.new()
-	outline.width = 3.0
-	outline.default_color = col.darkened(0.4)
-	outline.antialiased = true
-	# Skip drawing the bottom edge (assumed to be the last→first wrap) — extract
-	# the ridge points, i.e. everything except the last segment closing the poly.
-	var ridge := PackedVector2Array()
-	for p in points:
-		ridge.append(p)
-	outline.points = ridge
-	body.add_child(outline)
+	if draw_outline:
+		# Subtle darkened top-edge outline so hills read against the sky at distance.
+		var outline := Line2D.new()
+		outline.width = 3.0
+		outline.default_color = col.darkened(0.4) if not textured else Color(0, 0, 0, 0.35)
+		outline.antialiased = true
+		var ridge := PackedVector2Array()
+		for p in points:
+			ridge.append(p)
+		outline.points = ridge
+		body.add_child(outline)
 	add_child(body)
 	return body
 
@@ -419,17 +434,26 @@ func _build_terrain() -> void:
 	# { "points": PackedVector2Array } with optional "color" and "texture".
 	var default_terrain_col: Color = _map.get("terrain_color", Color(0.24, 0.28, 0.34))
 	var default_terrain_tex: String = str(_map.get("terrain_texture", ""))
+	# Ported .pms maps ship per-vertex UVs so we can suppress the sky-ridge outline
+	# (which was there to give flat-color hills contrast) and let the tiled
+	# texture carry the visual weight.
+	var has_uvs := false
 	for poly in _map.get("polys", []):
 		var pts: PackedVector2Array = poly.get("points", PackedVector2Array())
 		var pc: Color = poly.get("color", default_terrain_col)
 		var pt: String = str(poly.get("texture", default_terrain_tex))
-		_make_polygon_body(pts, pc, pt)
+		var uvs: PackedVector2Array = poly.get("uvs", PackedVector2Array())
+		var draw_outline := uvs.size() != pts.size()
+		if not draw_outline:
+			has_uvs = true
+		_make_polygon_body(pts, pc, pt, uvs, draw_outline)
 	# Legacy rectangular platforms remain supported.
 	for pl in _map["platforms"]:
 		_make_platform(pl["p"], pl["s"], Color(0.28, 0.32, 0.4))
 	_make_platform(Vector2(0, MAP_H / 2.0), Vector2(40, MAP_H * 2.0), Color(0.2, 0.23, 0.28))
 	_make_platform(Vector2(MAP_W, MAP_H / 2.0), Vector2(40, MAP_H * 2.0), Color(0.2, 0.23, 0.28))
 	_spawn_scenery()
+	_spawn_scenery_hints()
 	_spawn_m2_mounts()
 
 
@@ -452,6 +476,50 @@ func _spawn_scenery() -> void:
 		s.scale = Vector2.ONE * float(it.get("scale", 1.0))
 		s.modulate = it.get("mod", Color(1, 1, 1, 1))
 		s.z_index = int(it.get("z", -2))
+		add_child(s)
+
+
+# Level → z_index for ported .pms scenery. 0=back (behind terrain),
+# 1=middle (in front of terrain but tree-ordered behind soldiers spawned
+# later at z=0), 2=front (drawn above soldiers).
+const _SCENERY_LEVEL_Z := {0: -3, 1: 0, 2: 5}
+
+
+func _spawn_scenery_hints() -> void:
+	# Ported .pms maps carry a `_scenery_hints` array holding the original
+	# prop list: sprite name + world pos/scale/rot/alpha/level. Resolves each
+	# name to res://assets/scenery/<stem>.png.
+	var items: Array = _map.get("_scenery_hints", [])
+	if items.is_empty():
+		return
+	# Sprites need to grow with the map's port-time scale so they stay in
+	# proportion to terrain (both scaled together during .pms → JSON).
+	var map_scale := float((_map.get("_source", {}) as Dictionary).get("scale", 1.0))
+	for it in items:
+		var raw_name: String = str(it.get("name", ""))
+		if raw_name == "":
+			continue
+		var stem := raw_name.get_basename().to_lower()
+		var path := "res://assets/scenery/%s.png" % stem
+		if not ResourceLoader.exists(path):
+			continue
+		var tex: Texture2D = load(path) as Texture2D
+		if tex == null:
+			continue
+		var pos_arr = it.get("pos", [0, 0])
+		var pos := Vector2(float(pos_arr[0]), float(pos_arr[1]))
+		var sc := float(it.get("scale", 1.0))
+		var rot := float(it.get("rot", 0.0))
+		var alpha := int(it.get("alpha", 255))
+		var level := int(it.get("level", 1))
+		var s := Sprite2D.new()
+		s.texture = tex
+		s.centered = false  # Soldat anchors props by top-left corner.
+		s.position = pos
+		s.scale = Vector2.ONE * sc * map_scale
+		s.rotation = rot
+		s.modulate = Color(1, 1, 1, clamp(alpha / 255.0, 0.0, 1.0))
+		s.z_index = int(_SCENERY_LEVEL_Z.get(level, 0))
 		add_child(s)
 
 
