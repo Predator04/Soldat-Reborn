@@ -295,7 +295,12 @@ func _ready() -> void:
 	if Net.is_networked():
 		multiplayer.peer_disconnected.connect(_on_net_peer_disconnected)
 		if Net.is_host():
-			_spawn_networked_player(1)  # host is peer 1
+			# Dedicated (headless) host: pure authority, no local player, no camera.
+			# Fill the match with bots so a lone joining client has opponents (#54).
+			if Net.is_dedicated:
+				_spawn_bots()
+			else:
+				_spawn_networked_player(1)  # host is peer 1
 		else:
 			# Client asks the host to spawn us; host also mirrors any existing players.
 			rpc_id(1, "net_client_ready")
