@@ -67,17 +67,23 @@ def parse_pms(path):
     o += 4
 
     # Polygons: 3 vertices (28b each) + 3 perpendiculars (12b each) + type byte.
+    # Each vertex is TPMSVertex: pos(12) rhw(4) color(4) u,v(8) = 28 bytes.
+    # UVs are in normalized texture-tile space so the runtime can multiply by
+    # the actual texture size to sample a tiled terrain texture.
     poly_count = struct.unpack_from("<i", b, o)[0]
     o += 4
     polys = []
     for _ in range(poly_count):
         verts = []
+        uvs = []
         for v in range(3):
             vb = o + v * 28
             x, y = struct.unpack_from("<ff", b, vb)
+            u, vv = struct.unpack_from("<ff", b, vb + 20)
             verts.append((x, y))
+            uvs.append((u, vv))
         ptype = b[o + 84 + 36]
-        polys.append({"verts": verts, "type": ptype})
+        polys.append({"verts": verts, "uvs": uvs, "type": ptype})
         o += 121
 
     # Sectors: variable-length (count word + count*word poly indices).
@@ -174,7 +180,11 @@ def to_reborn_map(pms, display_name=None, scale=DEFAULT_SCALE):
         for (vx, vy) in p["verts"]:
             pts_flat.append(round(tx(vx), 2))
             pts_flat.append(round(ty(vy), 2))
-        out_polys.append({"points": pts_flat})
+        uvs_flat = []
+        for (u, v) in p.get("uvs", []):
+            uvs_flat.append(round(u, 5))
+            uvs_flat.append(round(v, 5))
+        out_polys.append({"points": pts_flat, "uvs": uvs_flat})
 
     # Bucket spawns by team.
     by_team = {}
@@ -271,7 +281,20 @@ def to_reborn_map(pms, display_name=None, scale=DEFAULT_SCALE):
 
     round_pts = []
     for poly in out_polys:
-        round_pts.append({"points": poly["points"]})
+        entry = {"points": poly["points"]}
+        if poly.get("uvs"):
+            entry["uvs"] = poly["uvs"]
+        round_pts.append(entry)
+
+    # Runtime resolves the terrain texture reference by:
+    # 1) taking the map's pms_texture name (e.g. "rodzynka.bmp"),
+    # 2) lowercasing + swapping the extension to .png,
+    # 3) loading res://assets/textures/<stem>.png.
+    tex_ref = (pms.get("texture") or "").strip()
+    terrain_texture = ""
+    if tex_ref:
+        stem = os.path.splitext(tex_ref)[0]
+        terrain_texture = "res://assets/textures/%s.png" % stem.lower()
 
     m = {
         "name": display_name or pms["name"] or "Classic",
@@ -293,6 +316,8 @@ def to_reborn_map(pms, display_name=None, scale=DEFAULT_SCALE):
         m["m2_mounts"] = m2_mounts
     if scenery:
         m["_scenery_hints"] = scenery  # Runtime ignores unknown keys.
+    if terrain_texture:
+        m["terrain_texture"] = terrain_texture
 
     # Bookkeeping useful during debugging.
     m["_source"] = {
