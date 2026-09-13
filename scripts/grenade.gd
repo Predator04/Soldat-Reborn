@@ -39,8 +39,10 @@ func _explode() -> void:
 			continue
 		var d: float = global_position.distance_to(s.global_position)
 		if d < blast_radius:
-			# Damage everyone in radius including thrower/teammates (matches rocket model).
-			# Suicide/team-kill scoring is filtered in main._on_kill_scored.
+			var same_team: bool = int(s.get("team")) == team
+			var is_self: bool = s.get("display_name") == killer_name
+			if same_team and not is_self and not Settings.friendly_fire_on():
+				continue
 			if multiplayer.multiplayer_peer == null or s.is_multiplayer_authority():
 				s.take_damage(damage * (1.0 - d / blast_radius), killer_name, wname, team)
 	var p := CPUParticles2D.new()

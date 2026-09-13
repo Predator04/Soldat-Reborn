@@ -2,6 +2,7 @@ extends Control
 ## Main menu — Play (vs bots), Host, Join, Settings, Quit.
 
 const MAP_NAMES := ["Ascent", "Towers", "Pillars"]
+const MODE_NAMES := ["Deathmatch", "Teammatch", "Capture the Flag"]
 
 var _menu_box: VBoxContainer
 var _settings_panel: VBoxContainer
@@ -82,6 +83,16 @@ func _build_menu() -> void:
 	_menu_box.grow_vertical = Control.GROW_DIRECTION_BOTH
 	_menu_box.add_theme_constant_override("separation", 12)
 	add_child(_menu_box)
+
+	var mode_pick := OptionButton.new()
+	for name in MODE_NAMES:
+		mode_pick.add_item(name)
+	mode_pick.selected = clampi(Settings.game_mode, 0, MODE_NAMES.size() - 1)
+	mode_pick.custom_minimum_size = Vector2(300, 36)
+	mode_pick.item_selected.connect(func(idx: int) -> void:
+		Settings.game_mode = idx
+		Settings.save())
+	_menu_box.add_child(mode_pick)
 
 	var play := _make_button("PLAY vs BOTS")
 	play.pressed.connect(func() -> void:

@@ -16,6 +16,14 @@ var _map: Dictionary = {}
 var _players_by_id: Dictionary = {}  # peer_id -> player node (host only, but also mirrored on clients)
 var _ready_peers: Dictionary = {}    # peer_id -> true (host only, gate for outbound state RPCs)
 
+# Team modes: fixed team ids (player joins BLUE, enemy bots on RED).
+const TEAM_BLUE := 1
+const TEAM_RED := 2
+
+# CTF flag nodes and score-to-win.
+var flags: Array = []
+const CTF_SCORE_TO_WIN := 3
+
 # ── Match state (host-authoritative in MP) ─────────────
 const SCORE_TO_WIN := 20
 const ROUND_TIME := 300.0
@@ -125,6 +133,9 @@ func _ready() -> void:
 	else:
 		_spawn_player()
 		_spawn_bots()
+		# CTF adds two flags (one per base) — only in CTF mode.
+		if Settings.game_mode == Settings.MODE_CTF:
+			_spawn_flags()
 
 
 func _build_sky() -> void:
@@ -181,7 +192,14 @@ func _build_terrain() -> void:
 func _spawn_player() -> void:
 	var p := player_scene.instantiate()
 	p.position = _map["player_spawn"]
-	p.team = 0
+	# In team modes player joins BLUE (team 1); in DM she's team 0 (FFA).
+	p.team = TEAM_BLUE if Settings.game_mode != Settings.MODE_DM else 0
+	if Settings.game_mode == Settings.MODE_TDM:
+		p.color = Color(0.35, 0.55, 1.0)
+		p.display_name = "Blue"
+	elif Settings.game_mode == Settings.MODE_CTF:
+		p.color = Color(0.35, 0.55, 1.0)
+		p.display_name = "Blue"
 	p.died.connect(_on_player_died)
 	add_child(p)
 	player = p
@@ -198,11 +216,18 @@ func _on_player_died() -> void:
 
 func _spawn_bots() -> void:
 	var spots: Array = _map["bot_spawns"]
+	var mode: int = Settings.game_mode
 	for i in spots.size():
-		# Last bot gets the LAW so at least one rocket-bot is always in the mix.
 		var loadout := "LAW" if i == spots.size() - 1 else "AK-74"
-		# Bot team 99: a dedicated non-peer id so bots stay hostile to any human peer (incl. host peer 1).
-		_spawn_bot(spots[i], 99, "Bot %d" % (i + 1), loadout)
+		if mode == Settings.MODE_TDM or mode == Settings.MODE_CTF:
+			# Half the bots on BLUE (with the player), other half on RED.
+			var on_blue: bool = i < spots.size() / 2
+			var t: int = TEAM_BLUE if on_blue else TEAM_RED
+			var nm := "Blue Bot %d" % (i + 1) if on_blue else "Red Bot %d" % (i + 1)
+			_spawn_bot(spots[i], t, nm, loadout)
+		else:
+			# DM: bot team 99 is dedicated non-peer id so bots stay hostile to any human peer.
+			_spawn_bot(spots[i], 99, "Bot %d" % (i + 1), loadout)
 
 
 func _spawn_bot(pos: Vector2, team: int, bname: String, loadout: String = "AK-74") -> void:
@@ -213,6 +238,11 @@ func _spawn_bot(pos: Vector2, team: int, bname: String, loadout: String = "AK-74
 	b.team = team
 	b.display_name = bname
 	b.loadout = loadout
+	# Colorize per team so friend/foe reads at a glance in TDM/CTF.
+	if team == TEAM_BLUE:
+		b.color = Color(0.35, 0.55, 1.0)
+	elif team == TEAM_RED:
+		b.color = Color(0.85, 0.3, 0.25)
 	# Bots respawn on the same slot so the match can accumulate score.
 	b.died.connect(func() -> void:
 		get_tree().create_timer(2.0).timeout.connect(func() -> void:
@@ -233,6 +263,52 @@ func _build_hud() -> void:
 	hud.player = player
 	hud.map_name = str(_map["name"])
 	kill.connect(hud._on_kill)
+
+
+func _spawn_flags() -> void:
+	# CTF bases: BLUE on the far left, RED on the far right of the map's ground row.
+	var ground_y: float = float(_map.get("ctf_ground_y", 1830.0))
+	var blue_base := Vector2(300, ground_y)
+	var red_base := Vector2(MAP_W - 300, ground_y)
+	flags = [
+		_make_flag(TEAM_BLUE, blue_base),
+		_make_flag(TEAM_RED, red_base),
+	]
+
+
+func _make_flag(team: int, base: Vector2) -> Area2D:
+	var a := Area2D.new()
+	a.add_to_group("ctf_flag")
+	a.set_meta("team", team)
+	a.set_meta("home", base)
+	a.set_meta("carrier", null)
+	a.position = base
+	var col := CollisionShape2D.new()
+	var cs := CircleShape2D.new()
+	cs.radius = 18.0
+	col.shape = cs
+	a.add_child(col)
+	# Load the flag sprite (same for both teams — tinted per team).
+	var flag_tex: Texture2D = load("res://assets/interface-gfx/flag.png") as Texture2D
+	if flag_tex != null:
+		var s := Sprite2D.new()
+		s.texture = flag_tex
+		s.scale = Vector2(0.5, 0.5)
+		s.offset = Vector2(0, -18)
+		s.modulate = Color(0.35, 0.55, 1.0) if team == TEAM_BLUE else Color(0.95, 0.35, 0.3)
+		a.add_child(s)
+	else:
+		# Fallback vector: pole + banner rectangle so flags still read without the PNG.
+		var pole := Polygon2D.new()
+		pole.polygon = PackedVector2Array([Vector2(-1, -32), Vector2(1, -32), Vector2(1, 0), Vector2(-1, 0)])
+		pole.color = Color(0.4, 0.35, 0.3)
+		a.add_child(pole)
+		var banner := Polygon2D.new()
+		banner.polygon = PackedVector2Array([Vector2(1, -32), Vector2(18, -26), Vector2(1, -20)])
+		banner.color = Color(0.35, 0.55, 1.0) if team == TEAM_BLUE else Color(0.95, 0.35, 0.3)
+		a.add_child(banner)
+	add_child(a)
+	return a
 
 
 func _bind_local_camera(p: Node) -> void:
@@ -348,6 +424,8 @@ func _process(delta: float) -> void:
 	# Client: state is driven entirely by host's net_match_state RPCs.
 	if Net.is_networked() and not Net.is_host():
 		return
+	if Settings.game_mode == Settings.MODE_CTF and flags.size() == 2:
+		_tick_ctf()
 	if round_active:
 		time_left = maxf(0.0, time_left - delta)
 		if time_left <= 0.0:
@@ -361,6 +439,62 @@ func _process(delta: float) -> void:
 		if _match_sync_cd <= 0.0:
 			_match_sync_cd = 1.0 / MATCH_SYNC_HZ
 			_broadcast_match_state()
+
+
+func _tick_ctf() -> void:
+	# Two-flag CTF: touch enemy flag to carry, deliver to own home to score.
+	# Carried flags snap to the carrier; dropped flags stay in place until touched.
+	var soldiers := get_tree().get_nodes_in_group("soldier")
+	for f in flags:
+		if not is_instance_valid(f):
+			continue
+		var flag_team: int = int(f.get_meta("team"))
+		var home: Vector2 = f.get_meta("home")
+		var carrier = f.get_meta("carrier")
+		if is_instance_valid(carrier):
+			if bool(carrier.get("dead")):
+				# Carrier died — drop flag at their last position.
+				f.position = carrier.global_position
+				f.set_meta("carrier", null)
+				continue
+			f.position = carrier.global_position + Vector2(0, -30)
+			# Did the carrier reach their own base (their home flag)? Score + reset both.
+			for other in flags:
+				if other == f:
+					continue
+				var other_team: int = int(other.get_meta("team"))
+				var other_home: Vector2 = other.get_meta("home")
+				if int(carrier.get("team")) == other_team and other.get_meta("carrier") == null:
+					if f.global_position.distance_to(other_home) < 40.0:
+						_ctf_score(int(carrier.get("team")), str(carrier.get("display_name")))
+						# Return both flags to base.
+						for ff in flags:
+							ff.position = ff.get_meta("home")
+							ff.set_meta("carrier", null)
+			continue
+		# Not carried — check for a grab (enemy touches) or return-to-base (own team touches).
+		for s in soldiers:
+			if not is_instance_valid(s) or bool(s.get("dead")):
+				continue
+			if s.global_position.distance_to(f.global_position) < 22.0:
+				var s_team: int = int(s.get("team"))
+				if s_team == flag_team:
+					# Own team touches: if the flag is away from home, return it.
+					if f.position.distance_to(home) > 12.0:
+						f.position = home
+				else:
+					# Enemy pickup.
+					f.set_meta("carrier", s)
+				break
+
+
+func _ctf_score(team: int, capturer: String) -> void:
+	scores[team] = int(scores.get(team, 0)) + 1
+	Sfx._play_event("explode", -2.0, 1.0)
+	# Emit a fake kill-feed entry so players see who capped the flag.
+	kill.emit(capturer, "FLAG", "captured", team, -1)
+	if scores[team] >= CTF_SCORE_TO_WIN:
+		_end_round(team)
 
 
 func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: String, killer_team: int, victim_team: int) -> void:

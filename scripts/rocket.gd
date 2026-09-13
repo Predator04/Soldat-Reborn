@@ -81,7 +81,12 @@ func _explode() -> void:
 		var d: float = global_position.distance_to(s.global_position)
 		if d >= blast_radius:
 			continue
-		# Rockets damage everyone within blast radius (including own team — you can rocket-jump yourself).
+		# In DM: rockets damage everyone (rocket-jump lives). In team modes: friendly-fire off,
+		# but the thrower is always damageable so self-rocket-jumping still works.
+		var same_team: bool = int(s.get("team")) == team
+		var is_self: bool = s.get("display_name") == killer_name
+		if same_team and not is_self and not Settings.friendly_fire_on():
+			continue
 		var scaled: float = damage * (1.0 - d / blast_radius)
 		if s.has_method("take_damage") and (multiplayer.multiplayer_peer == null or s.is_multiplayer_authority()):
 			s.take_damage(scaled, killer_name, weapon_name, team)

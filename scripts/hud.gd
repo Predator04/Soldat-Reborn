@@ -197,7 +197,13 @@ func _process(delta: float) -> void:
 		lbl_respawn.text = "Respawning in %d" % maxi(0, int(ceil(_death_remaining)))
 		if _death_remaining <= 0.0:
 			_hide_death()
-	lbl_map.text = map_name
+	# Prefix the mode so TDM/CTF users know which rules are live.
+	var mode_str: String = ""
+	if Settings.game_mode == Settings.MODE_TDM:
+		mode_str = "TDM · "
+	elif Settings.game_mode == Settings.MODE_CTF:
+		mode_str = "CTF · "
+	lbl_map.text = mode_str + map_name
 	lbl_status.text = Net.status if Net.is_networked() else ""
 	_update_match_ui()
 	if not is_instance_valid(player):
@@ -284,6 +290,12 @@ func _update_match_ui() -> void:
 
 func _team_display_info(team_id: int) -> Dictionary:
 	if not Net.is_networked():
+		# TDM / CTF: fixed BLUE/RED colors + labels regardless of who's on them.
+		if Settings.game_mode != Settings.MODE_DM:
+			if team_id == 1:
+				return {"name": "BLUE", "color": Color(0.4, 0.6, 1.0)}
+			if team_id == 2:
+				return {"name": "RED", "color": Color(0.95, 0.35, 0.3)}
 		if team_id == 0:
 			return {"name": "YOU", "color": Color(0.35, 0.85, 0.5)}
 		# Distinguish multiple bot teams by id; the common single-team case still reads as "BOTS".

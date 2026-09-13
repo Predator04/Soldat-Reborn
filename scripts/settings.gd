@@ -8,6 +8,16 @@ var screen_shake := true
 var fullscreen := false
 var map_index := 0             # which map layout the next game loads
 
+# Game mode: 0 = Deathmatch (default), 1 = Teammatch, 2 = CTF.
+const MODE_DM := 0
+const MODE_TDM := 1
+const MODE_CTF := 2
+var game_mode := MODE_DM
+
+# Convenience: DM is FFA (friendly-fire on), teams disable friendly damage.
+func friendly_fire_on() -> bool:
+	return game_mode == MODE_DM
+
 
 func _ready() -> void:
 	load_settings()
@@ -21,6 +31,7 @@ func load_settings() -> void:
 	screen_shake = bool(cf.get_value("game", "screen_shake", true))
 	fullscreen = bool(cf.get_value("video", "fullscreen", false))
 	map_index = int(cf.get_value("game", "map_index", 0))
+	game_mode = int(cf.get_value("game", "game_mode", MODE_DM))
 
 
 func save() -> void:
@@ -29,6 +40,7 @@ func save() -> void:
 	cf.set_value("game", "screen_shake", screen_shake)
 	cf.set_value("video", "fullscreen", fullscreen)
 	cf.set_value("game", "map_index", map_index)
+	cf.set_value("game", "game_mode", game_mode)
 	cf.save(PATH)
 
 
