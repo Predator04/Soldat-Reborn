@@ -73,6 +73,7 @@ static func draw_soldier(
 	gesture_anim: String = "",
 	rolling: bool = false,
 	ceasefire: bool = false,
+	cosmetics: Dictionary = {},
 ) -> void:
 	if jet_on and not dead:
 		_draw_jet_flame(node, facing)
@@ -97,6 +98,7 @@ static func draw_soldier(
 		"melee_swing": melee_swing,
 		"gesture_anim": gesture_anim,
 		"rolling": rolling,
+		"cosmetics": cosmetics,
 	}
 	Gostek.draw_body(node, gs, body_color)
 

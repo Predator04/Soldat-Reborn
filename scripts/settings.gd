@@ -9,6 +9,17 @@ var fullscreen := false
 var map_index := 0             # which map layout the next game loads
 var lofi := false              # low-end mode: no particles, no gib meshes, no glow
 
+# Cosmetics — the local player's persistent character look.
+# Values match filenames in assets/gostek-gfx/:
+#   head:  "helm" | "kap" | "hair1" | "hair2" | "hair3" | "hair4" | "none"
+#   chain: "none" | "silver" | "gold"
+#   vest:  bool (kamizelka on/off)
+#   cigar: bool (cygaro on/off)
+var cos_head := "helm"
+var cos_vest := true
+var cos_chain := "none"
+var cos_cigar := false
+
 # Game mode: 0 = Deathmatch, 1 = Teammatch, 2 = CTF, 3 = Infiltration,
 # 4 = Hold the Flag, 5 = Rambomatch, 6 = Pointmatch, 7 = Domination,
 # 8 = Battle Royale. Sub-modes (Realistic / Survival / Advance) overlay on
@@ -64,6 +75,10 @@ func load_settings() -> void:
 	survival = bool(cf.get_value("game", "survival", false))
 	advance = bool(cf.get_value("game", "advance", false))
 	lofi = bool(cf.get_value("video", "lofi", false))
+	cos_head = str(cf.get_value("cosmetics", "head", "helm"))
+	cos_vest = bool(cf.get_value("cosmetics", "vest", true))
+	cos_chain = str(cf.get_value("cosmetics", "chain", "none"))
+	cos_cigar = bool(cf.get_value("cosmetics", "cigar", false))
 	mod_gravity = clampf(float(cf.get_value("mods", "gravity", 1.0)), 0.5, 2.0)
 	mod_jet = clampf(float(cf.get_value("mods", "jet", 1.0)), 0.5, 2.0)
 	mod_damage = clampf(float(cf.get_value("mods", "damage", 1.0)), 0.5, 2.0)
@@ -81,6 +96,10 @@ func save() -> void:
 	cf.set_value("game", "survival", survival)
 	cf.set_value("game", "advance", advance)
 	cf.set_value("video", "lofi", lofi)
+	cf.set_value("cosmetics", "head", cos_head)
+	cf.set_value("cosmetics", "vest", cos_vest)
+	cf.set_value("cosmetics", "chain", cos_chain)
+	cf.set_value("cosmetics", "cigar", cos_cigar)
 	cf.set_value("mods", "gravity", mod_gravity)
 	cf.set_value("mods", "jet", mod_jet)
 	cf.set_value("mods", "damage", mod_damage)

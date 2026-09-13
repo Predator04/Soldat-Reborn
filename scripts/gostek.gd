@@ -30,7 +30,11 @@ const RUN_THRESHOLD := 45.0
 # Back-to-front draw order. Rows are:
 #   [sprite_key, p1, p2, cx_frac, cy_frac, flex_units, color_kind]
 # Matches the GostekBase entries in GostekGraphics.inc for a plain
-# soldier (no vest / no chains / no cigar) plus the helmet on top.
+# soldier plus the customizable head + optional torso pieces.
+# `sprite_key` may be a resolved name (e.g. "helm") OR the tag "<head>"
+# which draw_body swaps for the current head cosmetic (or skips).
+# Vest / chain / cigar rows are marked `<vest>`, `<chain>`, `<cigar>` and
+# are skipped when the corresponding cosmetics flag is off.
 const PARTS := [
 	# --- back leg (LEFT_*) ------------------------------
 	["udo",    6,  3, 0.20, 0.50, 5.0, "pants"],
@@ -46,14 +50,22 @@ const PARTS := [
 	["stopa",  1, 17, 0.35, 0.35, 0.0, "none"],
 	# --- torso / hip / head -----------------------------
 	["klata", 10, 11, 0.10, 0.30, 0.0, "main"],
+	["<vest>", 10, 11, 0.10, 0.30, 0.0, "main"],
+	["<chain>", 10, 11, 0.15, 0.32, 0.0, "none"],
 	["biodro", 5,  6, 0.25, 0.60, 0.0, "main"],
 	["morda",  9, 12, 0.00, 0.50, 0.0, "skin"],
-	["helm",   9, 12, 0.00, 0.50, 0.0, "helm"],
+	["<cigar>", 9, 12, 0.00, 0.50, 0.0, "none"],
+	["<head>", 9, 12, 0.00, 0.50, 0.0, "helm"],
 	# --- front arm (RIGHT_*) — over torso, holds weapon -
 	["ramie", 10, 13, 0.00, 0.60, 0.0, "main"],
 	["reka",  13, 16, 0.00, 0.60, 5.0, "main"],
 	["dlon",  16, 20, 0.00, 0.50, 0.0, "skin"],
 ]
+
+# Head-cosmetic values map straight to sprite basenames in gostek-gfx/.
+# The special values "none" (bald) and "helm" (default) are handled inline.
+const HEAD_KEYS := ["helm", "kap", "hair1", "hair2", "hair3", "hair4", "none"]
+const CHAIN_KEYS := {"silver": "lancuch", "gold": "zlotylancuch"}
 
 const SKIN := Color(0.98, 0.82, 0.65)
 
@@ -75,6 +87,7 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 	var skin_tint := SKIN if not dead else SKIN.darkened(0.4)
 	var pants_tint := pants if not dead else pants.darkened(0.4)
 
+	var cos: Dictionary = gs.get("cosmetics", {})
 	for spec in PARTS:
 		var key: String = spec[0]
 		var p1_id: int = spec[1]
@@ -83,6 +96,32 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 		var cy_frac: float = spec[4]
 		var flex: float = spec[5]
 		var col_kind: String = spec[6]
+
+		# Resolve cosmetic placeholders. Missing / disabled → skip the row.
+		match key:
+			"<head>":
+				var h: String = str(cos.get("head", "helm"))
+				if h == "none":
+					continue
+				if not HEAD_KEYS.has(h):
+					h = "helm"
+				# Hair uses skin-tone shading; helm/kap darken with the main color.
+				key = h
+				if h.begins_with("hair"):
+					col_kind = "skin"
+			"<vest>":
+				if not bool(cos.get("vest", false)):
+					continue
+				key = "kamizelka"
+			"<chain>":
+				var c: String = str(cos.get("chain", "none"))
+				if not CHAIN_KEYS.has(c):
+					continue
+				key = str(CHAIN_KEYS[c])
+			"<cigar>":
+				if not bool(cos.get("cigar", false)):
+					continue
+				key = "cygaro"
 
 		var p1 := _joint_local(frame, p1_id, flip)
 		var p2 := _joint_local(frame, p2_id, flip)

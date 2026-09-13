@@ -6,6 +6,9 @@ signal died
 @export var color := Color(0.25, 0.75, 0.45)
 var team := 0
 var display_name := "You"
+# Cosmetic outfit for this soldier — defaults to the player's Settings picks,
+# but bots override to a random look so the field reads as different characters.
+var cosmetics: Dictionary = {}
 
 var last_killer := ""
 var last_weapon := ""
@@ -140,6 +143,13 @@ const WeaponPickup = preload("res://scripts/weapon_pickup.gd")
 func _ready() -> void:
 	add_to_group("soldier")
 	ceasefire_t = CEASEFIRE_SECS
+	if cosmetics.is_empty():
+		cosmetics = {
+			"head": Settings.cos_head,
+			"vest": Settings.cos_vest,
+			"chain": Settings.cos_chain,
+			"cigar": Settings.cos_cigar,
+		}
 	# Release the per-instance skeleton state dict when this node is freed so long
 	# sessions don't leak dict entries in Gostek._states.
 	tree_exited.connect(func() -> void: Gostek.forget(self))
@@ -1148,4 +1158,5 @@ func _draw() -> void:
 		gesture_anim,
 		roll_t > 0.0,
 		ceasefire_t > 0.0,
+		cosmetics,
 	)

@@ -8,6 +8,8 @@ signal died
 var team := 99
 var display_name := "Bot"
 var loadout := "AK-74"  # or "LAW" — set by Main._spawn_bot before add_child
+# Random cosmetic outfit — set in _ready so bots read as distinct characters.
+var cosmetics: Dictionary = {}
 
 var last_killer := ""
 var last_weapon := ""
@@ -62,6 +64,15 @@ var jet_particles: CPUParticles2D
 func _ready() -> void:
 	add_to_group("soldier")
 	tree_exited.connect(func() -> void: Gostek.forget(self))
+	if cosmetics.is_empty():
+		var heads := ["helm", "kap", "hair1", "hair2", "hair3", "hair4"]
+		var chains := ["none", "silver", "gold"]
+		cosmetics = {
+			"head": heads[randi() % heads.size()],
+			"vest": randf() < 0.4,
+			"chain": chains[randi() % chains.size()],
+			"cigar": randf() < 0.2,
+		}
 	var shape := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
 	rect.size = Vector2(20, 42)
@@ -427,4 +438,5 @@ func _draw() -> void:
 		"",
 		false,
 		ceasefire_t > 0.0,
+		cosmetics,
 	)

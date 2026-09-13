@@ -11,6 +11,7 @@ const MODE_NAMES := [
 var _menu_box: VBoxContainer
 var _settings_panel: VBoxContainer
 var _mods_panel: VBoxContainer
+var _cos_panel: VBoxContainer
 var _join_panel: VBoxContainer
 var _host_panel: VBoxContainer
 var _status_label: Label
@@ -31,6 +32,7 @@ func _ready() -> void:
 	_build_menu()
 	_build_settings()
 	_build_mods()
+	_build_cosmetics()
 	_build_host()
 	_build_join()
 	_build_status()
@@ -157,6 +159,12 @@ func _build_menu() -> void:
 		_menu_box.visible = false
 		_mods_panel.visible = true)
 	_menu_box.add_child(mods)
+
+	var cos := _make_button("CUSTOMIZE")
+	cos.pressed.connect(func() -> void:
+		_menu_box.visible = false
+		_cos_panel.visible = true)
+	_menu_box.add_child(cos)
 
 	var quit := _make_button("QUIT")
 	quit.pressed.connect(func() -> void: get_tree().quit())
@@ -308,6 +316,84 @@ func _add_mod_slider(label_text: String, mn: float, mx: float, step: float,
 	slider.value_changed.connect(func(v: float) -> void:
 		val_lbl.text = "%.2fx" % v
 		set_val.call(v))
+
+
+func _build_cosmetics() -> void:
+	_cos_panel = VBoxContainer.new()
+	_cos_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_cos_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_cos_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_cos_panel.add_theme_constant_override("separation", 12)
+	_cos_panel.custom_minimum_size = Vector2(460, 0)
+	_cos_panel.visible = false
+	add_child(_cos_panel)
+
+	var head := Label.new()
+	head.text = "CUSTOMIZE"
+	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	head.add_theme_font_size_override("font_size", 26)
+	head.add_theme_color_override("font_color", Color(0.95, 0.82, 0.4))
+	_cos_panel.add_child(head)
+
+	# Head slot — 7 options (helm / kap / hair1-4 / bald).
+	var head_row := HBoxContainer.new()
+	head_row.add_theme_constant_override("separation", 12)
+	_cos_panel.add_child(head_row)
+	var head_lbl := Label.new()
+	head_lbl.text = "Head"
+	head_lbl.custom_minimum_size = Vector2(120, 0)
+	head_row.add_child(head_lbl)
+	var head_pick := OptionButton.new()
+	var head_opts := ["helm", "kap", "hair1", "hair2", "hair3", "hair4", "none"]
+	for h in head_opts:
+		head_pick.add_item(h.capitalize())
+	head_pick.selected = clampi(head_opts.find(Settings.cos_head), 0, head_opts.size() - 1)
+	head_pick.custom_minimum_size = Vector2(260, 32)
+	head_pick.item_selected.connect(func(idx: int) -> void:
+		Settings.cos_head = head_opts[idx]
+		Settings.save())
+	head_row.add_child(head_pick)
+
+	# Chain slot — 3 options.
+	var chain_row := HBoxContainer.new()
+	chain_row.add_theme_constant_override("separation", 12)
+	_cos_panel.add_child(chain_row)
+	var chain_lbl := Label.new()
+	chain_lbl.text = "Chain"
+	chain_lbl.custom_minimum_size = Vector2(120, 0)
+	chain_row.add_child(chain_lbl)
+	var chain_pick := OptionButton.new()
+	var chain_opts := ["none", "silver", "gold"]
+	for c in chain_opts:
+		chain_pick.add_item(c.capitalize())
+	chain_pick.selected = clampi(chain_opts.find(Settings.cos_chain), 0, chain_opts.size() - 1)
+	chain_pick.custom_minimum_size = Vector2(260, 32)
+	chain_pick.item_selected.connect(func(idx: int) -> void:
+		Settings.cos_chain = chain_opts[idx]
+		Settings.save())
+	chain_row.add_child(chain_pick)
+
+	var vest := CheckButton.new()
+	vest.text = "Vest (kamizelka)"
+	vest.button_pressed = Settings.cos_vest
+	vest.toggled.connect(func(on: bool) -> void:
+		Settings.cos_vest = on
+		Settings.save())
+	_cos_panel.add_child(vest)
+
+	var cigar := CheckButton.new()
+	cigar.text = "Cigar (cygaro)"
+	cigar.button_pressed = Settings.cos_cigar
+	cigar.toggled.connect(func(on: bool) -> void:
+		Settings.cos_cigar = on
+		Settings.save())
+	_cos_panel.add_child(cigar)
+
+	var back := _make_button("BACK")
+	back.pressed.connect(func() -> void:
+		_cos_panel.visible = false
+		_menu_box.visible = true)
+	_cos_panel.add_child(back)
 
 
 func _build_host() -> void:
