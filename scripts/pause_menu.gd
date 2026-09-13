@@ -6,10 +6,11 @@ extends CanvasLayer
 ## keyboard ESC toggle and button presses still fire.
 
 const ControlsMenu = preload("res://scripts/controls_menu.gd")
+const SettingsPanel = preload("res://scripts/settings_panel.gd")
 
 var _root_panel: Control
 var _menu_box: VBoxContainer
-var _settings_panel: VBoxContainer
+var _settings_panel: Node        # SettingsPanel (glassmorphism accordion, #73)
 var _controls_panel: VBoxContainer
 var _quit_confirm: VBoxContainer
 var _dim: ColorRect
@@ -79,76 +80,13 @@ func _build_main_menu() -> void:
 
 
 func _build_settings_panel() -> void:
-	_settings_panel = VBoxContainer.new()
-	_settings_panel.set_anchors_preset(Control.PRESET_CENTER)
-	_settings_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_settings_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-	_settings_panel.add_theme_constant_override("separation", 12)
-	_settings_panel.custom_minimum_size = Vector2(440, 0)
+	# Reuses the glassmorphism accordion Settings screen (#73) from the main menu
+	# so both routes share layout, defaults, and persistence.
+	_settings_panel = SettingsPanel.new()
 	_settings_panel.visible = false
-	_settings_panel.process_mode = Node.PROCESS_MODE_ALWAYS
 	_root_panel.add_child(_settings_panel)
-
-	var head := Label.new()
-	head.text = "SETTINGS"
-	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	head.add_theme_font_size_override("font_size", 30)
-	head.add_theme_color_override("font_color", Color(0.95, 0.82, 0.4))
-	head.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
-	head.add_theme_constant_override("outline_size", 6)
-	_settings_panel.add_child(head)
-
-	_settings_panel.add_child(_pad(6))
-
-	# SFX volume slider (also drives the master AudioServer bus).
-	_settings_panel.add_child(_make_label("SFX volume"))
-	var vol := HSlider.new()
-	vol.min_value = 0.0
-	vol.max_value = 1.0
-	vol.step = 0.05
-	vol.value = Settings.sfx_volume
-	vol.custom_minimum_size = Vector2(0, 26)
-	vol.value_changed.connect(func(v: float) -> void:
-		Settings.sfx_volume = v
-		Settings.save())
-	_settings_panel.add_child(vol)
-
-	var shake := CheckButton.new()
-	shake.text = "Screen shake"
-	shake.button_pressed = Settings.screen_shake
-	shake.toggled.connect(func(on: bool) -> void:
-		Settings.screen_shake = on
-		Settings.save())
-	_settings_panel.add_child(shake)
-
-	var fs := CheckButton.new()
-	fs.text = "Fullscreen"
-	fs.button_pressed = Settings.fullscreen
-	fs.toggled.connect(func(on: bool) -> void:
-		Settings.fullscreen = on
-		Settings.save()
-		Settings.apply_display())
-	_settings_panel.add_child(fs)
-
-	var lo := CheckButton.new()
-	lo.text = "Lo-fi mode (no particles/gibs — low-end PCs)"
-	lo.button_pressed = Settings.lofi
-	lo.toggled.connect(func(on: bool) -> void:
-		Settings.lofi = on
-		Settings.save())
-	_settings_panel.add_child(lo)
-
-	_settings_panel.add_child(_pad(6))
-
-	var controls_btn := _make_button("CONTROLS")
-	controls_btn.pressed.connect(_open_controls)
-	_settings_panel.add_child(controls_btn)
-
-	_settings_panel.add_child(_pad(4))
-
-	var back := _make_button("BACK")
-	back.pressed.connect(_close_settings)
-	_settings_panel.add_child(back)
+	_settings_panel.back_pressed.connect(_close_settings)
+	_settings_panel.controls_pressed.connect(_open_controls)
 
 
 func _build_controls_panel() -> void:

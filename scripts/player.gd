@@ -581,7 +581,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		if hud != null:
 			hud.open_chat("team")
 			get_viewport().set_input_as_handled()
-	elif event.physical_keycode == KEY_SLASH:
+	elif event.is_action_pressed("command"):
 		if hud != null:
 			hud.open_command()
 			get_viewport().set_input_as_handled()
@@ -933,9 +933,12 @@ func _throw_grenade() -> void:
 
 
 func _shake(amount: float) -> void:
-	if not Settings.screen_shake:
+	# Screen shake is now a 0..2 intensity slider (#73). 0 = fully disabled;
+	# 1.0 preserves the old feel; up to 2 for players who like it punchier.
+	var mag: float = float(Settings.screen_shake_intensity)
+	if mag <= 0.001:
 		return
-	shake = maxf(shake, amount)
+	shake = maxf(shake, amount * mag)
 
 
 func take_damage(amount: float, killer := "", weapon := "", killer_team := -1) -> void:
@@ -1204,8 +1207,13 @@ func net_die(killer: String, weapon: String, killer_team: int) -> void:
 
 
 func _spawn_gibs() -> void:
+	# Blood/gore visual density is user-tunable (#73). 0 = skip entirely
+	# (lo-fi already gates this, but tie the slider to a hard skip too).
+	var density: float = clampf(float(Settings.blood_intensity), 0.0, 1.5)
+	if density <= 0.01:
+		return
 	var p := CPUParticles2D.new()
-	p.amount = 60
+	p.amount = maxi(1, int(60.0 * density))
 	p.lifetime = 0.8
 	p.explosiveness = 1.0
 	p.one_shot = true
@@ -1224,7 +1232,12 @@ func _spawn_gibs() -> void:
 
 
 func _spawn_ragdoll() -> void:
-	var count := 8
+	# Scale ragdoll piece count with blood_intensity (#73) so lo-gore players
+	# get a cleaner corpse. Rounds up to at least 1 piece so the death still reads.
+	var density: float = clampf(float(Settings.blood_intensity), 0.0, 1.5)
+	var count := maxi(1, int(round(8.0 * density)))
+	if density <= 0.01:
+		return
 	for _i in count:
 		var body := RigidBody2D.new()
 		body.position = global_position + Vector2(randf_range(-8.0, 8.0), randf_range(-20.0, 0.0))

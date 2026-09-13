@@ -58,8 +58,21 @@ func _build() -> void:
 	list.process_mode = Node.PROCESS_MODE_ALWAYS
 	scroll.add_child(list)
 
+	# Group rows by section (Movement / Combat / Weapons / Chat / Utility).
+	# Preserves the action ordering inside each section so muscle-memory rows
+	# (weapon slots 1-0, etc.) still appear in their expected order.
+	var grouped: Dictionary = {}
+	var order: Array = []
 	for aid in ControlsMap.action_ids():
-		list.add_child(_make_row(String(aid)))
+		var sec := ControlsMap.section_for(String(aid))
+		if not grouped.has(sec):
+			grouped[sec] = []
+			order.append(sec)
+		grouped[sec].append(String(aid))
+	for sec in order:
+		list.add_child(_make_section_header(String(sec)))
+		for aid in grouped[sec]:
+			list.add_child(_make_row(String(aid)))
 
 	var buttons := HBoxContainer.new()
 	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -76,6 +89,28 @@ func _build() -> void:
 		_abort_capture()
 		back_pressed.emit())
 	buttons.add_child(back)
+
+
+func _make_section_header(text: String) -> Control:
+	# Chunky underlined header row so section boundaries read cleanly in a scroll list.
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 2)
+	v.process_mode = Node.PROCESS_MODE_ALWAYS
+	var pad := Control.new()
+	pad.custom_minimum_size = Vector2(0, 6)
+	v.add_child(pad)
+	var lbl := Label.new()
+	lbl.text = text.to_upper()
+	lbl.add_theme_font_size_override("font_size", 14)
+	lbl.add_theme_color_override("font_color", Color(0.95, 0.82, 0.4))
+	lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	lbl.add_theme_constant_override("outline_size", 3)
+	v.add_child(lbl)
+	var rule := ColorRect.new()
+	rule.color = Color(0.95, 0.82, 0.4, 0.35)
+	rule.custom_minimum_size = Vector2(0, 1)
+	v.add_child(rule)
+	return v
 
 
 func _make_row(action_id: String) -> Control:

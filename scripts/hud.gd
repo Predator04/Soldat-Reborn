@@ -31,6 +31,7 @@ var _command_visible := false
 var _line_mode := "cmd"  # "cmd" | "global" | "team"
 var chat_feed: VBoxContainer
 var weapon_menu: Control  # left-side Soldat weapon selection panel (#70)
+var lbl_fps: Label        # top-right FPS overlay — visible only when Settings.show_fps (#73)
 static var _taunts: Dictionary = {}
 const CHAT_FEED_MAX := 7
 const CHAT_TTL := 10.0
@@ -200,6 +201,20 @@ func _ready() -> void:
 	weapon_menu = WeaponMenu.new()
 	add_child(weapon_menu)
 	weapon_menu.player = player
+
+	# FPS overlay (#73) — top-right corner. Hidden by default; toggle via Settings.
+	lbl_fps = Label.new()
+	lbl_fps.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	lbl_fps.offset_right = -14
+	lbl_fps.offset_left = -140
+	lbl_fps.offset_top = -2
+	lbl_fps.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	lbl_fps.add_theme_font_size_override("font_size", 14)
+	lbl_fps.add_theme_color_override("font_color", Color(0.65, 1.0, 0.65))
+	lbl_fps.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	lbl_fps.add_theme_constant_override("outline_size", 3)
+	lbl_fps.visible = false
+	add_child(lbl_fps)
 
 
 func open_command(prefill: String = "/") -> void:
@@ -386,11 +401,10 @@ func _on_kill(killer_name: String, victim_name: String, weapon_name: String, kil
 
 
 func _input(event: InputEvent) -> void:
-	# F9 — toggle GIF recording. Kept on the HUD (rather than the player) so it
-	# still works from the death screen or in menus during a match.
-	if event is InputEventKey and event.pressed and not event.echo:
-		if event.physical_keycode == KEY_F9:
-			GifRecorder.toggle()
+	# Record-GIF hotkey (default F9, rebindable via controls_map). Kept on the HUD
+	# rather than the player so it still works from the death screen and menus.
+	if event.is_action_pressed("record_gif"):
+		GifRecorder.toggle()
 
 
 func _process(delta: float) -> void:
@@ -401,6 +415,12 @@ func _process(delta: float) -> void:
 			lbl_rec.visible = true
 		else:
 			lbl_rec.visible = false
+	# FPS overlay — cheap ~5x/sec refresh (Engine.get_frames_per_second is a
+	# rolling avg, so per-frame updates would jitter without changing the value).
+	if lbl_fps != null:
+		lbl_fps.visible = Settings.show_fps
+		if Settings.show_fps:
+			lbl_fps.text = "%d FPS" % int(round(Engine.get_frames_per_second()))
 	if _dead:
 		if _death_remaining < 0.0:
 			# Survival: no respawn until the round resets. The desaturated overlay

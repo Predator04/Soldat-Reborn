@@ -8,6 +8,25 @@ extends Object
 
 const PATH := "user://controls.cfg"
 
+# Sections group the rebind rows in the UI (#73). Each entry above the "section:X"
+# marker lands in that section header. Order still matters for the UI list order.
+const SECTIONS := ["Movement", "Combat", "Weapons", "Chat", "Utility"]
+
+# Section membership — [action_id] → section name. Anything unlisted defaults to
+# "Utility" so a new action still appears somewhere without a code change here.
+const ACTION_SECTION := {
+	"move_left": "Movement", "move_right": "Movement", "jump": "Movement",
+	"jet": "Movement", "crouch": "Movement", "prone": "Movement",
+	"fire": "Combat", "grenade": "Combat", "reload": "Combat", "grenade_toggle": "Combat",
+	"secondary_swap": "Weapons", "weapon_throw": "Weapons",
+	"weapon_1": "Weapons", "weapon_2": "Weapons", "weapon_3": "Weapons",
+	"weapon_4": "Weapons", "weapon_5": "Weapons", "weapon_6": "Weapons",
+	"weapon_7": "Weapons", "weapon_8": "Weapons", "weapon_9": "Weapons",
+	"weapon_10": "Weapons",
+	"chat": "Chat", "team_chat": "Chat", "taunt": "Chat", "command": "Chat",
+	"record_gif": "Utility",
+}
+
 # Order matters — the Controls screen renders rows in this order.
 # Each entry: [action_id, human_label, [default_event_dict, ...]]
 # default event dicts are decoded by _apply_defaults / event_from_dict.
@@ -22,12 +41,9 @@ const ACTIONS := [
 	["fire",            "Fire",             [{"type": "mouse", "button_index": 1}]],          # LMB
 	["grenade",         "Throw Grenade",    [{"type": "key", "physical_keycode": 69}]],       # E
 	["reload",          "Reload",           [{"type": "key", "physical_keycode": 82}]],       # R
+	["grenade_toggle",  "Grenade Type",     [{"type": "key", "physical_keycode": 71}]],       # G
 	["secondary_swap",  "Swap Weapon",      [{"type": "key", "physical_keycode": 81}]],       # Q
 	["weapon_throw",    "Throw / Mount",    [{"type": "key", "physical_keycode": 70}]],       # F
-	["grenade_toggle",  "Grenade Type",     [{"type": "key", "physical_keycode": 71}]],       # G
-	["chat",            "Chat",             [{"type": "key", "physical_keycode": 84}]],       # T
-	["team_chat",       "Team Chat",        [{"type": "key", "physical_keycode": 89}]],       # Y
-	["taunt",           "Taunt Modifier",   [{"type": "key", "physical_keycode": 4194328}]],  # Alt
 	["weapon_1",        "Weapon Slot 1",    [{"type": "key", "physical_keycode": 49}]],       # 1
 	["weapon_2",        "Weapon Slot 2",    [{"type": "key", "physical_keycode": 50}]],
 	["weapon_3",        "Weapon Slot 3",    [{"type": "key", "physical_keycode": 51}]],
@@ -38,7 +54,16 @@ const ACTIONS := [
 	["weapon_8",        "Weapon Slot 8",    [{"type": "key", "physical_keycode": 56}]],
 	["weapon_9",        "Weapon Slot 9",    [{"type": "key", "physical_keycode": 57}]],
 	["weapon_10",       "Weapon Slot 10",   [{"type": "key", "physical_keycode": 48}]],       # 0
+	["chat",            "Chat",             [{"type": "key", "physical_keycode": 84}]],       # T
+	["team_chat",       "Team Chat",        [{"type": "key", "physical_keycode": 89}]],       # Y
+	["taunt",           "Taunt Modifier",   [{"type": "key", "physical_keycode": 4194328}]],  # Alt
+	["command",         "Command Console",  [{"type": "key", "physical_keycode": 47}]],       # /
+	["record_gif",      "Record GIF",       [{"type": "key", "physical_keycode": 4194340}]],  # F9
 ]
+
+
+static func section_for(action_id: String) -> String:
+	return String(ACTION_SECTION.get(action_id, "Utility"))
 
 
 static func action_ids() -> PackedStringArray:

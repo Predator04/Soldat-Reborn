@@ -4,6 +4,7 @@ extends Control
 const MapIO = preload("res://scripts/map_io.gd")
 const MapGen = preload("res://scripts/map_gen.gd")
 const ControlsMenu = preload("res://scripts/controls_menu.gd")
+const SettingsPanel = preload("res://scripts/settings_panel.gd")
 
 # Slots 0..2 are the three procedural remakes; slots 3..12 are the classic
 # Soldat maps bundled from res://assets/maps/*.json (see MapIO.BUNDLED_CLASSICS
@@ -41,8 +42,6 @@ const MODE_NAMES := [
 var _menu_box: VBoxContainer
 var _settings_panel: VBoxContainer
 var _controls_panel: VBoxContainer
-var _mods_panel: VBoxContainer
-var _cos_panel: VBoxContainer
 var _stats_panel: VBoxContainer
 var _join_panel: VBoxContainer
 var _host_panel: VBoxContainer
@@ -66,8 +65,6 @@ func _ready() -> void:
 	_build_menu()
 	_build_settings()
 	_build_controls()
-	_build_mods()
-	_build_cosmetics()
 	_build_stats()
 	_build_host()
 	_build_join()
@@ -219,18 +216,6 @@ func _build_menu() -> void:
 		_settings_panel.visible = true)
 	_menu_box.add_child(settings)
 
-	var mods := _make_button("MODIFIERS")
-	mods.pressed.connect(func() -> void:
-		_menu_box.visible = false
-		_mods_panel.visible = true)
-	_menu_box.add_child(mods)
-
-	var cos := _make_button("CUSTOMIZE")
-	cos.pressed.connect(func() -> void:
-		_menu_box.visible = false
-		_cos_panel.visible = true)
-	_menu_box.add_child(cos)
-
 	var stats := _make_button("STATS")
 	stats.pressed.connect(func() -> void:
 		_refresh_stats_labels()
@@ -244,75 +229,16 @@ func _build_menu() -> void:
 
 
 func _build_settings() -> void:
-	_settings_panel = VBoxContainer.new()
-	_settings_panel.set_anchors_preset(Control.PRESET_CENTER)
-	_settings_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_settings_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-	_settings_panel.add_theme_constant_override("separation", 16)
-	_settings_panel.custom_minimum_size = Vector2(440, 0)
+	# Glassmorphism accordion of Audio/Video/Controls/Game/Mods/Cosmetics cards (#73).
+	_settings_panel = SettingsPanel.new()
 	_settings_panel.visible = false
 	add_child(_settings_panel)
-
-	var head := Label.new()
-	head.text = "SETTINGS"
-	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	head.add_theme_font_size_override("font_size", 26)
-	head.add_theme_color_override("font_color", Color(0.95, 0.82, 0.4))
-	_settings_panel.add_child(head)
-
-	var vol_lbl := Label.new()
-	vol_lbl.text = "SFX volume"
-	vol_lbl.add_theme_font_size_override("font_size", 16)
-	_settings_panel.add_child(vol_lbl)
-
-	var vol := HSlider.new()
-	vol.min_value = 0.0
-	vol.max_value = 1.0
-	vol.step = 0.05
-	vol.value = Settings.sfx_volume
-	vol.value_changed.connect(func(v: float) -> void:
-		Settings.sfx_volume = v
-		Settings.save())
-	_settings_panel.add_child(vol)
-
-	var shake := CheckButton.new()
-	shake.text = "Screen shake"
-	shake.button_pressed = Settings.screen_shake
-	shake.toggled.connect(func(on: bool) -> void:
-		Settings.screen_shake = on
-		Settings.save())
-	_settings_panel.add_child(shake)
-
-	var fs := CheckButton.new()
-	fs.text = "Fullscreen"
-	fs.button_pressed = Settings.fullscreen
-	fs.toggled.connect(func(on: bool) -> void:
-		Settings.fullscreen = on
-		Settings.save()
-		Settings.apply_display())
-	_settings_panel.add_child(fs)
-
-	var lo := CheckButton.new()
-	lo.text = "Lo-fi mode (no particles/gibs — low-end PCs)"
-	lo.button_pressed = Settings.lofi
-	lo.toggled.connect(func(on: bool) -> void:
-		Settings.lofi = on
-		Settings.save())
-	_settings_panel.add_child(lo)
-
-	# Controls — opens the rebind screen. Same scene/script as the ESC pause-menu
-	# Settings entry, so both routes share user://controls.cfg via ControlsMap.save().
-	var controls_btn := _make_button("CONTROLS")
-	controls_btn.pressed.connect(func() -> void:
-		_settings_panel.visible = false
-		_controls_panel.visible = true)
-	_settings_panel.add_child(controls_btn)
-
-	var back := _make_button("BACK")
-	back.pressed.connect(func() -> void:
+	_settings_panel.back_pressed.connect(func() -> void:
 		_settings_panel.visible = false
 		_menu_box.visible = true)
-	_settings_panel.add_child(back)
+	_settings_panel.controls_pressed.connect(func() -> void:
+		_settings_panel.visible = false
+		_controls_panel.visible = true)
 
 
 func _build_controls() -> void:
@@ -323,152 +249,6 @@ func _build_controls() -> void:
 		_controls_panel.visible = false
 		_settings_panel.visible = true)
 	add_child(_controls_panel)
-
-
-func _build_mods() -> void:
-	_mods_panel = VBoxContainer.new()
-	_mods_panel.set_anchors_preset(Control.PRESET_CENTER)
-	_mods_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_mods_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-	_mods_panel.add_theme_constant_override("separation", 10)
-	_mods_panel.custom_minimum_size = Vector2(460, 0)
-	_mods_panel.visible = false
-	add_child(_mods_panel)
-
-	var head := Label.new()
-	head.text = "MODIFIERS"
-	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	head.add_theme_font_size_override("font_size", 26)
-	head.add_theme_color_override("font_color", Color(0.95, 0.82, 0.4))
-	_mods_panel.add_child(head)
-
-	_add_mod_slider("Gravity", 0.5, 2.0, 0.05, func() -> float: return Settings.mod_gravity,
-		func(v: float) -> void:
-			Settings.mod_gravity = v
-			Settings.save())
-	_add_mod_slider("Jet fuel regen", 0.5, 2.0, 0.05, func() -> float: return Settings.mod_jet,
-		func(v: float) -> void:
-			Settings.mod_jet = v
-			Settings.save())
-	_add_mod_slider("Weapon damage", 0.5, 2.0, 0.05, func() -> float: return Settings.mod_damage,
-		func(v: float) -> void:
-			Settings.mod_damage = v
-			Settings.save())
-	_add_mod_slider("Player speed", 0.5, 1.5, 0.05, func() -> float: return Settings.mod_speed,
-		func(v: float) -> void:
-			Settings.mod_speed = v
-			Settings.save())
-
-	# #67 — bot count. -1 keeps the legacy "one bot per spawn slot" behavior; 0-8
-	# caps the roster. Label formats -1 as "Auto".
-	_add_bot_count_row()
-	_add_bot_skill_row()
-
-	var reset := _make_button("RESET TO STOCK")
-	reset.pressed.connect(func() -> void:
-		Settings.mod_gravity = 1.0
-		Settings.mod_jet = 1.0
-		Settings.mod_damage = 1.0
-		Settings.mod_speed = 1.0
-		Settings.bot_count = -1
-		Settings.bot_skill = 3
-		Settings.save()
-		# Rebuild the panel so slider values reflect the reset.
-		for c in _mods_panel.get_children():
-			c.queue_free()
-		_mods_panel.queue_free()
-		_build_mods()
-		_mods_panel.visible = true)
-	_mods_panel.add_child(reset)
-
-	var back := _make_button("BACK")
-	back.pressed.connect(func() -> void:
-		_mods_panel.visible = false
-		_menu_box.visible = true)
-	_mods_panel.add_child(back)
-
-
-func _add_mod_slider(label_text: String, mn: float, mx: float, step: float,
-	get_val: Callable, set_val: Callable) -> void:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
-	_mods_panel.add_child(row)
-	var lbl := Label.new()
-	lbl.text = label_text
-	lbl.custom_minimum_size = Vector2(160, 0)
-	lbl.add_theme_font_size_override("font_size", 15)
-	row.add_child(lbl)
-	var slider := HSlider.new()
-	slider.min_value = mn
-	slider.max_value = mx
-	slider.step = step
-	slider.value = float(get_val.call())
-	slider.custom_minimum_size = Vector2(220, 0)
-	row.add_child(slider)
-	var val_lbl := Label.new()
-	val_lbl.text = "%.2fx" % float(slider.value)
-	val_lbl.custom_minimum_size = Vector2(56, 0)
-	val_lbl.add_theme_font_size_override("font_size", 14)
-	row.add_child(val_lbl)
-	slider.value_changed.connect(func(v: float) -> void:
-		val_lbl.text = "%.2fx" % v
-		set_val.call(v))
-
-
-func _add_bot_count_row() -> void:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
-	_mods_panel.add_child(row)
-	var lbl := Label.new()
-	lbl.text = "Bots"
-	lbl.custom_minimum_size = Vector2(160, 0)
-	lbl.add_theme_font_size_override("font_size", 15)
-	row.add_child(lbl)
-	var slider := HSlider.new()
-	slider.min_value = -1
-	slider.max_value = 8
-	slider.step = 1
-	slider.value = float(Settings.bot_count)
-	slider.custom_minimum_size = Vector2(220, 0)
-	row.add_child(slider)
-	var val_lbl := Label.new()
-	val_lbl.text = "Auto" if Settings.bot_count < 0 else str(int(Settings.bot_count))
-	val_lbl.custom_minimum_size = Vector2(56, 0)
-	val_lbl.add_theme_font_size_override("font_size", 14)
-	row.add_child(val_lbl)
-	slider.value_changed.connect(func(v: float) -> void:
-		var n: int = int(round(v))
-		val_lbl.text = "Auto" if n < 0 else str(n)
-		Settings.bot_count = n
-		Settings.save())
-
-
-func _add_bot_skill_row() -> void:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
-	_mods_panel.add_child(row)
-	var lbl := Label.new()
-	lbl.text = "Bot skill"
-	lbl.custom_minimum_size = Vector2(160, 0)
-	lbl.add_theme_font_size_override("font_size", 15)
-	row.add_child(lbl)
-	var slider := HSlider.new()
-	slider.min_value = 1
-	slider.max_value = 5
-	slider.step = 1
-	slider.value = float(Settings.bot_skill)
-	slider.custom_minimum_size = Vector2(220, 0)
-	row.add_child(slider)
-	var val_lbl := Label.new()
-	val_lbl.text = str(int(Settings.bot_skill))
-	val_lbl.custom_minimum_size = Vector2(56, 0)
-	val_lbl.add_theme_font_size_override("font_size", 14)
-	row.add_child(val_lbl)
-	slider.value_changed.connect(func(v: float) -> void:
-		var n: int = clampi(int(round(v)), 1, 5)
-		val_lbl.text = str(n)
-		Settings.bot_skill = n
-		Settings.save())
 
 
 var _stats_body: RichTextLabel = null
@@ -532,100 +312,6 @@ func _refresh_stats_labels() -> void:
 	for pair in pairs:
 		lines.append("  %s: %d" % [pair[0], pair[1]])
 	_stats_body.text = "\n".join(lines)
-
-
-func _build_cosmetics() -> void:
-	_cos_panel = VBoxContainer.new()
-	_cos_panel.set_anchors_preset(Control.PRESET_CENTER)
-	_cos_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_cos_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-	_cos_panel.add_theme_constant_override("separation", 12)
-	_cos_panel.custom_minimum_size = Vector2(460, 0)
-	_cos_panel.visible = false
-	add_child(_cos_panel)
-
-	var head := Label.new()
-	head.text = "CUSTOMIZE"
-	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	head.add_theme_font_size_override("font_size", 26)
-	head.add_theme_color_override("font_color", Color(0.95, 0.82, 0.4))
-	_cos_panel.add_child(head)
-
-	# Head slot — 7 options (helm / kap / hair1-4 / bald).
-	var head_row := HBoxContainer.new()
-	head_row.add_theme_constant_override("separation", 12)
-	_cos_panel.add_child(head_row)
-	var head_lbl := Label.new()
-	head_lbl.text = "Head"
-	head_lbl.custom_minimum_size = Vector2(120, 0)
-	head_row.add_child(head_lbl)
-	var head_pick := OptionButton.new()
-	var head_opts := ["helm", "kap", "hair1", "hair2", "hair3", "hair4", "none"]
-	for h in head_opts:
-		head_pick.add_item(h.capitalize())
-	head_pick.selected = clampi(head_opts.find(Settings.cos_head), 0, head_opts.size() - 1)
-	head_pick.custom_minimum_size = Vector2(260, 32)
-	head_pick.item_selected.connect(func(idx: int) -> void:
-		Settings.cos_head = head_opts[idx]
-		Settings.save())
-	head_row.add_child(head_pick)
-
-	# Chain slot — 3 options.
-	var chain_row := HBoxContainer.new()
-	chain_row.add_theme_constant_override("separation", 12)
-	_cos_panel.add_child(chain_row)
-	var chain_lbl := Label.new()
-	chain_lbl.text = "Chain"
-	chain_lbl.custom_minimum_size = Vector2(120, 0)
-	chain_row.add_child(chain_lbl)
-	var chain_pick := OptionButton.new()
-	var chain_opts := ["none", "silver", "gold"]
-	for c in chain_opts:
-		chain_pick.add_item(c.capitalize())
-	chain_pick.selected = clampi(chain_opts.find(Settings.cos_chain), 0, chain_opts.size() - 1)
-	chain_pick.custom_minimum_size = Vector2(260, 32)
-	chain_pick.item_selected.connect(func(idx: int) -> void:
-		Settings.cos_chain = chain_opts[idx]
-		Settings.save())
-	chain_row.add_child(chain_pick)
-
-	var vest := CheckButton.new()
-	vest.text = "Vest (kamizelka)"
-	vest.button_pressed = Settings.cos_vest
-	vest.toggled.connect(func(on: bool) -> void:
-		Settings.cos_vest = on
-		Settings.save())
-	_cos_panel.add_child(vest)
-
-	var cigar := CheckButton.new()
-	cigar.text = "Cigar (cygaro)"
-	cigar.button_pressed = Settings.cos_cigar
-	cigar.toggled.connect(func(on: bool) -> void:
-		Settings.cos_cigar = on
-		Settings.save())
-	_cos_panel.add_child(cigar)
-
-	var dreadlocks := CheckButton.new()
-	dreadlocks.text = "Dreadlocks (dred)"
-	dreadlocks.button_pressed = Settings.cos_dreadlocks
-	dreadlocks.toggled.connect(func(on: bool) -> void:
-		Settings.cos_dreadlocks = on
-		Settings.save())
-	_cos_panel.add_child(dreadlocks)
-
-	var dogtag := CheckButton.new()
-	dogtag.text = "Dogtag (metal)"
-	dogtag.button_pressed = Settings.cos_dogtag
-	dogtag.toggled.connect(func(on: bool) -> void:
-		Settings.cos_dogtag = on
-		Settings.save())
-	_cos_panel.add_child(dogtag)
-
-	var back := _make_button("BACK")
-	back.pressed.connect(func() -> void:
-		_cos_panel.visible = false
-		_menu_box.visible = true)
-	_cos_panel.add_child(back)
 
 
 func _build_host() -> void:
@@ -828,12 +514,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			_settings_panel.visible = true
 	elif _settings_panel != null and _settings_panel.visible:
 		_settings_panel.visible = false
-		_menu_box.visible = true
-	elif _mods_panel != null and _mods_panel.visible:
-		_mods_panel.visible = false
-		_menu_box.visible = true
-	elif _cos_panel != null and _cos_panel.visible:
-		_cos_panel.visible = false
 		_menu_box.visible = true
 	elif _stats_panel != null and _stats_panel.visible:
 		_stats_panel.visible = false

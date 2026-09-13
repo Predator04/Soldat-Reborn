@@ -5,11 +5,19 @@ const PATH := "user://settings.cfg"
 const ControlsMap = preload("res://scripts/controls_map.gd")
 
 var sfx_volume := 1.0          # 0.0 = muted, 1.0 = full
+var music_volume := 0.55       # 0.0..1.0 — separate from sfx so a quiet music track doesn't kill weapon SFX
+var music_muted := false
+# Screen shake is now a 0.0..1.0 intensity multiplier applied to _shake calls;
+# `screen_shake > 0` preserves the old "shake on" semantics for legacy readers.
 var screen_shake := true
+var screen_shake_intensity := 1.0
 var fullscreen := false
 var map_index := 0             # which map layout the next game loads
 var custom_map_path := ""      # if non-empty, main.gd loads this JSON map (issue #31)
 var lofi := false              # low-end mode: no particles, no gib meshes, no glow
+var mouse_sensitivity := 1.0   # 0.25..3.0 — scales incoming mouse motion via Input.set_custom_mouse_cursor + relative event scale
+var show_fps := false          # overlay FPS counter on the HUD
+var blood_intensity := 1.0     # 0.0..1.5 — visual gore multiplier (particles + gib count in gostek/gibs)
 
 # Cosmetics — the local player's persistent character look.
 # Values match filenames in assets/gostek-gfx/:
@@ -80,7 +88,10 @@ func load_settings() -> void:
 	if cf.load(PATH) != OK:
 		return
 	sfx_volume = float(cf.get_value("audio", "sfx_volume", 1.0))
+	music_volume = clampf(float(cf.get_value("audio", "music_volume", 0.55)), 0.0, 1.0)
+	music_muted = bool(cf.get_value("audio", "music_muted", false))
 	screen_shake = bool(cf.get_value("game", "screen_shake", true))
+	screen_shake_intensity = clampf(float(cf.get_value("game", "screen_shake_intensity", 1.0)), 0.0, 2.0)
 	fullscreen = bool(cf.get_value("video", "fullscreen", false))
 	map_index = int(cf.get_value("game", "map_index", 0))
 	custom_map_path = str(cf.get_value("game", "custom_map_path", ""))
@@ -89,6 +100,9 @@ func load_settings() -> void:
 	survival = bool(cf.get_value("game", "survival", false))
 	advance = bool(cf.get_value("game", "advance", false))
 	lofi = bool(cf.get_value("video", "lofi", false))
+	mouse_sensitivity = clampf(float(cf.get_value("controls", "mouse_sensitivity", 1.0)), 0.25, 3.0)
+	show_fps = bool(cf.get_value("video", "show_fps", false))
+	blood_intensity = clampf(float(cf.get_value("game", "blood_intensity", 1.0)), 0.0, 1.5)
 	cos_head = str(cf.get_value("cosmetics", "head", "helm"))
 	cos_vest = bool(cf.get_value("cosmetics", "vest", true))
 	cos_chain = str(cf.get_value("cosmetics", "chain", "none"))
@@ -106,7 +120,10 @@ func load_settings() -> void:
 func save() -> void:
 	var cf := ConfigFile.new()
 	cf.set_value("audio", "sfx_volume", sfx_volume)
+	cf.set_value("audio", "music_volume", music_volume)
+	cf.set_value("audio", "music_muted", music_muted)
 	cf.set_value("game", "screen_shake", screen_shake)
+	cf.set_value("game", "screen_shake_intensity", screen_shake_intensity)
 	cf.set_value("video", "fullscreen", fullscreen)
 	cf.set_value("game", "map_index", map_index)
 	cf.set_value("game", "custom_map_path", custom_map_path)
@@ -115,6 +132,9 @@ func save() -> void:
 	cf.set_value("game", "survival", survival)
 	cf.set_value("game", "advance", advance)
 	cf.set_value("video", "lofi", lofi)
+	cf.set_value("controls", "mouse_sensitivity", mouse_sensitivity)
+	cf.set_value("video", "show_fps", show_fps)
+	cf.set_value("game", "blood_intensity", blood_intensity)
 	cf.set_value("cosmetics", "head", cos_head)
 	cf.set_value("cosmetics", "vest", cos_vest)
 	cf.set_value("cosmetics", "chain", cos_chain)
