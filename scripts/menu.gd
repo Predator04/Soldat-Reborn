@@ -299,7 +299,7 @@ func _build_status() -> void:
 
 func _build_footer() -> void:
 	var foot := Label.new()
-	foot.text = "WASD move · W jump · S crouch · X prone · RMB jet · LMB shoot · 1-0 primaries · Q secondary · R reload · E grenade"
+	foot.text = "WASD · W jump · S crouch/roll · X prone · RMB jet · LMB shoot · 1-0 · Q sec · R reload · E nade · F throw · G nade type · / command"
 	foot.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	foot.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	foot.offset_top = -40

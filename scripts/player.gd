@@ -64,6 +64,7 @@ var muzzle_t := 0.0
 var q_prev := false     # prev-frame Q — swap on rising edge only, not every physics tick
 var x_prev := false     # prev-frame X — prone toggle on rising edge
 var s_prev := false     # prev-frame S — roll on rising edge with lateral momentum
+var f_prev := false     # prev-frame F — throw current weapon on rising edge
 var crouching := false
 var prone := false
 # Roll — S pressed while running triggers a short forward burst (Soldat's roll).
@@ -118,6 +119,7 @@ var grenade_scene := preload("res://scenes/grenade.tscn")
 var rocket_scene := preload("res://scenes/rocket.tscn")
 const SoldierArt = preload("res://scripts/soldier_art.gd")
 const Gostek = preload("res://scripts/gostek.gd")
+const WeaponPickup = preload("res://scripts/weapon_pickup.gd")
 
 
 func _ready() -> void:
@@ -342,6 +344,13 @@ func _physics_process(delta: float) -> void:
 	if g_now and not g_prev:
 		use_cluster = not use_cluster
 	g_prev = g_now
+
+	# F — throw current weapon (issue #11). Knife throws deal damage; other
+	# weapons become physics pickups that any soldier can grab.
+	var f_now := Input.is_physical_key_pressed(KEY_F)
+	if f_now and not f_prev:
+		_drop_active_weapon()
+	f_prev = f_now
 
 	# grenade
 	grenade_cd -= delta
@@ -633,6 +642,38 @@ func _perform_melee() -> void:
 			_start_reload()
 
 
+func _drop_active_weapon() -> void:
+	var w := _active_weapon()
+	var wname := str(w["name"])
+	if Net.is_networked():
+		rpc("net_drop_weapon", wname, global_position, aim_dir)
+	else:
+		net_drop_weapon(wname, global_position, aim_dir)
+
+
+func try_pickup_weapon(weapon_name: String) -> bool:
+	# Only the authority peer mutates the loadout — otherwise net_state loops.
+	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
+		return false
+	for i in weapons.size():
+		if str(weapons[i]["name"]) == weapon_name:
+			ammo[i] = int(weapons[i]["mag"])
+			weapon_index = i
+			using_secondary = false
+			reloading = false
+			reload_t = 0.0
+			return true
+	for i in secondary.size():
+		if str(secondary[i]["name"]) == weapon_name:
+			secondary_ammo[i] = int(secondary[i]["mag"])
+			secondary_index = i
+			using_secondary = true
+			reloading = false
+			reload_t = 0.0
+			return true
+	return false
+
+
 func _throw_grenade() -> void:
 	grenades -= 1
 	Sfx.grenade_throw()
@@ -839,6 +880,21 @@ func net_grenade(g_pos: Vector2, g_vel: Vector2, g_ang: float, cluster: bool = f
 		g.fuse = 1.4
 		g.damage = 40.0
 	get_parent().add_child(g)
+
+
+@rpc("authority", "call_local", "reliable")
+func net_drop_weapon(weapon_name: String, from_pos: Vector2, aim: Vector2) -> void:
+	var wp := WeaponPickup.new()
+	wp.weapon_name = weapon_name
+	wp.team = team
+	wp.thrower_name = display_name
+	wp.damage_on_hit = 55.0 if weapon_name == "Knife" else 0.0
+	wp.global_position = from_pos + aim * 20.0
+	wp.linear_velocity = aim * 520.0 + Vector2(0, -160.0)
+	wp.angular_velocity = randf_range(-8.0, 8.0)
+	var parent := get_parent()
+	if parent != null:
+		parent.add_child(wp)
 
 
 @rpc("authority", "call_local", "reliable")

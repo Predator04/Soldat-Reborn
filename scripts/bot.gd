@@ -276,6 +276,14 @@ const BINK_BY_WEAPON := {
 }
 
 
+func try_pickup_weapon(weapon_name: String) -> bool:
+	# Bots only understand two loadouts today (AK-74 / LAW) — swap if matched.
+	if weapon_name == "LAW" or weapon_name == "AK-74":
+		loadout = weapon_name
+		return true
+	return false
+
+
 func take_damage(amount: float, killer := "", weapon := "", killer_team := -1) -> void:
 	if dead:
 		return
