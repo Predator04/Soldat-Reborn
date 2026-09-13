@@ -299,9 +299,12 @@ func _make_label(pos: Vector2, col: Color) -> Label:
 	return l
 
 
-func show_death(killer: String, weapon: String) -> void:
+func show_death(killer: String, weapon: String, respawn_secs: float = 2.0) -> void:
 	_dead = true
-	_death_remaining = 2.0
+	# Countdown matches the real respawn delay so the label doesn't tick to 0
+	# while the player is still on the floor (INF attackers pay 5s, not 2s).
+	# Pass a negative value to display the "no respawn" survival hint instead.
+	_death_remaining = respawn_secs
 	lbl_death.text = ("You were killed by %s" % killer) if killer != "" else "You died"
 	if weapon != "" and killer != "":
 		lbl_death.text += "  [%s]" % weapon
@@ -347,10 +350,15 @@ func _on_kill(killer_name: String, victim_name: String, weapon_name: String, kil
 
 func _process(delta: float) -> void:
 	if _dead:
-		_death_remaining -= delta
-		lbl_respawn.text = "Respawning in %d" % maxi(0, int(ceil(_death_remaining)))
-		if _death_remaining <= 0.0:
-			_hide_death()
+		if _death_remaining < 0.0:
+			# Survival: no respawn until the round resets. The desaturated overlay
+			# stays up until show_death is called again (or _hide_death fires).
+			lbl_respawn.text = "Waiting for next round..."
+		else:
+			_death_remaining -= delta
+			lbl_respawn.text = "Respawning in %d" % maxi(0, int(ceil(_death_remaining)))
+			if _death_remaining <= 0.0:
+				_hide_death()
 	# Prefix the mode so users know which rules are live.
 	var mode_str: String = ""
 	match Settings.game_mode:

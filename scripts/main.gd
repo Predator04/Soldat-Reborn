@@ -252,12 +252,15 @@ func _spawn_player() -> void:
 
 
 func _on_player_died() -> void:
-	if hud:
-		hud.show_death(str(player.last_killer), str(player.last_weapon))
 	# Survival: no respawn until round ends. _reset_round will (re)spawn everyone.
 	if Settings.survival and round_active:
+		if hud:
+			# Negative delay = HUD shows "waiting for next round" instead of a countdown.
+			hud.show_death(str(player.last_killer), str(player.last_weapon), -1.0)
 		return
 	var delay: float = _respawn_delay_for_team(int(player.team))
+	if hud:
+		hud.show_death(str(player.last_killer), str(player.last_weapon), delay)
 	get_tree().create_timer(delay).timeout.connect(_spawn_player)
 
 
