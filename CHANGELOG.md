@@ -2,6 +2,73 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.3.0] — 2026-09-12
+
+Retail-quality pass. New modes, modifiers, cosmetics, stats, GIF
+recording, plus a full sweep of MP fidelity fixes (weapon-drop desync,
+M2 turret sync, bot ammo).
+
+### Added
+- **Domination mode** (issue #23). Three control points (A/B/C) on
+  each map's ground row. Standing on a point for 4 s captures it for
+  your team; each owned point ticks 1 pt/sec into your team's score.
+  First to 90 wins. Empty points drain progress back to neutral.
+- **Battle Royale mode** (issue #28). FFA with a shrinking ring
+  (2200 → 180 px @ 42 px/sec). Outside the zone = 22 dps. Last
+  soldier alive wins. Zone radius surfaces in the HUD mode tag so
+  players can pace their moves.
+- **Game modifiers** (issue #24). Menu sliders for gravity, jet fuel
+  regen, weapon damage, and player speed — all 0.5×–2.0× (speed
+  0.5×–1.5×). Config-driven via `settings.cfg [mods]`; stock = 1.0×.
+  Applied at physics + damage sites.
+- **Lo-fi mode** (issue #25). Graphics toggle disables particle
+  bursts, gib sprays, ragdoll chunks, and jet flames for low-end
+  hardware. Audio cues still fire.
+- **Character customization** (issue #26). Menu picker for head
+  cosmetic (helm / kap / hair1–4 / bald), chain (none / silver / gold),
+  vest, and cigar. Bots roll a random look on spawn so the field
+  reads as distinct characters.
+- **GIF recording** (issue #27). F9 toggles recording; the recorder
+  captures 20 fps to `user://recordings/clip_<time>.gif`, capped at
+  300 frames (~15 s). Simplified LZW encoder (re-emits CLEAR to keep
+  the code width fixed) — larger files than a full encoder but pure
+  GDScript and portable.
+- **Local statistics** (issue #29). Stats autoload tracks kills,
+  deaths, suicides, shots, hits (K/D + accuracy), wins, losses,
+  matches, and per-weapon kill breakdown. Persists to
+  `user://stats.cfg`. Menu adds a STATS screen with reset.
+- **Improved grenade physics** (issue #30). Bouncier restitution
+  (0.55 → 0.72), lower friction (0.4 → 0.18), lighter mass, slightly
+  reduced gravity. Grenades now clear platforms and slide down slopes
+  rather than dying on first bounce.
+
+### Changed
+- **Host-authoritative weapon drops** (fixes #34). Only the host runs
+  physics for WeaponPickup RigidBody2Ds; clients freeze locally
+  (FREEZE_MODE_KINEMATIC) and receive 10 Hz pos/vel/ang snapshots via
+  a new `net_pickup_state` broadcast from Main. Contact detection is
+  host-only so both peers agree on who picks up what and when.
+- **M2 stationary gun now syncs across MP** (fixes #35). Mount/dismount
+  route through Main as authoritative RPCs. Each M2 gets a stable
+  `m2_id`. Only the operator's peer reads input; aim streams
+  unreliable_ordered at physics rate; fires broadcast reliably so
+  bullets appear on all peers.
+- **Bots track ammo + reload** (fixes #36). Per-loadout mag size and
+  reload timer (AK-74: 30/2 s, LAW: 1/3 s). Firing drains ammo; the
+  empty-mag path kicks off a reload. Pickups reset the mag to full.
+- **Draw scoreboard explains why** (fixes #37). `_end_round_by_time`
+  records a human-readable subtitle for empty-scoreboard, tied, and
+  time-up-with-a-leader cases. Rendered as a smaller line under the
+  DRAW / WINS banner.
+- **Rambo Bow respawn cooldown** (fixes #38). When the carrier dies,
+  the bow now waits 4 s before re-spawning at map center — prevents
+  the instant re-pickup exploit.
+
+### Deferred (open issues, milestone-scale features)
+- In-game level editor (#31) — Soldat 2's crown jewel, its own release.
+- Procedural level generation (#32) — large subsystem.
+- Ranked matchmaking / dedicated servers (#33) — needs server infra.
+
 ## [1.2.0] — 2026-09-12
 
 Retail-polish release. Rounds out Soldat's mode/weapon/movement surface: all
