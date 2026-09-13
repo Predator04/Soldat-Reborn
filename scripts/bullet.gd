@@ -7,6 +7,7 @@ var damage := 12.0
 var team := 0
 var killer_name := ""
 var weapon_name := ""
+var _hit := false
 
 
 func _ready() -> void:
@@ -26,14 +27,20 @@ func _physics_process(delta: float) -> void:
 
 
 func _on_body_entered(body: Node) -> void:
+	# queue_free() is deferred; a second body_entered in the same physics flush would
+	# otherwise apply damage to a second soldier stacked on the first.
+	if _hit:
+		return
 	if body is CharacterBody2D:
 		if body.get("team") != team and body.has_method("take_damage"):
+			_hit = true
 			# Damage only on the target's authority peer (SP: no peer == local == damage runs).
 			if multiplayer.multiplayer_peer == null or body.is_multiplayer_authority():
 				body.take_damage(damage, killer_name, weapon_name, team)
 			queue_free()
 			return
 		return
+	_hit = true
 	queue_free()
 
 

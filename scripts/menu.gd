@@ -192,8 +192,15 @@ func _build_host() -> void:
 		if idx < 0:
 			idx = _map_pick.selected
 		idx = clampi(idx, 0, MAP_NAMES.size() - 1)
+		Settings.map_index = idx
+		Settings.save()
+		start.disabled = true
 		if Net.host_game(Net.DEFAULT_PORT, idx):
-			get_tree().change_scene_to_file("res://scenes/main.tscn"))
+			get_tree().change_scene_to_file("res://scenes/main.tscn")
+		else:
+			# Net.host_game already set the status text; re-enable so the user can retry.
+			start.disabled = false
+			_status_label.text = Net.status)
 	_host_panel.add_child(start)
 
 	var back := _make_button("BACK")
@@ -298,6 +305,15 @@ func _on_connect_pressed() -> void:
 	if not Net.join_game(ip, port):
 		_connecting = false
 		_connect_btn.disabled = false
+		return
+	# Watchdog: if neither connected nor disconnected fires within a few seconds,
+	# re-enable the button so the user isn't stuck on a spinner forever.
+	get_tree().create_timer(6.0).timeout.connect(func() -> void:
+		if _connecting and is_instance_valid(_connect_btn):
+			_connecting = false
+			_connect_btn.disabled = false
+			Net.leave()
+			_status_label.text = "Connection timed out")
 
 
 func _on_net_status_changed() -> void:

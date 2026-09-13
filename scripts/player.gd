@@ -254,8 +254,13 @@ func _physics_process(delta: float) -> void:
 
 
 func _switch_weapon(idx: int) -> void:
-	if idx == weapon_index or reloading:
+	if idx == weapon_index:
 		return
+	# Allow switching mid-reload to cancel it — otherwise the player is hard-locked
+	# for LAW's 3s or Spas's 2.5s with no way to defend.
+	if reloading:
+		reloading = false
+		reload_t = 0.0
 	weapon_index = idx
 	fire_cd = 0.15
 
@@ -266,7 +271,7 @@ func _start_reload() -> void:
 		return
 	reloading = true
 	reload_t = float(w["reload"])
-	Sfx.reload()
+	Sfx.reload(str(w["name"]))
 
 
 func _shoot() -> void:
@@ -289,7 +294,15 @@ func _shoot() -> void:
 func _throw_grenade() -> void:
 	grenades -= 1
 	var toss := (aim_dir + Vector2(0, -0.55)).normalized()
-	var g_pos := global_position + aim_dir * 22.0
+	var target_pos := global_position + aim_dir * 22.0
+	# Short raycast so point-blank wall throws don't spawn the RigidBody2D inside geometry.
+	var g_pos := target_pos
+	var space := get_world_2d().direct_space_state
+	var query := PhysicsRayQueryParameters2D.create(global_position, target_pos)
+	query.exclude = [self]
+	var hit := space.intersect_ray(query)
+	if hit.has("position"):
+		g_pos = (hit["position"] as Vector2) - aim_dir * 4.0
 	var g_vel := toss * 480.0
 	var g_ang := randf_range(-8.0, 8.0)
 	if Net.is_networked():
@@ -306,6 +319,10 @@ func _shake(amount: float) -> void:
 
 func take_damage(amount: float, killer := "", weapon := "", killer_team := -1) -> void:
 	if dead:
+		return
+	# Damage is only computed on the victim's authority in MP — guard against accidental
+	# non-authority callers so they don't spam authority-check errors down the death path.
+	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
 		return
 	health -= amount
 	_shake(7.0)
@@ -341,7 +358,13 @@ func _die() -> void:
 	if Net.is_networked() and Net.is_host():
 		var peer_id := get_multiplayer_authority()
 		var m := get_parent()
+		var mode_at_schedule: int = Net.mode
 		get_tree().create_timer(2.0).timeout.connect(func() -> void:
+			# Bail if we've since torn down / rehosted / joined — don't respawn into a stale scene.
+			if Net.mode != mode_at_schedule:
+				return
+			if get_tree().current_scene != m:
+				return
 			if is_instance_valid(m) and m.has_method("_respawn_peer"):
 				m._respawn_peer(peer_id))
 	queue_free()

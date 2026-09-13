@@ -20,6 +20,7 @@ func load_settings() -> void:
 	sfx_volume = float(cf.get_value("audio", "sfx_volume", 1.0))
 	screen_shake = bool(cf.get_value("game", "screen_shake", true))
 	fullscreen = bool(cf.get_value("video", "fullscreen", false))
+	map_index = int(cf.get_value("game", "map_index", 0))
 
 
 func save() -> void:
@@ -27,6 +28,7 @@ func save() -> void:
 	cf.set_value("audio", "sfx_volume", sfx_volume)
 	cf.set_value("game", "screen_shake", screen_shake)
 	cf.set_value("video", "fullscreen", fullscreen)
+	cf.set_value("game", "map_index", map_index)
 	cf.save(PATH)
 
 

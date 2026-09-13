@@ -4,7 +4,8 @@ extends CharacterBody2D
 signal died
 
 @export var color := Color(0.85, 0.3, 0.25)
-var team := 1
+# Dedicated non-peer team id: keeps bots hostile to any human peer including host (peer_id 1).
+var team := 99
 var display_name := "Bot"
 var loadout := "AK-74"  # or "LAW" — set by Main._spawn_bot before add_child
 
@@ -22,6 +23,8 @@ var fire_cd := 0.5
 var jump_cd := 0.0
 var muzzle_t := 0.0
 var target: Node2D = null
+var _target_refresh_cd := 0.0
+var _stuck_t := 0.0
 
 # grenades
 var grenades := 3
@@ -39,6 +42,8 @@ const JET_THRUST := -1050.0
 const MAX_FALL := 1300.0
 const BULLET_SPEED := 720.0
 const ENGAGE_RANGE := 720.0
+const ROCKET_SPEED := 720.0
+const ROCKET_MIN_RANGE := 180.0  # LAW splashes 130px — don't rocket own feet
 
 var bullet_scene := preload("res://scenes/bullet.tscn")
 var grenade_scene := preload("res://scenes/grenade.tscn")
@@ -75,7 +80,7 @@ func _physics_process(delta: float) -> void:
 	if dead:
 		return
 
-	_refresh_target()
+	_refresh_target(delta)
 
 	var on_floor := is_on_floor()
 	var dx := 0.0
@@ -153,20 +158,44 @@ func _physics_process(delta: float) -> void:
 	muzzle_t = maxf(0.0, muzzle_t - delta * 10.0)
 	if is_instance_valid(target) and fire_cd <= 0.0:
 		var to_t: Vector2 = target.global_position - global_position
-		if to_t.length() < ENGAGE_RANGE:
+		var t_len: float = to_t.length()
+		# LAW bots refuse point-blank shots — rocket blast radius 130 would splash themselves to death.
+		if loadout == "LAW" and t_len < ROCKET_MIN_RANGE:
+			pass
+		elif t_len < ENGAGE_RANGE:
 			_shoot(to_t)
 
 	queue_redraw()
 
 
-func _refresh_target() -> void:
-	if is_instance_valid(target) and not target.get("dead"):
+func _refresh_target(delta: float = 0.0) -> void:
+	_target_refresh_cd -= delta
+	# Detect being wedged against a wall: dir set but velocity stalled.
+	var stuck := false
+	if is_instance_valid(target):
+		var wants_dx: float = target.global_position.x - global_position.x
+		if absf(wants_dx) > 120.0 and absf(velocity.x) < 20.0:
+			_stuck_t += delta
+			if _stuck_t > 0.5:
+				stuck = true
+		else:
+			_stuck_t = 0.0
+	# Keep the current target only briefly; periodically re-pick the closest live enemy
+	# (or force a re-pick if we're stuck on geometry).
+	if is_instance_valid(target) and not target.get("dead") and _target_refresh_cd > 0.0 and not stuck:
 		return
-	target = null
+	_target_refresh_cd = 1.2
+	_stuck_t = 0.0
+	var best: Node2D = null
+	var best_d2: float = INF
 	for s in get_tree().get_nodes_in_group("soldier"):
-		if s.get("team") != team and s != self and not s.get("dead"):
-			target = s
-			break
+		if s == self or s.get("team") == team or s.get("dead"):
+			continue
+		var d2: float = (s.global_position - global_position).length_squared()
+		if d2 < best_d2:
+			best_d2 = d2
+			best = s
+	target = best
 
 
 func _bullet_incoming() -> bool:
@@ -175,7 +204,8 @@ func _bullet_incoming() -> bool:
 			continue
 		var to_b: Vector2 = b.global_position - global_position
 		var d: float = to_b.length()
-		if d < 150.0 and d > 1.0:
+		# Widened from 150 → 250: bullets travel ~15px/physics tick, so 150 could skip a dodge frame entirely.
+		if d < 250.0 and d > 1.0:
 			var bvel: Vector2 = b.get("direction") * float(b.get("speed"))
 			if to_b.normalized().dot(bvel.normalized()) < -0.6:
 				return true
@@ -185,7 +215,8 @@ func _bullet_incoming() -> bool:
 func _throw_grenade(dx: float, dy: float, dist: float) -> void:
 	grenades -= 1
 	var g := grenade_scene.instantiate()
-	g.global_position = global_position + Vector2(signf(dx) * 10.0, -8.0)
+	# Spawn outside the bot's 11×20 half-extent so physics depenetration doesn't kick the grenade sideways.
+	g.global_position = global_position + Vector2(signf(dx) * 20.0, -8.0)
 	g.team = team
 	g.killer_name = display_name
 	var toss := (Vector2(dx, dy) / dist + Vector2(0, -0.6)).normalized()
@@ -198,7 +229,7 @@ func _shoot(to_t: Vector2) -> void:
 	var aim := to_t.normalized()
 	Sfx.shoot(loadout)
 	# lead the target by its velocity (predictive aim)
-	var speed_est: float = 720.0 if loadout != "LAW" else 720.0
+	var speed_est: float = ROCKET_SPEED if loadout == "LAW" else BULLET_SPEED
 	if is_instance_valid(target) and target is CharacterBody2D:
 		var t_est: float = to_t.length() / speed_est
 		var lead: Vector2 = target.global_position + target.velocity * t_est
@@ -207,7 +238,7 @@ func _shoot(to_t: Vector2) -> void:
 		var r := rocket_scene.instantiate()
 		r.global_position = global_position + aim * 26.0
 		r.direction = aim
-		r.speed = 720.0
+		r.speed = ROCKET_SPEED
 		r.damage = 90.0
 		r.team = team
 		r.killer_name = display_name
@@ -230,6 +261,9 @@ func _shoot(to_t: Vector2) -> void:
 
 func take_damage(amount: float, killer := "", weapon := "", killer_team := -1) -> void:
 	if dead:
+		return
+	# Bots are singleplayer-only today, but if MP ever spawns them, only their authority peer should tally damage.
+	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
 		return
 	health -= amount
 	if killer != "":

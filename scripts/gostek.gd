@@ -113,7 +113,10 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 			"main":  col = tint
 			"pants": col = pants_tint
 			"skin":  col = skin_tint
-			_:       col = Color.WHITE
+			_:
+				# "none" parts (feet) still darken on death so corpses don't have
+				# full-brightness white boots against the darkened body.
+				col = Color(0.4, 0.4, 0.4, 1.0) if dead else Color.WHITE
 
 		node.draw_set_transform(p1, angle, Vector2(sx, sy))
 		node.draw_texture_rect(tex, Rect2(-cx, -cy, w, h), false, col)

@@ -195,7 +195,9 @@ func _team_display_info(team_id: int) -> Dictionary:
 	if not Net.is_networked():
 		if team_id == 0:
 			return {"name": "YOU", "color": Color(0.35, 0.85, 0.5)}
-		return {"name": "BOTS", "color": Color(0.9, 0.35, 0.3)}
+		# Distinguish multiple bot teams by id; the common single-team case still reads as "BOTS".
+		var nm := "BOTS" if team_id == 99 else "BOT %d" % team_id
+		return {"name": nm, "color": Color(0.9, 0.35, 0.3)}
 	# MP: reuse the soldier's own color + display_name for their team.
 	for s in get_tree().get_nodes_in_group("soldier"):
 		if not is_instance_valid(s):

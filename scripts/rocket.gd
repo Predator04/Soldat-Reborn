@@ -48,8 +48,10 @@ func _physics_process(delta: float) -> void:
 
 
 func _on_body_entered(body: Node) -> void:
-	# Ignore the shooter's team on direct impact — you can still splash-hit them though.
+	# Same-team direct impact: skip damage but still consume the rocket so it doesn't
+	# fly through and hit again elsewhere. Splash from the fuse path can still happen.
 	if body is CharacterBody2D and body.get("team") == team:
+		queue_free()
 		return
 	_explode()
 

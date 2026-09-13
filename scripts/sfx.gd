@@ -93,8 +93,11 @@ func explode() -> void:
 	_play_event("explode", -2.0, randf_range(0.97, 1.03))
 
 
-func reload() -> void:
-	var key := _weapon_reload_key(_last_weapon)
+func reload(weapon_name := "") -> void:
+	# Fall back to the last fired weapon only if the caller didn't specify one;
+	# otherwise switching weapons before firing would play the wrong reload sample.
+	var wn := weapon_name if weapon_name != "" else _last_weapon
+	var key := _weapon_reload_key(wn)
 	_play_key(key, -8.0, 1.0)
 
 

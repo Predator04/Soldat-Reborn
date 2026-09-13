@@ -177,7 +177,8 @@ func _spawn_bots() -> void:
 	for i in spots.size():
 		# Last bot gets the LAW so at least one rocket-bot is always in the mix.
 		var loadout := "LAW" if i == spots.size() - 1 else "AK-74"
-		_spawn_bot(spots[i], 1, "Bot %d" % (i + 1), loadout)
+		# Bot team 99: a dedicated non-peer id so bots stay hostile to any human peer (incl. host peer 1).
+		_spawn_bot(spots[i], 99, "Bot %d" % (i + 1), loadout)
 
 
 func _spawn_bot(pos: Vector2, team: int, bname: String, loadout: String = "AK-74") -> void:
@@ -191,6 +192,10 @@ func _spawn_bot(pos: Vector2, team: int, bname: String, loadout: String = "AK-74
 	# Bots respawn on the same slot so the match can accumulate score.
 	b.died.connect(func() -> void:
 		get_tree().create_timer(2.0).timeout.connect(func() -> void:
+			# Guard against the outer Main being torn down (scene change / quit)
+			# during the 2s respawn window — the SceneTreeTimer keeps firing.
+			if not is_inside_tree():
+				return
 			_spawn_bot(pos, team, bname, loadout)))
 	add_child(b)
 
@@ -211,8 +216,9 @@ func _bind_local_camera(p: Node) -> void:
 		return
 	p.cam.limit_left = 0
 	p.cam.limit_right = int(MAP_W)
-	p.cam.limit_top = -500
-	p.cam.limit_bottom = int(GROUND_Y + 200)
+	# Clamp to the actual map rect so the camera can't drift into void above or past the ground body.
+	p.cam.limit_top = 0
+	p.cam.limit_bottom = int(MAP_H)
 
 
 # ── Networked spawn path ──────────────────────────────
@@ -256,8 +262,15 @@ func net_client_ready() -> void:
 		rpc_id(sender, "net_spawn_player", existing_id, p.position, p.display_name)
 	# then spawn a body for the new peer on everyone
 	_spawn_networked_player(sender)
-	# only NOW do we start sending state to this peer — their Main scene is loaded
-	# and their Player nodes exist, so net_state RPCs will resolve their target path.
+	# NOTE: _ready_peers[sender] is set only when the client acks the spawn (net_spawn_ack).
+	# Otherwise net_state (unreliable_ordered) can beat the reliable spawn RPC and error out.
+
+
+@rpc("any_peer", "reliable")
+func net_spawn_ack() -> void:
+	if not Net.is_host():
+		return
+	var sender := multiplayer.get_remote_sender_id()
 	_ready_peers[sender] = true
 
 
@@ -276,12 +289,17 @@ func net_spawn_player(peer_id: int, spawn_pos: Vector2, display_name: String) ->
 	p.team = peer_id  # FFA: each peer owns their own team so bullets damage everyone else
 	p.set_multiplayer_authority(peer_id)
 	add_child(p)
+	# Re-apply after add_child so children created in _ready (cam, jet_particles) inherit authority.
+	p.set_multiplayer_authority(peer_id, true)
 	_players_by_id[peer_id] = p
 	if peer_id == Net.local_id():
 		player = p
 		_bind_local_camera(p)
 		if hud:
 			hud.player = p
+		# Tell the host our body is spawned locally so it can start sending state.
+		if Net.is_client():
+			rpc_id(1, "net_spawn_ack")
 
 
 @rpc("authority", "call_local", "reliable")
