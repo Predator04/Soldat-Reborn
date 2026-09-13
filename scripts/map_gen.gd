@@ -60,12 +60,45 @@ static func generate(seed: int) -> Dictionary:
 		bot_spawns.append(c)
 	while bot_spawns.size() < 4:
 		bot_spawns.append(Vector2(MAP_W - 400.0 - float(bot_spawns.size()) * 220.0, GROUND_Y - 125.0))
+	# Mode entities — generate for all modes so a single generated map is
+	# playable in CTF/INF/HTF/RM/DOM without further editing.
+	var ctf_flags: Array = [
+		Vector2(300.0, GROUND_Y - 70.0),
+		Vector2(MAP_W - 300.0, GROUND_Y - 70.0),
+	]
+	var mid_flag := Vector2(MAP_W * 0.5, GROUND_Y - 70.0)
+	# DOM: three points evenly spread; snap y to nearest platform top if one
+	# is nearby so the point sits on a surface instead of floating.
+	var dom_points: Array = []
+	for frac in [0.20, 0.50, 0.80]:
+		var target := Vector2(MAP_W * frac, GROUND_Y - 30.0)
+		dom_points.append(_snap_to_surface(platforms, target))
 	return {
 		"name": "Generated %d" % (seed if seed >= 0 else -seed),
 		"platforms": platforms,
 		"player_spawn": player_spawn,
 		"bot_spawns": bot_spawns,
+		"ctf_flags": ctf_flags,
+		"inf_flag": mid_flag,
+		"htf_flag": mid_flag,
+		"rambo_pos": mid_flag,
+		"dom_points": dom_points,
 	}
+
+
+static func _snap_to_surface(platforms: Array, target: Vector2) -> Vector2:
+	# If any platform's top surface is within ±180px horizontally and above
+	# the target, return the platform-top position instead.
+	var best_y := target.y
+	for pl in platforms:
+		var p: Vector2 = pl["p"]
+		var s: Vector2 = pl["s"]
+		if abs(p.x - target.x) > s.x * 0.5 + 40.0:
+			continue
+		var top := p.y - s.y * 0.5 - 30.0
+		if top < best_y and top > 300.0:
+			best_y = top
+	return Vector2(target.x, best_y)
 
 
 static func _shuffle(rng: RandomNumberGenerator, arr: Array) -> void:

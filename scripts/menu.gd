@@ -2,6 +2,7 @@ extends Control
 ## Main menu — Play (vs bots), Host, Join, Settings, Quit.
 
 const MapIO = preload("res://scripts/map_io.gd")
+const MapGen = preload("res://scripts/map_gen.gd")
 
 const MAP_NAMES := ["Ascent", "Towers", "Pillars"]
 const MODE_NAMES := [
@@ -154,6 +155,10 @@ func _build_menu() -> void:
 		Net.set_singleplayer()
 		get_tree().change_scene_to_file("res://scenes/map_editor.tscn"))
 	_menu_box.add_child(editor)
+
+	var gen := _make_button("GENERATE + PLAY")
+	gen.pressed.connect(_on_generate_and_play)
+	_menu_box.add_child(gen)
 
 	var host := _make_button("HOST GAME")
 	host.pressed.connect(func() -> void:
@@ -697,6 +702,21 @@ func _refresh_sp_map_pick() -> void:
 		# from "rotating" — keep slot 0 selected by default.
 		sel = 0
 	_sp_map_pick.selected = sel
+
+
+func _on_generate_and_play() -> void:
+	# Roll a fresh seed, generate a map, save it under a stable "generated" slot
+	# in user://maps/ so it stays around after play, then jump into main.tscn.
+	var seed_val := int(Time.get_unix_time_from_system())
+	var m := MapGen.generate(seed_val)
+	var path := MapIO.save_to_file("generated", m)
+	if path == "":
+		_status_label.text = "Generator failed to save map."
+		return
+	Settings.custom_map_path = path
+	Settings.save()
+	Net.set_singleplayer()
+	get_tree().change_scene_to_file("res://scenes/main.tscn")
 
 
 func _on_sp_map_selected(idx: int) -> void:
