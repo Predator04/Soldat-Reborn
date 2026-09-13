@@ -5,9 +5,12 @@ extends CanvasLayer
 ## the menu is open. Process runs while paused (PROCESS_MODE_ALWAYS) so the
 ## keyboard ESC toggle and button presses still fire.
 
+const ControlsMenu = preload("res://scripts/controls_menu.gd")
+
 var _root_panel: Control
 var _menu_box: VBoxContainer
 var _settings_panel: VBoxContainer
+var _controls_panel: VBoxContainer
 var _quit_confirm: VBoxContainer
 var _dim: ColorRect
 var _open := false
@@ -33,6 +36,7 @@ func _ready() -> void:
 
 	_build_main_menu()
 	_build_settings_panel()
+	_build_controls_panel()
 	_build_quit_confirm()
 
 
@@ -134,11 +138,24 @@ func _build_settings_panel() -> void:
 		Settings.save())
 	_settings_panel.add_child(lo)
 
-	_settings_panel.add_child(_pad(8))
+	_settings_panel.add_child(_pad(6))
+
+	var controls_btn := _make_button("CONTROLS")
+	controls_btn.pressed.connect(_open_controls)
+	_settings_panel.add_child(controls_btn)
+
+	_settings_panel.add_child(_pad(4))
 
 	var back := _make_button("BACK")
 	back.pressed.connect(_close_settings)
 	_settings_panel.add_child(back)
+
+
+func _build_controls_panel() -> void:
+	_controls_panel = ControlsMenu.new()
+	_controls_panel.visible = false
+	_controls_panel.back_pressed.connect(_close_controls)
+	_root_panel.add_child(_controls_panel)
 
 
 func _build_quit_confirm() -> void:
@@ -206,6 +223,16 @@ func _input(event: InputEvent) -> void:
 					return
 			if _open:
 				# ESC in a sub-panel steps back to the main pause list.
+				# Controls capture handles its own ESC (to cancel a rebind) —
+				# only back out once nothing is being captured, otherwise the
+				# user would lose their rebind session on the first ESC.
+				if _controls_panel.visible:
+					if _controls_panel._capturing_action != "":
+						_controls_panel._abort_capture()
+					else:
+						_close_controls()
+					get_viewport().set_input_as_handled()
+					return
 				if _settings_panel.visible:
 					_close_settings()
 					get_viewport().set_input_as_handled()
@@ -226,6 +253,7 @@ func open() -> void:
 	_open = true
 	_menu_box.visible = true
 	_settings_panel.visible = false
+	_controls_panel.visible = false
 	_quit_confirm.visible = false
 	_root_panel.visible = true
 	# Free the OS cursor so mouse buttons work reliably on the pause menu.
@@ -249,6 +277,16 @@ func _open_settings() -> void:
 func _close_settings() -> void:
 	_settings_panel.visible = false
 	_menu_box.visible = true
+
+
+func _open_controls() -> void:
+	_settings_panel.visible = false
+	_controls_panel.visible = true
+
+
+func _close_controls() -> void:
+	_controls_panel.visible = false
+	_settings_panel.visible = true
 
 
 func _open_quit_confirm() -> void:

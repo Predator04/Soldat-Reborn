@@ -2,6 +2,7 @@ extends Node
 ## Settings — persistent user preferences (autoload singleton "Settings").
 
 const PATH := "user://settings.cfg"
+const ControlsMap = preload("res://scripts/controls_map.gd")
 
 var sfx_volume := 1.0          # 0.0 = muted, 1.0 = full
 var screen_shake := true
@@ -61,6 +62,8 @@ func is_team_mode() -> bool:
 
 func _ready() -> void:
 	load_settings()
+	# Apply persisted key rebinds over the InputMap defaults baked into project.godot.
+	ControlsMap.load_and_apply()
 
 
 func load_settings() -> void:

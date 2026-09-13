@@ -238,11 +238,11 @@ func _physics_process(delta: float) -> void:
 		fuel = minf(100.0, fuel + JET_REGEN * float(Settings.mod_jet) * delta)
 		# Allow exiting prone/crouch while mounted so the soldier isn't locked
 		# into a stance they can't leave. Toggle on rising edge like normal.
-		var x_now_m := Input.is_physical_key_pressed(KEY_X)
+		var x_now_m := Input.is_action_pressed("prone")
 		if x_now_m and not x_prev and prone:
 			prone = false
 		x_prev = x_now_m
-		if crouching and not Input.is_physical_key_pressed(KEY_S):
+		if crouching and not Input.is_action_pressed("crouch"):
 			crouching = false
 		_apply_stance_shape()
 		# Recover from bink/ceasefire while mounted too — otherwise a soldier who
@@ -272,13 +272,13 @@ func _physics_process(delta: float) -> void:
 		queue_redraw()
 		return
 
-	var left := Input.is_physical_key_pressed(KEY_A)
-	var right := Input.is_physical_key_pressed(KEY_D)
-	var jump_pressed := Input.is_physical_key_pressed(KEY_SPACE) or Input.is_physical_key_pressed(KEY_W)
+	var left := Input.is_action_pressed("move_left")
+	var right := Input.is_action_pressed("move_right")
+	var jump_pressed := Input.is_action_pressed("jump")
 
 	# Crouch (S hold) + prone (X toggle). Prone locks out crouching.
 	# W/Space or another X press stands us up from prone.
-	var x_now := Input.is_physical_key_pressed(KEY_X)
+	var x_now := Input.is_action_pressed("prone")
 	if x_now and not x_prev:
 		prone = not prone
 		if prone:
@@ -286,7 +286,7 @@ func _physics_process(delta: float) -> void:
 	x_prev = x_now
 	if prone and jump_pressed:
 		prone = false
-	var s_now := Input.is_physical_key_pressed(KEY_S) and not prone
+	var s_now := Input.is_action_pressed("crouch") and not prone
 	# Roll: press S with lateral momentum → brief burst, skokdolobrot anim, no crouch shape.
 	if s_now and not s_prev and is_on_floor() and roll_cd <= 0.0 and absf(velocity.x) > 60.0:
 		roll_t = ROLL_DURATION
@@ -343,7 +343,7 @@ func _physics_process(delta: float) -> void:
 	# the boots — Soldat's Realistic ruleset removes fuel entirely.
 	# mod_jet scales thrust/drain/regen consistently; mod_gravity scales thrust
 	# so the boots still lift you in higher-gravity worlds.
-	var jet_pressed := Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) and not Settings.realistic
+	var jet_pressed := Input.is_action_pressed("jet") and not Settings.realistic
 	var mj: float = float(Settings.mod_jet)
 	var mg: float = float(Settings.mod_gravity)
 	jet_on = false
@@ -382,46 +382,46 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 	# primary weapon switching (keys 1..9,0). Numbers map to Soldat's classic slot order.
-	if Input.is_physical_key_pressed(KEY_1):
+	if Input.is_action_pressed("weapon_1"):
 		_switch_weapon(0)
-	elif Input.is_physical_key_pressed(KEY_2):
+	elif Input.is_action_pressed("weapon_2"):
 		_switch_weapon(1)
-	elif Input.is_physical_key_pressed(KEY_3):
+	elif Input.is_action_pressed("weapon_3"):
 		_switch_weapon(2)
-	elif Input.is_physical_key_pressed(KEY_4):
+	elif Input.is_action_pressed("weapon_4"):
 		_switch_weapon(3)
-	elif Input.is_physical_key_pressed(KEY_5):
+	elif Input.is_action_pressed("weapon_5"):
 		_switch_weapon(4)
-	elif Input.is_physical_key_pressed(KEY_6):
+	elif Input.is_action_pressed("weapon_6"):
 		_switch_weapon(5)
-	elif Input.is_physical_key_pressed(KEY_7):
+	elif Input.is_action_pressed("weapon_7"):
 		_switch_weapon(6)
-	elif Input.is_physical_key_pressed(KEY_8):
+	elif Input.is_action_pressed("weapon_8"):
 		_switch_weapon(7)
-	elif Input.is_physical_key_pressed(KEY_9):
+	elif Input.is_action_pressed("weapon_9"):
 		_switch_weapon(8)
-	elif Input.is_physical_key_pressed(KEY_0):
+	elif Input.is_action_pressed("weapon_10"):
 		_switch_weapon(9)
 
 	# Q toggles primary ↔ secondary — swap on the rising edge so a held key doesn't ping-pong.
-	var q_now := Input.is_physical_key_pressed(KEY_Q)
+	var q_now := Input.is_action_pressed("secondary_swap")
 	if q_now and not q_prev:
 		_toggle_secondary()
 	q_prev = q_now
 
 	# reload
-	if Input.is_physical_key_pressed(KEY_R) and not reloading:
+	if Input.is_action_pressed("reload") and not reloading:
 		_start_reload()
 
 	# Grenade type toggle (G — rising edge only, matches Q swap pattern)
-	var g_now := Input.is_physical_key_pressed(KEY_G)
+	var g_now := Input.is_action_pressed("grenade_toggle")
 	if g_now and not g_prev:
 		use_cluster = not use_cluster
 	g_prev = g_now
 
 	# F — mount an M2 if we're standing on one, otherwise throw the current
 	# weapon (issue #11). Mount only when we're not already mounted.
-	var f_now := Input.is_physical_key_pressed(KEY_F)
+	var f_now := Input.is_action_pressed("weapon_throw")
 	if f_now and not f_prev:
 		var m2 := _find_nearby_m2()
 		if m2 != null and mounted_m2 == null:
@@ -432,7 +432,7 @@ func _physics_process(delta: float) -> void:
 
 	# grenade
 	grenade_cd -= delta
-	if Input.is_physical_key_pressed(KEY_E) and grenade_cd <= 0.0 and grenades > 0:
+	if Input.is_action_pressed("grenade") and grenade_cd <= 0.0 and grenades > 0:
 		_throw_grenade()
 		grenade_cd = 0.6
 
@@ -445,7 +445,7 @@ func _physics_process(delta: float) -> void:
 			reloading = false
 			_set_active_mag(int(w_active["mag"]))
 	else:
-		var lmb := Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+		var lmb := Input.is_action_pressed("fire")
 		# Wind-up trackers: Barrett/Minigun need to spin up before their first shot,
 		# then fire at their normal rate as long as LMB stays down.
 		var startup: float = float(w_active.get("startup", 0.0))
@@ -546,8 +546,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	var hud = null
 	if parent != null and parent.get("hud") != null:
 		hud = parent.hud
-	# ALT + a..z / 0..9 → send a canned taunt over global chat.
-	if event.alt_pressed and hud != null:
+	# Taunt-modifier + a..z / 0..9 → send a canned taunt over global chat.
+	# `taunt` is rebindable (defaults to ALT); we poll live rather than reading
+	# event.alt_pressed so custom binds like F1+letter still work.
+	if Input.is_action_pressed("taunt") and hud != null:
 		var ch := ""
 		var kc: int = event.keycode
 		if kc >= KEY_A and kc <= KEY_Z:
@@ -560,19 +562,18 @@ func _unhandled_input(event: InputEvent) -> void:
 				send_chat("global", msg)
 			get_viewport().set_input_as_handled()
 			return
-	match event.physical_keycode:
-		KEY_SLASH:
-			if hud != null:
-				hud.open_command()
-				get_viewport().set_input_as_handled()
-		KEY_T:
-			if hud != null:
-				hud.open_chat("global")
-				get_viewport().set_input_as_handled()
-		KEY_Y:
-			if hud != null:
-				hud.open_chat("team")
-				get_viewport().set_input_as_handled()
+	if event.is_action_pressed("chat"):
+		if hud != null:
+			hud.open_chat("global")
+			get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("team_chat"):
+		if hud != null:
+			hud.open_chat("team")
+			get_viewport().set_input_as_handled()
+	elif event.physical_keycode == KEY_SLASH:
+		if hud != null:
+			hud.open_command()
+			get_viewport().set_input_as_handled()
 
 
 func send_chat(scope: String, msg: String) -> void:

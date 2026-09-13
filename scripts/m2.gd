@@ -135,14 +135,13 @@ func _process(delta: float) -> void:
 		var main := get_parent()
 		if main != null and main.has_method("net_m2_state"):
 			main.rpc("net_m2_state", m2_id, aim_dir)
-	# Dismount if the operator taps a directional key.
-	if Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_SPACE) \
-			or Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_D) \
-			or Input.is_physical_key_pressed(KEY_S):
+	# Dismount if the operator taps a directional key (any movement action).
+	if Input.is_action_pressed("jump") or Input.is_action_pressed("move_left") \
+			or Input.is_action_pressed("move_right") or Input.is_action_pressed("crouch"):
 		dismount()
 		return
 	# Fire on LMB — hitscan-fast bullets with a tight cone.
-	if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and fire_cd <= 0.0:
+	if Input.is_action_pressed("fire") and fire_cd <= 0.0:
 		_fire()
 
 
