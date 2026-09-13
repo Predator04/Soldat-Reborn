@@ -32,8 +32,24 @@ const PM_SCORE_TO_WIN := 20
 var _htf_accum: Dictionary = {}
 # Rambo bow — the current carrier's id (or 0 for none). Only they can score.
 var _rambo_carrier_id: int = 0
+# Rambo bow — cooldown between carrier-death and the bow re-spawning at map center.
+var _rambo_respawn_cd: float = 0.0
+const RAMBO_RESPAWN_DELAY := 4.0
 # Pointmatch — bookkeeping for respawning pickups (spawn_pos -> _next_respawn_t).
 var _pm_pickups: Dictionary = {}
+
+# Domination — control point nodes + per-team hold accumulator.
+var _dom_points: Array = []
+const DOM_CAPTURE_TIME := 4.0    # seconds standing on a neutral/enemy point to flip it
+const DOM_SCORE_TO_WIN := 90     # (owned_points × 1 pt/sec) → ~90s of full control wins
+var _dom_accum: Dictionary = {}  # team_id -> fractional accumulator (float)
+
+# Battle Royale — shrinking safe zone.
+var _br_zone_radius: float = 2200.0
+var _br_zone_center: Vector2 = Vector2(2400.0, 1200.0)
+const BR_SHRINK_RATE := 42.0   # px/sec — full ring closes in ~52s
+const BR_ZONE_MIN := 180.0
+const BR_ZONE_DPS := 22.0      # damage/sec applied outside the ring
 
 # ── Match state (host-authoritative in MP) ─────────────
 const SCORE_TO_WIN := 20
@@ -163,6 +179,8 @@ func _spawn_mode_entities() -> void:
 		Settings.MODE_HTF: _spawn_flag_htf()
 		Settings.MODE_RM:  _spawn_rambo_bow()
 		Settings.MODE_PM:  _spawn_point_pickups()
+		Settings.MODE_DOM: _spawn_dom_points()
+		Settings.MODE_BR:  _reset_br_zone()
 
 
 func _build_sky() -> void:
@@ -605,6 +623,10 @@ func _process(delta: float) -> void:
 		_tick_rambo()
 	elif Settings.game_mode == Settings.MODE_PM:
 		_tick_pointmatch(delta)
+	elif Settings.game_mode == Settings.MODE_DOM:
+		_tick_domination(delta)
+	elif Settings.game_mode == Settings.MODE_BR:
+		_tick_battle_royale(delta)
 	if round_active:
 		time_left = maxf(0.0, time_left - delta)
 		if time_left <= 0.0:
@@ -776,9 +798,15 @@ func _tick_rambo() -> void:
 			var hp: float = float(s.get("health"))
 			s.set("health", minf(100.0, hp + 40.0 * get_process_delta_time()))
 			break
+	# Cooldown gate (#38): if the previous frame had a carrier and we now have none,
+	# they died — hold off the bow's map-center respawn for a few seconds so an
+	# instant re-pickup doesn't happen the same tick.
+	if _rambo_carrier_id != 0 and carrier_id == 0:
+		_rambo_respawn_cd = RAMBO_RESPAWN_DELAY
 	_rambo_carrier_id = carrier_id
+	_rambo_respawn_cd = maxf(0.0, _rambo_respawn_cd - get_process_delta_time())
 	# Respawn the bow at map center if it doesn't exist and nobody is holding it.
-	if carrier_id == 0:
+	if carrier_id == 0 and _rambo_respawn_cd <= 0.0:
 		var exists := false
 		for wp in get_tree().get_nodes_in_group("weapon_pickup"):
 			if is_instance_valid(wp) and str(wp.get("weapon_name")) == "Rambo Bow":
@@ -786,6 +814,144 @@ func _tick_rambo() -> void:
 				break
 		if not exists:
 			_spawn_rambo_bow()
+
+
+# ── Domination ─────────────────────────────────────────
+
+func _spawn_dom_points() -> void:
+	# Three capture points along the map — left, center, right — on the ground row.
+	var ground_y: float = float(_map.get("ctf_ground_y", 1830.0))
+	var slots := [
+		{"pos": Vector2(MAP_W * 0.20, ground_y - 30.0), "name": "A"},
+		{"pos": Vector2(MAP_W * 0.50, ground_y - 30.0), "name": "B"},
+		{"pos": Vector2(MAP_W * 0.80, ground_y - 30.0), "name": "C"},
+	]
+	var visual := preload("res://scripts/dom_point_visual.gd")
+	for slot in slots:
+		var a := Area2D.new()
+		a.add_to_group("dom_point")
+		a.set_meta("owner_team", 0)   # 0 = neutral, 1 = BLUE, 2 = RED
+		a.set_meta("progress", 0.0)   # 0..1 while being captured; polarity is signed by team
+		a.set_meta("cap_team", 0)     # which team is actively capturing (0 = none)
+		a.set_meta("label", str(slot["name"]))
+		a.position = slot["pos"]
+		var col := CollisionShape2D.new()
+		var cs := CircleShape2D.new()
+		cs.radius = 40.0
+		col.shape = cs
+		a.add_child(col)
+		var vis := Node2D.new()
+		vis.set_script(visual)
+		a.add_child(vis)
+		add_child(a)
+		_dom_points.append(a)
+
+
+func _tick_domination(delta: float) -> void:
+	var soldiers := get_tree().get_nodes_in_group("soldier")
+	for a in _dom_points:
+		if not is_instance_valid(a):
+			continue
+		# Which teams have soldiers standing on this point?
+		var blue_on := 0
+		var red_on := 0
+		var radius: float = 44.0
+		for s in soldiers:
+			if not is_instance_valid(s) or bool(s.get("dead")):
+				continue
+			var t: int = int(s.get("team"))
+			if s.global_position.distance_to(a.global_position) > radius:
+				continue
+			if t == TEAM_BLUE:
+				blue_on += 1
+			elif t == TEAM_RED:
+				red_on += 1
+		var contested: bool = blue_on > 0 and red_on > 0
+		var owner_team: int = int(a.get_meta("owner_team"))
+		var progress: float = float(a.get_meta("progress"))
+		var cap_team: int = int(a.get_meta("cap_team"))
+		if not contested and (blue_on > 0 or red_on > 0):
+			var t_cap: int = TEAM_BLUE if blue_on > 0 else TEAM_RED
+			if owner_team == t_cap:
+				progress = 0.0
+				cap_team = 0
+			else:
+				# Same capturing team as last tick → keep ramping. Fresh team resets progress.
+				if cap_team != t_cap:
+					cap_team = t_cap
+					progress = 0.0
+				progress = clampf(progress + delta / DOM_CAPTURE_TIME, 0.0, 1.0)
+				if progress >= 1.0:
+					owner_team = t_cap
+					progress = 0.0
+					cap_team = 0
+					Sfx._play_event("explode", -6.0, 1.1)
+					kill.emit("TEAM %d" % t_cap, "POINT %s" % str(a.get_meta("label")), "captured", t_cap, -1)
+		elif not contested and blue_on == 0 and red_on == 0:
+			# Empty point drains progress over time so long-held drops reset naturally.
+			progress = maxf(0.0, progress - delta / (DOM_CAPTURE_TIME * 2.0))
+			if progress <= 0.0:
+				cap_team = 0
+		a.set_meta("owner_team", owner_team)
+		a.set_meta("progress", progress)
+		a.set_meta("cap_team", cap_team)
+	# Tick score: each owned point = 1 pt/sec into that team's accumulator.
+	for a in _dom_points:
+		if not is_instance_valid(a):
+			continue
+		var owner_team: int = int(a.get_meta("owner_team"))
+		if owner_team == 0:
+			continue
+		_dom_accum[owner_team] = float(_dom_accum.get(owner_team, 0.0)) + delta
+		while float(_dom_accum.get(owner_team, 0.0)) >= 1.0:
+			_dom_accum[owner_team] = float(_dom_accum[owner_team]) - 1.0
+			scores[owner_team] = int(scores.get(owner_team, 0)) + 1
+			if int(scores[owner_team]) >= DOM_SCORE_TO_WIN:
+				_end_round(owner_team)
+				return
+
+
+func dom_points() -> Array:
+	return _dom_points
+
+
+# ── Battle Royale ──────────────────────────────────────
+
+func _reset_br_zone() -> void:
+	_br_zone_radius = 2200.0
+	_br_zone_center = Vector2(MAP_W * 0.5, MAP_H * 0.6)
+	# Attach the zone visual once — it reads center/radius from us on each redraw.
+	if not has_node("BrZoneVisual"):
+		var vis := Node2D.new()
+		vis.name = "BrZoneVisual"
+		vis.set_script(preload("res://scripts/br_zone_visual.gd"))
+		add_child(vis)
+
+
+func _tick_battle_royale(delta: float) -> void:
+	_br_zone_radius = maxf(BR_ZONE_MIN, _br_zone_radius - BR_SHRINK_RATE * delta)
+	# Damage anyone outside the safe zone; last soldier alive wins.
+	var alive: Array = []
+	for s in get_tree().get_nodes_in_group("soldier"):
+		if not is_instance_valid(s) or bool(s.get("dead")):
+			continue
+		alive.append(s)
+		var d: float = s.global_position.distance_to(_br_zone_center)
+		if d > _br_zone_radius and s.has_method("take_damage"):
+			# Non-authority replicas will refuse — matches CFG for other damage paths.
+			if multiplayer.multiplayer_peer == null or s.is_multiplayer_authority():
+				s.take_damage(BR_ZONE_DPS * delta, str(s.get("display_name")), "Zone", int(s.get("team")))
+	# Winner: only one soldier alive.
+	if alive.size() == 1:
+		var lone: Node = alive[0]
+		scores[int(lone.get("team"))] = int(scores.get(int(lone.get("team")), 0)) + 1
+		_end_round(int(lone.get("team")))
+	elif alive.is_empty():
+		_end_round(-1)
+
+
+func br_zone() -> Dictionary:
+	return {"center": _br_zone_center, "radius": _br_zone_radius}
 
 
 func _spawn_point_pickup(pos: Vector2) -> void:
@@ -921,6 +1087,15 @@ func _end_round_by_time() -> void:
 func _reset_round() -> void:
 	scores.clear()
 	_htf_accum.clear()
+	_dom_accum.clear()
+	# Reset control points to neutral so the next round has fresh objectives.
+	for a in _dom_points:
+		if not is_instance_valid(a):
+			continue
+		a.set_meta("owner_team", 0)
+		a.set_meta("progress", 0.0)
+		a.set_meta("cap_team", 0)
+	_reset_br_zone()
 	time_left = ROUND_TIME
 	winner_team = -1
 	winner_end_t = 0.0

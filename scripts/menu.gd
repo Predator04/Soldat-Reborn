@@ -5,6 +5,7 @@ const MAP_NAMES := ["Ascent", "Towers", "Pillars"]
 const MODE_NAMES := [
 	"Deathmatch", "Teammatch", "Capture the Flag",
 	"Infiltration", "Hold the Flag", "Rambomatch", "Pointmatch",
+	"Domination", "Battle Royale",
 ]
 
 var _menu_box: VBoxContainer

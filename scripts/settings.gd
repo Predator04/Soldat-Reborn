@@ -9,8 +9,9 @@ var fullscreen := false
 var map_index := 0             # which map layout the next game loads
 
 # Game mode: 0 = Deathmatch, 1 = Teammatch, 2 = CTF, 3 = Infiltration,
-# 4 = Hold the Flag, 5 = Rambomatch, 6 = Pointmatch. Sub-modes (Realistic /
-# Survival / Advance) overlay on the base mode via separate flags below.
+# 4 = Hold the Flag, 5 = Rambomatch, 6 = Pointmatch, 7 = Domination,
+# 8 = Battle Royale. Sub-modes (Realistic / Survival / Advance) overlay on
+# the base mode via separate flags below.
 const MODE_DM := 0
 const MODE_TDM := 1
 const MODE_CTF := 2
@@ -18,6 +19,8 @@ const MODE_INF := 3
 const MODE_HTF := 4
 const MODE_RM := 5
 const MODE_PM := 6
+const MODE_DOM := 7
+const MODE_BR := 8
 var game_mode := MODE_DM
 
 # Sub-mode overlays — toggle-able flags applied on top of the base mode.
@@ -25,14 +28,14 @@ var realistic := false   # no jet, no HUD ammo, head-shot 1HK (issue #19)
 var survival := false    # no respawn until round end (issue #20)
 var advance := false     # weapon unlock ladder (issue #21)
 
-# Convenience: DM / Rambo are FFA (friendly-fire on), teams disable friendly damage.
+# Convenience: DM / Rambo / Battle Royale are FFA (friendly-fire on), teams disable friendly damage.
 func friendly_fire_on() -> bool:
-	return game_mode == MODE_DM or game_mode == MODE_RM
+	return game_mode == MODE_DM or game_mode == MODE_RM or game_mode == MODE_BR
 
 
 func is_team_mode() -> bool:
 	return game_mode == MODE_TDM or game_mode == MODE_CTF or game_mode == MODE_INF \
-		or game_mode == MODE_HTF or game_mode == MODE_PM
+		or game_mode == MODE_HTF or game_mode == MODE_PM or game_mode == MODE_DOM
 
 
 func _ready() -> void:

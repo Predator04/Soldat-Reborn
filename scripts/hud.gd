@@ -371,6 +371,8 @@ func _process(delta: float) -> void:
 		Settings.MODE_HTF: mode_str = "HTF · "
 		Settings.MODE_RM:  mode_str = "RM · "
 		Settings.MODE_PM:  mode_str = "PM · "
+		Settings.MODE_DOM: mode_str = "DOM · "
+		Settings.MODE_BR:  mode_str = "BR · "
 	# Sub-modes append to the tag so players notice.
 	var tags: PackedStringArray = PackedStringArray()
 	if Settings.realistic:
