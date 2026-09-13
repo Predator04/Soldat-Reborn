@@ -394,6 +394,9 @@ func _process(delta: float) -> void:
 	else:
 		w = player.weapons[wi]
 		mag = player.ammo[wi]
+	# Realistic ruleset hides the magazine readout — pilots go by weapon feel.
+	lbl_ammo.visible = not Settings.realistic
+	lbl_fuel.visible = not Settings.realistic
 	lbl_ammo.text = "%d / %d" % [mag, int(w["mag"])] + ("  · RELOADING" if player.reloading else "")
 	lbl_weapon.text = str(w["name"])
 	var gtype := "CLUSTER" if bool(player.get("use_cluster")) else "FRAG"

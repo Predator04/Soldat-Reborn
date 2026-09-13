@@ -294,8 +294,9 @@ func _physics_process(delta: float) -> void:
 		velocity.x = move_toward(velocity.x, 0.0, fr * delta)
 	velocity.x = clampf(velocity.x, -cap, cap)
 
-	# jet boots (RMB, matching Soldat's default controls)
-	var jet_pressed := Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
+	# jet boots (RMB, matching Soldat's default controls). Realistic mode locks
+	# the boots — Soldat's Realistic ruleset removes fuel entirely.
+	var jet_pressed := Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) and not Settings.realistic
 	jet_on = false
 	if jet_pressed and not on_floor and fuel > 0.0:
 		velocity.y += JET_THRUST * delta

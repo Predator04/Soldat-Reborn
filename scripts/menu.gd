@@ -97,6 +97,33 @@ func _build_menu() -> void:
 		Settings.save())
 	_menu_box.add_child(mode_pick)
 
+	# Sub-mode toggles — three quick chips under the main mode picker.
+	var subs := HBoxContainer.new()
+	subs.add_theme_constant_override("separation", 10)
+	subs.custom_minimum_size = Vector2(300, 0)
+	_menu_box.add_child(subs)
+	var real_cb := CheckBox.new()
+	real_cb.text = "Realistic"
+	real_cb.button_pressed = Settings.realistic
+	real_cb.toggled.connect(func(on: bool) -> void:
+		Settings.realistic = on
+		Settings.save())
+	subs.add_child(real_cb)
+	var surv_cb := CheckBox.new()
+	surv_cb.text = "Survival"
+	surv_cb.button_pressed = Settings.survival
+	surv_cb.toggled.connect(func(on: bool) -> void:
+		Settings.survival = on
+		Settings.save())
+	subs.add_child(surv_cb)
+	var adv_cb := CheckBox.new()
+	adv_cb.text = "Advance"
+	adv_cb.button_pressed = Settings.advance
+	adv_cb.toggled.connect(func(on: bool) -> void:
+		Settings.advance = on
+		Settings.save())
+	subs.add_child(adv_cb)
+
 	var play := _make_button("PLAY vs BOTS")
 	play.pressed.connect(func() -> void:
 		Net.set_singleplayer()

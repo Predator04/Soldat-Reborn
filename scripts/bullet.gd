@@ -49,9 +49,22 @@ func _on_body_entered(body: Node) -> void:
 	if body is CharacterBody2D:
 		if body.get("team") != team and body.has_method("take_damage"):
 			_hit = true
-			# Damage only on the target's authority peer (SP: no peer == local == damage runs).
+			var dmg := damage
+			var wname := weapon_name
+			# Realistic: hit region above ~-14 (local) counts as a head-shot 1HK.
+			# Prone soldiers have a much smaller head hitbox — offset accordingly.
+			if Settings.realistic:
+				var head_top: float = -14.0
+				if bool(body.get("prone")):
+					head_top = -4.0
+				elif bool(body.get("crouching")):
+					head_top = -10.0
+				var rel_y: float = global_position.y - body.global_position.y
+				if rel_y < head_top:
+					dmg = 999.0
+					wname = weapon_name + " (headshot)"
 			if multiplayer.multiplayer_peer == null or body.is_multiplayer_authority():
-				body.take_damage(damage, killer_name, weapon_name, team)
+				body.take_damage(dmg, killer_name, wname, team)
 			queue_free()
 			return
 		return
