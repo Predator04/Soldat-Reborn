@@ -7,6 +7,7 @@ var sky_script := preload("res://scripts/sky.gd")
 var parallax_script := preload("res://scripts/parallax.gd")
 var hud_script := preload("res://scripts/hud.gd")
 const PoaLoader = preload("res://scripts/poa_loader.gd")
+const WeaponPickup = preload("res://scripts/weapon_pickup.gd")
 
 signal kill(killer_name: String, victim_name: String, weapon_name: String, killer_team: int, victim_team: int)
 
@@ -20,9 +21,19 @@ var _ready_peers: Dictionary = {}    # peer_id -> true (host only, gate for outb
 const TEAM_BLUE := 1
 const TEAM_RED := 2
 
-# CTF flag nodes and score-to-win.
+# CTF / INF / HTF flag nodes and score-to-win.
 var flags: Array = []
 const CTF_SCORE_TO_WIN := 3
+const INF_SCORE_TO_WIN := 3
+const HTF_SCORE_TO_WIN := 60      # 1 pt/sec while carrying → 60s hold = a win
+const PM_SCORE_TO_WIN := 20
+# HTF: while a team's carrier is alive with the flag, ticks accumulate. This
+# fractional accumulator flushes to `scores` in whole points.
+var _htf_accum: Dictionary = {}
+# Rambo bow — the current carrier's id (or 0 for none). Only they can score.
+var _rambo_carrier_id: int = 0
+# Pointmatch — bookkeeping for respawning pickups (spawn_pos -> _next_respawn_t).
+var _pm_pickups: Dictionary = {}
 
 # ── Match state (host-authoritative in MP) ─────────────
 const SCORE_TO_WIN := 20
@@ -109,6 +120,10 @@ const MAPS := [
 
 
 func _ready() -> void:
+	# Dev override: `--mode=N` on the command line sets game_mode for headless smoke tests.
+	for arg in OS.get_cmdline_args():
+		if arg.begins_with("--mode="):
+			Settings.game_mode = int(arg.substr(7))
 	# Crosshair cursor = the mouse; aiming follows it (Soldat-style).
 	Input.set_custom_mouse_cursor(load("res://assets/interface-gfx/cursor.png"), Input.CURSOR_ARROW, Vector2(12, 12))
 	PoaLoader.preload_all()
@@ -135,9 +150,17 @@ func _ready() -> void:
 	else:
 		_spawn_player()
 		_spawn_bots()
-		# CTF adds two flags (one per base) — only in CTF mode.
+		# Flag / pickup entities are per-mode.
 		if Settings.game_mode == Settings.MODE_CTF:
 			_spawn_flags()
+		elif Settings.game_mode == Settings.MODE_INF:
+			_spawn_flag_inf()
+		elif Settings.game_mode == Settings.MODE_HTF:
+			_spawn_flag_htf()
+		elif Settings.game_mode == Settings.MODE_RM:
+			_spawn_rambo_bow()
+		elif Settings.game_mode == Settings.MODE_PM:
+			_spawn_point_pickups()
 
 
 func _build_sky() -> void:
@@ -207,14 +230,17 @@ func _spawn_m2_mounts() -> void:
 func _spawn_player() -> void:
 	var p := player_scene.instantiate()
 	p.position = _map["player_spawn"]
-	# In team modes player joins BLUE (team 1); in DM she's team 0 (FFA).
-	p.team = TEAM_BLUE if Settings.game_mode != Settings.MODE_DM else 0
-	if Settings.game_mode == Settings.MODE_TDM:
+	# In team modes player joins BLUE (team 1); in DM/RM she's team 0 (FFA).
+	if Settings.is_team_mode():
+		p.team = TEAM_BLUE
 		p.color = Color(0.35, 0.55, 1.0)
 		p.display_name = "Blue"
-	elif Settings.game_mode == Settings.MODE_CTF:
-		p.color = Color(0.35, 0.55, 1.0)
-		p.display_name = "Blue"
+	else:
+		p.team = 0
+	# Advance mode: start with the humble knife.
+	if Settings.advance:
+		p.set("using_secondary", true)
+		p.set("secondary_index", 1)  # Knife
 	p.died.connect(_on_player_died)
 	add_child(p)
 	player = p
@@ -226,7 +252,18 @@ func _spawn_player() -> void:
 func _on_player_died() -> void:
 	if hud:
 		hud.show_death(str(player.last_killer), str(player.last_weapon))
-	get_tree().create_timer(2.0).timeout.connect(_spawn_player)
+	# Survival: no respawn until round ends. _reset_round will (re)spawn everyone.
+	if Settings.survival and round_active:
+		return
+	var delay: float = _respawn_delay_for_team(int(player.team))
+	get_tree().create_timer(delay).timeout.connect(_spawn_player)
+
+
+func _respawn_delay_for_team(t: int) -> float:
+	# INF attackers pay a longer respawn (defender advantage).
+	if Settings.game_mode == Settings.MODE_INF and t == TEAM_RED:
+		return 5.0
+	return 2.0
 
 
 func _spawn_bots() -> void:
@@ -234,14 +271,18 @@ func _spawn_bots() -> void:
 	var mode: int = Settings.game_mode
 	for i in spots.size():
 		var loadout := "LAW" if i == spots.size() - 1 else "AK-74"
-		if mode == Settings.MODE_TDM or mode == Settings.MODE_CTF:
-			# Half the bots on BLUE (with the player), other half on RED.
-			var on_blue: bool = i < spots.size() / 2
-			var t: int = TEAM_BLUE if on_blue else TEAM_RED
-			var nm := "Blue Bot %d" % (i + 1) if on_blue else "Red Bot %d" % (i + 1)
-			_spawn_bot(spots[i], t, nm, loadout)
+		if Settings.is_team_mode():
+			if mode == Settings.MODE_INF:
+				# INF: bots are attackers (RED). Player defends solo on BLUE.
+				_spawn_bot(spots[i], TEAM_RED, "Red Bot %d" % (i + 1), loadout)
+			else:
+				# TDM/CTF/HTF/PM: split bots BLUE/RED evenly.
+				var on_blue: bool = i < spots.size() / 2
+				var t: int = TEAM_BLUE if on_blue else TEAM_RED
+				var nm := "Blue Bot %d" % (i + 1) if on_blue else "Red Bot %d" % (i + 1)
+				_spawn_bot(spots[i], t, nm, loadout)
 		else:
-			# DM: bot team 99 is dedicated non-peer id so bots stay hostile to any human peer.
+			# DM/RM: bot team 99 is a dedicated non-peer id → hostile to any human peer.
 			_spawn_bot(spots[i], 99, "Bot %d" % (i + 1), loadout)
 
 
@@ -259,10 +300,14 @@ func _spawn_bot(pos: Vector2, team: int, bname: String, loadout: String = "AK-74
 	elif team == TEAM_RED:
 		b.color = Color(0.85, 0.3, 0.25)
 	# Bots respawn on the same slot so the match can accumulate score.
+	# Survival gates this — the next spawn only happens on _reset_round.
 	b.died.connect(func() -> void:
-		get_tree().create_timer(2.0).timeout.connect(func() -> void:
+		if Settings.survival and round_active:
+			return
+		var delay: float = _respawn_delay_for_team(team)
+		get_tree().create_timer(delay).timeout.connect(func() -> void:
 			# Guard against the outer Main being torn down (scene change / quit)
-			# during the 2s respawn window — the SceneTreeTimer keeps firing.
+			# during the respawn window — the SceneTreeTimer keeps firing.
 			if not is_inside_tree():
 				return
 			_spawn_bot(pos, team, bname, loadout)))
@@ -289,6 +334,46 @@ func _spawn_flags() -> void:
 		_make_flag(TEAM_BLUE, blue_base),
 		_make_flag(TEAM_RED, red_base),
 	]
+
+
+func _spawn_flag_inf() -> void:
+	# INF: single neutral flag near the center. Attackers (RED) deliver to the
+	# defenders' base (BLUE) to score. Defenders return the flag by touching it.
+	var ground_y: float = float(_map.get("ctf_ground_y", 1830.0))
+	var center := Vector2(MAP_W * 0.5, ground_y)
+	var defender_base := Vector2(300, ground_y)
+	var f := _make_flag(0, center)
+	f.set_meta("capture_point", defender_base)
+	flags = [f]
+
+
+func _spawn_flag_htf() -> void:
+	# HTF: single neutral flag mid-map. The carrying team ticks score per second.
+	var ground_y: float = float(_map.get("ctf_ground_y", 1830.0))
+	var center := Vector2(MAP_W * 0.5, ground_y)
+	flags = [_make_flag(0, center)]
+
+
+func _spawn_rambo_bow() -> void:
+	# RM: single Rambo Bow pickup at map center — carrier gets HP regen +
+	# is the only one who scores kills.
+	var ground_y: float = float(_map.get("ctf_ground_y", 1830.0))
+	var wp := WeaponPickup.new()
+	wp.weapon_name = "Rambo Bow"
+	wp.team = -1
+	wp.thrower_name = ""
+	wp.damage_on_hit = 0.0
+	wp.global_position = Vector2(MAP_W * 0.5, ground_y - 40.0)
+	wp.set_meta("rambo_spawn", true)
+	add_child(wp)
+
+
+func _spawn_point_pickups() -> void:
+	# PM: scatter respawning point pickups. Each grants +1 to the toucher's team.
+	var ground_y: float = float(_map.get("ctf_ground_y", 1830.0))
+	var xs: PackedFloat32Array = [ 700.0, 1400.0, 2100.0, 2400.0, 2700.0, 3400.0, 4100.0 ]
+	for x in xs:
+		_spawn_point_pickup(Vector2(x, ground_y - 60.0))
 
 
 func _make_flag(team: int, base: Vector2) -> Area2D:
@@ -451,6 +536,14 @@ func _process(delta: float) -> void:
 		return
 	if Settings.game_mode == Settings.MODE_CTF and flags.size() == 2:
 		_tick_ctf()
+	elif Settings.game_mode == Settings.MODE_INF and flags.size() == 1:
+		_tick_inf()
+	elif Settings.game_mode == Settings.MODE_HTF and flags.size() == 1:
+		_tick_htf(delta)
+	elif Settings.game_mode == Settings.MODE_RM:
+		_tick_rambo()
+	elif Settings.game_mode == Settings.MODE_PM:
+		_tick_pointmatch(delta)
 	if round_active:
 		time_left = maxf(0.0, time_left - delta)
 		if time_left <= 0.0:
@@ -513,6 +606,171 @@ func _tick_ctf() -> void:
 				break
 
 
+func _tick_inf() -> void:
+	# Single-flag INF: RED = attackers, BLUE = defenders. RED delivers to
+	# the defenders' base to score; BLUE returns the flag by touching it.
+	var f: Area2D = flags[0] as Area2D
+	if not is_instance_valid(f):
+		return
+	var home: Vector2 = f.get_meta("home")
+	var capture: Vector2 = f.get_meta("capture_point")
+	var carrier = f.get_meta("carrier")
+	if is_instance_valid(carrier):
+		if bool(carrier.get("dead")):
+			f.position = carrier.global_position
+			f.set_meta("carrier", null)
+			return
+		f.position = carrier.global_position + Vector2(0, -30)
+		if int(carrier.get("team")) == TEAM_RED \
+				and f.global_position.distance_to(capture) < 40.0:
+			_inf_score(TEAM_RED, str(carrier.get("display_name")))
+			f.position = home
+			f.set_meta("carrier", null)
+		return
+	# Not carried — pickup / return.
+	for s in get_tree().get_nodes_in_group("soldier"):
+		if not is_instance_valid(s) or bool(s.get("dead")):
+			continue
+		if s.global_position.distance_to(f.global_position) < 22.0:
+			var s_team: int = int(s.get("team"))
+			if s_team == TEAM_RED:
+				f.set_meta("carrier", s)
+			elif s_team == TEAM_BLUE:
+				if f.position.distance_to(home) > 12.0:
+					f.position = home
+			break
+
+
+func _inf_score(team: int, capturer: String) -> void:
+	scores[team] = int(scores.get(team, 0)) + 1
+	Sfx._play_event("explode", -2.0, 1.0)
+	kill.emit(capturer, "FLAG", "infiltrated", team, -1)
+	if int(scores[team]) >= INF_SCORE_TO_WIN:
+		_end_round(team)
+
+
+func _tick_htf(delta: float) -> void:
+	# Single-flag HTF: whichever team's soldier is carrying accumulates points
+	# per second. Enemy soldier picks it up → carrier switches. If dropped and
+	# no one grabs, it just waits.
+	var f: Area2D = flags[0] as Area2D
+	if not is_instance_valid(f):
+		return
+	var home: Vector2 = f.get_meta("home")
+	var carrier = f.get_meta("carrier")
+	if is_instance_valid(carrier):
+		if bool(carrier.get("dead")):
+			f.position = carrier.global_position
+			f.set_meta("carrier", null)
+			return
+		f.position = carrier.global_position + Vector2(0, -30)
+		var ct: int = int(carrier.get("team"))
+		_htf_accum[ct] = float(_htf_accum.get(ct, 0.0)) + delta
+		# Flush whole seconds into scores so the scoreboard ticks visibly.
+		while float(_htf_accum.get(ct, 0.0)) >= 1.0:
+			_htf_accum[ct] = float(_htf_accum[ct]) - 1.0
+			scores[ct] = int(scores.get(ct, 0)) + 1
+			if int(scores[ct]) >= HTF_SCORE_TO_WIN:
+				_end_round(ct)
+				return
+		return
+	# Not carried — first soldier to touch grabs it.
+	for s in get_tree().get_nodes_in_group("soldier"):
+		if not is_instance_valid(s) or bool(s.get("dead")):
+			continue
+		if s.global_position.distance_to(f.global_position) < 22.0:
+			f.set_meta("carrier", s)
+			break
+	# If dropped far from home and untouched for a while, reset (mercy behavior).
+	if f.position.distance_to(home) > 1400.0:
+		f.position = home
+
+
+func _tick_rambo() -> void:
+	# Rambo Match: single bow pickup. Whoever holds it regenerates HP fast and
+	# is the only player whose kills score. Kill feed handled by _on_kill_scored.
+	# Determine current carrier by scanning weapon_pickups + soldiers holding "Rambo Bow".
+	var carrier_id := 0
+	for s in get_tree().get_nodes_in_group("soldier"):
+		if not is_instance_valid(s) or bool(s.get("dead")):
+			continue
+		# player.weapons + secondary lookup: if their active weapon is "Rambo Bow".
+		var wname := ""
+		if s.get("weapons") != null:
+			var idx: int = int(s.get("weapon_index"))
+			var arr: Array = s.get("weapons")
+			if idx >= 0 and idx < arr.size():
+				wname = str(arr[idx]["name"])
+		elif s.get("loadout") != null:
+			wname = str(s.get("loadout"))
+		if wname == "Rambo Bow":
+			carrier_id = s.get_instance_id()
+			# Regenerate carrier's HP fast.
+			var hp: float = float(s.get("health"))
+			s.set("health", minf(100.0, hp + 40.0 * get_process_delta_time()))
+			break
+	_rambo_carrier_id = carrier_id
+	# Respawn the bow at map center if it doesn't exist and nobody is holding it.
+	if carrier_id == 0:
+		var exists := false
+		for wp in get_tree().get_nodes_in_group("weapon_pickup"):
+			if is_instance_valid(wp) and str(wp.get("weapon_name")) == "Rambo Bow":
+				exists = true
+				break
+		if not exists:
+			_spawn_rambo_bow()
+
+
+func _spawn_point_pickup(pos: Vector2) -> void:
+	var a := Area2D.new()
+	a.add_to_group("point_pickup")
+	a.position = pos
+	a.set_meta("spawn_pos", pos)
+	var col := CollisionShape2D.new()
+	var cs := CircleShape2D.new()
+	cs.radius = 12.0
+	col.shape = cs
+	a.add_child(col)
+	# Draw as a small golden diamond so it reads on the terrain.
+	var poly := Polygon2D.new()
+	poly.polygon = PackedVector2Array([Vector2(0, -10), Vector2(10, 0), Vector2(0, 10), Vector2(-10, 0)])
+	poly.color = Color(1.0, 0.85, 0.25)
+	a.add_child(poly)
+	add_child(a)
+
+
+func _tick_pointmatch(delta: float) -> void:
+	# PM: pickups grant +1 to the toucher's team, then respawn after 6s.
+	var soldiers := get_tree().get_nodes_in_group("soldier")
+	var live_pickups := get_tree().get_nodes_in_group("point_pickup")
+	for p in live_pickups:
+		if not is_instance_valid(p):
+			continue
+		for s in soldiers:
+			if not is_instance_valid(s) or bool(s.get("dead")):
+				continue
+			if p.global_position.distance_to(s.global_position) < 22.0:
+				var s_team: int = int(s.get("team"))
+				scores[s_team] = int(scores.get(s_team, 0)) + 1
+				kill.emit(str(s.get("display_name")), "POINT", "captured", s_team, -1)
+				var spawn_pos: Vector2 = p.get_meta("spawn_pos")
+				_pm_pickups[spawn_pos] = 6.0
+				p.queue_free()
+				if int(scores[s_team]) >= PM_SCORE_TO_WIN:
+					_end_round(s_team)
+					return
+				break
+	# Respawn pickups after their cooldown.
+	for pos in _pm_pickups.keys():
+		var t: float = float(_pm_pickups[pos])
+		t -= delta
+		if t <= 0.0:
+			_pm_pickups.erase(pos)
+			_spawn_point_pickup(pos)
+		else:
+			_pm_pickups[pos] = t
+
+
 func _ctf_score(team: int, capturer: String) -> void:
 	scores[team] = int(scores.get(team, 0)) + 1
 	Sfx._play_event("explode", -2.0, 1.0)
@@ -530,11 +788,39 @@ func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: Str
 	# Suicide or team-kill: no score for the victim's own team.
 	if killer_name == victim_name or killer_team == victim_team:
 		return
+	# Rambo mode: only the current bow carrier's kills count.
+	if Settings.game_mode == Settings.MODE_RM:
+		var carrier_is_killer := false
+		for s in get_tree().get_nodes_in_group("soldier"):
+			if is_instance_valid(s) and str(s.get("display_name")) == killer_name:
+				if s.get_instance_id() == _rambo_carrier_id:
+					carrier_is_killer = true
+				break
+		if not carrier_is_killer:
+			return
 	scores[killer_team] = int(scores.get(killer_team, 0)) + 1
 	if scores[killer_team] >= SCORE_TO_WIN:
 		_end_round(killer_team)
-	elif Net.is_networked() and Net.is_host():
+	# Survival: last team standing ends the round early.
+	elif Settings.survival:
+		_check_survival_end()
+	if Net.is_networked() and Net.is_host():
 		_broadcast_match_state()
+
+
+func _check_survival_end() -> void:
+	# Round ends when only one team has any live soldier remaining.
+	var alive_teams: Dictionary = {}
+	for s in get_tree().get_nodes_in_group("soldier"):
+		if not is_instance_valid(s) or bool(s.get("dead")):
+			continue
+		alive_teams[int(s.get("team"))] = true
+	if alive_teams.size() <= 1:
+		var winner_t := -1
+		for k in alive_teams.keys():
+			winner_t = int(k)
+			break
+		_end_round(winner_t)
 
 
 func _end_round(team: int) -> void:
@@ -558,10 +844,19 @@ func _end_round_by_time() -> void:
 
 func _reset_round() -> void:
 	scores.clear()
+	_htf_accum.clear()
 	time_left = ROUND_TIME
 	winner_team = -1
 	winner_end_t = 0.0
 	round_active = true
+	# Survival: nobody respawns during the round, so at reset we wipe surviving
+	# bodies and start everyone fresh.
+	if Settings.survival and not Net.is_networked():
+		for s in get_tree().get_nodes_in_group("soldier"):
+			if is_instance_valid(s):
+				s.queue_free()
+		call_deferred("_spawn_player")
+		call_deferred("_spawn_bots")
 	if Net.is_networked() and Net.is_host():
 		_broadcast_match_state()
 

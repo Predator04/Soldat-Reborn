@@ -2,7 +2,10 @@ extends Control
 ## Main menu — Play (vs bots), Host, Join, Settings, Quit.
 
 const MAP_NAMES := ["Ascent", "Towers", "Pillars"]
-const MODE_NAMES := ["Deathmatch", "Teammatch", "Capture the Flag"]
+const MODE_NAMES := [
+	"Deathmatch", "Teammatch", "Capture the Flag",
+	"Infiltration", "Hold the Flag", "Rambomatch", "Pointmatch",
+]
 
 var _menu_box: VBoxContainer
 var _settings_panel: VBoxContainer

@@ -351,12 +351,25 @@ func _process(delta: float) -> void:
 		lbl_respawn.text = "Respawning in %d" % maxi(0, int(ceil(_death_remaining)))
 		if _death_remaining <= 0.0:
 			_hide_death()
-	# Prefix the mode so TDM/CTF users know which rules are live.
+	# Prefix the mode so users know which rules are live.
 	var mode_str: String = ""
-	if Settings.game_mode == Settings.MODE_TDM:
-		mode_str = "TDM · "
-	elif Settings.game_mode == Settings.MODE_CTF:
-		mode_str = "CTF · "
+	match Settings.game_mode:
+		Settings.MODE_TDM: mode_str = "TDM · "
+		Settings.MODE_CTF: mode_str = "CTF · "
+		Settings.MODE_INF: mode_str = "INF · "
+		Settings.MODE_HTF: mode_str = "HTF · "
+		Settings.MODE_RM:  mode_str = "RM · "
+		Settings.MODE_PM:  mode_str = "PM · "
+	# Sub-modes append to the tag so players notice.
+	var tags: PackedStringArray = PackedStringArray()
+	if Settings.realistic:
+		tags.append("REAL")
+	if Settings.survival:
+		tags.append("SURV")
+	if Settings.advance:
+		tags.append("ADV")
+	if tags.size() > 0:
+		mode_str = mode_str + "[" + "/".join(tags) + "] "
 	lbl_map.text = mode_str + map_name
 	lbl_status.text = Net.status if Net.is_networked() else ""
 	_update_match_ui()
@@ -444,8 +457,14 @@ func _update_match_ui() -> void:
 
 func _team_display_info(team_id: int) -> Dictionary:
 	if not Net.is_networked():
-		# TDM / CTF: fixed BLUE/RED colors + labels regardless of who's on them.
-		if Settings.game_mode != Settings.MODE_DM:
+		# INF: fixed defender / attacker labels.
+		if Settings.game_mode == Settings.MODE_INF:
+			if team_id == 1:
+				return {"name": "DEFENDERS", "color": Color(0.4, 0.6, 1.0)}
+			if team_id == 2:
+				return {"name": "ATTACKERS", "color": Color(0.95, 0.35, 0.3)}
+		# Team modes generally: fixed BLUE/RED colors + labels.
+		if Settings.game_mode != Settings.MODE_DM and Settings.game_mode != Settings.MODE_RM:
 			if team_id == 1:
 				return {"name": "BLUE", "color": Color(0.4, 0.6, 1.0)}
 			if team_id == 2:
