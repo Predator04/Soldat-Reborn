@@ -75,7 +75,10 @@ var roll_t := 0.0
 var roll_cd := 0.0
 const ROLL_DURATION := 0.32
 const ROLL_COOLDOWN := 0.85
-const ROLL_SPEED := 520.0
+# Roll must beat bunny-hop (BUNNY_SPEED 545) — otherwise it's a slower alternative
+# and no one uses it. Locked at 720 for the whole roll window, ignoring friction.
+const ROLL_SPEED := 720.0
+var roll_dir := 1.0
 var melee_swing_t := 0.0  # short window (~0.25s) after a Knife/Chainsaw strike — drives the "bije" pose
 # Bink — extra aim spread applied when the *victim* takes damage from a bink weapon.
 # Barrett's 65 is intentionally punishing; most rifles land 20-30. Decays over ~0.6s.
@@ -229,6 +232,23 @@ func _physics_process(delta: float) -> void:
 		jet_on = false
 		jet_particles.emitting = false
 		muzzle_t = maxf(0.0, muzzle_t - delta * 10.0)
+		# Fuel keeps regenerating while mounted — the operator is stationary on
+		# the sandbag, not draining tanks. Uses the same mod_jet scaling as
+		# grounded regen so mods stay consistent.
+		fuel = minf(100.0, fuel + JET_REGEN * float(Settings.mod_jet) * delta)
+		# Allow exiting prone/crouch while mounted so the soldier isn't locked
+		# into a stance they can't leave. Toggle on rising edge like normal.
+		var x_now_m := Input.is_physical_key_pressed(KEY_X)
+		if x_now_m and not x_prev and prone:
+			prone = false
+		x_prev = x_now_m
+		if crouching and not Input.is_physical_key_pressed(KEY_S):
+			crouching = false
+		_apply_stance_shape()
+		# Recover from bink/ceasefire while mounted too — otherwise a soldier who
+		# mounts mid-fight still shakes forever.
+		bink_t = maxf(0.0, bink_t - delta * 100.0)
+		ceasefire_t = maxf(0.0, ceasefire_t - delta)
 		queue_redraw()
 		return
 
@@ -271,7 +291,8 @@ func _physics_process(delta: float) -> void:
 	if s_now and not s_prev and is_on_floor() and roll_cd <= 0.0 and absf(velocity.x) > 60.0:
 		roll_t = ROLL_DURATION
 		roll_cd = ROLL_COOLDOWN
-		velocity.x = signf(velocity.x) * ROLL_SPEED
+		roll_dir = signf(velocity.x)
+		velocity.x = roll_dir * ROLL_SPEED
 		Sfx.jump()
 	s_prev = s_now
 	crouching = s_now and roll_t <= 0.0
@@ -306,34 +327,47 @@ func _physics_process(delta: float) -> void:
 			cap *= 0.28
 		elif crouching:
 			cap *= 0.6
-	if dir != 0.0:
+	if roll_t > 0.0:
+		# Roll ignores A/D input + friction — locked speed for the whole window
+		# so it always beats a bunny-hop's lateral cap.
+		velocity.x = roll_dir * ROLL_SPEED
+	elif dir != 0.0:
 		velocity.x += dir * accel * delta
+		velocity.x = clampf(velocity.x, -cap, cap)
 	else:
 		var fr := GROUND_FRICTION if on_floor else AIR_FRICTION
 		velocity.x = move_toward(velocity.x, 0.0, fr * delta)
-	velocity.x = clampf(velocity.x, -cap, cap)
+		velocity.x = clampf(velocity.x, -cap, cap)
 
 	# jet boots (RMB, matching Soldat's default controls). Realistic mode locks
 	# the boots — Soldat's Realistic ruleset removes fuel entirely.
+	# mod_jet scales thrust/drain/regen consistently; mod_gravity scales thrust
+	# so the boots still lift you in higher-gravity worlds.
 	var jet_pressed := Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) and not Settings.realistic
+	var mj: float = float(Settings.mod_jet)
+	var mg: float = float(Settings.mod_gravity)
 	jet_on = false
 	if jet_pressed and not on_floor and fuel > 0.0:
-		velocity.y += JET_THRUST * delta
-		fuel = maxf(0.0, fuel - JET_DRAIN * delta)
+		velocity.y += JET_THRUST * mj * mg * delta
+		fuel = maxf(0.0, fuel - (JET_DRAIN / maxf(0.1, mj)) * delta)
 		jet_on = true
-	elif on_floor:
-		fuel = minf(100.0, fuel + JET_REGEN * float(Settings.mod_jet) * delta)
+	# Grounded regen — always fires when on the floor, even if RMB is held.
+	# Prior version used elif, which technically worked (RMB+ground failed
+	# the first branch), but the split makes the intent unambiguous.
+	if on_floor:
+		fuel = minf(100.0, fuel + JET_REGEN * mj * delta)
 
-	# jump / bunny hop (coyote + buffer aware)
+	# jump / bunny hop (coyote + buffer aware). Jump velocity scales with
+	# mod_gravity so peak height feels the same under heavier gravity.
 	if jump_buffer_t > 0.0 and coyote_t > 0.0:
-		velocity.y = JUMP_VEL
+		velocity.y = JUMP_VEL * mg
 		velocity.x = clampf(velocity.x * 1.06, -BUNNY_SPEED, BUNNY_SPEED)
 		coyote_t = 0.0
 		jump_buffer_t = 0.0
 		Sfx.jump()
 
 	if not on_floor:
-		velocity.y += GRAVITY * float(Settings.mod_gravity) * delta
+		velocity.y += GRAVITY * mg * delta
 		velocity.y = minf(velocity.y, MAX_FALL)
 
 	# aim
@@ -718,6 +752,14 @@ func _apply_stance_shape() -> void:
 	elif crouching:
 		want = shape_crouch
 	if col_shape.shape != want:
+		# Feet-anchored swap: nudge position by (old_half_h - new_half_h) so the
+		# soldier doesn't micro-fall on crouch or pop out of the floor on stand.
+		# Only nudge while on the floor — airborne shape swaps should keep the
+		# center pinned so a mid-air prone doesn't teleport the body downward.
+		var old_h: float = (col_shape.shape as RectangleShape2D).size.y
+		var new_h: float = want.size.y
+		if is_on_floor():
+			position.y += (old_h - new_h) * 0.5
 		# set_deferred so the swap doesn't race with physics evaluating the current shape.
 		col_shape.set_deferred("shape", want)
 

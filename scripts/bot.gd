@@ -51,16 +51,28 @@ var ceasefire_t := 3.0
 var strafe_dir := 1.0
 var strafe_t := 0.0
 var dodge_cd := 0.0
+# Idle wander — targetless bots pick a random direction and re-flip periodically
+# so they don't pile up against the map edge (issue #43).
+var wander_dir := 1.0
+var wander_t := 0.0
+var _hop_cd := 0.0
 
 const BASE_GRAVITY := 1700.0
-const RUN_SPEED := 230.0
+# Bots used to run at 230, well under the player's 280 — they could never close.
+# 320 slightly beats a player sprint, so a bot can catch a fleeing target.
+const RUN_SPEED := 320.0
 const JUMP_VEL := -430.0
 const JET_THRUST := -2200.0
 const MAX_FALL := 1300.0
-const BULLET_SPEED := 720.0
+# Match the actual weapon speeds so bullets read the same coming from bots as
+# from players: AK-74 = 1050, LAW rocket = 720.
+const BULLET_SPEED := 1050.0
 const ENGAGE_RANGE := 720.0
 const ROCKET_SPEED := 720.0
 const ROCKET_MIN_RANGE := 180.0  # LAW splashes 130px — don't rocket own feet
+const HOP_COOLDOWN := 1.2  # min gap between wander bunny-hops so bots don't hop-spam
+const WANDER_FLIP_MIN := 3.0
+const WANDER_FLIP_MAX := 6.0
 
 var bullet_scene := preload("res://scenes/bullet.tscn")
 var grenade_scene := preload("res://scenes/grenade.tscn")
@@ -133,9 +145,18 @@ func _physics_process(delta: float) -> void:
 		else:
 			dir = strafe_dir  # close in → strafe around
 	else:
-		dir = 1.0  # idle wander toward the right
+		# Idle wander: pick a fresh direction periodically, flip early when we
+		# reach the map edge. Prior code hard-coded `dir = 1.0` which piled
+		# every targetless bot at the right wall.
+		wander_t -= delta
+		if wander_t <= 0.0 or global_position.x < 200.0 or global_position.x > 4600.0:
+			wander_dir = -wander_dir if (global_position.x < 200.0 or global_position.x > 4600.0) \
+				else (1.0 if randf() < 0.5 else -1.0)
+			wander_t = randf_range(WANDER_FLIP_MIN, WANDER_FLIP_MAX)
+		dir = wander_dir
 
 	velocity.x = move_toward(velocity.x, dir * RUN_SPEED, 1300.0 * delta)
+	_hop_cd = maxf(0.0, _hop_cd - delta)
 
 	# dodge-jump when an enemy bullet is closing in
 	dodge_cd -= delta
@@ -149,9 +170,18 @@ func _physics_process(delta: float) -> void:
 	jet_on = false
 	jump_cd -= delta
 	if is_instance_valid(target):
+		# Bunny-hop toward a distant target: on floor, target > 260 away, hop
+		# with a small horizontal boost so bots can actually close the gap.
+		var dist_h: float = absf(dx)
 		if dy < -50.0 and on_floor and jump_cd <= 0.0:
 			velocity.y = JUMP_VEL
 			jump_cd = 0.9
+			Sfx.jump()
+		elif on_floor and jump_cd <= 0.0 and dist_h > 260.0 and _hop_cd <= 0.0:
+			velocity.y = JUMP_VEL
+			velocity.x = signf(dx) * maxf(RUN_SPEED, absf(velocity.x) * 1.08)
+			jump_cd = 0.35
+			_hop_cd = HOP_COOLDOWN
 			Sfx.jump()
 		elif dy < -80.0 and not on_floor and fuel > 0.0:
 			velocity.y += JET_THRUST * delta
@@ -216,6 +246,12 @@ func _refresh_target(delta: float = 0.0) -> void:
 			_stuck_t += delta
 			if _stuck_t > 0.5:
 				stuck = true
+				# Jump to try climbing over the wall/ledge that's holding us —
+				# a fresh target alone doesn't get us over collision.
+				if is_on_floor() and jump_cd <= 0.0:
+					velocity.y = JUMP_VEL
+					velocity.x = signf(wants_dx) * RUN_SPEED
+					jump_cd = 0.5
 		else:
 			_stuck_t = 0.0
 	# Keep the current target only briefly; periodically re-pick the closest live enemy
@@ -297,7 +333,8 @@ func _shoot(to_t: Vector2) -> void:
 	var aim := to_t.normalized()
 	ceasefire_t = 0.0
 	Sfx.shoot(loadout)
-	# lead the target by its velocity (predictive aim)
+	# lead the target by its velocity (predictive aim) — use the actual bullet
+	# speed for this loadout so lead is calibrated to what we're about to fire.
 	var speed_est: float = ROCKET_SPEED if loadout == "LAW" else BULLET_SPEED
 	if is_instance_valid(target) and target is CharacterBody2D:
 		var t_est: float = to_t.length() / speed_est
