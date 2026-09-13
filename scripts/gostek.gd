@@ -13,8 +13,8 @@ const DIR := "res://assets/gostek-gfx/"
 # Scale factor from .poa loader units → local Godot pixels. The loader
 # already applies Anims.pas SCALE=3; this puts feet at ~+20 (bottom of
 # the CharacterBody2D collision box) and head at ~-25.
-const POA_TO_PIXEL := 2.4
-const FEET_OFFSET_Y := 20.0
+const POA_TO_PIXEL := 1.0
+const FEET_OFFSET_Y := 3.0
 
 # Anims.pas runs its animation counter at physics tick rate (~60 Hz).
 const TICK_RATE := 60.0

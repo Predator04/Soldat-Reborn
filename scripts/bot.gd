@@ -59,21 +59,21 @@ func _ready() -> void:
 	tree_exited.connect(func() -> void: Gostek.forget(self))
 	var shape := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
-	rect.size = Vector2(22, 40)
+	rect.size = Vector2(20, 42)
 	shape.shape = rect
 	add_child(shape)
 	jet_particles = CPUParticles2D.new()
-	jet_particles.amount = 34
+	jet_particles.amount = 18
 	jet_particles.lifetime = 0.45
 	jet_particles.one_shot = false
 	jet_particles.emitting = false
 	jet_particles.direction = Vector2(0, 1)
 	jet_particles.spread = 22.0
 	jet_particles.gravity = Vector2(0, 340)
-	jet_particles.initial_velocity_min = 80.0
-	jet_particles.initial_velocity_max = 190.0
-	jet_particles.scale_amount_min = 2.0
-	jet_particles.scale_amount_max = 5.0
+	jet_particles.initial_velocity_min = 33.0
+	jet_particles.initial_velocity_max = 80.0
+	jet_particles.scale_amount_min = 0.8
+	jet_particles.scale_amount_max = 2.1
 	jet_particles.color = Color(1.0, 0.55, 0.18)
 	add_child(jet_particles)
 
@@ -134,7 +134,7 @@ func _physics_process(delta: float) -> void:
 		Sfx.jet(false)
 	was_jet = jet_on
 	jet_particles.emitting = jet_on
-	jet_particles.position = Vector2(-facing * 8.0, 4.0)
+	jet_particles.position = Vector2(-facing * 3.3, 1.7)
 	if on_floor:
 		fuel = minf(100.0, fuel + 32.0 * delta)
 

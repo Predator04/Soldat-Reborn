@@ -4,7 +4,7 @@ extends RefCounted
 ## Weapon is the real weapons-gfx sprite. Muzzle flash + HP bars still draw
 ## procedurally on top. Jet flame stays procedural for now.
 
-const HP_BAR_Y := -50.0
+const HP_BAR_Y := -21.0
 
 const WEAPON_SPRITE := {
 	"Deagles": "res://assets/weapons-gfx/deserteagle.png",
@@ -42,9 +42,9 @@ static func draw_soldier(
 
 	# Jetpack — sits behind the torso on the opposite side of `facing`.
 	var pack_col := body_color.darkened(0.25) if not dead else body_color.darkened(0.6)
-	var pack_x := -facing * 8.0
-	node.draw_rect(Rect2(pack_x - 3.0, -22.0, 6.0, 15.0), pack_col)
-	node.draw_rect(Rect2(pack_x - 4.0, -22.0, 8.0, 3.0), pack_col.darkened(0.2))
+	var pack_x := -facing * 3.3
+	node.draw_rect(Rect2(pack_x - 1.25, -9.0, 2.5, 6.25), pack_col)
+	node.draw_rect(Rect2(pack_x - 1.7, -9.0, 3.3, 1.25), pack_col.darkened(0.2))
 
 	# Real body sprites, driven by .poa keyframes.
 	var gs := {
@@ -63,23 +63,23 @@ static func draw_soldier(
 	# skeleton hasn't produced a valid position yet.
 	var shoulder: Vector2 = Gostek.joint_pos(node, 16)
 	if not Gostek.has_frame(node):
-		shoulder = Vector2(facing * 3.0, -19.0)
+		shoulder = Vector2(facing * 1.2, -8.0)
 	var barrel_end: Vector2 = _draw_weapon_sprite(node, shoulder, aim_dir, facing, weapon_name, weapon_color, weapon_kind)
 
 	# Muzzle flash on top of the sprite.
 	if muzzle_t > 0.0:
-		var flash_pos: Vector2 = barrel_end + aim_dir * 3.0
+		var flash_pos: Vector2 = barrel_end + aim_dir * 1.2
 		var m := muzzle_t
-		node.draw_circle(flash_pos, 3.0 + m * 30.0, Color(1.0, 0.45, 0.15, m * 0.35))
-		node.draw_circle(flash_pos, 2.4 + m * 22.0, Color(1.0, 0.8, 0.35, m * 0.6))
-		node.draw_circle(flash_pos, 1.6 + m * 14.0, Color(1.0, 1.0, 0.7, m * 0.85))
+		node.draw_circle(flash_pos, 1.25 + m * 12.5, Color(1.0, 0.45, 0.15, m * 0.35))
+		node.draw_circle(flash_pos, 1.0 + m * 9.2, Color(1.0, 0.8, 0.35, m * 0.6))
+		node.draw_circle(flash_pos, 0.67 + m * 5.8, Color(1.0, 1.0, 0.7, m * 0.85))
 
 	# HP + optional fuel bar.
-	node.draw_rect(Rect2(-16.0, HP_BAR_Y, 32.0, 4.0), Color(0.0, 0.0, 0.0, 0.55))
-	node.draw_rect(Rect2(-16.0, HP_BAR_Y, 32.0 * clampf(health / 100.0, 0.0, 1.0), 4.0), Color(0.9, 0.2, 0.2))
+	node.draw_rect(Rect2(-6.5, HP_BAR_Y, 13.0, 2.0), Color(0.0, 0.0, 0.0, 0.55))
+	node.draw_rect(Rect2(-6.5, HP_BAR_Y, 13.0 * clampf(health / 100.0, 0.0, 1.0), 2.0), Color(0.9, 0.2, 0.2))
 	if show_fuel:
-		node.draw_rect(Rect2(-16.0, HP_BAR_Y + 5.0, 32.0, 3.0), Color(0.0, 0.0, 0.0, 0.55))
-		node.draw_rect(Rect2(-16.0, HP_BAR_Y + 5.0, 32.0 * clampf(fuel / 100.0, 0.0, 1.0), 3.0), Color(0.3, 0.7, 1.0))
+		node.draw_rect(Rect2(-6.5, HP_BAR_Y + 2.0, 13.0, 1.5), Color(0.0, 0.0, 0.0, 0.55))
+		node.draw_rect(Rect2(-6.5, HP_BAR_Y + 2.0, 13.0 * clampf(fuel / 100.0, 0.0, 1.0), 1.5), Color(0.3, 0.7, 1.0))
 
 
 # Returns the barrel-tip position in the node's local space so callers can
@@ -130,12 +130,12 @@ static func _weapon_texture(weapon_name: String) -> Texture2D:
 
 static func _draw_jet_flame(node: CanvasItem, facing: float) -> void:
 	var t := Time.get_ticks_msec() * 0.001
-	var origin: Vector2 = Vector2(-facing * 8.0, 3.0)
-	var length := 22.0 + sin(t * 26.0) * 4.5
-	var wobble := cos(t * 18.0) * 1.2
-	var w0 := 5.0 + wobble
-	var w1 := 3.4 + wobble * 0.7
-	var w2 := 1.9
+	var origin: Vector2 = Vector2(-facing * 3.3, 1.2)
+	var length := 9.0 + sin(t * 26.0) * 1.9
+	var wobble := cos(t * 18.0) * 0.5
+	var w0 := 2.0 + wobble
+	var w1 := 1.4 + wobble * 0.7
+	var w2 := 0.8
 
 	node.draw_polygon(
 		PackedVector2Array([

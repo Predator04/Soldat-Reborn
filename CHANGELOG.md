@@ -5,6 +5,11 @@ All notable changes to Soldat Reborn.
 ## [Unreleased]
 
 ### Changed
+- Soldier rescaled to exact Soldat 1:1 (POA_TO_PIXEL 2.4→1.0). The .poa loader
+  already produces joint positions in Soldat's native pixel space; the extra
+  2.4x multiplier was making the soldier 1.46x too big. All procedural draw
+  constants (jetpack, muzzle flash, HP bar, jet flame) and collision box
+  rescaled to match.
 - Maps enlarged to 4800x2000 to match original Soldat scale. All 3 layouts
   redesigned with more platforms and terrain spanning the full width and
   height; camera limits updated to match.
