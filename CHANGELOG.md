@@ -2,6 +2,13 @@
 
 All notable changes to Soldat Reborn.
 
+## [Unreleased]
+
+### Changed
+- Maps enlarged to 4800x2000 to match original Soldat scale. All 3 layouts
+  redesigned with more platforms and terrain spanning the full width and
+  height; camera limits updated to match.
+
 ## [1.0.0] — 2026-09-12
 
 First release. A Godot 4.7 rebuild of Soldat's feel with the original game's

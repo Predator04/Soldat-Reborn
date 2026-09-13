@@ -29,51 +29,71 @@ var winner_team := -1
 var winner_end_t := 0.0
 var _match_sync_cd := 0.0
 
-const MAP_W := 3200.0
-const MAP_H := 1200.0
-const GROUND_Y := 1150.0
+const MAP_W := 4800.0
+const MAP_H := 2000.0
+const GROUND_Y := 1900.0
 
 const MAPS := [
 	{
 		"name": "Ascent",
 		"platforms": [
-			{"p": Vector2(450, 900), "s": Vector2(260, 22)},
-			{"p": Vector2(900, 760), "s": Vector2(240, 22)},
-			{"p": Vector2(1350, 640), "s": Vector2(240, 22)},
-			{"p": Vector2(1800, 540), "s": Vector2(240, 22)},
-			{"p": Vector2(2250, 660), "s": Vector2(240, 22)},
-			{"p": Vector2(2700, 800), "s": Vector2(240, 22)},
+			{"p": Vector2(400, 1720), "s": Vector2(260, 22)},
+			{"p": Vector2(750, 1550), "s": Vector2(240, 22)},
+			{"p": Vector2(1100, 1380), "s": Vector2(240, 22)},
+			{"p": Vector2(1450, 1210), "s": Vector2(240, 22)},
+			{"p": Vector2(1800, 1050), "s": Vector2(240, 22)},
+			{"p": Vector2(2150, 900), "s": Vector2(220, 22)},
+			{"p": Vector2(2500, 750), "s": Vector2(220, 22)},
+			{"p": Vector2(2850, 600), "s": Vector2(220, 22)},
+			{"p": Vector2(3200, 460), "s": Vector2(220, 22)},
+			{"p": Vector2(3700, 380), "s": Vector2(400, 22)},
+			{"p": Vector2(4200, 900), "s": Vector2(140, 22)},
+			{"p": Vector2(2000, 1700), "s": Vector2(300, 22)},
 		],
-		"player_spawn": Vector2(200, 1025),
-		"bot_spawns": [Vector2(1000, 1025), Vector2(1600, 500), Vector2(2400, 1025), Vector2(2900, 760)],
+		"player_spawn": Vector2(200, 1775),
+		"bot_spawns": [Vector2(1100, 1350), Vector2(2500, 720), Vector2(3700, 350), Vector2(4200, 870)],
 	},
 	{
 		"name": "Towers",
 		"platforms": [
-			{"p": Vector2(500, 900), "s": Vector2(220, 22)},
-			{"p": Vector2(500, 700), "s": Vector2(220, 22)},
-			{"p": Vector2(2700, 900), "s": Vector2(220, 22)},
-			{"p": Vector2(2700, 700), "s": Vector2(220, 22)},
-			{"p": Vector2(1600, 620), "s": Vector2(620, 22)},
-			{"p": Vector2(1000, 980), "s": Vector2(180, 22)},
-			{"p": Vector2(2200, 980), "s": Vector2(180, 22)},
+			{"p": Vector2(600, 1720), "s": Vector2(220, 22)},
+			{"p": Vector2(600, 1490), "s": Vector2(220, 22)},
+			{"p": Vector2(600, 1260), "s": Vector2(220, 22)},
+			{"p": Vector2(600, 1030), "s": Vector2(220, 22)},
+			{"p": Vector2(600, 800), "s": Vector2(220, 22)},
+			{"p": Vector2(4200, 1720), "s": Vector2(220, 22)},
+			{"p": Vector2(4200, 1490), "s": Vector2(220, 22)},
+			{"p": Vector2(4200, 1260), "s": Vector2(220, 22)},
+			{"p": Vector2(4200, 1030), "s": Vector2(220, 22)},
+			{"p": Vector2(4200, 800), "s": Vector2(220, 22)},
+			{"p": Vector2(1400, 1350), "s": Vector2(240, 22)},
+			{"p": Vector2(3400, 1350), "s": Vector2(240, 22)},
+			{"p": Vector2(2400, 1150), "s": Vector2(700, 22)},
+			{"p": Vector2(2400, 920), "s": Vector2(240, 22)},
 		],
-		"player_spawn": Vector2(200, 1025),
-		"bot_spawns": [Vector2(500, 640), Vector2(2700, 640), Vector2(1600, 560), Vector2(1600, 1025)],
+		"player_spawn": Vector2(200, 1775),
+		"bot_spawns": [Vector2(600, 770), Vector2(4200, 770), Vector2(2400, 1120), Vector2(2400, 890)],
 	},
 	{
 		"name": "Pillars",
 		"platforms": [
-			{"p": Vector2(800, 920), "s": Vector2(70, 22)},
-			{"p": Vector2(1200, 800), "s": Vector2(70, 22)},
-			{"p": Vector2(1600, 700), "s": Vector2(70, 22)},
-			{"p": Vector2(2000, 800), "s": Vector2(70, 22)},
-			{"p": Vector2(2400, 920), "s": Vector2(70, 22)},
-			{"p": Vector2(600, 880), "s": Vector2(130, 22)},
-			{"p": Vector2(2600, 880), "s": Vector2(130, 22)},
+			{"p": Vector2(400, 1650), "s": Vector2(80, 22)},
+			{"p": Vector2(800, 1500), "s": Vector2(80, 22)},
+			{"p": Vector2(1200, 1600), "s": Vector2(80, 22)},
+			{"p": Vector2(1600, 1400), "s": Vector2(100, 22)},
+			{"p": Vector2(2000, 1600), "s": Vector2(80, 22)},
+			{"p": Vector2(2400, 1400), "s": Vector2(350, 22)},
+			{"p": Vector2(2800, 1600), "s": Vector2(80, 22)},
+			{"p": Vector2(3200, 1450), "s": Vector2(100, 22)},
+			{"p": Vector2(3600, 1600), "s": Vector2(80, 22)},
+			{"p": Vector2(4000, 1500), "s": Vector2(80, 22)},
+			{"p": Vector2(4400, 1650), "s": Vector2(80, 22)},
+			{"p": Vector2(1600, 1200), "s": Vector2(100, 22)},
+			{"p": Vector2(3200, 1250), "s": Vector2(100, 22)},
+			{"p": Vector2(2400, 1150), "s": Vector2(300, 22)},
 		],
-		"player_spawn": Vector2(200, 1025),
-		"bot_spawns": [Vector2(800, 860), Vector2(1600, 640), Vector2(2400, 860), Vector2(1600, 1025)],
+		"player_spawn": Vector2(200, 1775),
+		"bot_spawns": [Vector2(1200, 1570), Vector2(2400, 1370), Vector2(3600, 1570), Vector2(2400, 1120)],
 	},
 ]
 

@@ -86,8 +86,8 @@ func _ready() -> void:
 	# Clamp the camera to the map bounds (Soldat renders 1:1 with no outside-map view).
 	cam.limit_left = 0
 	cam.limit_top = 0
-	cam.limit_right = 3200
-	cam.limit_bottom = 1200
+	cam.limit_right = 4800
+	cam.limit_bottom = 2000
 	add_child(cam)
 	if multiplayer.multiplayer_peer == null or is_multiplayer_authority():
 		cam.make_current()
