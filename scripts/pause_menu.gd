@@ -106,8 +106,7 @@ func _build_settings_panel() -> void:
 	vol.custom_minimum_size = Vector2(0, 26)
 	vol.value_changed.connect(func(v: float) -> void:
 		Settings.sfx_volume = v
-		Settings.save()
-		_apply_master_volume(v))
+		Settings.save())
 	_settings_panel.add_child(vol)
 
 	var shake := CheckButton.new()
@@ -270,10 +269,3 @@ func _exit_to_menu() -> void:
 	get_tree().change_scene_to_file("res://scenes/menu.tscn")
 
 
-func _apply_master_volume(v: float) -> void:
-	# Mirror the setting onto the actual master bus so the slider gives audible
-	# feedback while the menu is open. Silence at 0, unity at 1, log-mapped.
-	var db := -80.0 if v <= 0.001 else linear_to_db(clampf(v, 0.001, 1.0))
-	var idx := AudioServer.get_bus_index("Master")
-	if idx >= 0:
-		AudioServer.set_bus_volume_db(idx, db)
