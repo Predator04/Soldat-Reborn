@@ -75,9 +75,9 @@ var roll_t := 0.0
 var roll_cd := 0.0
 const ROLL_DURATION := 0.32
 const ROLL_COOLDOWN := 0.85
-# Roll must beat bunny-hop (BUNNY_SPEED 545) — otherwise it's a slower alternative
-# and no one uses it. Locked at 720 for the whole roll window, ignoring friction.
-const ROLL_SPEED := 720.0
+# Roll must beat bunny-hop (BUNNY_SPEED 415) — otherwise it's a slower alternative
+# and no one uses it. Locked at 650 for the whole roll window, ignoring friction.
+const ROLL_SPEED := 650.0
 var roll_dir := 1.0
 var melee_swing_t := 0.0  # short window (~0.25s) after a Knife/Chainsaw strike — drives the "bije" pose
 # Bink — extra aim spread applied when the *victim* takes damage from a bink weapon.
@@ -140,14 +140,14 @@ var shape_prone: RectangleShape2D
 
 # ── Physics ────────────────────────────────────────────
 const GRAVITY := 1700.0
-const RUN_SPEED := 230.0
-const BUNNY_SPEED := 460.0
-const GROUND_ACCEL := 2500.0
-const AIR_ACCEL := 1050.0
+const RUN_SPEED := 205.0
+const BUNNY_SPEED := 415.0
+const GROUND_ACCEL := 2250.0
+const AIR_ACCEL := 950.0
 const AIR_FRICTION := 45.0
 const GROUND_FRICTION := 1700.0
-const JUMP_VEL := -380.0
-const JET_THRUST := -1900.0
+const JUMP_VEL := -345.0
+const JET_THRUST := -1720.0
 const JET_DRAIN := 40.0
 const JET_REGEN := 32.0
 const MAX_FALL := 1200.0
