@@ -15,6 +15,13 @@ var lbl_score: RichTextLabel
 var lbl_winner: Label
 var feed: VBoxContainer
 
+# Death screen state
+var desat_overlay: ColorRect
+var lbl_death: Label
+var lbl_respawn: Label
+var _death_remaining := 0.0
+var _dead := false
+
 const FEED_MAX := 5
 const FEED_TTL := 4.0
 
@@ -22,6 +29,16 @@ var _feed_entries: Array = []
 
 
 func _ready() -> void:
+	# Full-screen death desaturation overlay (behind all HUD text).
+	desat_overlay = ColorRect.new()
+	desat_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	desat_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var _sm := ShaderMaterial.new()
+	_sm.shader = preload("res://scripts/death_desat.gdshader")
+	desat_overlay.material = _sm
+	desat_overlay.visible = false
+	add_child(desat_overlay)
+
 	lbl_health = _make_label(Vector2(14, 10), Color(1.0, 0.35, 0.35))
 	lbl_fuel = _make_label(Vector2(14, 34), Color(0.4, 0.8, 1.0))
 	lbl_ammo = _make_label(Vector2(14, 58), Color(1, 1, 1))
@@ -89,6 +106,33 @@ func _ready() -> void:
 	lbl_winner.visible = false
 	add_child(lbl_winner)
 
+	# Death message + respawn countdown.
+	lbl_death = Label.new()
+	lbl_death.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl_death.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl_death.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	lbl_death.offset_top = -100
+	lbl_death.offset_bottom = -100
+	lbl_death.add_theme_font_size_override("font_size", 44)
+	lbl_death.add_theme_color_override("font_color", Color(0.95, 0.25, 0.2))
+	lbl_death.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	lbl_death.add_theme_constant_override("outline_size", 9)
+	lbl_death.visible = false
+	add_child(lbl_death)
+
+	lbl_respawn = Label.new()
+	lbl_respawn.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl_respawn.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl_respawn.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	lbl_respawn.offset_top = -40
+	lbl_respawn.offset_bottom = -40
+	lbl_respawn.add_theme_font_size_override("font_size", 26)
+	lbl_respawn.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9))
+	lbl_respawn.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	lbl_respawn.add_theme_constant_override("outline_size", 6)
+	lbl_respawn.visible = false
+	add_child(lbl_respawn)
+
 
 func _make_label(pos: Vector2, col: Color) -> Label:
 	var l := Label.new()
@@ -99,6 +143,24 @@ func _make_label(pos: Vector2, col: Color) -> Label:
 	l.add_theme_constant_override("outline_size", 4)
 	add_child(l)
 	return l
+
+
+func show_death(killer: String, weapon: String) -> void:
+	_dead = true
+	_death_remaining = 2.0
+	lbl_death.text = ("You were killed by %s" % killer) if killer != "" else "You died"
+	if weapon != "" and killer != "":
+		lbl_death.text += "  [%s]" % weapon
+	lbl_death.visible = true
+	lbl_respawn.visible = true
+	desat_overlay.visible = true
+
+
+func _hide_death() -> void:
+	_dead = false
+	lbl_death.visible = false
+	lbl_respawn.visible = false
+	desat_overlay.visible = false
 
 
 func _on_kill(killer_name: String, victim_name: String, weapon_name: String, killer_team: int, _victim_team: int) -> void:
@@ -129,7 +191,12 @@ func _on_kill(killer_name: String, victim_name: String, weapon_name: String, kil
 			lbl.queue_free())
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	if _dead:
+		_death_remaining -= delta
+		lbl_respawn.text = "Respawning in %d" % maxi(0, int(ceil(_death_remaining)))
+		if _death_remaining <= 0.0:
+			_hide_death()
 	lbl_map.text = map_name
 	lbl_status.text = Net.status if Net.is_networked() else ""
 	_update_match_ui()

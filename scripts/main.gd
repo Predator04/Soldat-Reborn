@@ -189,6 +189,8 @@ func _spawn_player() -> void:
 
 
 func _on_player_died() -> void:
+	if hud:
+		hud.show_death(str(player.last_killer), str(player.last_weapon))
 	get_tree().create_timer(2.0).timeout.connect(_spawn_player)
 
 

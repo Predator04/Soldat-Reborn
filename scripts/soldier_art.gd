@@ -90,6 +90,15 @@ static func draw_soldier(
 		node.draw_rect(Rect2(-6.5, HP_BAR_Y + 2.0, 13.0, 1.5), Color(0.0, 0.0, 0.0, 0.55))
 		node.draw_rect(Rect2(-6.5, HP_BAR_Y + 2.0, 13.0 * clampf(fuel / 100.0, 0.0, 1.0), 1.5), Color(0.3, 0.7, 1.0))
 
+	# Team indicator arrow above the head (Soldat-style), colored by body/team color.
+	if not dead:
+		var arrow_col := body_color.lightened(0.25)
+		node.draw_polygon(PackedVector2Array([
+			Vector2(-4.0, -40.0),
+			Vector2(4.0, -40.0),
+			Vector2(0.0, -33.0),
+		]), PackedColorArray([arrow_col, arrow_col, arrow_col]))
+
 
 # Returns the barrel-tip position in the node's local space so callers can
 # put the muzzle flash there.
