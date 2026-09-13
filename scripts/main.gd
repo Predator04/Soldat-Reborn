@@ -785,8 +785,11 @@ func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: Str
 		return
 	if not round_active or killer_team < 0:
 		return
-	# Suicide or team-kill: no score for the victim's own team.
+	# Suicide or team-kill: no score change, but still check survival end so
+	# the round can end on the last soldier down even from friendly fire.
 	if killer_name == victim_name or killer_team == victim_team:
+		if Settings.survival:
+			_check_survival_end()
 		return
 	# Rambo mode: only the current bow carrier's kills count.
 	if Settings.game_mode == Settings.MODE_RM:
@@ -801,8 +804,8 @@ func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: Str
 	scores[killer_team] = int(scores.get(killer_team, 0)) + 1
 	if scores[killer_team] >= SCORE_TO_WIN:
 		_end_round(killer_team)
-	# Survival: last team standing ends the round early.
 	elif Settings.survival:
+		# Survival: last team standing ends the round early.
 		_check_survival_end()
 	if Net.is_networked() and Net.is_host():
 		_broadcast_match_state()
