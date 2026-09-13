@@ -4,5 +4,8 @@ build/
 GodotEngine/
 
 # Large / deferred asset dirs — kept on disk for the follow-up integration
-# pass but excluded from the repo to keep it lean.
+# pass but excluded from the repo to keep it lean. Regenerate via
+# `python3 tools/ship_assets.py` after copying the original Soldat asset
+# packs into /home/predator04/soldat-base/shared/{textures,scenery-gfx}.
 assets/textures/
+assets/scenery/
