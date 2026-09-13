@@ -38,6 +38,20 @@ static func map_to_json(m: Dictionary) -> String:
 		if m.has(key):
 			var v: Vector2 = m[key]
 			out[key] = [v.x, v.y]
+	# Optional terrain polygons — serialize as an array of flat float arrays.
+	if m.has("polys"):
+		var polys_out: Array = []
+		for poly in m["polys"]:
+			var pts: PackedVector2Array = poly.get("points", PackedVector2Array())
+			var flat: Array = []
+			for p in pts:
+				flat.append(p.x)
+				flat.append(p.y)
+			polys_out.append({"points": flat})
+		out["polys"] = polys_out
+	for key in ["terrain_color", "terrain_texture", "floor_texture"]:
+		if m.has(key) and typeof(m[key]) == TYPE_STRING:
+			out[key] = m[key]
 	return JSON.stringify(out, "  ")
 
 
@@ -71,6 +85,20 @@ static func json_to_map(text: String) -> Dictionary:
 	for key in ["inf_flag", "htf_flag", "rambo_pos"]:
 		if parsed.has(key):
 			m[key] = _v2(parsed[key])
+	if parsed.has("polys"):
+		var polys: Array = []
+		for poly in parsed["polys"]:
+			var flat: Array = poly.get("points", [])
+			var pts := PackedVector2Array()
+			var i := 0
+			while i + 1 < flat.size():
+				pts.append(Vector2(float(flat[i]), float(flat[i + 1])))
+				i += 2
+			polys.append({"points": pts})
+		m["polys"] = polys
+	for key in ["terrain_texture", "floor_texture"]:
+		if parsed.has(key):
+			m[key] = str(parsed[key])
 	return m
 
 

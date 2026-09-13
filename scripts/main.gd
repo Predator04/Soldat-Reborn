@@ -83,66 +83,171 @@ const GROUND_Y := 1900.0
 const MAPS := [
 	{
 		"name": "Ascent",
+		# Rolling hills climbing left → right, with a tunnel bored through the
+		# mid-map mountain and a peaked ridge on the right. Polygons build the
+		# organic silhouette; a few flat platforms give jet-boot climbers footing.
+		"terrain_color": Color(0.30, 0.36, 0.30),
+		"terrain_texture": "res://assets/textures/xt_ap_grasrock_02.png",
+		"floor_texture": "res://assets/textures/drymud.png",
+		"polys": [
+			# Left rolling hill.
+			{"points": PackedVector2Array([
+				Vector2(200, 1900), Vector2(320, 1820), Vector2(520, 1720),
+				Vector2(720, 1670), Vector2(920, 1720), Vector2(1080, 1820),
+				Vector2(1240, 1900),
+			])},
+			# Second hill with a small plateau top.
+			{"points": PackedVector2Array([
+				Vector2(1240, 1900), Vector2(1360, 1780), Vector2(1500, 1620),
+				Vector2(1620, 1560), Vector2(1720, 1560), Vector2(1740, 1900),
+			])},
+			# Middle mountain with a horizontal tunnel bored through the base.
+			# Tunnel spans x ∈ [1900, 2380], ceiling y=1780, floor at map ground.
+			{"points": PackedVector2Array([
+				Vector2(1740, 1900), Vector2(1780, 1720), Vector2(1880, 1500),
+				Vector2(2000, 1350), Vector2(2140, 1260), Vector2(2260, 1240),
+				Vector2(2380, 1290), Vector2(2500, 1400), Vector2(2600, 1560),
+				Vector2(2680, 1720), Vector2(2720, 1900),
+				Vector2(2380, 1900), Vector2(2380, 1780),
+				Vector2(1900, 1780), Vector2(1900, 1900),
+			])},
+			# Valley + rising slope.
+			{"points": PackedVector2Array([
+				Vector2(2720, 1900), Vector2(2820, 1820), Vector2(3020, 1760),
+				Vector2(3200, 1720), Vector2(3380, 1660),
+				Vector2(3560, 1580), Vector2(3720, 1480),
+				Vector2(3880, 1360), Vector2(4040, 1240),
+				Vector2(4200, 1140), Vector2(4340, 1060),
+				Vector2(4480, 1020), Vector2(4620, 1080), Vector2(4620, 1900),
+			])},
+		],
 		"platforms": [
-			{"p": Vector2(400, 1720), "s": Vector2(260, 22)},
-			{"p": Vector2(750, 1550), "s": Vector2(240, 22)},
-			{"p": Vector2(1100, 1380), "s": Vector2(240, 22)},
-			{"p": Vector2(1450, 1210), "s": Vector2(240, 22)},
-			{"p": Vector2(1800, 1050), "s": Vector2(240, 22)},
-			{"p": Vector2(2150, 900), "s": Vector2(220, 22)},
-			{"p": Vector2(2500, 750), "s": Vector2(220, 22)},
-			{"p": Vector2(2850, 600), "s": Vector2(220, 22)},
-			{"p": Vector2(3200, 460), "s": Vector2(220, 22)},
-			{"p": Vector2(3700, 380), "s": Vector2(400, 22)},
-			{"p": Vector2(4200, 900), "s": Vector2(140, 22)},
-			{"p": Vector2(2000, 1700), "s": Vector2(300, 22)},
+			# Sky platforms + tunnel-roof top for extended air routes.
+			{"p": Vector2(2140, 1550), "s": Vector2(240, 18)},  # mountain-side ledge
+			{"p": Vector2(3220, 1420), "s": Vector2(260, 18)},  # mid-air perch
+			{"p": Vector2(3850, 1180), "s": Vector2(240, 18)},  # near peak
+			{"p": Vector2(4460, 800),  "s": Vector2(260, 18)},  # sky peak
+			{"p": Vector2(700, 1450),  "s": Vector2(180, 18)},  # early lift
 		],
 		"player_spawn": Vector2(200, 1775),
-		"bot_spawns": [Vector2(2500, 720), Vector2(3200, 430), Vector2(3700, 350), Vector2(4200, 870)],
+		"bot_spawns": [Vector2(2200, 1220), Vector2(3220, 1390), Vector2(3850, 1150), Vector2(4460, 770)],
+		"scenery": [
+			{"tex": "res://assets/textures/ancientwall.png", "pos": Vector2(2260, 1210), "scale": 0.35, "mod": Color(0.7, 0.7, 0.75, 0.7), "z": -3},
+			{"tex": "res://assets/textures/mossgreen.png",   "pos": Vector2(600, 1660),  "scale": 0.25, "mod": Color(0.9, 0.95, 0.9, 0.6), "z": -3},
+			{"tex": "res://assets/textures/mossgreen.png",   "pos": Vector2(3300, 1660), "scale": 0.25, "mod": Color(0.9, 0.95, 0.9, 0.6), "z": -3},
+		],
 	},
 	{
 		"name": "Towers",
+		# Two mountain fortresses left and right, each with a low tunnel through
+		# the base and staircase platforms up the side. Central low ground with
+		# a raised mid-arena and M2 mounts on the peaks.
+		"terrain_color": Color(0.32, 0.30, 0.28),
+		"terrain_texture": "res://assets/textures/earthen.png",
+		"floor_texture": "res://assets/textures/drysand.png",
+		"polys": [
+			# Left mountain, tunnel x ∈ [520, 900], ceiling y=1780.
+			{"points": PackedVector2Array([
+				Vector2(200, 1900), Vector2(240, 1720), Vector2(320, 1500),
+				Vector2(420, 1300), Vector2(560, 1140), Vector2(700, 1060),
+				Vector2(840, 1120), Vector2(960, 1260), Vector2(1080, 1440),
+				Vector2(1180, 1620), Vector2(1240, 1800), Vector2(1260, 1900),
+				Vector2(900, 1900), Vector2(900, 1780),
+				Vector2(520, 1780), Vector2(520, 1900),
+			])},
+			# Central low mesa (players climb via ramps of platforms).
+			{"points": PackedVector2Array([
+				Vector2(2000, 1900), Vector2(2100, 1780), Vector2(2280, 1720),
+				Vector2(2520, 1700), Vector2(2720, 1720), Vector2(2900, 1780),
+				Vector2(3000, 1900),
+			])},
+			# Right mountain, tunnel x ∈ [3900, 4280], ceiling y=1780.
+			{"points": PackedVector2Array([
+				Vector2(3540, 1900), Vector2(3560, 1800), Vector2(3620, 1620),
+				Vector2(3720, 1440), Vector2(3840, 1260), Vector2(3980, 1120),
+				Vector2(4120, 1060), Vector2(4260, 1140), Vector2(4380, 1300),
+				Vector2(4480, 1500), Vector2(4560, 1720), Vector2(4600, 1900),
+				Vector2(4280, 1900), Vector2(4280, 1780),
+				Vector2(3900, 1780), Vector2(3900, 1900),
+			])},
+		],
 		"platforms": [
-			{"p": Vector2(600, 1720), "s": Vector2(220, 22)},
-			{"p": Vector2(600, 1490), "s": Vector2(220, 22)},
-			{"p": Vector2(600, 1260), "s": Vector2(220, 22)},
-			{"p": Vector2(600, 1030), "s": Vector2(220, 22)},
-			{"p": Vector2(600, 800), "s": Vector2(220, 22)},
-			{"p": Vector2(4200, 1720), "s": Vector2(220, 22)},
-			{"p": Vector2(4200, 1490), "s": Vector2(220, 22)},
-			{"p": Vector2(4200, 1260), "s": Vector2(220, 22)},
-			{"p": Vector2(4200, 1030), "s": Vector2(220, 22)},
-			{"p": Vector2(4200, 800), "s": Vector2(220, 22)},
-			{"p": Vector2(1400, 1350), "s": Vector2(240, 22)},
-			{"p": Vector2(3400, 1350), "s": Vector2(240, 22)},
-			{"p": Vector2(2400, 1150), "s": Vector2(700, 22)},
-			{"p": Vector2(2400, 920), "s": Vector2(240, 22)},
+			# Left tower ladder up the outside of the mountain.
+			{"p": Vector2(360, 1560),  "s": Vector2(160, 18)},
+			{"p": Vector2(480, 1360),  "s": Vector2(180, 18)},
+			{"p": Vector2(640, 1200),  "s": Vector2(180, 18)},
+			# Right tower ladder.
+			{"p": Vector2(4440, 1560), "s": Vector2(160, 18)},
+			{"p": Vector2(4320, 1360), "s": Vector2(180, 18)},
+			{"p": Vector2(4160, 1200), "s": Vector2(180, 18)},
+			# Mid-arena high platform (M2 mount lives on top).
+			{"p": Vector2(2500, 1400), "s": Vector2(560, 20)},
+			{"p": Vector2(2500, 1160), "s": Vector2(220, 18)},
+			# Anti-camp ledges above the tunnels.
+			{"p": Vector2(720, 1780),  "s": Vector2(400, 14)},
+			{"p": Vector2(4080, 1780), "s": Vector2(400, 14)},
 		],
 		"player_spawn": Vector2(200, 1775),
-		"bot_spawns": [Vector2(3400, 1320), Vector2(4200, 770), Vector2(2400, 890), Vector2(4200, 1460)],
-		"m2_mounts": [Vector2(2400, 1130), Vector2(600, 780), Vector2(4200, 780)],
+		"bot_spawns": [Vector2(3540, 1500), Vector2(4160, 1170), Vector2(2500, 1130), Vector2(4440, 1530)],
+		"m2_mounts": [Vector2(2500, 1380), Vector2(700, 1040), Vector2(4120, 1040)],
+		"scenery": [
+			{"tex": "res://assets/textures/stone03.png",  "pos": Vector2(700, 1020),  "scale": 0.35, "mod": Color(0.85, 0.8, 0.75, 0.7), "z": -3},
+			{"tex": "res://assets/textures/stone03.png",  "pos": Vector2(4120, 1020), "scale": 0.35, "mod": Color(0.85, 0.8, 0.75, 0.7), "z": -3},
+		],
 	},
 	{
 		"name": "Pillars",
+		# Rugged interior: rolling hills at ground level, a wide central tunnel
+		# and jagged spire "pillars" atop platforms. Everything is jet-reachable.
+		"terrain_color": Color(0.34, 0.34, 0.32),
+		"terrain_texture": "res://assets/textures/riverbed.png",
+		"floor_texture": "res://assets/textures/riverbed.png",
+		"polys": [
+			# Left rugged ground with small bumps.
+			{"points": PackedVector2Array([
+				Vector2(200, 1900), Vector2(340, 1820), Vector2(500, 1780),
+				Vector2(660, 1800), Vector2(820, 1740), Vector2(960, 1780),
+				Vector2(1120, 1720), Vector2(1280, 1780), Vector2(1440, 1760),
+				Vector2(1600, 1820), Vector2(1740, 1900),
+			])},
+			# Central raised mesa with a wide tunnel underneath.
+			# Tunnel x ∈ [2000, 2800], ceiling y=1780, floor at ground.
+			{"points": PackedVector2Array([
+				Vector2(1740, 1900), Vector2(1800, 1780), Vector2(1900, 1620),
+				Vector2(2040, 1460), Vector2(2260, 1360), Vector2(2540, 1340),
+				Vector2(2800, 1400), Vector2(2980, 1520), Vector2(3080, 1680),
+				Vector2(3140, 1820), Vector2(3160, 1900),
+				Vector2(2800, 1900), Vector2(2800, 1780),
+				Vector2(2000, 1780), Vector2(2000, 1900),
+			])},
+			# Right rugged ground with two spike-like bumps.
+			{"points": PackedVector2Array([
+				Vector2(3160, 1900), Vector2(3320, 1780), Vector2(3480, 1820),
+				Vector2(3640, 1740), Vector2(3800, 1780), Vector2(3960, 1720),
+				Vector2(4120, 1780), Vector2(4280, 1800), Vector2(4440, 1820),
+				Vector2(4620, 1900),
+			])},
+		],
 		"platforms": [
-			{"p": Vector2(400, 1650), "s": Vector2(80, 22)},
-			{"p": Vector2(800, 1500), "s": Vector2(80, 22)},
-			{"p": Vector2(1200, 1600), "s": Vector2(80, 22)},
-			{"p": Vector2(1600, 1400), "s": Vector2(100, 22)},
-			{"p": Vector2(2000, 1600), "s": Vector2(80, 22)},
-			{"p": Vector2(2400, 1400), "s": Vector2(350, 22)},
-			{"p": Vector2(2800, 1600), "s": Vector2(80, 22)},
-			{"p": Vector2(3200, 1450), "s": Vector2(100, 22)},
-			{"p": Vector2(3600, 1600), "s": Vector2(80, 22)},
-			{"p": Vector2(4000, 1500), "s": Vector2(80, 22)},
-			{"p": Vector2(4400, 1650), "s": Vector2(80, 22)},
-			{"p": Vector2(1600, 1200), "s": Vector2(100, 22)},
-			{"p": Vector2(3200, 1250), "s": Vector2(100, 22)},
-			{"p": Vector2(2400, 1150), "s": Vector2(300, 22)},
+			# Pillars — narrow high platforms distributed across the map.
+			{"p": Vector2(500, 1560),  "s": Vector2(90, 18)},
+			{"p": Vector2(950, 1420),  "s": Vector2(90, 18)},
+			{"p": Vector2(1300, 1560), "s": Vector2(90, 18)},
+			{"p": Vector2(1620, 1240), "s": Vector2(110, 18)},
+			{"p": Vector2(3300, 1240), "s": Vector2(110, 18)},
+			{"p": Vector2(3620, 1560), "s": Vector2(90, 18)},
+			{"p": Vector2(4000, 1420), "s": Vector2(90, 18)},
+			{"p": Vector2(4400, 1560), "s": Vector2(90, 18)},
+			# Central roof over the tunnel — jet up to reach the M2.
+			{"p": Vector2(2400, 1140), "s": Vector2(340, 20)},
+			{"p": Vector2(2400, 1360), "s": Vector2(560, 18)},
 		],
 		"player_spawn": Vector2(200, 1775),
-		"bot_spawns": [Vector2(2400, 1370), Vector2(3600, 1570), Vector2(4000, 1470), Vector2(3200, 1220)],
+		"bot_spawns": [Vector2(2400, 1110), Vector2(3620, 1530), Vector2(4000, 1390), Vector2(3300, 1210)],
 		"m2_mounts": [Vector2(2400, 1120)],
+		"scenery": [
+			{"tex": "res://assets/textures/ancientwall.png", "pos": Vector2(2400, 1330), "scale": 0.3, "mod": Color(0.75, 0.7, 0.65, 0.6), "z": -3},
+		],
 	},
 ]
 
@@ -221,7 +326,7 @@ func _build_parallax() -> void:
 	add_child(layer)
 
 
-func _make_platform(pos: Vector2, size: Vector2, col: Color) -> StaticBody2D:
+func _make_platform(pos: Vector2, size: Vector2, col: Color, tex_path: String = "") -> StaticBody2D:
 	var body := StaticBody2D.new()
 	body.position = pos
 	var shape := CollisionShape2D.new()
@@ -237,18 +342,96 @@ func _make_platform(pos: Vector2, size: Vector2, col: Color) -> StaticBody2D:
 		Vector2(-size.x / 2.0, size.y / 2.0),
 	])
 	vis.color = col
+	if tex_path != "" and ResourceLoader.exists(tex_path):
+		var tex: Texture2D = load(tex_path) as Texture2D
+		if tex != null:
+			vis.texture = tex
+			vis.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+			# Modulate lightly so texture blends with the rock/dirt color instead of overwhelming it.
+			vis.color = Color(0.85, 0.85, 0.9, 1.0)
 	body.add_child(vis)
 	add_child(body)
 	return body
 
 
+func _make_polygon_body(points: PackedVector2Array, col: Color, tex_path: String = "") -> StaticBody2D:
+	# World-space polygon terrain. Enables hills / mountains / tunnel walls
+	# without stacking dozens of small rectangles.
+	if points.size() < 3:
+		return null
+	var body := StaticBody2D.new()
+	body.position = Vector2.ZERO
+	var col_poly := CollisionPolygon2D.new()
+	col_poly.polygon = points
+	body.add_child(col_poly)
+	var vis := Polygon2D.new()
+	vis.polygon = points
+	vis.color = col
+	if tex_path != "" and ResourceLoader.exists(tex_path):
+		var tex: Texture2D = load(tex_path) as Texture2D
+		if tex != null:
+			vis.texture = tex
+			vis.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+			vis.color = Color(0.9, 0.88, 0.9, 1.0)
+	body.add_child(vis)
+	# Subtle darkened top-edge outline so hills read against the sky at distance.
+	var outline := Line2D.new()
+	outline.width = 3.0
+	outline.default_color = col.darkened(0.4)
+	outline.antialiased = true
+	# Skip drawing the bottom edge (assumed to be the last→first wrap) — extract
+	# the ridge points, i.e. everything except the last segment closing the poly.
+	var ridge := PackedVector2Array()
+	for p in points:
+		ridge.append(p)
+	outline.points = ridge
+	body.add_child(outline)
+	add_child(body)
+	return body
+
+
 func _build_terrain() -> void:
-	_make_platform(Vector2(MAP_W / 2.0, GROUND_Y), Vector2(MAP_W + 200, 200), Color(0.22, 0.26, 0.32))
+	# Baseline floor + side walls always present so maps can rely on them.
+	var floor_tex: String = str(_map.get("floor_texture", ""))
+	_make_platform(Vector2(MAP_W / 2.0, GROUND_Y), Vector2(MAP_W + 200, 200), Color(0.22, 0.26, 0.32), floor_tex)
+	# Optional polygon terrain (hills / mountains / tunnel walls). Each entry is
+	# { "points": PackedVector2Array } with optional "color" and "texture".
+	var default_terrain_col: Color = _map.get("terrain_color", Color(0.24, 0.28, 0.34))
+	var default_terrain_tex: String = str(_map.get("terrain_texture", ""))
+	for poly in _map.get("polys", []):
+		var pts: PackedVector2Array = poly.get("points", PackedVector2Array())
+		var pc: Color = poly.get("color", default_terrain_col)
+		var pt: String = str(poly.get("texture", default_terrain_tex))
+		_make_polygon_body(pts, pc, pt)
+	# Legacy rectangular platforms remain supported.
 	for pl in _map["platforms"]:
 		_make_platform(pl["p"], pl["s"], Color(0.28, 0.32, 0.4))
 	_make_platform(Vector2(0, MAP_H / 2.0), Vector2(40, MAP_H * 2.0), Color(0.2, 0.23, 0.28))
 	_make_platform(Vector2(MAP_W, MAP_H / 2.0), Vector2(40, MAP_H * 2.0), Color(0.2, 0.23, 0.28))
+	_spawn_scenery()
 	_spawn_m2_mounts()
+
+
+func _spawn_scenery() -> void:
+	# Non-collidable decorative sprites (trees / rocks / etc.). Each entry is
+	# { "tex": res_path, "pos": Vector2, optional "scale": float, "mod": Color }.
+	var items: Array = _map.get("scenery", [])
+	if items.is_empty():
+		return
+	for it in items:
+		var path: String = str(it.get("tex", ""))
+		if path == "" or not ResourceLoader.exists(path):
+			continue
+		var tex: Texture2D = load(path) as Texture2D
+		if tex == null:
+			continue
+		var s := Sprite2D.new()
+		s.texture = tex
+		s.position = it.get("pos", Vector2.ZERO)
+		s.scale = Vector2.ONE * float(it.get("scale", 1.0))
+		s.modulate = it.get("mod", Color(1, 1, 1, 1))
+		s.z_index = int(it.get("z", -2))
+		add_child(s)
 
 
 func _spawn_m2_mounts() -> void:
