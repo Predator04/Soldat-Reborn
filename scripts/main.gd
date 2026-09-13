@@ -418,6 +418,16 @@ func net_kill_feed(killer_name: String, victim_name: String, weapon_name: String
 	kill.emit(killer_name, victim_name, weapon_name, killer_team, victim_team)
 
 
+@rpc("any_peer", "call_local", "reliable")
+func net_chat(author: String, msg: String, scope: String, sender_team: int) -> void:
+	# Team chat is filtered locally so opponents don't see it. Global chat is
+	# visible to everyone. Route through the HUD's chat feed.
+	if scope == "team" and is_instance_valid(player) and int(player.team) != sender_team:
+		return
+	if hud != null and hud.has_method("post_chat"):
+		hud.post_chat(author, msg, scope == "team")
+
+
 # ── Match / score / round ─────────────────────────────
 
 func _process(delta: float) -> void:

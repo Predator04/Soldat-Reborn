@@ -23,8 +23,14 @@ var _death_remaining := 0.0
 var _dead := false
 
 # /command line for gestures (opened by player.gd when the "/" key is pressed).
+# Reused for T (global chat) and Y (team chat) — _line_mode tracks which.
 var command_line: LineEdit
 var _command_visible := false
+var _line_mode := "cmd"  # "cmd" | "global" | "team"
+var chat_feed: VBoxContainer
+static var _taunts: Dictionary = {}
+const CHAT_FEED_MAX := 7
+const CHAT_TTL := 10.0
 
 const FEED_MAX := 5
 const FEED_TTL := 4.0
@@ -151,14 +157,37 @@ func _ready() -> void:
 	command_line.gui_input.connect(_on_command_gui_input)
 	add_child(command_line)
 
+	# Chat feed — recent messages scroll bottom-up above the ammo readout.
+	chat_feed = VBoxContainer.new()
+	chat_feed.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	chat_feed.offset_left = 14
+	chat_feed.offset_top = -260
+	chat_feed.offset_bottom = -140
+	chat_feed.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	chat_feed.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(chat_feed)
+
 
 func open_command(prefill: String = "/") -> void:
+	_open_line("cmd", prefill, "/victory  /smoke  /tabac  /takeoff  /mercy  /kill  /brutalkill")
+
+
+func open_chat(scope: String) -> void:
+	if scope == "team":
+		_open_line("team", "", "[TEAM] Y — say to your team")
+	else:
+		_open_line("global", "", "[GLOBAL] T — say to everyone")
+
+
+func _open_line(mode: String, prefill: String, placeholder: String) -> void:
 	if not is_instance_valid(player) or bool(player.get("dead")):
 		return
 	if _command_visible:
 		return
 	_command_visible = true
+	_line_mode = mode
 	command_line.text = prefill
+	command_line.placeholder_text = placeholder
 	command_line.visible = true
 	command_line.grab_focus()
 	command_line.caret_column = command_line.text.length()
@@ -177,10 +206,80 @@ func _close_command() -> void:
 func _on_command_submitted(text: String) -> void:
 	var t := text.strip_edges()
 	if is_instance_valid(player) and t != "":
-		# Only "/…" strings run as gestures for now; chat is issue #12.
-		if t.begins_with("/") and player.has_method("apply_gesture"):
-			player.apply_gesture(t)
+		if _line_mode == "cmd":
+			if t.begins_with("/") and player.has_method("apply_gesture"):
+				player.apply_gesture(t)
+			elif player.has_method("send_chat"):
+				player.send_chat("global", t)
+		elif _line_mode == "team" and player.has_method("send_chat"):
+			player.send_chat("team", t)
+		elif player.has_method("send_chat"):
+			player.send_chat("global", t)
 	_close_command()
+
+
+func post_chat(author: String, msg: String, is_team: bool) -> void:
+	if not is_instance_valid(chat_feed):
+		return
+	var lbl := Label.new()
+	lbl.text = ("(TEAM) %s: %s" % [author, msg]) if is_team else ("%s: %s" % [author, msg])
+	var col := Color(0.6, 0.95, 1.0) if is_team else Color(0.95, 0.95, 0.95)
+	lbl.add_theme_font_size_override("font_size", 14)
+	lbl.add_theme_color_override("font_color", col)
+	lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	lbl.add_theme_constant_override("outline_size", 3)
+	chat_feed.add_child(lbl)
+	while chat_feed.get_child_count() > CHAT_FEED_MAX:
+		var old := chat_feed.get_child(0)
+		chat_feed.remove_child(old)
+		old.queue_free()
+	var t := Timer.new()
+	t.wait_time = CHAT_TTL
+	t.one_shot = true
+	t.autostart = true
+	lbl.add_child(t)
+	t.timeout.connect(func() -> void:
+		if is_instance_valid(lbl):
+			lbl.queue_free())
+
+
+func get_taunt(key: String) -> String:
+	_load_taunts()
+	return String(_taunts.get(key.to_lower(), ""))
+
+
+func _load_taunts() -> void:
+	if not _taunts.is_empty():
+		return
+	var path := "res://taunts.txt"
+	if FileAccess.file_exists(path):
+		var f := FileAccess.open(path, FileAccess.READ)
+		if f != null:
+			while not f.eof_reached():
+				var line := f.get_line().strip_edges()
+				if line == "" or line.begins_with("#"):
+					continue
+				var sp := line.find(" ")
+				if sp > 0:
+					var key := line.substr(0, sp).to_lower()
+					var msg := line.substr(sp + 1)
+					_taunts[key] = msg
+	if _taunts.is_empty():
+		var defaults := {
+			"a": "Attack!", "b": "Get back!", "c": "Cover me!",
+			"d": "Defend the flag!", "e": "Enemy spotted!", "f": "Grab the flag!",
+			"g": "Good shot!", "h": "Hello!", "i": "Need ammo!",
+			"j": "Jump!", "k": "Nice kill!", "l": "Let's move!",
+			"m": "Medic!", "n": "No!", "o": "Okay!", "p": "Push up!",
+			"q": "Quiet!", "r": "Ready!", "s": "Sorry!", "t": "Thanks!",
+			"u": "Understood!", "v": "Victory!", "w": "Watch out!",
+			"x": "GG!", "y": "Yes!", "z": "Regroup!",
+			"0": "Move out!", "1": "One!", "2": "Two!",
+			"3": "Three!", "4": "Four!", "5": "Five!",
+			"6": "Six!", "7": "Seven!", "8": "Eight!", "9": "Nine!",
+		}
+		for k in defaults:
+			_taunts[k] = defaults[k]
 
 
 func _on_command_gui_input(event: InputEvent) -> void:

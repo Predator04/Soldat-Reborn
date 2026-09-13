@@ -454,12 +454,54 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if input_locked:
 		return
-	if event is InputEventKey and event.pressed and not event.echo:
-		if event.physical_keycode == KEY_SLASH:
-			var parent := get_parent()
-			if parent != null and parent.get("hud") != null:
-				parent.hud.open_command()
+	if not (event is InputEventKey) or not event.pressed or event.echo:
+		return
+	var parent := get_parent()
+	var hud = null
+	if parent != null and parent.get("hud") != null:
+		hud = parent.hud
+	# ALT + a..z / 0..9 → send a canned taunt over global chat.
+	if event.alt_pressed and hud != null:
+		var ch := ""
+		var kc: int = event.keycode
+		if kc >= KEY_A and kc <= KEY_Z:
+			ch = String.chr(kc + 32)
+		elif kc >= KEY_0 and kc <= KEY_9:
+			ch = String.chr(kc)
+		if ch != "":
+			var msg: String = hud.get_taunt(ch)
+			if msg != "":
+				send_chat("global", msg)
+			get_viewport().set_input_as_handled()
+			return
+	match event.physical_keycode:
+		KEY_SLASH:
+			if hud != null:
+				hud.open_command()
 				get_viewport().set_input_as_handled()
+		KEY_T:
+			if hud != null:
+				hud.open_chat("global")
+				get_viewport().set_input_as_handled()
+		KEY_Y:
+			if hud != null:
+				hud.open_chat("team")
+				get_viewport().set_input_as_handled()
+
+
+func send_chat(scope: String, msg: String) -> void:
+	var m := msg.strip_edges()
+	if m == "":
+		return
+	var parent := get_parent()
+	if parent == null:
+		return
+	if Net.is_networked():
+		if parent.has_method("net_chat"):
+			parent.rpc("net_chat", display_name, m, scope, team)
+	else:
+		if parent.get("hud") != null and parent.hud.has_method("post_chat"):
+			parent.hud.post_chat(display_name, m, scope == "team")
 
 
 func apply_gesture(cmd_raw: String) -> void:
