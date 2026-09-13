@@ -3,6 +3,7 @@ extends Control
 
 const MapIO = preload("res://scripts/map_io.gd")
 const MapGen = preload("res://scripts/map_gen.gd")
+const ControlsMenu = preload("res://scripts/controls_menu.gd")
 
 const MAP_NAMES := ["Ascent", "Towers", "Pillars"]
 const MODE_NAMES := [
@@ -13,6 +14,7 @@ const MODE_NAMES := [
 
 var _menu_box: VBoxContainer
 var _settings_panel: VBoxContainer
+var _controls_panel: VBoxContainer
 var _mods_panel: VBoxContainer
 var _cos_panel: VBoxContainer
 var _stats_panel: VBoxContainer
@@ -37,6 +39,7 @@ func _ready() -> void:
 	_build_title()
 	_build_menu()
 	_build_settings()
+	_build_controls()
 	_build_mods()
 	_build_cosmetics()
 	_build_stats()
@@ -259,11 +262,29 @@ func _build_settings() -> void:
 		Settings.save())
 	_settings_panel.add_child(lo)
 
+	# Controls — opens the rebind screen. Same scene/script as the ESC pause-menu
+	# Settings entry, so both routes share user://controls.cfg via ControlsMap.save().
+	var controls_btn := _make_button("CONTROLS")
+	controls_btn.pressed.connect(func() -> void:
+		_settings_panel.visible = false
+		_controls_panel.visible = true)
+	_settings_panel.add_child(controls_btn)
+
 	var back := _make_button("BACK")
 	back.pressed.connect(func() -> void:
 		_settings_panel.visible = false
 		_menu_box.visible = true)
 	_settings_panel.add_child(back)
+
+
+func _build_controls() -> void:
+	# Reuse the pause-menu Controls screen verbatim — same list, same persistence.
+	_controls_panel = ControlsMenu.new()
+	_controls_panel.visible = false
+	_controls_panel.back_pressed.connect(func() -> void:
+		_controls_panel.visible = false
+		_settings_panel.visible = true)
+	add_child(_controls_panel)
 
 
 func _build_mods() -> void:
@@ -680,7 +701,15 @@ func _unhandled_input(event: InputEvent) -> void:
 	var focused := get_viewport().gui_get_focus_owner()
 	if focused != null and focused is LineEdit:
 		return
-	if _settings_panel != null and _settings_panel.visible:
+	if _controls_panel != null and _controls_panel.visible:
+		# Mid-rebind: let the capture eat ESC so the user doesn't lose the session
+		# on the first press (matches the pause-menu handling).
+		if _controls_panel._capturing_action != "":
+			_controls_panel._abort_capture()
+		else:
+			_controls_panel.visible = false
+			_settings_panel.visible = true
+	elif _settings_panel != null and _settings_panel.visible:
 		_settings_panel.visible = false
 		_menu_box.visible = true
 	elif _mods_panel != null and _mods_panel.visible:
