@@ -110,6 +110,8 @@ static func json_to_map(text: String) -> Dictionary:
 	for key in ["terrain_texture", "floor_texture"]:
 		if parsed.has(key):
 			m[key] = str(parsed[key])
+	if parsed.has("weather"):
+		m["weather"] = str(parsed["weather"])
 	if parsed.has("ctf_ground_y"):
 		m["ctf_ground_y"] = float(parsed["ctf_ground_y"])
 	# Passed through untouched — main.gd reads _scenery_hints to spawn the

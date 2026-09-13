@@ -293,6 +293,7 @@ func _ready() -> void:
 	_build_sky()
 	_build_parallax()
 	_build_terrain()
+	_build_weather()
 	_build_hud()
 	_build_pause_menu()
 	_spawn_mode_entities()
@@ -345,6 +346,75 @@ func _build_parallax() -> void:
 	layer.layer = -15
 	layer.add_child(par)
 	add_child(layer)
+
+
+# Per-map weather (#68). Reads _map["weather"] ("rain"/"snow" or ""). Renders as
+# a CPUParticles2D anchored to the camera so a single emitter covers the visible
+# region no matter how far the player travels. Skipped under Settings.lofi to
+# stay consistent with the rest of the particle stack.
+func _build_weather() -> void:
+	var kind: String = str(_map.get("weather", "")).strip_edges().to_lower()
+	if kind == "" or Settings.lofi:
+		return
+	var host := Node2D.new()
+	host.name = "Weather"
+	# We update the host position each frame from the camera; script inline via
+	# a lambda-driven Node2D would be awkward, so use a wrapper method below.
+	add_child(host)
+	var p := CPUParticles2D.new()
+	p.name = "WeatherFX"
+	# Wide emission line above the camera; particles fall/drift down into view.
+	# Sized generously so a quick camera pan doesn't outrun the emitter edge.
+	var view := get_viewport().get_visible_rect().size
+	var band_w: float = maxf(view.x + 400.0, 1600.0)
+	p.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	p.emission_rect_extents = Vector2(band_w * 0.5, 8.0)
+	p.one_shot = false
+	p.local_coords = false
+	if kind == "snow":
+		# Slow, drifty flakes with visible horizontal sway.
+		p.amount = 220
+		p.lifetime = 8.0
+		p.direction = Vector2(0, 1)
+		p.gravity = Vector2(0, 40)
+		p.initial_velocity_min = 30.0
+		p.initial_velocity_max = 60.0
+		p.spread = 12.0
+		p.angular_velocity_min = -25.0
+		p.angular_velocity_max = 25.0
+		p.scale_amount_min = 1.4
+		p.scale_amount_max = 2.6
+		p.color = Color(0.94, 0.96, 1.0, 0.85)
+		# Sinusoidal x-sway via tangential accel gives snow its side-to-side drift.
+		p.tangential_accel_min = -18.0
+		p.tangential_accel_max = 18.0
+	else:
+		# Rain — thin fast streaks straight down.
+		p.amount = 380
+		p.lifetime = 1.2
+		p.direction = Vector2(0.08, 1)
+		p.gravity = Vector2(0, 900)
+		p.initial_velocity_min = 900.0
+		p.initial_velocity_max = 1100.0
+		p.spread = 3.0
+		p.scale_amount_min = 0.6
+		p.scale_amount_max = 1.4
+		p.color = Color(0.75, 0.85, 1.0, 0.55)
+	p.emitting = true
+	# Draw over terrain but under HUD.
+	p.z_index = 90
+	# Rain is a single vertical pixel-tall streak; snow uses a small circle.
+	# CPUParticles2D without a texture draws a small dot — good enough for both.
+	host.add_child(p)
+	# Follow the camera each frame — a stub node with a script is overkill, so
+	# reuse a timer + method on Main. Godot doesn't provide a per-node "process"
+	# hook without a script, so we add a lightweight one inline.
+	var follower := Node.new()
+	follower.name = "WeatherFollow"
+	follower.set_script(preload("res://scripts/weather_follow.gd"))
+	follower.set("host_path", host.get_path())
+	follower.set("band_w", band_w)
+	host.add_child(follower)
 
 
 func _make_platform(pos: Vector2, size: Vector2, col: Color, tex_path: String = "") -> StaticBody2D:
