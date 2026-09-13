@@ -65,6 +65,11 @@ var winner_end_t := 0.0
 var _match_sync_cd := 0.0
 var _flag_sync_cd := 0.0
 const FLAG_SYNC_HZ := 8.0
+# Weapon-pickup sync — host broadcasts (id, pos, vel, ang) so client-frozen
+# pickup bodies mirror the host's physics timeline (#34).
+var _pickup_sync_cd := 0.0
+const PICKUP_SYNC_HZ := 10.0
+var _next_pickup_id: int = 1
 
 const MAP_W := 4800.0
 const MAP_H := 2000.0
@@ -405,6 +410,10 @@ func _spawn_flag_htf() -> void:
 func _spawn_rambo_bow() -> void:
 	# RM: single Rambo Bow pickup at map center — carrier gets HP regen +
 	# is the only one who scores kills.
+	# In MP only the host spawns it — the pickup state stream (#34) mirrors
+	# it to clients so both peers agree on where the bow is.
+	if Net.is_networked() and not Net.is_host():
+		return
 	var ground_y: float = float(_map.get("ctf_ground_y", 1830.0))
 	var wp := WeaponPickup.new()
 	wp.weapon_name = "Rambo Bow"
@@ -413,6 +422,8 @@ func _spawn_rambo_bow() -> void:
 	wp.damage_on_hit = 0.0
 	wp.global_position = Vector2(MAP_W * 0.5, ground_y - 40.0)
 	wp.set_meta("rambo_spawn", true)
+	if Net.is_networked() and Net.is_host():
+		wp.pickup_id = next_pickup_id()
 	add_child(wp)
 
 
@@ -646,6 +657,11 @@ func _process(delta: float) -> void:
 			if _flag_sync_cd <= 0.0:
 				_flag_sync_cd = 1.0 / FLAG_SYNC_HZ
 				_broadcast_flag_state()
+		# Pickup physics stream at 10 Hz so thrown weapons + rambo bow stay in sync.
+		_pickup_sync_cd -= delta
+		if _pickup_sync_cd <= 0.0:
+			_pickup_sync_cd = 1.0 / PICKUP_SYNC_HZ
+			_broadcast_pickup_state()
 
 
 func _tick_ctf() -> void:
@@ -1173,6 +1189,75 @@ func _broadcast_flag_state() -> void:
 		arr.append({"pos": f.position, "carrier": cid})
 	for pid in _ready_peers.keys():
 		rpc_id(int(pid), "net_flag_state", arr)
+
+
+func next_pickup_id() -> int:
+	var id: int = _next_pickup_id
+	_next_pickup_id += 1
+	return id
+
+
+func _broadcast_pickup_state() -> void:
+	# Collect every host-authoritative pickup body + its live physics state.
+	var arr: Array = []
+	for wp in get_tree().get_nodes_in_group("weapon_pickup"):
+		if not is_instance_valid(wp):
+			continue
+		if int(wp.get("pickup_id")) <= 0:
+			continue
+		arr.append({
+			"id": int(wp.get("pickup_id")),
+			"name": str(wp.get("weapon_name")),
+			"team": int(wp.get("team")),
+			"thrower": str(wp.get("thrower_name")),
+			"pos": wp.global_position,
+			"vel": wp.linear_velocity,
+			"ang": float(wp.angular_velocity),
+			"rot": float(wp.rotation),
+		})
+	for pid in _ready_peers.keys():
+		rpc_id(int(pid), "net_pickup_state", arr)
+
+
+@rpc("authority", "reliable")
+func net_pickup_state(arr: Array) -> void:
+	# Map existing frozen pickups by id, spawn any we haven't seen, and reconcile
+	# positions. Host-only pickups that vanish trigger client-side despawn.
+	var seen: Dictionary = {}
+	var by_id: Dictionary = {}
+	for wp in get_tree().get_nodes_in_group("weapon_pickup"):
+		if not is_instance_valid(wp):
+			continue
+		var pid: int = int(wp.get("pickup_id"))
+		if pid > 0:
+			by_id[pid] = wp
+	for entry in arr:
+		var id: int = int(entry.get("id", 0))
+		if id <= 0:
+			continue
+		seen[id] = true
+		var wp: Node = by_id.get(id) as Node
+		if wp == null:
+			# First time we're hearing about this pickup — spawn a client-frozen copy.
+			var new_wp := WeaponPickup.new()
+			new_wp.pickup_id = id
+			new_wp.weapon_name = str(entry.get("name", "AK-74"))
+			new_wp.team = int(entry.get("team", 0))
+			new_wp.thrower_name = str(entry.get("thrower", ""))
+			new_wp.damage_on_hit = 55.0 if str(entry.get("name", "")) == "Knife" else 0.0
+			new_wp.global_position = entry.get("pos", Vector2.ZERO)
+			add_child(new_wp)
+			wp = new_wp
+		wp.global_position = entry.get("pos", wp.global_position)
+		wp.linear_velocity = entry.get("vel", Vector2.ZERO)
+		wp.angular_velocity = float(entry.get("ang", 0.0))
+		wp.rotation = float(entry.get("rot", 0.0))
+	# Despawn any client-side pickup whose id no longer appears in the host's list.
+	for pid in by_id.keys():
+		if not seen.has(pid):
+			var wp: Node = by_id[pid]
+			if is_instance_valid(wp):
+				wp.queue_free()
 
 
 @rpc("authority", "reliable")

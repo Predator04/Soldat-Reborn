@@ -813,9 +813,23 @@ func _drop_active_weapon() -> void:
 	var w := _active_weapon()
 	var wname := str(w["name"])
 	if Net.is_networked():
-		rpc("net_drop_weapon", wname, global_position, aim_dir)
+		# Route through the host so only one authoritative RigidBody2D exists per drop.
+		# Clients used to spawn their own physics copy that diverged frame to frame.
+		if Net.is_host():
+			net_drop_weapon(wname, global_position, aim_dir)
+		else:
+			rpc_id(1, "net_request_drop", wname, global_position, aim_dir)
 	else:
 		net_drop_weapon(wname, global_position, aim_dir)
+
+
+@rpc("any_peer", "reliable")
+func net_request_drop(weapon_name: String, from_pos: Vector2, aim: Vector2) -> void:
+	if not Net.is_host():
+		return
+	# Host relays the drop on its own timeline as authority so all peers see
+	# the same physics body governed by the same peer.
+	net_drop_weapon(weapon_name, from_pos, aim)
 
 
 func try_pickup_weapon(weapon_name: String) -> bool:
@@ -1070,6 +1084,12 @@ func net_drop_weapon(weapon_name: String, from_pos: Vector2, aim: Vector2) -> vo
 	wp.global_position = from_pos + aim * 20.0
 	wp.linear_velocity = aim * 520.0 + Vector2(0, -160.0)
 	wp.angular_velocity = randf_range(-8.0, 8.0)
+	# In MP the host assigns a stable id so state broadcasts can address this pickup;
+	# SP or client-locally-spawned drops don't need one.
+	if Net.is_networked() and Net.is_host():
+		var m := get_parent()
+		if m != null and m.has_method("next_pickup_id"):
+			wp.pickup_id = int(m.next_pickup_id())
 	var parent := get_parent()
 	if parent != null:
 		parent.add_child(wp)

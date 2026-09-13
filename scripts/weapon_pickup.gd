@@ -13,6 +13,8 @@ var damage_on_hit := 0.0 # non-zero for Knife
 var _consumed := false
 var _life := 20.0        # despawn if not picked up in 20s
 var _grace := 0.15       # brief window where the thrower can't re-grab it
+# Unique id assigned by host so client-side pickups can be tracked in state sync.
+var pickup_id: int = 0
 
 
 func _ready() -> void:
@@ -29,6 +31,12 @@ func _ready() -> void:
 	mat.bounce = 0.25
 	mat.friction = 0.7
 	physics_material_override = mat
+	# Host-authoritative drops (#34): only the host runs physics for pickups. Clients
+	# freeze their local body and receive periodic pos/vel snapshots via net_pickups
+	# from Main. Without this each peer's RigidBody2D drifted apart on every bounce.
+	if Net.is_networked() and Net.is_client():
+		freeze = true
+		freeze_mode = RigidBody2D.FREEZE_MODE_KINEMATIC
 
 
 func _physics_process(delta: float) -> void:
@@ -46,6 +54,10 @@ func _on_body_entered(body: Node) -> void:
 	if not (body is CharacterBody2D):
 		return
 	if bool(body.get("dead")):
+		return
+	# In MP the host is the single source of truth for contacts; clients would
+	# otherwise pick up ghosts that got frozen at slightly different positions.
+	if Net.is_networked() and not Net.is_host():
 		return
 	var body_team: int = int(body.get("team"))
 	# Knife thrown → deal damage on the first hostile impact while still flying.
