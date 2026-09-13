@@ -127,17 +127,17 @@ var shape_prone: RectangleShape2D
 
 # ── Physics ────────────────────────────────────────────
 const GRAVITY := 1700.0
-const RUN_SPEED := 280.0
-const BUNNY_SPEED := 545.0
-const GROUND_ACCEL := 2800.0
-const AIR_ACCEL := 1150.0
+const RUN_SPEED := 230.0
+const BUNNY_SPEED := 460.0
+const GROUND_ACCEL := 2500.0
+const AIR_ACCEL := 1050.0
 const AIR_FRICTION := 45.0
 const GROUND_FRICTION := 1700.0
-const JUMP_VEL := -430.0
-const JET_THRUST := -2200.0
+const JUMP_VEL := -380.0
+const JET_THRUST := -1900.0
 const JET_DRAIN := 40.0
 const JET_REGEN := 32.0
-const MAX_FALL := 1300.0
+const MAX_FALL := 1200.0
 const COYOTE_TIME := 0.09
 const JUMP_BUFFER := 0.10
 

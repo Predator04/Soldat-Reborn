@@ -82,7 +82,7 @@ func _build_title() -> void:
 	add_child(title)
 
 	var ver := Label.new()
-	ver.text = "v1.7.0 · build 116"
+	ver.text = "v1.7.1 · build 118"
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ver.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	ver.offset_top = 140

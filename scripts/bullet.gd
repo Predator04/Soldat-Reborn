@@ -16,10 +16,13 @@ var life := 0.0
 var grav := 0.0
 var _hit := false
 var _velocity := Vector2.ZERO
+var _sprite: Texture2D = null
+var _sprite_size := Vector2.ZERO
 
 
 func _ready() -> void:
 	add_to_group("bullet")
+	_load_sprite()
 	body_entered.connect(_on_body_entered)
 	var shape := CollisionShape2D.new()
 	var cs := CircleShape2D.new()
@@ -94,5 +97,31 @@ func _draw() -> void:
 		draw_line(-direction * 18.0, Vector2.ZERO, Color(0.75, 0.55, 0.3, 0.9), 1.6)
 		draw_line(Vector2.ZERO, direction * 3.0, Color(0.9, 0.9, 0.9), 2.0)
 	else:
-		draw_line(-direction * 12.0, Vector2.ZERO, Color(1.0, 0.9, 0.4, 0.55), 2.0)
-		draw_circle(Vector2.ZERO, 2.5, Color(1.0, 0.92, 0.4))
+		if _sprite != null:
+			# Original Soldat renders bullets as the weapon's bullet sprite, rotated
+			# along travel and stretched by speed into a tracer, at ~1/3 HD downscale.
+			var stretch := clampf(speed / 780.0, 0.7, 3.5)
+			var w := _sprite_size.x * stretch
+			var h := _sprite_size.y
+			draw_set_transform(Vector2.ZERO, direction.angle(), Vector2.ONE)
+			draw_texture_rect(_sprite, Rect2(-w * 0.5, -h * 0.5, w, h), false, Color(1, 1, 1, 0.9))
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func _load_sprite() -> void:
+	# Per-weapon bullet sprite (original Soldat draws bullets as sprites, not lines).
+	var stem := "bullet"
+	match weapon_name:
+		"Deagles": stem = "eagles-bullet"
+		"MP5": stem = "mp5-bullet"
+		"AK-74": stem = "ak74-bullet"
+		"Steyr AUG": stem = "steyraug-bullet"
+		"Spas-12": stem = "spas12-bullet"
+		"Ruger 77": stem = "ruger77-bullet"
+		"Barrett": stem = "barretm82-bullet"
+		"Minimi": stem = "m249-bullet"
+		"Minigun": stem = "minigun-bullet"
+		"USSOCOM": stem = "colt-bullet"
+	_sprite = load("res://assets/weapons-gfx/%s.png" % stem)
+	if _sprite != null:
+		_sprite_size = _sprite.get_size() * (1.0 / 3.0)
