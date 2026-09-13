@@ -34,6 +34,11 @@ past the classic, with most of Soldat 2's feature list folded in.
 | / | Gesture console — `/victory /smoke /tabac /takeoff /kill /brutalkill /mercy` |
 | T / Y | Chat (global / team); ALT+keys for taunts |
 | F9 | Record a GIF of gameplay |
+| ESC | Pause menu — Resume / Settings / Controls / Exit |
+
+Every action above is rebindable. Open **SETTINGS → CONTROLS** from the main menu
+or the ESC pause menu, click a row, then press any key or mouse button. Bindings
+persist to `user://controls.cfg`; "Reset to Defaults" restores the table above.
 
 ## Map editor & procedural generation
 
