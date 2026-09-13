@@ -100,7 +100,7 @@ func _build_title() -> void:
 	add_child(title)
 
 	var ver := Label.new()
-	ver.text = "v1.8.0 · build 124"
+	ver.text = "v1.9.0 · build %d" % _build_number()
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ver.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	ver.offset_top = 140
@@ -108,6 +108,18 @@ func _build_title() -> void:
 	ver.add_theme_font_size_override("font_size", 18)
 	ver.add_theme_color_override("font_color", Color(0.65, 0.68, 0.75))
 	add_child(ver)
+
+
+func _build_number() -> int:
+	# Runtime count instead of a hardcoded literal so every commit ships with the
+	# real HEAD count without a manual bump. Falls back to 0 in the editor / when
+	# git isn't reachable, which is fine for local dev builds.
+	var out: Array = []
+	# OS.execute returns the process exit code (0 = success), not a Godot Error.
+	var code := OS.execute("git", ["rev-list", "--count", "HEAD"], out, true)
+	if code == 0 and not out.is_empty():
+		return int(String(out[0]).strip_edges())
+	return 0
 
 	var sub := Label.new()
 	sub.text = "jet boots · bunny hop · ragdoll gibs · online"

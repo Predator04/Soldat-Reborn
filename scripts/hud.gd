@@ -30,9 +30,11 @@ var command_line: LineEdit
 var _command_visible := false
 var _line_mode := "cmd"  # "cmd" | "global" | "team"
 var chat_feed: VBoxContainer
+var weapon_menu: Control  # left-side Soldat weapon selection panel (#70)
 static var _taunts: Dictionary = {}
 const CHAT_FEED_MAX := 7
 const CHAT_TTL := 10.0
+const WeaponMenu = preload("res://scripts/weapon_menu.gd")
 
 const FEED_MAX := 5
 const FEED_TTL := 4.0
@@ -192,6 +194,12 @@ func _ready() -> void:
 	chat_feed.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	chat_feed.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(chat_feed)
+
+	# Weapon selection panel (#70) — always-on Soldat-style left-side list showing
+	# every primary/secondary with the currently equipped weapon highlighted green.
+	weapon_menu = WeaponMenu.new()
+	add_child(weapon_menu)
+	weapon_menu.player = player
 
 
 func open_command(prefill: String = "/") -> void:
