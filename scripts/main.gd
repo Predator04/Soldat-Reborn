@@ -87,6 +87,22 @@ var winner_end_t := 0.0
 var _match_sync_cd := 0.0
 var _flag_sync_cd := 0.0
 const FLAG_SYNC_HZ := 8.0
+
+# ── Vote system (#77) ─────────────────────────────────
+# Host-authoritative: any player calls /votemap or /votekick, F1/F2 to cast,
+# majority passes. Broadcast alongside match state at MATCH_SYNC_HZ.
+const VOTE_DURATION := 30.0
+const VOTE_COOLDOWN := 30.0
+var vote_active := false
+var vote_kind := ""              # "votemap" | "votekick"
+var vote_target_str := ""        # human label ("Nuubia" / "Red Bot 3")
+var vote_target_arg := 0         # map index (votemap) or peer id (votekick)
+var vote_yes := 0
+var vote_no := 0
+var vote_time_left := 0.0
+var vote_starter := ""           # display_name of who called it
+var _vote_voters: Dictionary = {}  # host-only: peer_id → true (already voted)
+var _vote_cooldown := 0.0          # host-only: gate between votes
 # Weapon-pickup sync — host broadcasts (id, pos, vel, ang) so client-frozen
 # pickup bodies mirror the host's physics timeline (#34).
 var _pickup_sync_cd := 0.0
@@ -1106,6 +1122,10 @@ func _on_net_peer_disconnected(id: int) -> void:
 	if Net.is_host():
 		_ready_peers.erase(id)
 		rpc("net_despawn_player", id)
+		# If the disconnecting peer was the votekick target, resolve the vote
+		# immediately — no one benefits from a countdown against a phantom.
+		if vote_active and vote_kind == "votekick" and vote_target_arg == id:
+			_resolve_vote(false, "Target left the server")
 
 
 func ready_peer_ids() -> Array:
@@ -1247,6 +1267,9 @@ func net_chat(author: String, msg: String, scope: String, sender_team: int) -> v
 # ── Match / score / round ─────────────────────────────
 
 func _process(delta: float) -> void:
+	# Vote timer + cooldown ticks — before the client early-return so the vote
+	# countdown reads smoothly on every peer between host state broadcasts (#77).
+	_tick_vote(delta)
 	# Client: state is driven entirely by host's net_match_state RPCs.
 	if Net.is_networked() and not Net.is_host():
 		return
@@ -1277,6 +1300,8 @@ func _process(delta: float) -> void:
 		if _match_sync_cd <= 0.0:
 			_match_sync_cd = 1.0 / MATCH_SYNC_HZ
 			_broadcast_match_state()
+			if vote_active:
+				_broadcast_vote_state()
 		# Flag positions + carriers stream faster so grabs/drops feel snappy.
 		if flags.size() > 0:
 			_flag_sync_cd -= delta
@@ -1882,6 +1907,267 @@ func net_match_state(new_scores: Dictionary, tl: float, active: bool, winner: in
 	winner_team = winner
 	winner_end_t = we
 	winner_note = note
+
+
+# ── Vote system (#77) ─────────────────────────────────
+# Host-authoritative. Public entry points are request_vote/cast_vote/cancel_vote.
+# Chat commands (/votemap /votekick /votecancel) route in via HUD.
+
+func _tick_vote(delta: float) -> void:
+	if vote_active:
+		vote_time_left = maxf(0.0, vote_time_left - delta)
+	# Only host owns cooldown + resolution.
+	if Net.is_networked() and not Net.is_host():
+		return
+	if vote_active and vote_time_left <= 0.0:
+		_resolve_vote(vote_yes > vote_no)
+	if not vote_active:
+		_vote_cooldown = maxf(0.0, _vote_cooldown - delta)
+
+
+func request_vote(kind: String, arg: String) -> void:
+	# Called from HUD when a player submits /votemap or /votekick.
+	if Net.is_networked() and not Net.is_host():
+		rpc_id(1, "net_vote_start", kind, arg)
+	else:
+		_host_start_vote(kind, arg, Net.local_id())
+
+
+func cast_vote(is_yes: bool) -> void:
+	if not vote_active:
+		return
+	if Net.is_networked() and not Net.is_host():
+		rpc_id(1, "net_vote_cast", is_yes)
+	else:
+		_host_apply_vote(Net.local_id(), is_yes)
+
+
+func cancel_vote() -> void:
+	# Host-only power (SP owner too). Silently no-op for clients.
+	if Net.is_networked() and not Net.is_host():
+		return
+	if not vote_active:
+		return
+	_resolve_vote(false, "Cancelled by host")
+
+
+func _peer_display_name(peer_id: int) -> String:
+	if _players_by_id.has(peer_id):
+		var p: Node = _players_by_id[peer_id]
+		if is_instance_valid(p):
+			return str(p.display_name)
+	if peer_id == 1:
+		return "Host"
+	return "Peer %d" % peer_id
+
+
+func _vote_chat(msg: String) -> void:
+	if hud != null and hud.has_method("post_chat"):
+		hud.post_chat("VOTE", msg, false)
+
+
+func _resolve_map_name(idx: int) -> String:
+	# Prefer the actual runtime rotation (procedural + bundled classics), fall
+	# back to the host-admin MAP_NAMES list which mirrors menu.gd.
+	if idx >= 0 and idx < MAPS.size():
+		return str(MAPS[idx].get("name", "Map %d" % idx))
+	return "Map %d" % idx
+
+
+func _resolve_vote_map_arg(arg: String) -> int:
+	# Accepts an integer index OR a case-insensitive map name.
+	var s := arg.strip_edges()
+	if s == "":
+		return -1
+	if s.is_valid_int():
+		var n := int(s)
+		if n >= 0 and n < MAPS.size():
+			return n
+		return -1
+	var needle := s.to_lower()
+	for i in MAPS.size():
+		if str(MAPS[i].get("name", "")).to_lower() == needle:
+			return i
+	return -1
+
+
+func _resolve_vote_kick_arg(arg: String) -> int:
+	# Accepts integer peer id or a case-insensitive display_name match (partial ok).
+	var s := arg.strip_edges()
+	if s == "":
+		return 0
+	if s.is_valid_int():
+		var n := int(s)
+		if _players_by_id.has(n):
+			return n
+		return 0
+	var needle := s.to_lower()
+	for pid in _players_by_id.keys():
+		var p: Node = _players_by_id[pid]
+		if not is_instance_valid(p):
+			continue
+		if str(p.display_name).to_lower() == needle:
+			return int(pid)
+	# Partial contains-match as a fallback (typing /votekick red matches "Red 3").
+	for pid in _players_by_id.keys():
+		var p: Node = _players_by_id[pid]
+		if not is_instance_valid(p):
+			continue
+		if str(p.display_name).to_lower().find(needle) >= 0:
+			return int(pid)
+	return 0
+
+
+func _host_start_vote(kind: String, arg: String, starter_id: int) -> void:
+	if vote_active:
+		_vote_chat("A vote is already in progress.")
+		return
+	if _vote_cooldown > 0.0:
+		_vote_chat("Vote cooldown: %ds left." % int(ceil(_vote_cooldown)))
+		return
+	var starter := _peer_display_name(starter_id)
+	match kind:
+		"votemap":
+			var idx := _resolve_vote_map_arg(arg)
+			if idx < 0:
+				_vote_chat("%s: unknown map '%s'." % [starter, arg])
+				return
+			vote_kind = "votemap"
+			vote_target_arg = idx
+			vote_target_str = _resolve_map_name(idx)
+		"votekick":
+			if not Net.is_networked():
+				_vote_chat("votekick only works in multiplayer.")
+				return
+			var pid := _resolve_vote_kick_arg(arg)
+			if pid <= 0:
+				_vote_chat("%s: unknown player '%s'." % [starter, arg])
+				return
+			if pid == starter_id:
+				_vote_chat("You can't votekick yourself.")
+				return
+			vote_kind = "votekick"
+			vote_target_arg = pid
+			vote_target_str = _peer_display_name(pid)
+		_:
+			return
+	vote_active = true
+	vote_yes = 1  # starter's implicit yes vote
+	vote_no = 0
+	_vote_voters = {starter_id: true}
+	vote_time_left = VOTE_DURATION
+	vote_starter = starter
+	_vote_chat("%s called a %s: %s   ([F1]/[F2] to vote)" % [starter, vote_kind, vote_target_str])
+	if Net.is_networked() and Net.is_host():
+		_broadcast_vote_state()
+
+
+func _host_apply_vote(peer_id: int, is_yes: bool) -> void:
+	if not vote_active:
+		return
+	if _vote_voters.has(peer_id):
+		return  # already voted, no changing minds
+	_vote_voters[peer_id] = true
+	if is_yes:
+		vote_yes += 1
+	else:
+		vote_no += 1
+	if Net.is_networked() and Net.is_host():
+		_broadcast_vote_state()
+
+
+func _resolve_vote(passed: bool, reason: String = "") -> void:
+	if not vote_active:
+		return
+	# Snapshot pre-clear so the summary + apply steps see the right values even
+	# after the state reset below.
+	var kind := vote_kind
+	var target := vote_target_arg
+	var target_label := vote_target_str
+	var yes_ct := vote_yes
+	var no_ct := vote_no
+	var summary: String
+	if reason != "":
+		summary = reason
+	else:
+		summary = "PASSED (%d-%d)" % [yes_ct, no_ct] if passed else "FAILED (%d-%d)" % [yes_ct, no_ct]
+	_vote_chat("%s %s — %s" % [kind, target_label, summary])
+	# Broadcast end state so clients clear their prompt in sync.
+	if Net.is_networked() and Net.is_host():
+		rpc("net_vote_end", kind, target_label, passed, yes_ct, no_ct, reason)
+	# Clear locally BEFORE triggering restart/kick — scene reload otherwise fires
+	# with stale vote_active still true on the next frame.
+	vote_active = false
+	vote_kind = ""
+	vote_target_str = ""
+	vote_target_arg = 0
+	vote_yes = 0
+	vote_no = 0
+	vote_time_left = 0.0
+	_vote_voters.clear()
+	_vote_cooldown = VOTE_COOLDOWN
+	if not passed:
+		return
+	match kind:
+		"votemap":
+			if Net.is_networked() and Net.is_host():
+				rpc("net_match_restart", target, Settings.game_mode)
+			elif not Net.is_networked():
+				Settings.map_index = target
+				Settings.custom_map_path = ""
+				Settings.save()
+				call_deferred("_do_reload_main")
+		"votekick":
+			if Net.is_networked() and Net.is_host() and multiplayer.multiplayer_peer != null and target > 1:
+				multiplayer.multiplayer_peer.disconnect_peer(target)
+
+
+func _broadcast_vote_state() -> void:
+	if not Net.is_host():
+		return
+	for pid in _ready_peers.keys():
+		rpc_id(int(pid), "net_vote_state", vote_active, vote_kind, vote_target_str, vote_yes, vote_no, vote_time_left, vote_starter)
+
+
+@rpc("any_peer", "reliable")
+func net_vote_start(kind: String, arg: String) -> void:
+	if not Net.is_host():
+		return
+	_host_start_vote(kind, arg, multiplayer.get_remote_sender_id())
+
+
+@rpc("any_peer", "reliable")
+func net_vote_cast(is_yes: bool) -> void:
+	if not Net.is_host():
+		return
+	_host_apply_vote(multiplayer.get_remote_sender_id(), is_yes)
+
+
+@rpc("authority", "reliable")
+func net_vote_state(active: bool, kind: String, target: String, yes_ct: int, no_ct: int, tl: float, starter: String) -> void:
+	vote_active = active
+	vote_kind = kind
+	vote_target_str = target
+	vote_yes = yes_ct
+	vote_no = no_ct
+	vote_time_left = tl
+	vote_starter = starter
+
+
+@rpc("authority", "reliable")
+func net_vote_end(kind: String, target_label: String, passed: bool, yes_ct: int, no_ct: int, reason: String) -> void:
+	var summary: String
+	if reason != "":
+		summary = reason
+	else:
+		summary = "PASSED (%d-%d)" % [yes_ct, no_ct] if passed else "FAILED (%d-%d)" % [yes_ct, no_ct]
+	_vote_chat("%s %s — %s" % [kind, target_label, summary])
+	vote_active = false
+	vote_kind = ""
+	vote_target_str = ""
+	vote_yes = 0
+	vote_no = 0
+	vote_time_left = 0.0
 
 
 func _broadcast_flag_state() -> void:

@@ -39,6 +39,11 @@ var lbl_spectate_hint: Label  # controls hint under the spectate label
 var lbl_streak: Label
 var _streak_tween: Tween = null
 const STREAK_HOLD := 2.0
+# (#77) Vote prompt — centered upper-third panel with title, tally, timer.
+var vote_panel: PanelContainer
+var lbl_vote_title: Label
+var lbl_vote_tally: Label
+var lbl_vote_timer: Label
 static var _taunts: Dictionary = {}
 const CHAT_FEED_MAX := 7
 const CHAT_TTL := 10.0
@@ -186,7 +191,7 @@ func _ready() -> void:
 	command_line.offset_right = -12
 	command_line.offset_top = -110
 	command_line.offset_bottom = -80
-	command_line.placeholder_text = "/victory  /smoke  /tabac  /takeoff  /mercy  /kill  /brutalkill"
+	command_line.placeholder_text = "/votemap N   /votekick name   /victory  /smoke  /tabac  /takeoff  /mercy  /kill  /brutalkill"
 	command_line.custom_minimum_size = Vector2(0, 28)
 	command_line.visible = false
 	command_line.text_submitted.connect(_on_command_submitted)
@@ -267,6 +272,56 @@ func _ready() -> void:
 	lbl_streak.visible = false
 	add_child(lbl_streak)
 
+	# Vote prompt (#77) — centered near the top-third of the screen so it doesn't
+	# eat the crosshair. Semi-opaque background so the tally reads over any map.
+	vote_panel = PanelContainer.new()
+	vote_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	vote_panel.offset_top = 140
+	vote_panel.offset_bottom = 240
+	vote_panel.offset_left = -260
+	vote_panel.offset_right = 260
+	vote_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var vote_bg := StyleBoxFlat.new()
+	vote_bg.bg_color = Color(0.05, 0.05, 0.09, 0.85)
+	vote_bg.border_color = Color(0.95, 0.82, 0.4, 0.9)
+	vote_bg.border_width_left = 2
+	vote_bg.border_width_right = 2
+	vote_bg.border_width_top = 2
+	vote_bg.border_width_bottom = 2
+	vote_bg.corner_radius_top_left = 6
+	vote_bg.corner_radius_top_right = 6
+	vote_bg.corner_radius_bottom_left = 6
+	vote_bg.corner_radius_bottom_right = 6
+	vote_bg.content_margin_left = 14
+	vote_bg.content_margin_right = 14
+	vote_bg.content_margin_top = 8
+	vote_bg.content_margin_bottom = 8
+	vote_panel.add_theme_stylebox_override("panel", vote_bg)
+	vote_panel.visible = false
+	add_child(vote_panel)
+	var vote_col := VBoxContainer.new()
+	vote_col.add_theme_constant_override("separation", 4)
+	vote_panel.add_child(vote_col)
+	lbl_vote_title = Label.new()
+	lbl_vote_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl_vote_title.add_theme_font_size_override("font_size", 18)
+	lbl_vote_title.add_theme_color_override("font_color", Color(1.0, 0.9, 0.55))
+	lbl_vote_title.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	lbl_vote_title.add_theme_constant_override("outline_size", 3)
+	vote_col.add_child(lbl_vote_title)
+	lbl_vote_tally = Label.new()
+	lbl_vote_tally.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl_vote_tally.add_theme_font_size_override("font_size", 16)
+	lbl_vote_tally.add_theme_color_override("font_color", Color(0.85, 0.95, 1.0))
+	lbl_vote_tally.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	lbl_vote_tally.add_theme_constant_override("outline_size", 3)
+	vote_col.add_child(lbl_vote_tally)
+	lbl_vote_timer = Label.new()
+	lbl_vote_timer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl_vote_timer.add_theme_font_size_override("font_size", 13)
+	lbl_vote_timer.add_theme_color_override("font_color", Color(0.7, 0.78, 0.9))
+	vote_col.add_child(lbl_vote_timer)
+
 
 func show_streak_banner(killer_name: String, title: String, killer_team: int, count: int) -> void:
 	# Overwrites any in-progress banner — a rapid escalation from Double → Multi
@@ -340,7 +395,7 @@ func set_spectate_target(name: String, col: Color) -> void:
 
 
 func open_command(prefill: String = "/") -> void:
-	_open_line("cmd", prefill, "/victory  /smoke  /tabac  /takeoff  /mercy  /kill  /brutalkill")
+	_open_line("cmd", prefill, "/votemap N   /votekick name   /victory  /smoke  /mercy  /kill")
 
 
 func open_chat(scope: String) -> void:
@@ -377,6 +432,9 @@ func _close_command() -> void:
 func _on_command_submitted(text: String) -> void:
 	var t := text.strip_edges()
 	if is_instance_valid(player) and t != "":
+		if _line_mode == "cmd" and t.begins_with("/") and _try_vote_command(t):
+			_close_command()
+			return
 		if _line_mode == "cmd":
 			if t.begins_with("/") and player.has_method("apply_gesture"):
 				player.apply_gesture(t)
@@ -387,6 +445,61 @@ func _on_command_submitted(text: String) -> void:
 		elif player.has_method("send_chat"):
 			player.send_chat("global", t)
 	_close_command()
+
+
+# Vote chat commands (#77): /votemap <n|name>, /votekick <peer|name>,
+# /votecancel (host only). Returns true if the text was a vote command so the
+# caller skips the gesture / chat path.
+func _try_vote_command(raw: String) -> bool:
+	var lower := raw.to_lower()
+	var main := get_parent()
+	if main == null:
+		return false
+	if lower == "/votemap" or lower.begins_with("/votemap "):
+		var arg := raw.substr("/votemap".length()).strip_edges()
+		if arg == "":
+			post_chat("VOTE", "Usage: /votemap <index-or-name>", false)
+			return true
+		if main.has_method("request_vote"):
+			main.request_vote("votemap", arg)
+		return true
+	if lower == "/votekick" or lower.begins_with("/votekick "):
+		var arg := raw.substr("/votekick".length()).strip_edges()
+		if arg == "":
+			post_chat("VOTE", "Usage: /votekick <peer-id-or-name>", false)
+			return true
+		if main.has_method("request_vote"):
+			main.request_vote("votekick", arg)
+		return true
+	if lower == "/votecancel":
+		if main.has_method("cancel_vote"):
+			main.cancel_vote()
+		return true
+	return false
+
+
+func _update_vote_ui() -> void:
+	if vote_panel == null:
+		return
+	var main := get_parent()
+	if main == null or main.get("vote_active") == null:
+		vote_panel.visible = false
+		return
+	var active: bool = bool(main.get("vote_active"))
+	if not active:
+		vote_panel.visible = false
+		return
+	var kind: String = str(main.get("vote_kind"))
+	var target: String = str(main.get("vote_target_str"))
+	var yes_ct: int = int(main.get("vote_yes"))
+	var no_ct: int = int(main.get("vote_no"))
+	var tl: float = float(main.get("vote_time_left"))
+	var starter: String = str(main.get("vote_starter"))
+	var verb: String = "change map to" if kind == "votemap" else "kick"
+	lbl_vote_title.text = "Vote (%s): %s %s?" % [starter, verb, target]
+	lbl_vote_tally.text = "[F1] Yes %d    ·    [F2] No %d" % [yes_ct, no_ct]
+	lbl_vote_timer.text = "%ds" % int(ceil(tl))
+	vote_panel.visible = true
 
 
 func post_chat(author: String, msg: String, is_team: bool) -> void:
@@ -527,6 +640,20 @@ func _input(event: InputEvent) -> void:
 	# rather than the player so it still works from the death screen and menus.
 	if event.is_action_pressed("record_gif"):
 		GifRecorder.toggle()
+	# Vote hotkeys (#77) — F1/F2 rebindable. Only meaningful while a vote is
+	# active. Ignored while the command line is open so a "yes" typed as text
+	# doesn't accidentally cast when the user hits F1.
+	if _command_visible:
+		return
+	var main := get_parent()
+	if main == null or not bool(main.get("vote_active")):
+		return
+	if event.is_action_pressed("vote_yes") and main.has_method("cast_vote"):
+		main.cast_vote(true)
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("vote_no") and main.has_method("cast_vote"):
+		main.cast_vote(false)
+		get_viewport().set_input_as_handled()
 
 
 func _process(delta: float) -> void:
@@ -543,6 +670,7 @@ func _process(delta: float) -> void:
 		lbl_fps.visible = Settings.show_fps
 		if Settings.show_fps:
 			lbl_fps.text = "%d FPS" % int(round(Engine.get_frames_per_second()))
+	_update_vote_ui()
 	if _dead:
 		if _death_remaining < 0.0:
 			# Survival: no respawn until the round resets. The desaturated overlay
