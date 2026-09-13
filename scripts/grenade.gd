@@ -17,10 +17,20 @@ func _ready() -> void:
 	cs.radius = 5.0
 	shape.shape = cs
 	add_child(shape)
+	# Soldat 2 tuning (#30): bouncier restitution + noticeably lower friction so
+	# grenades keep rolling instead of dying on their first bounce.
+	# Also nudge damping so a live grenade on a slope keeps sliding toward the target.
 	var mat := PhysicsMaterial.new()
-	mat.bounce = 0.55
-	mat.friction = 0.4
+	mat.bounce = 0.72
+	mat.friction = 0.18
+	mat.rough = false
 	physics_material_override = mat
+	linear_damp = 0.35
+	angular_damp = 0.4
+	# Encourage roll — a spinning grenade converts angular velocity into more
+	# horizontal travel on contact (mass_low + gravity_scale slightly < 1).
+	mass = 0.25
+	gravity_scale = 0.9
 	get_tree().create_timer(fuse).timeout.connect(_explode)
 
 
