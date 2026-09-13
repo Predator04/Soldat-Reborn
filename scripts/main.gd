@@ -51,7 +51,7 @@ const MAPS := [
 			{"p": Vector2(2000, 1700), "s": Vector2(300, 22)},
 		],
 		"player_spawn": Vector2(200, 1775),
-		"bot_spawns": [Vector2(1100, 1350), Vector2(2500, 720), Vector2(3700, 350), Vector2(4200, 870)],
+		"bot_spawns": [Vector2(2500, 720), Vector2(3200, 430), Vector2(3700, 350), Vector2(4200, 870)],
 	},
 	{
 		"name": "Towers",
@@ -72,7 +72,7 @@ const MAPS := [
 			{"p": Vector2(2400, 920), "s": Vector2(240, 22)},
 		],
 		"player_spawn": Vector2(200, 1775),
-		"bot_spawns": [Vector2(600, 770), Vector2(4200, 770), Vector2(2400, 1120), Vector2(2400, 890)],
+		"bot_spawns": [Vector2(3400, 1320), Vector2(4200, 770), Vector2(2400, 890), Vector2(4200, 1460)],
 	},
 	{
 		"name": "Pillars",
@@ -93,14 +93,14 @@ const MAPS := [
 			{"p": Vector2(2400, 1150), "s": Vector2(300, 22)},
 		],
 		"player_spawn": Vector2(200, 1775),
-		"bot_spawns": [Vector2(1200, 1570), Vector2(2400, 1370), Vector2(3600, 1570), Vector2(2400, 1120)],
+		"bot_spawns": [Vector2(2400, 1370), Vector2(3600, 1570), Vector2(4000, 1470), Vector2(3200, 1220)],
 	},
 ]
 
 
 func _ready() -> void:
 	# Crosshair cursor = the mouse; aiming follows it (Soldat-style).
-	Input.set_custom_mouse_cursor(load("res://assets/interface-gfx/cursor.png"), Input.CURSOR_ARROW, Vector2(24, 24))
+	Input.set_custom_mouse_cursor(load("res://assets/interface-gfx/cursor.png"), Input.CURSOR_ARROW, Vector2(12, 12))
 	PoaLoader.preload_all()
 	if Net.is_networked():
 		# Host picks the map (via Net.chosen_map_index). Clients receive it before

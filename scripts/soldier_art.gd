@@ -97,13 +97,13 @@ static func draw_soldier(
 		shoulder = Vector2(facing * 1.2, -8.0)
 	var barrel_end: Vector2 = _draw_weapon_sprite(node, shoulder, aim_dir, facing, weapon_name, weapon_color, weapon_kind)
 
-	# Muzzle flash on top of the sprite.
+	# Muzzle flash on top of the sprite (bigger/brighter so shots clearly read as muzzle fire).
 	if muzzle_t > 0.0:
-		var flash_pos: Vector2 = barrel_end + aim_dir * 1.2
+		var flash_pos: Vector2 = barrel_end + aim_dir * 2.0
 		var m := muzzle_t
-		node.draw_circle(flash_pos, 1.25 + m * 12.5, Color(1.0, 0.45, 0.15, m * 0.35))
-		node.draw_circle(flash_pos, 1.0 + m * 9.2, Color(1.0, 0.8, 0.35, m * 0.6))
-		node.draw_circle(flash_pos, 0.67 + m * 5.8, Color(1.0, 1.0, 0.7, m * 0.85))
+		node.draw_circle(flash_pos, 2.5 + m * 18.0, Color(1.0, 0.45, 0.15, m * 0.5))
+		node.draw_circle(flash_pos, 1.8 + m * 13.0, Color(1.0, 0.8, 0.35, m * 0.72))
+		node.draw_circle(flash_pos, 1.2 + m * 8.0, Color(1.0, 1.0, 0.7, m * 0.95))
 
 	# HP + optional fuel bar.
 	node.draw_rect(Rect2(-6.5, HP_BAR_Y, 13.0, 2.0), Color(0.0, 0.0, 0.0, 0.55))
@@ -116,8 +116,8 @@ static func draw_soldier(
 	if not dead:
 		var arrow_col := body_color.lightened(0.25)
 		node.draw_polygon(PackedVector2Array([
-			Vector2(-4.0, -40.0),
-			Vector2(4.0, -40.0),
+			Vector2(-7.0, -44.0),
+			Vector2(7.0, -44.0),
 			Vector2(0.0, -33.0),
 		]), PackedColorArray([arrow_col, arrow_col, arrow_col]))
 
