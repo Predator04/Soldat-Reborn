@@ -17,6 +17,16 @@ var _smoke: CPUParticles2D
 var _exploded := false
 var _velocity := Vector2.ZERO
 
+# #61: MP transform sync. Only the shooter runs the ballistic integration and
+# broadcasts pos/vel/rot at physics rate; other peers lerp toward the incoming
+# state. Preserves the existing damage authority guard in _explode().
+const BROADCAST_HZ := 20.0
+const LERP_RATE := 22.0
+var _broadcast_cd: float = 0.0
+var _target_pos: Vector2 = Vector2.ZERO
+var _target_dir: Vector2 = Vector2.RIGHT
+var _has_target := false
+
 
 func _ready() -> void:
 	add_to_group("bullet")
@@ -44,6 +54,20 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
+		# Non-authority: lerp toward the shooter's broadcast transform so shooter
+		# and victim see the rocket + explosion at the same spot (#61). Life still
+		# ticks so client-side cleanup fires if RPCs stop arriving.
+		if _has_target:
+			var t: float = clampf(delta * LERP_RATE, 0.0, 1.0)
+			position = position.lerp(_target_pos + _target_dir * speed * delta, t)
+			direction = _target_dir
+			_smoke.direction = -direction
+		_life -= delta
+		if _life <= 0.0:
+			_explode()
+		queue_redraw()
+		return
 	# Straight-flight LAW keeps its constant velocity; M79 lobs by adding gravity to _velocity.
 	# mod_gravity scales the fall accel so an M79 arc matches the world's gravity mod (LAW
 	# has grav==0, so straight flight is unaffected — no regression there).
@@ -58,6 +82,27 @@ func _physics_process(delta: float) -> void:
 	if _life <= 0.0:
 		_explode()
 	queue_redraw()
+	# Broadcast transform to non-authority peers (#61).
+	if multiplayer.multiplayer_peer != null:
+		_broadcast_cd -= delta
+		if _broadcast_cd <= 0.0:
+			_broadcast_cd = 1.0 / BROADCAST_HZ
+			rpc("net_projectile_state", global_position, direction)
+
+
+@rpc("authority", "call_remote", "unreliable_ordered")
+func net_projectile_state(pos: Vector2, dir: Vector2) -> void:
+	_target_pos = pos
+	_target_dir = dir
+	_has_target = true
+
+
+@rpc("authority", "call_remote", "reliable")
+func net_explode(pos: Vector2) -> void:
+	# Snap to the authority's impact position before the local explosion so the
+	# blast damage falloff matches what the shooter saw.
+	global_position = pos
+	_explode()
 
 
 func _on_body_entered(body: Node) -> void:
@@ -73,6 +118,11 @@ func _explode() -> void:
 	if _exploded:
 		return
 	_exploded = true
+	# #61: authority tells remotes to explode at the same instant so shooter and
+	# victim see the impact fireball in the same spot. Local `_exploded` guard
+	# above keeps this idempotent.
+	if multiplayer.multiplayer_peer != null and is_multiplayer_authority():
+		rpc("net_explode", global_position)
 	if weapon_name == "M79":
 		Sfx.m79_thump()
 	else:

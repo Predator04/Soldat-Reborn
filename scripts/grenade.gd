@@ -10,6 +10,18 @@ var blast_radius := 120.0
 var cluster := false
 var is_fragment := false  # true for the child mini-grenades from a cluster
 
+# #61: MP projectile sync — only the spawning peer runs physics; other peers
+# freeze the RigidBody2D and lerp position/rotation to broadcast state so the
+# grenade lands in the same spot on every screen.
+const BROADCAST_HZ := 20.0
+const LERP_RATE := 22.0
+var _broadcast_cd: float = 0.0
+var _target_pos: Vector2 = Vector2.ZERO
+var _target_vel: Vector2 = Vector2.ZERO
+var _target_rot: float = 0.0
+var _has_target := false
+var _exploded := false
+
 
 func _ready() -> void:
 	var shape := CollisionShape2D.new()
@@ -33,14 +45,60 @@ func _ready() -> void:
 	# the #30 roll feel isn't regressed under heavier/lighter gravity.
 	mass = 0.25
 	gravity_scale = 0.9 * float(Settings.mod_gravity)
+	# Non-authority: freeze the body kinematic so we can lerp its transform in from
+	# the authority peer without physics fighting us. Fuse still ticks locally so
+	# the explosion fires at ~the same moment (drift stays well under 1 frame at
+	# 20Hz broadcast).
+	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
+		freeze_mode = RigidBody2D.FREEZE_MODE_KINEMATIC
+		freeze = true
 	get_tree().create_timer(fuse).timeout.connect(_explode)
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	queue_redraw()
+	if multiplayer.multiplayer_peer == null:
+		return
+	if is_multiplayer_authority():
+		_broadcast_cd -= delta
+		if _broadcast_cd <= 0.0:
+			_broadcast_cd = 1.0 / BROADCAST_HZ
+			rpc("net_projectile_state", global_position, linear_velocity, rotation)
+	elif _has_target:
+		# Extrapolate with the last known velocity so a dropped packet doesn't
+		# freeze the grenade in place; snap toward the next authoritative sample
+		# on receipt.
+		var t: float = clampf(delta * LERP_RATE, 0.0, 1.0)
+		global_position = global_position.lerp(_target_pos + _target_vel * delta, t)
+		rotation = lerp_angle(rotation, _target_rot, t)
+
+
+@rpc("authority", "call_remote", "unreliable_ordered")
+func net_projectile_state(pos: Vector2, vel: Vector2, rot: float) -> void:
+	_target_pos = pos
+	_target_vel = vel
+	_target_rot = rot
+	_has_target = true
+
+
+@rpc("authority", "call_remote", "reliable")
+func net_explode(pos: Vector2) -> void:
+	# Snap to the authority's exact fuse-out position so the blast damage / SFX
+	# fire from the same spot on every peer. Idempotent via _exploded guard.
+	global_position = pos
+	_explode()
 
 
 func _explode() -> void:
+	# _exploded guards both the fuse timer and the authority's net_explode RPC
+	# from firing this twice on a peer (#61).
+	if _exploded:
+		return
+	_exploded = true
+	# #61: authority broadcasts the exact explode position so non-authority peers
+	# blast at the same spot even if their lerped position was slightly behind.
+	if multiplayer.multiplayer_peer != null and is_multiplayer_authority():
+		rpc("net_explode", global_position)
 	if cluster:
 		Sfx.cluster_explode()
 	else:

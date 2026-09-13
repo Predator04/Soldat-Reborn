@@ -94,6 +94,12 @@ const CEASEFIRE_SECS := 3.0
 # firing paths; m2.gd drives position + fires directly.
 var mounted_m2: Node2D = null
 
+# MP projectile identity (#61). Each grenade/rocket the local peer spawns is
+# named "Grenade_<peer>_<n>" / "Rocket_<peer>_<n>" so per-projectile RPCs (state
+# broadcasts) can address the same node path on every peer. Counter increments
+# locally on this peer; peer_id disambiguates across peers.
+var _next_proj_id: int = 1
+
 # Advance mode — kill count and per-slot unlock kill thresholds. Only enforced
 # when Settings.advance is on; otherwise every weapon is available from spawn.
 var advance_kills := 0
@@ -801,9 +807,13 @@ func _shoot() -> void:
 	var muzzle: Vector2 = global_position + SoldierArt.muzzle_local(self, aim_dir, facing, str(w["name"]))
 	var slot := (100 + secondary_index) if using_secondary else weapon_index
 	if Net.is_networked():
-		rpc("net_shoot", muzzle, dirs, slot)
+		# Mint a base projectile id for this shot — rocket path uses id, id+1, ...
+		# per pellet so each rocket gets a unique node path on every peer (#61).
+		var base_id := _next_proj_id
+		_next_proj_id += maxi(1, int(w["pellets"]))
+		rpc("net_shoot", muzzle, dirs, slot, base_id)
 	else:
-		net_shoot(muzzle, dirs, slot)
+		net_shoot(muzzle, dirs, slot, 0)
 	if _active_mag() <= 0:
 		_start_reload()
 
@@ -823,9 +833,9 @@ func _perform_melee() -> void:
 	# up from the weapon dict on the receiving side.
 	var dirs := PackedVector2Array([aim_dir])
 	if Net.is_networked():
-		rpc("net_shoot", muzzle, dirs, slot)
+		rpc("net_shoot", muzzle, dirs, slot, 0)
 	else:
-		net_shoot(muzzle, dirs, slot)
+		net_shoot(muzzle, dirs, slot, 0)
 	# Show a brief punch pose (bije) on each swing — clears itself in _physics_process.
 	melee_swing_t = 0.25
 	# Chainsaw taps its 200-mag "fuel" per swing; Knife is effectively unlimited.
@@ -917,9 +927,11 @@ func _throw_grenade() -> void:
 	var g_vel := toss * 480.0
 	var g_ang := randf_range(-8.0, 8.0)
 	if Net.is_networked():
-		rpc("net_grenade", g_pos, g_vel, g_ang, use_cluster)
+		var pid := _next_proj_id
+		_next_proj_id += 1
+		rpc("net_grenade", g_pos, g_vel, g_ang, use_cluster, pid)
 	else:
-		net_grenade(g_pos, g_vel, g_ang, use_cluster)
+		net_grenade(g_pos, g_vel, g_ang, use_cluster, 0)
 
 
 func _shake(amount: float) -> void:
@@ -1062,7 +1074,7 @@ func net_state(pos: Vector2, vel: Vector2, aim: Vector2, face: float, jetting: b
 
 
 @rpc("authority", "call_local", "reliable")
-func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int) -> void:
+func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_proj_id: int = 0) -> void:
 	# Slots ≥ 100 are secondaries at (slot - 100).
 	var w: Dictionary
 	if weapon_i >= 100:
@@ -1103,6 +1115,11 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int) -> vo
 		var bdir: Vector2 = dirs[i]
 		if kind == "rocket" or kind == "launcher":
 			var r := rocket_scene.instantiate()
+			# #61: shooter mints a deterministic id via `base_proj_id + i` so every
+			# peer names the same rocket the same way (needed for per-projectile RPC
+			# dispatch to hit the matching node).
+			if Net.is_networked() and base_proj_id > 0:
+				r.name = "Rocket_%d_%d" % [get_multiplayer_authority(), base_proj_id + i]
 			r.global_position = shot_pos + bdir * 4.0
 			r.direction = bdir
 			r.speed = float(w["speed"])
@@ -1113,6 +1130,8 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int) -> vo
 			# M79 (launcher) lobs — grav>0 flips rocket.gd into ballistic mode.
 			r.grav = float(w.get("gravity", 0.0))
 			get_parent().add_child(r)
+			if Net.is_networked() and base_proj_id > 0:
+				r.set_multiplayer_authority(get_multiplayer_authority())
 		else:
 			var b := bullet_scene.instantiate()
 			b.global_position = shot_pos + bdir * 4.0
@@ -1133,8 +1152,12 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int) -> vo
 
 
 @rpc("authority", "call_local", "reliable")
-func net_grenade(g_pos: Vector2, g_vel: Vector2, g_ang: float, cluster: bool = false) -> void:
+func net_grenade(g_pos: Vector2, g_vel: Vector2, g_ang: float, cluster: bool = false, proj_id: int = 0) -> void:
 	var g := grenade_scene.instantiate()
+	# #61: name so every peer's replica lives at the same NodePath — required for
+	# per-projectile state RPCs. proj_id==0 is SP; no rename / no authority swap.
+	if Net.is_networked() and proj_id > 0:
+		g.name = "Grenade_%d_%d" % [get_multiplayer_authority(), proj_id]
 	g.global_position = g_pos
 	g.team = team
 	g.killer_name = display_name
@@ -1147,6 +1170,8 @@ func net_grenade(g_pos: Vector2, g_vel: Vector2, g_ang: float, cluster: bool = f
 		g.fuse = 1.4
 		g.damage = 40.0
 	get_parent().add_child(g)
+	if Net.is_networked() and proj_id > 0:
+		g.set_multiplayer_authority(get_multiplayer_authority())
 
 
 @rpc("authority", "call_local", "reliable")
