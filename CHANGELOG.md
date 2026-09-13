@@ -2,6 +2,13 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.1.0] — Unreleased
+
+### Changed
+- Sprites upscaled 4x, soldier rendered 2x larger with 2x pixel density
+  (crisper on-screen soldier). Collision, joint scale, HP bar, muzzle flash,
+  jetpack, jet flame + particles, and map spawn Y values all scaled to match.
+
 ## [1.0.0] — 2026-09-12
 
 First release. A Godot 4.7 rebuild of Soldat's feel with the original game's
