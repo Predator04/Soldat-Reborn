@@ -45,5 +45,5 @@ func _on_body_entered(body: Node) -> void:
 
 
 func _draw() -> void:
-	draw_line(-direction * 34.0, Vector2.ZERO, Color(1.0, 0.9, 0.4, 0.55), 2.0)
+	draw_line(-direction * 12.0, Vector2.ZERO, Color(1.0, 0.9, 0.4, 0.55), 2.0)
 	draw_circle(Vector2.ZERO, 2.5, Color(1.0, 0.92, 0.4))
