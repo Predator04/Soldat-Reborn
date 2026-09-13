@@ -3,9 +3,7 @@ build/
 *.exe
 GodotEngine/
 
-# Large / deferred asset dirs — kept on disk for the follow-up integration
-# pass but excluded from the repo to keep it lean. Regenerate via
-# `python3 tools/ship_assets.py` after copying the original Soldat asset
-# packs into /home/predator04/soldat-base/shared/{textures,scenery-gfx}.
-assets/textures/
-assets/scenery/
+# tools/ship_assets.py is a dev-only regeneration helper (it reads the
+# original Soldat asset packs to rebuild assets/{scenery,textures}). The
+# shipped scenery + terrain textures are COMMITTED here so a fresh clone
+# renders correctly without running it.
