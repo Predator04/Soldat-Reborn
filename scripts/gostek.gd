@@ -27,6 +27,11 @@ const TICK_RATE := 60.0
 # Movement speed above which the soldier plays biega/biegatyl instead of stoi.
 const RUN_THRESHOLD := 45.0
 
+# Front-arm (RIGHT_*) aim overlay (#59). Soldat's arms barely follow the aim
+# axis — a few degrees is enough to sell "the gun is aimed there" without
+# breaking the canned .poa poses. Clamp to ±16°.
+const AIM_ARM_LIMIT := 0.28
+
 # Back-to-front draw order. Rows are:
 #   [sprite_key, p1, p2, cx_frac, cy_frac, flex_units, color_kind]
 # Matches the GostekBase entries in GostekGraphics.inc for a plain
@@ -87,6 +92,15 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 	var skin_tint := SKIN if not dead else SKIN.darkened(0.4)
 	var pants_tint := pants if not dead else pants.darkened(0.4)
 
+	# Front-arm aim overlay (#59). Cache alongside facing so joint_pos() can
+	# reuse it — the weapon anchors at the animated wrist and needs the same
+	# offset so the gun tracks with the arm.
+	var aim_offset := _compute_aim_offset(gs, facing)
+	var st_id := node.get_instance_id()
+	var st: Dictionary = _states.get(st_id, {})
+	st["aim_offset"] = aim_offset
+	var arm_pivot: Vector2 = _joint_local(frame, 10, flip)
+
 	var cos: Dictionary = gs.get("cosmetics", {})
 	for spec in PARTS:
 		var key: String = spec[0]
@@ -125,6 +139,12 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 
 		var p1 := _joint_local(frame, p1_id, flip)
 		var p2 := _joint_local(frame, p2_id, flip)
+		# Front arm (RIGHT_*) — rotate joints 13/16/20 around the RIGHT shoulder
+		# (joint 10) so the arm nudges toward aim_dir. Small clamp; canned .poa
+		# still owns the base pose.
+		if aim_offset != 0.0 and _is_front_arm(p1_id, p2_id):
+			p1 = _arm_adjust(p1, arm_pivot, aim_offset)
+			p2 = _arm_adjust(p2, arm_pivot, aim_offset)
 		var bone := p2 - p1
 		if bone.is_zero_approx():
 			continue
@@ -173,13 +193,21 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 
 # Local-space position of the given .poa joint (1..20) for the CURRENT
 # frame — useful for anchoring the weapon sprite to the right wrist (16).
+# Applies the aim overlay (#59) for RIGHT-arm joints so the weapon anchors
+# at the aim-adjusted wrist, keeping gun and arm visually attached.
 static func joint_pos(node: CanvasItem, joint_id_1based: int) -> Vector2:
 	var st: Dictionary = _states.get(node.get_instance_id(), {})
 	var frame: PackedVector2Array = st.get("frame", PackedVector2Array())
 	if frame.is_empty():
 		return Vector2.ZERO
 	var facing: float = float(st.get("facing", 1.0))
-	return _joint_local(frame, joint_id_1based, facing < 0.0)
+	var flip := facing < 0.0
+	var pos := _joint_local(frame, joint_id_1based, flip)
+	var aim_offset: float = float(st.get("aim_offset", 0.0))
+	if aim_offset != 0.0 and (joint_id_1based == 13 or joint_id_1based == 16 or joint_id_1based == 20):
+		var pivot := _joint_local(frame, 10, flip)
+		pos = _arm_adjust(pos, pivot, aim_offset)
+	return pos
 
 
 static func forget(node: CanvasItem) -> void:
@@ -293,6 +321,36 @@ static func _joint_local(frame: PackedVector2Array, joint_id_1based: int, flip: 
 	if flip:
 		out.x = -out.x
 	return out
+
+
+# Signed radians from facing-forward to aim_dir, clamped small. Returns 0 for
+# dead soldiers (canned lezy pose already reads as a corpse) and for missing
+# aim data. In flipped/left-facing coords the joint layout is mirrored, so the
+# rotation sign flips too.
+static func _compute_aim_offset(gs: Dictionary, facing: float) -> float:
+	if bool(gs.get("dead", false)):
+		return 0.0
+	var aim: Vector2 = gs.get("aim_dir", Vector2.ZERO)
+	if aim == Vector2.ZERO:
+		return 0.0
+	var forward := Vector2(facing, 0.0)
+	var off := clampf(forward.angle_to(aim), -AIM_ARM_LIMIT, AIM_ARM_LIMIT)
+	if facing < 0.0:
+		off = -off
+	return off
+
+
+static func _is_front_arm(p1_id: int, p2_id: int) -> bool:
+	# RIGHT arm chain (front, holds weapon): 10→13→16→20.
+	return (p1_id == 10 and p2_id == 13) \
+		or (p1_id == 13 and p2_id == 16) \
+		or (p1_id == 16 and p2_id == 20)
+
+
+static func _arm_adjust(pos: Vector2, pivot: Vector2, aim_offset: float) -> Vector2:
+	if aim_offset == 0.0 or pos == Vector2.ZERO:
+		return pos
+	return pivot + (pos - pivot).rotated(aim_offset)
 
 
 static func _tex(key: String, mirror: bool) -> Texture2D:
