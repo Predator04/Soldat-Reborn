@@ -80,6 +80,10 @@ var bink_t := 0.0
 # Gesture (/commands) — overrides the anim state machine while active.
 var gesture_anim := ""
 var gesture_t := 0.0
+# Ceasefire — brief invulnerability window after (re)spawn. Prevents spawn-kills.
+# Ends early the moment the soldier fires/throws (Soldat behavior).
+var ceasefire_t := 0.0
+const CEASEFIRE_SECS := 3.0
 # Input lock — HUD sets this while the chat/command LineEdit is focused so held
 # WASD keys don't leak into movement while the player is typing.
 var input_locked := false
@@ -124,6 +128,7 @@ const WeaponPickup = preload("res://scripts/weapon_pickup.gd")
 
 func _ready() -> void:
 	add_to_group("soldier")
+	ceasefire_t = CEASEFIRE_SECS
 	# Release the per-instance skeleton state dict when this node is freed so long
 	# sessions don't leak dict entries in Gostek._states.
 	tree_exited.connect(func() -> void: Gostek.forget(self))
@@ -410,6 +415,7 @@ func _physics_process(delta: float) -> void:
 			gesture_anim = ""
 	roll_t = maxf(0.0, roll_t - delta)
 	roll_cd = maxf(0.0, roll_cd - delta)
+	ceasefire_t = maxf(0.0, ceasefire_t - delta)
 
 	# jet particles + sfx transitions
 	if jet_on and not was_jet:
@@ -639,6 +645,7 @@ func _shoot() -> void:
 	var w := _active_weapon()
 	_dec_active_mag()
 	fire_cd = float(w["rate"])
+	ceasefire_t = 0.0  # firing forfeits spawn protection
 	var kind_s := str(w.get("kind", "bullet"))
 	var recoil := 240.0 if (kind_s == "rocket" or kind_s == "launcher") else 35.0
 	velocity -= aim_dir * recoil
@@ -663,6 +670,7 @@ func _shoot() -> void:
 func _perform_melee() -> void:
 	var w := _active_weapon()
 	fire_cd = float(w["rate"])
+	ceasefire_t = 0.0
 	var kind_m := str(w.get("kind", "melee"))
 	# Broadcast so all peers see the swing feedback (muzzle flash + sfx). Damage
 	# is applied inside net_shoot with the standard authority guard.
@@ -719,6 +727,7 @@ func try_pickup_weapon(weapon_name: String) -> bool:
 func _throw_grenade() -> void:
 	grenades -= 1
 	Sfx.grenade_throw()
+	ceasefire_t = 0.0
 	var toss := (aim_dir + Vector2(0, -0.55)).normalized()
 	var target_pos := global_position + aim_dir * 22.0
 	# Short raycast so point-blank wall throws don't spawn the RigidBody2D inside geometry.
@@ -749,6 +758,9 @@ func take_damage(amount: float, killer := "", weapon := "", killer_team := -1) -
 	# Damage is only computed on the victim's authority in MP — guard against accidental
 	# non-authority callers so they don't spam authority-check errors down the death path.
 	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
+		return
+	# Ceasefire (spawn protection) — soaks incoming damage until it expires or we shoot.
+	if ceasefire_t > 0.0 and killer != display_name:
 		return
 	health -= amount
 	# Bink kick: apply extra spread proportional to the weapon's Bink stat while active.
@@ -1024,4 +1036,5 @@ func _draw() -> void:
 		melee_swing_t > 0.0,
 		gesture_anim,
 		roll_t > 0.0,
+		ceasefire_t > 0.0,
 	)

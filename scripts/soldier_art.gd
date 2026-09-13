@@ -72,6 +72,7 @@ static func draw_soldier(
 	melee_swing: bool = false,
 	gesture_anim: String = "",
 	rolling: bool = false,
+	ceasefire: bool = false,
 ) -> void:
 	if jet_on and not dead:
 		_draw_jet_flame(node, facing)
@@ -130,6 +131,13 @@ static func draw_soldier(
 			Vector2(7.0, -44.0),
 			Vector2(0.0, -33.0),
 		]), PackedColorArray([arrow_col, arrow_col, arrow_col]))
+
+	# Ceasefire (spawn protection) — soft pulsing cyan aura ring so it reads
+	# immediately as "invulnerable" to shooters.
+	if ceasefire and not dead:
+		var pulse: float = 0.35 + 0.25 * sin(Time.get_ticks_msec() * 0.012)
+		node.draw_arc(Vector2(0, -8.0), 20.0, 0.0, TAU, 32, Color(0.4, 0.85, 1.0, pulse), 1.6)
+		node.draw_arc(Vector2(0, -8.0), 24.0, 0.0, TAU, 32, Color(0.4, 0.85, 1.0, pulse * 0.55), 1.0)
 
 
 # Returns the barrel-tip position in the node's local space so callers can

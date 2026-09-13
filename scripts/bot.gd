@@ -32,6 +32,8 @@ var grenade_cd := 0.0
 
 # Bink (aim penalty when hit — same model as player.gd).
 var bink_t := 0.0
+# Ceasefire (spawn protection) — invulnerable for the first few seconds after spawn.
+var ceasefire_t := 3.0
 
 # strafe / dodge
 var strafe_dir := 1.0
@@ -86,6 +88,7 @@ func _physics_process(delta: float) -> void:
 		return
 
 	bink_t = maxf(0.0, bink_t - delta * 100.0)
+	ceasefire_t = maxf(0.0, ceasefire_t - delta)
 	_refresh_target(delta)
 
 	var on_floor := is_on_floor()
@@ -234,6 +237,7 @@ func _throw_grenade(dx: float, dy: float, dist: float) -> void:
 
 func _shoot(to_t: Vector2) -> void:
 	var aim := to_t.normalized()
+	ceasefire_t = 0.0
 	Sfx.shoot(loadout)
 	# lead the target by its velocity (predictive aim)
 	var speed_est: float = ROCKET_SPEED if loadout == "LAW" else BULLET_SPEED
@@ -289,6 +293,8 @@ func take_damage(amount: float, killer := "", weapon := "", killer_team := -1) -
 		return
 	# Bots are singleplayer-only today, but if MP ever spawns them, only their authority peer should tally damage.
 	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
+		return
+	if ceasefire_t > 0.0 and killer != display_name:
 		return
 	health -= amount
 	var bv: float = float(BINK_BY_WEAPON.get(weapon, 0.0))
@@ -396,4 +402,10 @@ func _draw() -> void:
 		loadout,
 		is_on_floor(),
 		false,
+		false,
+		false,
+		false,
+		"",
+		false,
+		ceasefire_t > 0.0,
 	)
