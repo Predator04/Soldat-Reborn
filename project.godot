@@ -18,6 +18,7 @@ Net="*res://scripts/net.gd"
 GifRecorder="*res://scripts/gif_recorder.gd"
 Stats="*res://scripts/stats.gd"
 Music="*res://scripts/music.gd"
+MatchConfig="*res://scripts/match_config.gd"
 
 [display]
 

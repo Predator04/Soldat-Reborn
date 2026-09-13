@@ -50,7 +50,15 @@ func _on_body_entered(body: Node) -> void:
 	if _hit:
 		return
 	if body is CharacterBody2D:
-		if body.get("team") != team and body.has_method("take_damage"):
+		if body.has_method("take_damage"):
+			var same_team: bool = int(body.get("team")) == team
+			var is_self: bool = str(body.get("display_name")) == killer_name
+			# Same-team bullets pass through unless the host has friendly fire on
+			# (or the mode is FFA, where MatchConfig.friendly_fire_on returns true).
+			# Self-hits are always allowed so the shooter's own bullet doesn't
+			# eat a wall / crate collision path silently.
+			if same_team and not is_self and not MatchConfig.friendly_fire_on():
+				return
 			_hit = true
 			var dmg := damage
 			var wname := weapon_name

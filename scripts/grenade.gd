@@ -48,7 +48,7 @@ func _ready() -> void:
 	# mod_gravity scales only the fall acceleration; bounce/friction stay tuned so
 	# the #30 roll feel isn't regressed under heavier/lighter gravity.
 	mass = 0.25
-	gravity_scale = 0.9 * float(Settings.mod_gravity)
+	gravity_scale = 0.9 * MatchConfig.mod_gravity()
 	# Non-authority: freeze the body kinematic so we can lerp its transform in from
 	# the authority peer without physics fighting us. Explosion is now driven only
 	# by the authority's reliable net_explode RPC (#69) so the client never queue_frees
@@ -129,10 +129,10 @@ func _explode() -> void:
 		if d < blast_radius:
 			var same_team: bool = int(s.get("team")) == team
 			var is_self: bool = s.get("display_name") == killer_name
-			if same_team and not is_self and not Settings.friendly_fire_on():
+			if same_team and not is_self and not MatchConfig.friendly_fire_on():
 				continue
 			if multiplayer.multiplayer_peer == null or s.is_multiplayer_authority():
-				s.take_damage(damage * float(Settings.mod_damage) * (1.0 - d / blast_radius), killer_name, wname, team)
+				s.take_damage(damage * MatchConfig.mod_damage() * (1.0 - d / blast_radius), killer_name, wname, team)
 	# Lo-fi (#25): skip the CPUParticles2D flame burst. The Sfx call above still fires.
 	if not Settings.lofi:
 		var p := CPUParticles2D.new()

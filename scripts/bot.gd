@@ -140,7 +140,7 @@ func _ready() -> void:
 func _apply_skill() -> void:
 	# Skill 1..5. Baked here so the whole match uses one difficulty and adjusting
 	# mid-match doesn't retro-tune existing bots. Skill 3 preserves prior behavior.
-	var s: int = clampi(int(Settings.bot_skill), 1, 5)
+	var s: int = clampi(MatchConfig.bot_skill(), 1, 5)
 	# Aim spread: 0.30 rad at skill 1 → 0.02 rad at skill 5. This is applied AFTER
 	# the target-lead calculation so a low-skill bot's aim drifts wide, not blind.
 	_skill_aim_spread = lerpf(0.30, 0.02, float(s - 1) / 4.0)
@@ -247,7 +247,7 @@ func _physics_process(delta: float) -> void:
 		fuel = minf(100.0, fuel + 32.0 * delta)
 
 	if not on_floor:
-		velocity.y += BASE_GRAVITY * float(Settings.mod_gravity) * delta
+		velocity.y += BASE_GRAVITY * MatchConfig.mod_gravity() * delta
 		velocity.y = minf(velocity.y, MAX_FALL)
 
 	if dir != 0.0:
@@ -426,7 +426,7 @@ func net_bot_shoot(muzzle: Vector2, aim: Vector2, proj_id: int = 0) -> void:
 	# Debug counter so --smoke-botfire can confirm the RPC reached the client.
 	if Net.is_client():
 		Net.bot_shots_seen += 1
-	var dmg_mul: float = float(Settings.mod_damage)
+	var dmg_mul: float = MatchConfig.mod_damage()
 	if loadout == "LAW":
 		var r := rocket_scene.instantiate()
 		# #69: name by bot_id so two LAW bots can't collide their proj_id counters

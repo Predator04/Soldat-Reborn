@@ -246,7 +246,7 @@ func _physics_process(delta: float) -> void:
 		# Fuel keeps regenerating while mounted — the operator is stationary on
 		# the sandbag, not draining tanks. Uses the same mod_jet scaling as
 		# grounded regen so mods stay consistent.
-		fuel = minf(100.0, fuel + JET_REGEN * float(Settings.mod_jet) * delta)
+		fuel = minf(100.0, fuel + JET_REGEN * MatchConfig.mod_jet() * delta)
 		# Allow exiting prone/crouch while mounted so the soldier isn't locked
 		# into a stance they can't leave. Toggle on rising edge like normal.
 		var x_now_m := Input.is_action_pressed("prone")
@@ -322,7 +322,7 @@ func _physics_process(delta: float) -> void:
 	jump_buffer_t = JUMP_BUFFER if jump_pressed else maxf(0.0, jump_buffer_t - delta)
 
 	# horizontal
-	var speed_mul: float = float(Settings.mod_speed)
+	var speed_mul: float = MatchConfig.mod_speed()
 	var accel := (GROUND_ACCEL if on_floor else AIR_ACCEL) * speed_mul
 	var cap := (RUN_SPEED if on_floor else BUNNY_SPEED) * speed_mul
 	# Preserve bunny-hop momentum: if a buffered jump will fire this tick,
@@ -355,8 +355,8 @@ func _physics_process(delta: float) -> void:
 	# mod_jet scales thrust/drain/regen consistently; mod_gravity scales thrust
 	# so the boots still lift you in higher-gravity worlds.
 	var jet_pressed := Input.is_action_pressed("jet") and not Settings.realistic
-	var mj: float = float(Settings.mod_jet)
-	var mg: float = float(Settings.mod_gravity)
+	var mj: float = MatchConfig.mod_jet()
+	var mg: float = MatchConfig.mod_gravity()
 	jet_on = false
 	if jet_pressed and not on_floor and fuel > 0.0:
 		velocity.y += JET_THRUST * mj * mg * delta
@@ -1095,13 +1095,17 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_
 	if kind == "melee" or kind == "melee_cont":
 		var swing: Vector2 = dirs[0] if dirs.size() > 0 else aim_dir
 		var reach: float = float(w.get("range", 32.0))
-		var dmg: float = float(w["damage"]) * float(Settings.mod_damage)
+		var dmg: float = float(w["damage"]) * MatchConfig.mod_damage()
 		# Scan soldiers in a short forward arc — apply damage on the authority peer
 		# only (matches how bullet/rocket damage is gated in bullet.gd/rocket.gd).
 		for s in get_tree().get_nodes_in_group("soldier"):
 			if s == self or not is_instance_valid(s):
 				continue
-			if int(s.get("team")) == team or bool(s.get("dead")):
+			if bool(s.get("dead")):
+				continue
+			# Team-mate swings pass through unless host FF is on (#74). Self-melee
+			# isn't a thing here (we already skip s == self above).
+			if int(s.get("team")) == team and not MatchConfig.friendly_fire_on():
 				continue
 			var to_s: Vector2 = s.global_position - global_position
 			var d: float = to_s.length()
@@ -1124,7 +1128,7 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_
 			r.global_position = shot_pos + bdir * 4.0
 			r.direction = bdir
 			r.speed = float(w["speed"])
-			r.damage = float(w["damage"]) * float(Settings.mod_damage)
+			r.damage = float(w["damage"]) * MatchConfig.mod_damage()
 			r.team = team
 			r.killer_name = display_name
 			r.weapon_name = str(w["name"])
@@ -1138,7 +1142,7 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_
 			b.global_position = shot_pos + bdir * 4.0
 			b.direction = bdir
 			b.speed = float(w["speed"])
-			b.damage = float(w["damage"]) * float(Settings.mod_damage)
+			b.damage = float(w["damage"]) * MatchConfig.mod_damage()
 			b.team = team
 			b.killer_name = display_name
 			b.weapon_name = str(w["name"])

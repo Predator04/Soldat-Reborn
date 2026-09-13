@@ -7,11 +7,14 @@ extends CanvasLayer
 
 const ControlsMenu = preload("res://scripts/controls_menu.gd")
 const SettingsPanel = preload("res://scripts/settings_panel.gd")
+const HostAdminPanel = preload("res://scripts/host_admin_panel.gd")
 
 var _root_panel: Control
 var _menu_box: VBoxContainer
 var _settings_panel: Node        # SettingsPanel (glassmorphism accordion, #73)
 var _controls_panel: VBoxContainer
+var _host_admin_panel: Node      # HostAdminPanel (#74) — host-only match config
+var _host_admin_btn: Button      # shortcut on the pause list; only visible to host/SP
 var _quit_confirm: VBoxContainer
 var _dim: ColorRect
 var _open := false
@@ -38,6 +41,7 @@ func _ready() -> void:
 	_build_main_menu()
 	_build_settings_panel()
 	_build_controls_panel()
+	_build_host_admin_panel()
 	_build_quit_confirm()
 
 
@@ -70,6 +74,13 @@ func _build_main_menu() -> void:
 	settings.pressed.connect(_open_settings)
 	_menu_box.add_child(settings)
 
+	# HOST SETTINGS — only visible to the host (or SP, which is functionally the
+	# local host). Clients can't tweak match rules. Visibility is refreshed on
+	# open() so the button appears/disappears if Net mode changes mid-session.
+	_host_admin_btn = _make_button("HOST SETTINGS")
+	_host_admin_btn.pressed.connect(_open_host_admin)
+	_menu_box.add_child(_host_admin_btn)
+
 	var to_menu := _make_button("EXIT TO MENU")
 	to_menu.pressed.connect(_exit_to_menu)
 	_menu_box.add_child(to_menu)
@@ -94,6 +105,13 @@ func _build_controls_panel() -> void:
 	_controls_panel.visible = false
 	_controls_panel.back_pressed.connect(_close_controls)
 	_root_panel.add_child(_controls_panel)
+
+
+func _build_host_admin_panel() -> void:
+	_host_admin_panel = HostAdminPanel.new()
+	_host_admin_panel.visible = false
+	_host_admin_panel.back_pressed.connect(_close_host_admin)
+	_root_panel.add_child(_host_admin_panel)
 
 
 func _build_quit_confirm() -> void:
@@ -175,6 +193,10 @@ func _input(event: InputEvent) -> void:
 					_close_settings()
 					get_viewport().set_input_as_handled()
 					return
+				if _host_admin_panel.visible:
+					_close_host_admin()
+					get_viewport().set_input_as_handled()
+					return
 				if _quit_confirm.visible:
 					_close_quit_confirm()
 					get_viewport().set_input_as_handled()
@@ -192,8 +214,12 @@ func open() -> void:
 	_menu_box.visible = true
 	_settings_panel.visible = false
 	_controls_panel.visible = false
+	_host_admin_panel.visible = false
 	_quit_confirm.visible = false
 	_root_panel.visible = true
+	# Host admin button only makes sense on host or SP. Clients get nothing.
+	if _host_admin_btn != null:
+		_host_admin_btn.visible = not Net.is_client()
 	# Free the OS cursor so mouse buttons work reliably on the pause menu.
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	get_tree().paused = true
@@ -214,6 +240,16 @@ func _open_settings() -> void:
 
 func _close_settings() -> void:
 	_settings_panel.visible = false
+	_menu_box.visible = true
+
+
+func _open_host_admin() -> void:
+	_menu_box.visible = false
+	_host_admin_panel.visible = true
+
+
+func _close_host_admin() -> void:
+	_host_admin_panel.visible = false
 	_menu_box.visible = true
 
 

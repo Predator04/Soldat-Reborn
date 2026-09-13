@@ -79,7 +79,7 @@ func _physics_process(delta: float) -> void:
 	# mod_gravity scales the fall accel so an M79 arc matches the world's gravity mod (LAW
 	# has grav==0, so straight flight is unaffected — no regression there).
 	if grav > 0.0:
-		_velocity.y += grav * float(Settings.mod_gravity) * delta
+		_velocity.y += grav * MatchConfig.mod_gravity() * delta
 		position += _velocity * delta
 		direction = _velocity.normalized()
 	else:
@@ -121,7 +121,9 @@ func _on_body_entered(body: Node) -> void:
 	# trailing state RPC from the authority. Only the shooter decides when to blow.
 	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
 		return
-	if body is CharacterBody2D and body.get("team") == team:
+	# Same-team direct impact used to always no-damage-consume the rocket. With FF
+	# on (#74) we let the rocket explode on a teammate too so the blast can splash.
+	if body is CharacterBody2D and body.get("team") == team and not MatchConfig.friendly_fire_on():
 		queue_free()
 		return
 	_explode()
@@ -150,7 +152,7 @@ func _explode() -> void:
 		# but the thrower is always damageable so self-rocket-jumping still works.
 		var same_team: bool = int(s.get("team")) == team
 		var is_self: bool = s.get("display_name") == killer_name
-		if same_team and not is_self and not Settings.friendly_fire_on():
+		if same_team and not is_self and not MatchConfig.friendly_fire_on():
 			continue
 		var scaled: float = damage * (1.0 - d / blast_radius)
 		if s.has_method("take_damage") and (multiplayer.multiplayer_peer == null or s.is_multiplayer_authority()):

@@ -225,29 +225,36 @@ func _build_game(box: VBoxContainer) -> void:
 
 
 func _build_mods(box: VBoxContainer) -> void:
+	# When the local peer is the host, mod changes are also broadcast via
+	# MatchConfig so joined clients honour the new values live (#74). SP + client
+	# writes are local-only; MatchConfig ignores client Settings so no desync.
 	box.add_child(_labelled_slider("Gravity", 0.5, 2.0, 0.05,
 		Settings.mod_gravity,
 		func(v: float) -> void:
 			Settings.mod_gravity = v
-			Settings.save(),
+			Settings.save()
+			MatchConfig.host_broadcast(),
 		"%.2fx"))
 	box.add_child(_labelled_slider("Jet fuel regen", 0.5, 2.0, 0.05,
 		Settings.mod_jet,
 		func(v: float) -> void:
 			Settings.mod_jet = v
-			Settings.save(),
+			Settings.save()
+			MatchConfig.host_broadcast(),
 		"%.2fx"))
 	box.add_child(_labelled_slider("Weapon damage", 0.5, 2.0, 0.05,
 		Settings.mod_damage,
 		func(v: float) -> void:
 			Settings.mod_damage = v
-			Settings.save(),
+			Settings.save()
+			MatchConfig.host_broadcast(),
 		"%.2fx"))
 	box.add_child(_labelled_slider("Player speed", 0.5, 1.5, 0.05,
 		Settings.mod_speed,
 		func(v: float) -> void:
 			Settings.mod_speed = v
-			Settings.save(),
+			Settings.save()
+			MatchConfig.host_broadcast(),
 		"%.2fx"))
 	# Bot count slider — -1 renders as "Auto", 0-8 as their integer.
 	var bc_row := HBoxContainer.new()
@@ -274,13 +281,15 @@ func _build_mods(box: VBoxContainer) -> void:
 		var n: int = int(round(v))
 		bc_val.text = "Auto" if n < 0 else str(n)
 		Settings.bot_count = n
-		Settings.save())
+		Settings.save()
+		MatchConfig.host_broadcast())
 
 	box.add_child(_labelled_slider("Bot skill", 1.0, 5.0, 1.0,
 		float(Settings.bot_skill),
 		func(v: float) -> void:
 			Settings.bot_skill = clampi(int(round(v)), 1, 5)
-			Settings.save(),
+			Settings.save()
+			MatchConfig.host_broadcast(),
 		"%d"))
 
 	var reset := _make_button("RESET MODS")

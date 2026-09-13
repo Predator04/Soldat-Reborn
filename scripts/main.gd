@@ -736,7 +736,7 @@ func _spawn_bots() -> void:
 	var spots: Array = _map["bot_spawns"]
 	# #67: bot_count -1 = "every spawn slot" (legacy). Otherwise cap to the setting.
 	# We recycle spawn positions round-robin if the user asks for more bots than slots.
-	var desired: int = spots.size() if Settings.bot_count < 0 else Settings.bot_count
+	var desired: int = spots.size() if MatchConfig.bot_count() < 0 else MatchConfig.bot_count()
 	if desired <= 0 or spots.is_empty():
 		return
 	var mode: int = Settings.game_mode
@@ -1034,6 +1034,37 @@ func net_spawn_ack() -> void:
 		return
 	var sender := multiplayer.get_remote_sender_id()
 	_ready_peers[sender] = true
+	# Push the current MatchConfig snapshot (#74) so the joining peer applies
+	# the host's mods / friendly-fire / bot roster immediately instead of
+	# running under its own local Settings until the next admin-menu change.
+	rpc_id(sender, "net_match_config_apply", MatchConfig.to_dict())
+
+
+@rpc("authority", "reliable")
+func net_match_config_apply(cfg: Dictionary) -> void:
+	# Thin trampoline to MatchConfig.apply_dict — kept on Main so the RPC target
+	# lives on a scene-node the multiplayer stack always resolves (autoloads
+	# resolve too, but co-locating the match state RPCs here matches the pattern
+	# used by net_match_state / net_flag_state / net_pickup_state).
+	MatchConfig.apply_dict(cfg)
+
+
+@rpc("authority", "call_local", "reliable")
+func net_match_restart(map_idx: int, mode_idx: int) -> void:
+	# Host-driven full-match restart (#74). Everyone lands on the same map+mode
+	# by updating the shared knobs BEFORE reloading main.tscn — main._ready()
+	# then reads them and rebuilds terrain / spawns cleanly.
+	Net.chosen_map_index = clampi(map_idx, 0, MAPS.size() - 1)
+	Settings.map_index = Net.chosen_map_index
+	Settings.custom_map_path = ""  # networked matches always use built-in maps
+	Settings.game_mode = mode_idx
+	Settings.save()
+	call_deferred("_do_reload_main")
+
+
+func _do_reload_main() -> void:
+	get_tree().paused = false
+	get_tree().change_scene_to_file("res://scenes/main.tscn")
 
 
 @rpc("authority", "call_local", "reliable")
