@@ -63,8 +63,15 @@ var g_prev := false
 var muzzle_t := 0.0
 var q_prev := false     # prev-frame Q — swap on rising edge only, not every physics tick
 var x_prev := false     # prev-frame X — prone toggle on rising edge
+var s_prev := false     # prev-frame S — roll on rising edge with lateral momentum
 var crouching := false
 var prone := false
+# Roll — S pressed while running triggers a short forward burst (Soldat's roll).
+var roll_t := 0.0
+var roll_cd := 0.0
+const ROLL_DURATION := 0.32
+const ROLL_COOLDOWN := 0.85
+const ROLL_SPEED := 520.0
 var melee_swing_t := 0.0  # short window (~0.25s) after a Knife/Chainsaw strike — drives the "bije" pose
 # Bink — extra aim spread applied when the *victim* takes damage from a bink weapon.
 # Barrett's 65 is intentionally punishing; most rifles land 20-30. Decays over ~0.6s.
@@ -219,7 +226,15 @@ func _physics_process(delta: float) -> void:
 	x_prev = x_now
 	if prone and jump_pressed:
 		prone = false
-	crouching = Input.is_physical_key_pressed(KEY_S) and not prone
+	var s_now := Input.is_physical_key_pressed(KEY_S) and not prone
+	# Roll: press S with lateral momentum → brief burst, skokdolobrot anim, no crouch shape.
+	if s_now and not s_prev and is_on_floor() and roll_cd <= 0.0 and absf(velocity.x) > 60.0:
+		roll_t = ROLL_DURATION
+		roll_cd = ROLL_COOLDOWN
+		velocity.x = signf(velocity.x) * ROLL_SPEED
+		Sfx.jump()
+	s_prev = s_now
+	crouching = s_now and roll_t <= 0.0
 	_apply_stance_shape()
 
 	var dir := 0.0
@@ -242,8 +257,11 @@ func _physics_process(delta: float) -> void:
 	if on_floor and jump_buffer_t > 0.0 and coyote_t > 0.0:
 		cap = BUNNY_SPEED
 	# Crouch/prone slow the ground cap; airborne cap is untouched so bunny-hops are preserved.
+	# Roll trumps both — a short window at ROLL_SPEED before ground friction reasserts.
 	if on_floor:
-		if prone:
+		if roll_t > 0.0:
+			cap = ROLL_SPEED
+		elif prone:
 			cap *= 0.28
 		elif crouching:
 			cap *= 0.6
@@ -381,6 +399,8 @@ func _physics_process(delta: float) -> void:
 		gesture_t = maxf(0.0, gesture_t - delta)
 		if gesture_t <= 0.0:
 			gesture_anim = ""
+	roll_t = maxf(0.0, roll_t - delta)
+	roll_cd = maxf(0.0, roll_cd - delta)
 
 	# jet particles + sfx transitions
 	if jet_on and not was_jet:
@@ -905,4 +925,5 @@ func _draw() -> void:
 		prone,
 		melee_swing_t > 0.0,
 		gesture_anim,
+		roll_t > 0.0,
 	)

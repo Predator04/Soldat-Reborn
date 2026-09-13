@@ -208,6 +208,11 @@ static func _pick_anim(gs: Dictionary) -> String:
 	var gest: String = str(gs.get("gesture_anim", ""))
 	if gest != "":
 		return gest
+	# Roll (S pressed while running) — dive-forward / dive-backward tumble.
+	if bool(gs.get("rolling", false)):
+		var vel_r: Vector2 = gs.get("velocity", Vector2.ZERO)
+		var facing_r: float = float(gs.get("facing", 1.0))
+		return "skokdolobrot" if signf(vel_r.x) == signf(facing_r) else "skokdolobrottyl"
 	# Melee swing (Knife/Chainsaw) takes priority over reload/run so the punch pose reads.
 	if bool(gs.get("melee_swing", false)):
 		return "bije"
