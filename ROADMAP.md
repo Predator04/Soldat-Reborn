@@ -61,9 +61,12 @@ A 2026-quality port of Soldat's *feel* in Godot 4 (run-and-gun, jet boots, bunny
 ## Known bugs
 - Multiplayer uses per-frame full-state RPCs (position/velocity/aim/etc.) at physics rate — fine for 2 players on LAN, will not scale; swap for MultiplayerSynchronizer if peer counts grow.
 - Kill feed on clients only reflects networked kills — bots (SP-only) still fire the local `kill` signal.
-- Round reset does not restore player HP/ammo/position; players just fight on with the timer reset. Feels fine in practice but not "clean slate".
-- Gostek arms do not physically track aim_dir — the weapon sprite rotates along aim, but the arm sprites play the canned anim frames. Same behavior as original Soldat, but a per-frame upper-body rotation overlay would tighten it.
-- Only the "base visible" body sprites (chest, hip, head, helmet, both arms/hands, both legs/feet) are drawn — dreadlocks / cygar / dogtag chain / vest / dmg blood overlays / grenade-on-belt / secondary-weapon-on-back are documented in GostekGraphics.inc but not wired in.
 - Run-cycle phase is time-driven, not tied to horizontal displacement — at very high or very low speeds the stride can look slightly out of sync with actual movement.
-- `assets/textures/` (map tile art) is on disk but not yet integrated — arena still uses solid ColorRects. Same for `assets/sparks-gfx/` and `assets/interface-gfx/`.
-- Grenades and rockets run independent physics on every peer; damage is per-victim authority so no double-hits, but the shooter and victim can see the explosion in slightly different spots. Full fix requires authority-owned spawn + transform replication.
+- Cluster grenade fragments still spawn independently on every peer (each fragment runs on its own peer's RNG); trajectory drift is contained by the fact that the parent grenade now detonates at a shared spot (#61), but per-fragment sync is a follow-up.
+- Custom user maps (`user://maps/*.json`) are single-player only; networked play still uses the built-in rotation because the map JSON isn't broadcast on join.
+
+## Recently resolved
+- Round reset now restores HP/ammo/spawn slot for every living soldier in non-survival modes (#58, v1.7.0).
+- Gostek front-arm chain rotates toward aim_dir with a clamped ±16° overlay so the gun no longer looks detached at steep angles (#59, v1.7.0).
+- Remaining gostek detail overlays (dreadlocks, dogtag, blood/damage, grenade-on-belt, secondary-on-back) now render from the assets that were already on disk (#60, v1.7.0).
+- Grenades and rockets now run physics only on the spawning peer and broadcast pos/vel/rot; other peers lerp and share the same explosion origin (#61, v1.7.0).

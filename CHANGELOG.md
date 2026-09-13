@@ -2,6 +2,115 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.7.0] — 2026-09-13
+
+Round-boundary hygiene, gostek fidelity, and MP projectile parity.
+
+### Fixed
+- **Clean-slate round reset** (fixes #58). Non-survival modes (DM/TDM/CTF/…)
+  now restore every living soldier to full HP/ammo and teleport them to a
+  spawn slot when the round timer/score resets, instead of resuming with
+  mid-fight state. Dead-and-respawning soldiers keep their existing scheduled
+  timer path — no double-spawns. Host broadcasts `net_round_reset` so each
+  peer resets its own locally-authoritative body; Survival's wipe-and-respawn
+  and the MP `_spawn_networked_player` path are untouched.
+- **MP grenade/rocket transform sync** (fixes #61). Projectile physics is now
+  authority-owned: only the spawning peer integrates position/velocity and
+  broadcasts pos/vel/rot at 20 Hz (unreliable_ordered). Non-authority replicas
+  freeze (RigidBody2D kinematic for grenades, skipped integration for rockets)
+  and lerp toward the incoming transform, so shooter and victim see the same
+  trajectory and impact spot. Authority additionally fires `net_explode` at
+  the exact impact position so blasts detonate together.
+
+### Added
+- **Front arm tracks aim_dir** (fixes #59). The RIGHT-arm chain (joints
+  10→13→16→20) rotates around the shoulder toward aim_dir by a clamped ±16°
+  offset — subtle enough that the canned .poa poses still own the base look,
+  enough that the gun stops looking detached when aiming steeply up/down. The
+  wrist anchor for the weapon sprite applies the same offset so the gun
+  travels with the hand.
+- **Missing gostek detail overlays** (fixes #60). Ships the outstanding
+  detail sprites that were sitting in `assets/gostek-gfx/` but never
+  rendered: dreadlocks (`dred.png`) on hair heads, dogtag (`metal.png`)
+  hanging from the chain, blood/damage overlays (`ranny/*.png`) that blend
+  in as HP drops below 60, a frag/cluster grenade riding on the belt while
+  the soldier is carrying grenades, and the inactive secondary weapon slung
+  across the back along the spine axis. Menu grows Dreadlocks + Dogtag
+  CheckButton toggles alongside the existing Vest/Cigar; bots roll the two
+  new looks with the existing random-cosmetics pass.
+
+## [1.6.0] — 2026-09-12
+
+Classic maps, dedicated server, and MP bot combat parity.
+
+### Added
+- **10 classic Soldat maps ported from `.pms`** (#53) — Nuubia, Maya,
+  Aftermath, Hormone, Viet, Scorpion, Warehouse, Baire, Airpirates, Bunker.
+  Terrain polygons converted 1:1 with the original geometry; spawns/flags
+  translated into the map JSON schema.
+- **Dedicated headless server** (#54). `SoldatReborn.exe --dedicated
+  [--port 7777] [--map <name>] [--mode <dm|tdm|ctf|inf|htf|rm|pm|dom|br>]`
+  boots without a local player, pre-populates bots, and waits for peers.
+- **Bots over ENet** (#55). Host owns bot lifecycle + AI; every client
+  spawns replicas via `net_spawn_bot`, streams `net_bot_state` at 20 Hz
+  (pos/vel/facing/health/loadout/dead), and mirrors death via `net_bot_die`.
+  Joining peers see the full live bot roster in the initial ready handshake.
+- **Replicated bot fire** (#57). Host bots broadcast `net_bot_shoot` /
+  `net_bot_grenade` so clients spawn matching tracers + rockets + grenades
+  and take damage from bot fire. FFA joiners now spawn at a random
+  `bot_spawns` slot (not the map corner) so they land in the action.
+- **Ported scenery + textured terrain** (#56). Real Soldat scenery sprites
+  and per-vertex-UV terrain textures render on top of the polygon geometry
+  for the classic map roster.
+
+## [1.5.0] — 2026-09-12
+
+Movement + controls polish.
+
+### Added
+- **Fully rebindable controls** via `InputMap` and a new settings screen.
+  Bindings persist to `user://controls.cfg`; "Reset to Defaults" restores the
+  documented table. Main menu Settings → Controls exposes the rebind screen
+  before a match starts.
+- **Pause menu overlay** (ESC) with Resume / Settings / Controls / Exit
+  without leaving the round.
+- **Richer sky + parallax** — dusk gradient, clouds, and four mountain
+  layers drifting at camera-relative speeds.
+
+### Changed
+- **Movement overhaul** — stance-shape collision swaps for crouch/prone,
+  roll burst tuned to beat bunny-hop, jet mods now scale regen + thrust
+  consistently, bot AI cleaned up on top of the M2 mount path.
+- **Gameplay pacing slowed ~15%** — run 330→280, bunny 640→545, jump
+  470→430, jet 1250→1050. Soldat's classic tempo, not floaty.
+- **Maps** overhauled with polygon terrain, hills, and tunnels.
+
+### Fixed
+- **Jet boots** — thrust 1050→2200 so they actually climb (was weaker than
+  gravity, so pressing RMB would slow the fall but never lift you).
+- **mod_gravity** applied to grenade fall accel and the M79 arc so the
+  gravity slider affects every ballistic path consistently.
+- **Pause menu SFX volume** no longer double-attenuated.
+- **Main-scene load failure** — `MAPS` couldn't be `const` because it held
+  `Vector2()` / `PackedVector2Array()` calls; downgraded to `var` per the
+  GDScript 4 parser rules.
+
+## [1.4.0] — 2026-09-12
+
+Level editor + procedural generation.
+
+### Added
+- **In-game map editor** (#31). Toolbar to place platforms (drag), spawns,
+  flags, and control points (click); move/delete via right-click; middle-drag
+  pan and wheel zoom; ESC exit, F5 play-test. Maps save to
+  `user://maps/*.json` and are selectable in the menu alongside the built-in
+  rotation.
+- **Procedural map generation** (#32). Seeded generator produces playable
+  layouts for every mode; re-roll from the menu, then **GENERATE + PLAY**
+  drops you straight in.
+- README refreshed to document the editor + procedural gen flow and the
+  full feature set.
+
 ## [1.3.0] — 2026-09-12
 
 Retail-quality pass. New modes, modifiers, cosmetics, stats, GIF
