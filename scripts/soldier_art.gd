@@ -141,7 +141,7 @@ static func _draw_weapon_sprite(
 		node.draw_line(shoulder, end, fallback_color, line_thick)
 		return end
 
-	var size := tex.get_size()
+	var size := tex.get_size() * Gostek.SPRITE_SCALE
 	# Grip pivot matches Soldat's per-weapon cx/cy (GostekGraphics.inc).
 	var pivot: Array = WEAPON_PIVOT.get(weapon_name, [0.15, 0.5])
 	var grip_offset := size.x * float(pivot[0])
@@ -168,7 +168,7 @@ static func muzzle_local(node: CanvasItem, aim_dir: Vector2, facing: float, weap
 	var tex := _weapon_texture(weapon_name)
 	if tex == null:
 		return shoulder + aim_dir * 22.0
-	var size := tex.get_size()
+	var size := tex.get_size() * Gostek.SPRITE_SCALE
 	var pivot: Array = WEAPON_PIVOT.get(weapon_name, [0.15, 0.5])
 	var barrel_len := size.x * (1.0 - float(pivot[0]))
 	return shoulder + aim_dir * barrel_len

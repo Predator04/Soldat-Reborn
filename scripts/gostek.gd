@@ -16,6 +16,11 @@ const DIR := "res://assets/gostek-gfx/"
 const POA_TO_PIXEL := 1.0
 const FEET_OFFSET_Y := 3.0
 
+# Soldat's mod.ini has DefaultScale=4.5 → gostek sprites are drawn at 1/3 of
+# their native pixel size (the PNGs are stored 3x for HD). Missing this makes
+# the soldier render 3x too wide ("fat"). Flex formula below is unaffected.
+const SPRITE_SCALE := 1.0 / 3.0
+
 # Anims.pas runs its animation counter at physics tick rate (~60 Hz).
 const TICK_RATE := 60.0
 
@@ -99,8 +104,8 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 		if tex == null:
 			continue
 
-		var w := float(tex.get_width())
-		var h := float(tex.get_height())
+		var w := float(tex.get_width()) * SPRITE_SCALE
+		var h := float(tex.get_height()) * SPRITE_SCALE
 		var sx := 1.0
 		if flex > 0.0:
 			var ref_len := flex * POA_TO_PIXEL
