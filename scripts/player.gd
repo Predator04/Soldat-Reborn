@@ -23,23 +23,23 @@ var aim_dir := Vector2.RIGHT
 # `kind`: "bullet" (default) | "rocket" (slow, straight, explodes) | "launcher" (rocket + gravity arc, e.g. M79) | "melee" (single-swing arc) | "melee_cont" (chainsaw).
 # `startup` (optional, seconds): Barrett/Minigun wind-up before the first shot fires while LMB held.
 var weapons := [
-	{"name": "Deagles",   "damage": 34.0,  "rate": 0.30,  "mag": 14,  "reload": 1.5,  "auto": false, "spread": 0.02,  "speed": 1200.0, "pellets": 1, "color": Color(0.92, 0.78, 0.35), "kind": "bullet"},
-	{"name": "MP5",       "damage": 13.0,  "rate": 0.075, "mag": 32,  "reload": 1.8,  "auto": true,  "spread": 0.085, "speed": 950.0,  "pellets": 1, "color": Color(0.5, 0.62, 0.8),   "kind": "bullet"},
-	{"name": "AK-74",     "damage": 22.0,  "rate": 0.11,  "mag": 30,  "reload": 2.0,  "auto": true,  "spread": 0.055, "speed": 1050.0, "pellets": 1, "color": Color(0.72, 0.72, 0.78), "kind": "bullet"},
-	{"name": "Steyr AUG", "damage": 18.0,  "rate": 0.117, "mag": 25,  "reload": 2.08, "auto": true,  "spread": 0.075, "speed": 1150.0, "pellets": 1, "color": Color(0.72, 0.68, 0.55), "kind": "bullet"},
-	{"name": "Spas-12",   "damage": 9.0,   "rate": 0.6,   "mag": 8,   "reload": 2.5,  "auto": false, "spread": 0.26,  "speed": 850.0,  "pellets": 8, "color": Color(0.88, 0.58, 0.3),  "kind": "bullet"},
-	{"name": "Ruger 77",  "damage": 82.0,  "rate": 0.65,  "mag": 4,   "reload": 1.4,  "auto": false, "spread": 0.0,   "speed": 1450.0, "pellets": 1, "color": Color(0.78, 0.68, 0.5),  "kind": "bullet"},
-	{"name": "M79",       "damage": 90.0,  "rate": 0.10,  "mag": 1,   "reload": 2.97, "auto": false, "spread": 0.0,   "speed": 470.0,  "pellets": 1, "color": Color(0.55, 0.5, 0.32),  "kind": "launcher", "gravity": 980.0},
-	{"name": "Barrett",   "damage": 245.0, "rate": 3.75,  "mag": 10,  "reload": 1.17, "auto": false, "spread": 0.0,   "speed": 2400.0, "pellets": 1, "color": Color(0.55, 0.55, 0.6),  "kind": "bullet", "startup": 0.32},
-	{"name": "Minimi",    "damage": 23.0,  "rate": 0.15,  "mag": 50,  "reload": 4.17, "auto": true,  "spread": 0.064, "speed": 1180.0, "pellets": 1, "color": Color(0.5, 0.55, 0.4),   "kind": "bullet"},
-	{"name": "Minigun",   "damage": 13.0,  "rate": 0.05,  "mag": 100, "reload": 8.0,  "auto": true,  "spread": 0.3,   "speed": 1275.0, "pellets": 1, "color": Color(0.75, 0.72, 0.78), "kind": "bullet", "startup": 0.42},
+	{"name": "Deagles",   "damage": 34.0,  "rate": 0.30,  "mag": 14,  "reload": 1.5,  "auto": false, "spread": 0.02,  "speed": 1200.0, "pellets": 1, "color": Color(0.92, 0.78, 0.35), "kind": "bullet", "bink": 30.0},
+	{"name": "MP5",       "damage": 13.0,  "rate": 0.075, "mag": 32,  "reload": 1.8,  "auto": true,  "spread": 0.085, "speed": 950.0,  "pellets": 1, "color": Color(0.5, 0.62, 0.8),   "kind": "bullet", "bink": 20.0},
+	{"name": "AK-74",     "damage": 22.0,  "rate": 0.11,  "mag": 30,  "reload": 2.0,  "auto": true,  "spread": 0.055, "speed": 1050.0, "pellets": 1, "color": Color(0.72, 0.72, 0.78), "kind": "bullet", "bink": 25.0},
+	{"name": "Steyr AUG", "damage": 18.0,  "rate": 0.117, "mag": 25,  "reload": 2.08, "auto": true,  "spread": 0.075, "speed": 1150.0, "pellets": 1, "color": Color(0.72, 0.68, 0.55), "kind": "bullet", "bink": 20.0},
+	{"name": "Spas-12",   "damage": 9.0,   "rate": 0.6,   "mag": 8,   "reload": 2.5,  "auto": false, "spread": 0.26,  "speed": 850.0,  "pellets": 8, "color": Color(0.88, 0.58, 0.3),  "kind": "bullet", "bink": 45.0},
+	{"name": "Ruger 77",  "damage": 82.0,  "rate": 0.65,  "mag": 4,   "reload": 1.4,  "auto": false, "spread": 0.0,   "speed": 1450.0, "pellets": 1, "color": Color(0.78, 0.68, 0.5),  "kind": "bullet", "bink": 50.0},
+	{"name": "M79",       "damage": 90.0,  "rate": 0.10,  "mag": 1,   "reload": 2.97, "auto": false, "spread": 0.0,   "speed": 470.0,  "pellets": 1, "color": Color(0.55, 0.5, 0.32),  "kind": "launcher", "gravity": 980.0, "bink": 0.0},
+	{"name": "Barrett",   "damage": 245.0, "rate": 3.75,  "mag": 10,  "reload": 1.17, "auto": false, "spread": 0.0,   "speed": 2400.0, "pellets": 1, "color": Color(0.55, 0.55, 0.6),  "kind": "bullet", "startup": 0.32, "bink": 65.0},
+	{"name": "Minimi",    "damage": 23.0,  "rate": 0.15,  "mag": 50,  "reload": 4.17, "auto": true,  "spread": 0.064, "speed": 1180.0, "pellets": 1, "color": Color(0.5, 0.55, 0.4),   "kind": "bullet", "bink": 30.0},
+	{"name": "Minigun",   "damage": 13.0,  "rate": 0.05,  "mag": 100, "reload": 8.0,  "auto": true,  "spread": 0.3,   "speed": 1275.0, "pellets": 1, "color": Color(0.75, 0.72, 0.78), "kind": "bullet", "startup": 0.42, "bink": 15.0},
 ]
 # Secondary slot — the second weapon the soldier carries (Q to swap primary↔secondary).
 var secondary := [
-	{"name": "USSOCOM",  "damage": 27.0, "rate": 0.167, "mag": 14,  "reload": 1.0,  "auto": false, "spread": 0.0, "speed": 800.0, "pellets": 1, "color": Color(0.85, 0.8, 0.6),   "kind": "bullet"},
-	{"name": "Knife",    "damage": 55.0, "rate": 0.5,   "mag": 1,   "reload": 0.05, "auto": false, "spread": 0.0, "speed": 0.0,   "pellets": 0, "color": Color(0.9, 0.9, 0.95),   "kind": "melee",      "range": 34.0},
-	{"name": "Chainsaw", "damage": 3.0,  "rate": 0.10,  "mag": 200, "reload": 1.83, "auto": true,  "spread": 0.0, "speed": 0.0,   "pellets": 0, "color": Color(1.0, 0.7, 0.15),   "kind": "melee_cont", "range": 32.0},
-	{"name": "LAW",      "damage": 90.0, "rate": 1.1,   "mag": 1,   "reload": 3.0,  "auto": false, "spread": 0.0, "speed": 720.0, "pellets": 1, "color": Color(0.85, 0.55, 0.35), "kind": "rocket"},
+	{"name": "USSOCOM",  "damage": 27.0, "rate": 0.167, "mag": 14,  "reload": 1.0,  "auto": false, "spread": 0.0, "speed": 800.0, "pellets": 1, "color": Color(0.85, 0.8, 0.6),   "kind": "bullet", "bink": 25.0},
+	{"name": "Knife",    "damage": 55.0, "rate": 0.5,   "mag": 1,   "reload": 0.05, "auto": false, "spread": 0.0, "speed": 0.0,   "pellets": 0, "color": Color(0.9, 0.9, 0.95),   "kind": "melee",      "range": 34.0, "bink": 0.0},
+	{"name": "Chainsaw", "damage": 3.0,  "rate": 0.10,  "mag": 200, "reload": 1.83, "auto": true,  "spread": 0.0, "speed": 0.0,   "pellets": 0, "color": Color(1.0, 0.7, 0.15),   "kind": "melee_cont", "range": 32.0, "bink": 0.0},
+	{"name": "LAW",      "damage": 90.0, "rate": 1.1,   "mag": 1,   "reload": 3.0,  "auto": false, "spread": 0.0, "speed": 720.0, "pellets": 1, "color": Color(0.85, 0.55, 0.35), "kind": "rocket", "bink": 0.0},
 ]
 var ammo: Array[int] = []
 var secondary_ammo: Array[int] = []
@@ -59,6 +59,9 @@ var x_prev := false     # prev-frame X — prone toggle on rising edge
 var crouching := false
 var prone := false
 var melee_swing_t := 0.0  # short window (~0.25s) after a Knife/Chainsaw strike — drives the "bije" pose
+# Bink — extra aim spread applied when the *victim* takes damage from a bink weapon.
+# Barrett's 65 is intentionally punishing; most rifles land 20-30. Decays over ~0.6s.
+var bink_t := 0.0
 
 # ── Feel ───────────────────────────────────────────────
 var coyote_t := 0.0
@@ -329,6 +332,8 @@ func _physics_process(delta: float) -> void:
 
 	muzzle_t = maxf(0.0, muzzle_t - delta * 10.0)
 	melee_swing_t = maxf(0.0, melee_swing_t - delta)
+	# Bink recovery: at 100 units/sec, a 65-Bink Barrett hit (0.65s) clears in ~2/3 second.
+	bink_t = maxf(0.0, bink_t - delta * 100.0)
 
 	# jet particles + sfx transitions
 	if jet_on and not was_jet:
@@ -414,6 +419,17 @@ func _dec_active_mag() -> void:
 	_set_active_mag(_active_mag() - 1)
 
 
+func _bink_for(weapon_name: String) -> float:
+	# Linear scan is fine here — <20 entries and this only runs on hit.
+	for w in weapons:
+		if str(w["name"]) == weapon_name:
+			return float(w.get("bink", 0.0))
+	for w in secondary:
+		if str(w["name"]) == weapon_name:
+			return float(w.get("bink", 0.0))
+	return 0.0
+
+
 func _apply_stance_shape() -> void:
 	if col_shape == null:
 		return
@@ -447,9 +463,12 @@ func _shoot() -> void:
 	var kind_s := str(w.get("kind", "bullet"))
 	var recoil := 240.0 if (kind_s == "rocket" or kind_s == "launcher") else 35.0
 	velocity -= aim_dir * recoil
+	# Bink penalty: bink_t (0..100) adds up to ~0.18 rad extra spread when maxed.
+	var extra_spread := (bink_t / 100.0) * 0.18
+	var total_spread := float(w["spread"]) + extra_spread
 	var dirs := PackedVector2Array()
 	for _i in int(w["pellets"]):
-		dirs.append(aim_dir.rotated(randf_range(-float(w["spread"]), float(w["spread"]))))
+		dirs.append(aim_dir.rotated(randf_range(-total_spread, total_spread)))
 	var muzzle: Vector2 = global_position + SoldierArt.muzzle_local(self, aim_dir, facing, str(w["name"]))
 	var slot := (100 + secondary_index) if using_secondary else weapon_index
 	if Net.is_networked():
@@ -520,6 +539,11 @@ func take_damage(amount: float, killer := "", weapon := "", killer_team := -1) -
 	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
 		return
 	health -= amount
+	# Bink kick: apply extra spread proportional to the weapon's Bink stat while active.
+	# bink_t caps at 100 so successive hits don't stack past the max penalty.
+	var bv := _bink_for(weapon)
+	if bv > 0.0:
+		bink_t = minf(100.0, bink_t + bv)
 	_shake(7.0)
 	if killer != "":
 		last_killer = killer

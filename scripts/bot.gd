@@ -30,6 +30,9 @@ var _stuck_t := 0.0
 var grenades := 3
 var grenade_cd := 0.0
 
+# Bink (aim penalty when hit — same model as player.gd).
+var bink_t := 0.0
+
 # strafe / dodge
 var strafe_dir := 1.0
 var strafe_t := 0.0
@@ -82,6 +85,7 @@ func _physics_process(delta: float) -> void:
 	if dead:
 		return
 
+	bink_t = maxf(0.0, bink_t - delta * 100.0)
 	_refresh_target(delta)
 
 	var on_floor := is_on_floor()
@@ -236,6 +240,9 @@ func _shoot(to_t: Vector2) -> void:
 		var t_est: float = to_t.length() / speed_est
 		var lead: Vector2 = target.global_position + target.velocity * t_est
 		aim = (lead - global_position).normalized()
+	# Bink shakes the bot's aim if they were recently shot.
+	if bink_t > 0.0:
+		aim = aim.rotated(randf_range(-1.0, 1.0) * (bink_t / 100.0) * 0.18)
 	if loadout == "LAW":
 		var r := rocket_scene.instantiate()
 		r.global_position = global_position + SoldierArt.muzzle_local(self, aim, facing, loadout) + aim * 4.0
@@ -261,6 +268,13 @@ func _shoot(to_t: Vector2) -> void:
 	muzzle_t = 0.08
 
 
+const BINK_BY_WEAPON := {
+	"Deagles": 30.0, "MP5": 20.0, "AK-74": 25.0, "Steyr AUG": 20.0,
+	"Spas-12": 45.0, "Ruger 77": 50.0, "Barrett": 65.0,
+	"Minimi": 30.0, "Minigun": 15.0, "USSOCOM": 25.0,
+}
+
+
 func take_damage(amount: float, killer := "", weapon := "", killer_team := -1) -> void:
 	if dead:
 		return
@@ -268,6 +282,9 @@ func take_damage(amount: float, killer := "", weapon := "", killer_team := -1) -
 	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
 		return
 	health -= amount
+	var bv: float = float(BINK_BY_WEAPON.get(weapon, 0.0))
+	if bv > 0.0:
+		bink_t = minf(100.0, bink_t + bv)
 	if killer != "":
 		last_killer = killer
 		last_weapon = weapon
