@@ -43,7 +43,7 @@ const PARTS := [
 	["klata", 10, 11, 0.10, 0.30, 0.0, "main"],
 	["biodro", 5,  6, 0.25, 0.60, 0.0, "main"],
 	["morda",  9, 12, 0.00, 0.50, 0.0, "skin"],
-	["helm",   9, 12, 0.00, 0.50, 0.0, "main"],
+	["helm",   9, 12, 0.00, 0.50, 0.0, "helm"],
 	# --- front arm (RIGHT_*) — over torso, holds weapon -
 	["ramie", 10, 13, 0.00, 0.60, 0.0, "main"],
 	["reka",  13, 16, 0.00, 0.60, 5.0, "main"],
@@ -113,6 +113,9 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 			"main":  col = tint
 			"pants": col = pants_tint
 			"skin":  col = skin_tint
+			"helm":
+				# Helm reads as a distinct piece rather than blending into the body silhouette.
+				col = tint.darkened(0.35) if not dead else tint.darkened(0.6)
 			_:
 				# "none" parts (feet) still darken on death so corpses don't have
 				# full-brightness white boots against the darkened body.
@@ -137,6 +140,12 @@ static func joint_pos(node: CanvasItem, joint_id_1based: int) -> Vector2:
 
 static func forget(node: CanvasItem) -> void:
 	_states.erase(node.get_instance_id())
+
+
+static func has_frame(node: CanvasItem) -> bool:
+	var st: Dictionary = _states.get(node.get_instance_id(), {})
+	var frame: PackedVector2Array = st.get("frame", PackedVector2Array())
+	return not frame.is_empty()
 
 
 # ── internals ──────────────────────────────────────────
@@ -210,6 +219,10 @@ static func _joint_local(frame: PackedVector2Array, joint_id_1based: int, flip: 
 	if idx < 0 or idx >= frame.size():
 		return Vector2.ZERO
 	var v := frame[idx]
+	# Blank frame slots stay Vector2.ZERO — treat those as unset so callers'
+	# is_zero_approx() guards don't get FEET_OFFSET_Y masking the missing joint.
+	if v == Vector2.ZERO:
+		return Vector2.ZERO
 	var out := Vector2(v.x * POA_TO_PIXEL, v.y * POA_TO_PIXEL + FEET_OFFSET_Y)
 	if flip:
 		out.x = -out.x
@@ -224,10 +237,7 @@ static func _tex(key: String, mirror: bool) -> Texture2D:
 	var tex: Texture2D = null
 	if ResourceLoader.exists(path):
 		tex = load(path) as Texture2D
-	# Fall back to unmirrored sprite if the "2" variant doesn't exist.
-	if tex == null and mirror:
-		var base_path: String = DIR + key + ".png"
-		if ResourceLoader.exists(base_path):
-			tex = load(base_path) as Texture2D
+	# NOTE: no fall back to the unmirrored sprite when the "2" variant is missing —
+	# draw_body's else branch handles it correctly with sy = -1.0.
 	_tex_cache[nm] = tex
 	return tex

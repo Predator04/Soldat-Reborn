@@ -117,11 +117,16 @@ func _on_kill(killer_name: String, victim_name: String, weapon_name: String, kil
 		var old: Label = _feed_entries.pop_back()
 		if is_instance_valid(old):
 			old.queue_free()
-	get_tree().create_timer(FEED_TTL).timeout.connect(func() -> void:
+	# Timer parented to the label so it dies with the label instead of orphan-firing 4s later.
+	var t := Timer.new()
+	t.wait_time = FEED_TTL
+	t.one_shot = true
+	t.autostart = true
+	lbl.add_child(t)
+	t.timeout.connect(func() -> void:
 		_feed_entries.erase(lbl)
 		if is_instance_valid(lbl):
-			lbl.queue_free()
-	)
+			lbl.queue_free())
 
 
 func _process(_delta: float) -> void:
@@ -130,10 +135,14 @@ func _process(_delta: float) -> void:
 	_update_match_ui()
 	if not is_instance_valid(player):
 		return
+	# Defensive: bail if weapon_index or the array shape drifted mid-frame.
+	var wi: int = int(player.weapon_index)
+	if wi < 0 or wi >= player.weapons.size() or wi >= player.ammo.size():
+		return
 	lbl_health.text = "HP  %d" % int(player.health)
 	lbl_fuel.text = "FUEL %d%%" % int(player.fuel)
-	var w = player.weapons[player.weapon_index]
-	var mag: int = player.ammo[player.weapon_index]
+	var w = player.weapons[wi]
+	var mag: int = player.ammo[wi]
 	lbl_ammo.text = "%d / %d" % [mag, int(w["mag"])] + ("  · RELOADING" if player.reloading else "")
 	lbl_weapon.text = str(w["name"])
 	lbl_grenades.text = "GRENADES %d" % player.grenades
@@ -142,6 +151,9 @@ func _process(_delta: float) -> void:
 func _update_match_ui() -> void:
 	var main := get_parent()
 	if main == null or main.get("scores") == null:
+		return
+	# Bail if this scene isn't a Main yet (e.g., returning to menu mid-frame).
+	if main.get("time_left") == null or main.get("round_active") == null or main.get("winner_team") == null:
 		return
 	var tl: float = main.time_left
 	var active: bool = main.round_active

@@ -49,12 +49,14 @@ var bullet_scene := preload("res://scenes/bullet.tscn")
 var grenade_scene := preload("res://scenes/grenade.tscn")
 var rocket_scene := preload("res://scenes/rocket.tscn")
 const SoldierArt = preload("res://scripts/soldier_art.gd")
+const Gostek = preload("res://scripts/gostek.gd")
 
 var jet_particles: CPUParticles2D
 
 
 func _ready() -> void:
 	add_to_group("soldier")
+	tree_exited.connect(func() -> void: Gostek.forget(self))
 	var shape := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
 	rect.size = Vector2(22, 40)

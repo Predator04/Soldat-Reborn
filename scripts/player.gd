@@ -64,10 +64,14 @@ var bullet_scene := preload("res://scenes/bullet.tscn")
 var grenade_scene := preload("res://scenes/grenade.tscn")
 var rocket_scene := preload("res://scenes/rocket.tscn")
 const SoldierArt = preload("res://scripts/soldier_art.gd")
+const Gostek = preload("res://scripts/gostek.gd")
 
 
 func _ready() -> void:
 	add_to_group("soldier")
+	# Release the per-instance skeleton state dict when this node is freed so long
+	# sessions don't leak dict entries in Gostek._states.
+	tree_exited.connect(func() -> void: Gostek.forget(self))
 	for w in weapons:
 		ammo.append(int(w["mag"]))
 	var shape := CollisionShape2D.new()
@@ -176,7 +180,8 @@ func _physics_process(delta: float) -> void:
 	var to_mouse := mouse - global_position
 	if to_mouse.length() > 1.0:
 		aim_dir = to_mouse.normalized()
-		if aim_dir.x != 0.0:
+		# Small deadband around vertical so facing doesn't pop as the mouse crosses through x=0.
+		if absf(aim_dir.x) > 0.05:
 			facing = signf(aim_dir.x)
 
 	move_and_slide()
@@ -394,7 +399,7 @@ func net_state(pos: Vector2, vel: Vector2, aim: Vector2, face: float, jetting: b
 		if ammo.size() > wi:
 			ammo[wi] = mag
 	reloading = is_reloading
-	grenades = grens
+	grenades = maxi(0, grens)
 
 
 @rpc("authority", "call_local", "reliable")
@@ -499,6 +504,11 @@ func _spawn_ragdoll() -> void:
 
 func _draw() -> void:
 	var w = weapons[weapon_index]
+	# For non-authority replicas is_on_floor() is stale (no move_and_slide runs on them),
+	# so approximate from vertical velocity.
+	var on_floor := is_on_floor()
+	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
+		on_floor = absf(velocity.y) < 5.0
 	SoldierArt.draw_soldier(
 		self,
 		color,
@@ -514,6 +524,6 @@ func _draw() -> void:
 		fuel,
 		true,
 		str(w["name"]),
-		is_on_floor(),
+		on_floor,
 		reloading,
 	)

@@ -151,6 +151,7 @@ func _on_connection_failed() -> void:
 	_set_status("Connection failed")
 	multiplayer.multiplayer_peer = null
 	mode = Mode.SINGLEPLAYER
+	_map_synced = false
 	disconnected.emit()
 
 
@@ -158,6 +159,7 @@ func _on_server_disconnected() -> void:
 	_set_status("Server disconnected")
 	multiplayer.multiplayer_peer = null
 	mode = Mode.SINGLEPLAYER
+	_map_synced = false
 	disconnected.emit()
 
 

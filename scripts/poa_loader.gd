@@ -127,6 +127,11 @@ static func parse_text(text: String) -> Array:
 			continue
 
 		# Expect: id, raw_x, raw_y (discarded), raw_z
+		if not line.is_valid_int():
+			# Real .poa files have no comments/garbage — if we see something else,
+			# int(line)==0 would silently skip 3 lines and misalign the whole rest of the file.
+			push_warning("PoaLoader: expected int part_id, got '%s' — aborting parse" % line)
+			break
 		var part_id := int(line)
 		if i + 2 >= lines.size():
 			break
@@ -138,6 +143,9 @@ static func parse_text(text: String) -> Array:
 			cur[part_id - 1] = Vector2(-SCALE * raw_x / 1.1, -SCALE * raw_z)
 			has_data = true
 
+	# File ended without ENDFILE marker — don't lose the last in-progress frame.
+	if has_data:
+		frames.append(cur)
 	return frames
 
 

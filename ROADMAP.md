@@ -66,3 +66,4 @@ A 2026-quality port of Soldat's *feel* in Godot 4 (run-and-gun, jet boots, bunny
 - Only the "base visible" body sprites (chest, hip, head, helmet, both arms/hands, both legs/feet) are drawn — dreadlocks / cygar / dogtag chain / vest / dmg blood overlays / grenade-on-belt / secondary-weapon-on-back are documented in GostekGraphics.inc but not wired in.
 - Run-cycle phase is time-driven, not tied to horizontal displacement — at very high or very low speeds the stride can look slightly out of sync with actual movement.
 - `assets/textures/` (map tile art) is on disk but not yet integrated — arena still uses solid ColorRects. Same for `assets/sparks-gfx/` and `assets/interface-gfx/`.
+- Grenades and rockets run independent physics on every peer; damage is per-victim authority so no double-hits, but the shooter and victim can see the explosion in slightly different spots. Full fix requires authority-owned spawn + transform replication.

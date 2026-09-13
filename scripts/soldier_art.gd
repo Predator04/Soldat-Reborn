@@ -62,9 +62,9 @@ static func draw_soldier(
 	# (skeleton joint 16). Fall back to a fixed shoulder point if the
 	# skeleton hasn't produced a valid position yet.
 	var shoulder: Vector2 = Gostek.joint_pos(node, 16)
-	if shoulder.is_zero_approx():
+	if not Gostek.has_frame(node):
 		shoulder = Vector2(facing * 3.0, -19.0)
-	var barrel_end: Vector2 = _draw_weapon_sprite(node, shoulder, aim_dir, weapon_name, weapon_color, weapon_kind)
+	var barrel_end: Vector2 = _draw_weapon_sprite(node, shoulder, aim_dir, facing, weapon_name, weapon_color, weapon_kind)
 
 	# Muzzle flash on top of the sprite.
 	if muzzle_t > 0.0:
@@ -88,6 +88,7 @@ static func _draw_weapon_sprite(
 	node: CanvasItem,
 	shoulder: Vector2,
 	aim_dir: Vector2,
+	facing: float,
 	weapon_name: String,
 	fallback_color: Color,
 	weapon_kind: String
@@ -105,8 +106,9 @@ static func _draw_weapon_sprite(
 	var grip_offset := size.x * 0.2
 	var barrel_len := size.x - grip_offset
 	var angle := aim_dir.angle()
-	# Flip vertically when aiming to the left so the sprite doesn't appear upside-down.
-	var flip_y := -1.0 if aim_dir.x < 0.0 else 1.0
+	# Base the vertical flip on soldier facing, not aim.x — avoids "popping" flips
+	# as the aim wobbles across x=0 (straight up/down).
+	var flip_y := -1.0 if facing < 0.0 else 1.0
 
 	node.draw_set_transform(shoulder, angle, Vector2(1.0, flip_y))
 	node.draw_texture_rect(tex, Rect2(Vector2(-grip_offset, -size.y * 0.5), size), false)

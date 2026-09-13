@@ -28,11 +28,12 @@ func _physics_process(_delta: float) -> void:
 func _explode() -> void:
 	Sfx.explode()
 	for s in get_tree().get_nodes_in_group("soldier"):
-		if not is_instance_valid(s) or s.get("team") == team:
+		if not is_instance_valid(s):
 			continue
 		var d: float = global_position.distance_to(s.global_position)
 		if d < blast_radius:
-			# Damage only on target's authority peer (SP: no peer == local == damage runs).
+			# Damage everyone in radius including thrower/teammates (matches rocket model).
+			# Suicide/team-kill scoring is filtered in main._on_kill_scored.
 			if multiplayer.multiplayer_peer == null or s.is_multiplayer_authority():
 				s.take_damage(damage * (1.0 - d / blast_radius), killer_name, "Grenade", team)
 	var p := CPUParticles2D.new()
