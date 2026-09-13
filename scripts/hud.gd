@@ -32,6 +32,8 @@ var _line_mode := "cmd"  # "cmd" | "global" | "team"
 var chat_feed: VBoxContainer
 var weapon_menu: Control  # left-side Soldat weapon selection panel (#70)
 var lbl_fps: Label        # top-right FPS overlay — visible only when Settings.show_fps (#73)
+var lbl_spectate: Label   # "Spectating: <name>" label while dead (#75)
+var lbl_spectate_hint: Label  # controls hint under the spectate label
 static var _taunts: Dictionary = {}
 const CHAT_FEED_MAX := 7
 const CHAT_TTL := 10.0
@@ -215,6 +217,49 @@ func _ready() -> void:
 	lbl_fps.add_theme_constant_override("outline_size", 3)
 	lbl_fps.visible = false
 	add_child(lbl_fps)
+
+	# Spectator label (#75) — top-center, above the death text so it reads while
+	# the desat overlay is up. Team-colored per current target.
+	lbl_spectate = Label.new()
+	lbl_spectate.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl_spectate.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl_spectate.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	lbl_spectate.offset_top = -180
+	lbl_spectate.offset_bottom = -180
+	lbl_spectate.add_theme_font_size_override("font_size", 26)
+	lbl_spectate.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	lbl_spectate.add_theme_constant_override("outline_size", 6)
+	lbl_spectate.visible = false
+	add_child(lbl_spectate)
+
+	lbl_spectate_hint = Label.new()
+	lbl_spectate_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl_spectate_hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl_spectate_hint.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	lbl_spectate_hint.offset_top = -150
+	lbl_spectate_hint.offset_bottom = -150
+	lbl_spectate_hint.text = "← / →  next target    ·    C  toggle free-cam"
+	lbl_spectate_hint.add_theme_font_size_override("font_size", 14)
+	lbl_spectate_hint.add_theme_color_override("font_color", Color(0.75, 0.78, 0.85))
+	lbl_spectate_hint.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	lbl_spectate_hint.add_theme_constant_override("outline_size", 3)
+	lbl_spectate_hint.visible = false
+	add_child(lbl_spectate_hint)
+
+
+func set_spectate_target(name: String, col: Color) -> void:
+	# Called by Spectator whenever the follow target or free-cam mode changes.
+	# Empty name hides the label — happens when spectator deactivates on respawn.
+	if lbl_spectate == null:
+		return
+	if name == "":
+		lbl_spectate.visible = false
+		lbl_spectate_hint.visible = false
+		return
+	lbl_spectate.text = "Spectating: %s" % name
+	lbl_spectate.add_theme_color_override("font_color", col)
+	lbl_spectate.visible = true
+	lbl_spectate_hint.visible = true
 
 
 func open_command(prefill: String = "/") -> void:

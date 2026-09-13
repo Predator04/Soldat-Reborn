@@ -10,11 +10,13 @@ var pause_menu_script := preload("res://scripts/pause_menu.gd")
 const PoaLoader = preload("res://scripts/poa_loader.gd")
 const WeaponPickup = preload("res://scripts/weapon_pickup.gd")
 const MapIO = preload("res://scripts/map_io.gd")
+const Spectator = preload("res://scripts/spectator.gd")
 
 signal kill(killer_name: String, victim_name: String, weapon_name: String, killer_team: int, victim_team: int)
 
 var player: Node2D = null            # LOCAL player (whichever peer owns us)
 var hud: CanvasLayer = null
+var spectator: Node2D = null         # (#75) follow/free-cam while dead — owns its own Camera2D
 var _map: Dictionary = {}
 var _players_by_id: Dictionary = {}  # peer_id -> player node (host only, but also mirrored on clients)
 var _ready_peers: Dictionary = {}    # peer_id -> true (host only, gate for outbound state RPCs)
@@ -685,9 +687,25 @@ func _spawn_player() -> void:
 	_bind_local_camera(p)
 	if hud:
 		hud.player = p
+	# SP respawn — end the spectator cam so the new body's camera takes over (#75).
+	_end_spectator()
 
 
 func _on_player_died() -> void:
+	# Kick off spectator (#75) — camera detaches from the dying body and follows
+	# the nearest living soldier. Uses the just-died body's last known position as
+	# the anchor for the first target pick so the transition doesn't hop the view.
+	_begin_spectator()
+	# In MP the host owns respawn scheduling (see player.gd::_die), so main only
+	# shows the death UI — no local timer needed. SP still schedules here.
+	if Net.is_networked():
+		var mp_delay: float = _respawn_delay_for_team(int(player.team))
+		if hud:
+			if Settings.survival and round_active:
+				hud.show_death(str(player.last_killer), str(player.last_weapon), -1.0)
+			else:
+				hud.show_death(str(player.last_killer), str(player.last_weapon), mp_delay)
+		return
 	# Survival: no respawn until round ends. _reset_round will (re)spawn everyone.
 	if Settings.survival and round_active:
 		if hud:
@@ -698,6 +716,20 @@ func _on_player_died() -> void:
 	if hud:
 		hud.show_death(str(player.last_killer), str(player.last_weapon), delay)
 	get_tree().create_timer(delay).timeout.connect(_spawn_player)
+
+
+func _begin_spectator() -> void:
+	if spectator == null or not is_instance_valid(spectator):
+		return
+	var anchor: Vector2 = Vector2.ZERO
+	if is_instance_valid(player):
+		anchor = player.global_position
+	spectator.activate(anchor)
+
+
+func _end_spectator() -> void:
+	if spectator != null and is_instance_valid(spectator):
+		spectator.deactivate()
 
 
 func _respawn_delay_for_team(t: int) -> float:
@@ -819,6 +851,12 @@ func _build_hud() -> void:
 	hud.player = player
 	hud.map_name = str(_map["name"])
 	kill.connect(hud._on_kill)
+	# Spectator (#75) — created alongside the HUD so it exists before any player
+	# dies. Camera stays disabled until activate() is called on local death.
+	spectator = Spectator.new()
+	spectator.name = "Spectator"
+	spectator.main = self
+	add_child(spectator)
 
 
 func _build_pause_menu() -> void:
@@ -1096,6 +1134,15 @@ func net_spawn_player(peer_id: int, spawn_pos: Vector2, display_name: String, as
 		_bind_local_camera(p)
 		if hud:
 			hud.player = p
+		# Wire death signal so MP local respawn goes through _on_player_died — that's
+		# where the spectator kicks in (#75) and the death UI is shown consistently.
+		if not p.died.is_connected(_on_player_died):
+			p.died.connect(_on_player_died)
+		# Respawn happened — cut the spectator cam and hide the "you died" overlay
+		# so the freshly-spawned body's own camera takes over cleanly.
+		_end_spectator()
+		if hud and hud.has_method("_hide_death"):
+			hud._hide_death()
 		# Tell the host our body is spawned locally so it can start sending state.
 		if Net.is_client():
 			rpc_id(1, "net_spawn_ack")
