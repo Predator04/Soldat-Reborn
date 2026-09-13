@@ -29,8 +29,10 @@ func _ready() -> void:
 	angular_damp = 0.4
 	# Encourage roll — a spinning grenade converts angular velocity into more
 	# horizontal travel on contact (mass_low + gravity_scale slightly < 1).
+	# mod_gravity scales only the fall acceleration; bounce/friction stay tuned so
+	# the #30 roll feel isn't regressed under heavier/lighter gravity.
 	mass = 0.25
-	gravity_scale = 0.9
+	gravity_scale = 0.9 * float(Settings.mod_gravity)
 	get_tree().create_timer(fuse).timeout.connect(_explode)
 
 

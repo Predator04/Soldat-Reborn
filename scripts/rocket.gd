@@ -45,8 +45,10 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	# Straight-flight LAW keeps its constant velocity; M79 lobs by adding gravity to _velocity.
+	# mod_gravity scales the fall accel so an M79 arc matches the world's gravity mod (LAW
+	# has grav==0, so straight flight is unaffected — no regression there).
 	if grav > 0.0:
-		_velocity.y += grav * delta
+		_velocity.y += grav * float(Settings.mod_gravity) * delta
 		position += _velocity * delta
 		direction = _velocity.normalized()
 	else:
