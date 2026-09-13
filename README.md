@@ -6,8 +6,9 @@ Soldat's own art and sound (CC BY 4.0) and an animated skeletal soldier.
 
 ## Features
 
-- Run / bunny-hop / jet boots with fuel management
-- 5 weapons: Deagles, AK-74, MP5, Spas-12, and the LAW rocket launcher (rocket-jumping)
+- Run / bunny-hop / jet boots with fuel management, crouch and prone
+- Full 10-weapon primary roster: Deagles, MP5, AK-74, Steyr AUG, Spas-12, Ruger 77, M79, Barrett M82A1, FN Minimi, XM214 Minigun
+- 4 secondary weapons (Q to swap): USSOCOM, Combat Knife, Chainsaw, M72 LAW
 - Grenades (arc throw, bounce, splash damage)
 - 3 maps: Ascent / Towers / Pillars (cycled per game)
 - Match system: team score, 5-minute round timer or first-to-20 wins, winner banner
@@ -19,11 +20,14 @@ Soldat's own art and sound (CC BY 4.0) and an animated skeletal soldier.
 | Key | Action |
 |-----|--------|
 | A / D | Move left / right |
-| W (or SPACE) | Jump |
+| W (or SPACE) | Jump (also stands up from prone) |
+| S | Crouch (hold) |
+| X | Prone (toggle) |
 | Right click | Jet boots (hold in air) |
 | Mouse | Aim |
 | Left click | Shoot |
-| 1–5 | Switch weapon (2 = MP5, 3 = AK-74, 5 = LAW) |
+| 1–0 | Primary weapon: 1 Deagles · 2 MP5 · 3 AK-74 · 4 Steyr AUG · 5 Spas-12 · 6 Ruger 77 · 7 M79 · 8 Barrett · 9 Minimi · 0 Minigun |
+| Q | Swap between primary and secondary (USSOCOM · Knife · Chainsaw · LAW) |
 | R | Reload |
 | E | Throw grenade |
 

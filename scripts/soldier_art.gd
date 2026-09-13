@@ -7,20 +7,38 @@ extends RefCounted
 const HP_BAR_Y := -21.0
 
 const WEAPON_SPRITE := {
-	"Deagles": "res://assets/weapons-gfx/deserteagle.png",
-	"AK-74": "res://assets/weapons-gfx/ak74.png",
-	"MP5": "res://assets/weapons-gfx/mp5.png",
-	"Spas-12": "res://assets/weapons-gfx/spas12.png",
-	"LAW": "res://assets/weapons-gfx/law.png",
+	"Deagles":   "res://assets/weapons-gfx/deserteagle.png",
+	"MP5":       "res://assets/weapons-gfx/mp5.png",
+	"AK-74":     "res://assets/weapons-gfx/ak74.png",
+	"Steyr AUG": "res://assets/weapons-gfx/steyraug.png",
+	"Spas-12":   "res://assets/weapons-gfx/spas12.png",
+	"Ruger 77":  "res://assets/weapons-gfx/ruger77.png",
+	"M79":       "res://assets/weapons-gfx/m79.png",
+	"Barrett":   "res://assets/weapons-gfx/barretm82.png",
+	"Minimi":    "res://assets/weapons-gfx/m249.png",
+	"Minigun":   "res://assets/weapons-gfx/minigun.png",
+	"USSOCOM":   "res://assets/weapons-gfx/colt1911.png",
+	"Knife":     "res://assets/weapons-gfx/knife.png",
+	"Chainsaw":  "res://assets/weapons-gfx/chainsaw.png",
+	"LAW":       "res://assets/weapons-gfx/law.png",
 }
 
 # Grip pivot (cx, cy) per weapon — matches Soldat's GostekGraphics.inc values.
 const WEAPON_PIVOT := {
-	"Deagles": [0.10, 0.80],
-	"AK-74":   [0.15, 0.50],
-	"MP5":     [0.15, 0.60],
-	"Spas-12": [0.10, 0.60],
-	"LAW":     [0.10, 0.60],
+	"Deagles":   [0.10, 0.80],
+	"MP5":       [0.15, 0.60],
+	"AK-74":     [0.15, 0.50],
+	"Steyr AUG": [0.20, 0.50],
+	"Spas-12":   [0.10, 0.60],
+	"Ruger 77":  [0.10, 0.60],
+	"M79":       [0.10, 0.60],
+	"Barrett":   [0.15, 0.50],
+	"Minimi":    [0.15, 0.50],
+	"Minigun":   [0.05, 0.50],
+	"USSOCOM":   [0.20, 0.70],
+	"Knife":     [-0.10, 0.50],
+	"Chainsaw":  [0.10, 0.50],
+	"LAW":       [0.10, 0.60],
 }
 
 static var _tex_cache: Dictionary = {}
@@ -45,6 +63,8 @@ static func draw_soldier(
 	weapon_name: String = "",
 	on_floor: bool = true,
 	reloading: bool = false,
+	crouching: bool = false,
+	prone: bool = false,
 ) -> void:
 	if jet_on and not dead:
 		_draw_jet_flame(node, facing)
@@ -64,6 +84,8 @@ static func draw_soldier(
 		"jet_on": jet_on,
 		"reloading": reloading,
 		"dead": dead,
+		"crouching": crouching,
+		"prone": prone,
 	}
 	Gostek.draw_body(node, gs, body_color)
 

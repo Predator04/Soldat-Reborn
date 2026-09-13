@@ -208,8 +208,19 @@ func _process(delta: float) -> void:
 		return
 	lbl_health.text = "HP  %d" % int(player.health)
 	lbl_fuel.text = "FUEL %d%%" % int(player.fuel)
-	var w = player.weapons[wi]
-	var mag: int = player.ammo[wi]
+	# When the secondary slot is active (Q pressed), show its name/ammo instead of the primary's.
+	var use_sec: bool = bool(player.get("using_secondary"))
+	var w: Dictionary
+	var mag: int
+	if use_sec:
+		var si: int = int(player.secondary_index)
+		if si < 0 or si >= player.secondary.size() or si >= player.secondary_ammo.size():
+			return
+		w = player.secondary[si]
+		mag = player.secondary_ammo[si]
+	else:
+		w = player.weapons[wi]
+		mag = player.ammo[wi]
 	lbl_ammo.text = "%d / %d" % [mag, int(w["mag"])] + ("  · RELOADING" if player.reloading else "")
 	lbl_weapon.text = str(w["name"])
 	lbl_grenades.text = "GRENADES %d" % player.grenades

@@ -18,19 +18,37 @@ const EVENT_FILES := {
 }
 
 const WEAPON_FIRE := {
-	"Deagles": "deserteagle-fire",
-	"AK-74": "ak74-fire",
-	"MP5": "mp5-fire",
-	"Spas-12": "spas12-fire",
-	"LAW": "m79-fire",
+	"Deagles":   "deserteagle-fire",
+	"MP5":       "mp5-fire",
+	"AK-74":     "ak74-fire",
+	"Steyr AUG": "steyraug-fire",
+	"Spas-12":   "spas12-fire",
+	"Ruger 77":  "ruger77-fire",
+	"M79":       "m79-fire",
+	"Barrett":   "barretm82-fire",
+	"Minimi":    "m249-fire",
+	"Minigun":   "minigun-fire",
+	"USSOCOM":   "colt1911-fire",
+	"Knife":     "knife",
+	"Chainsaw":  "chainsaw-o",
+	"LAW":       "law-start",
 }
 
 const WEAPON_RELOAD := {
-	"Deagles": "deserteagle-reload",
-	"AK-74": "ak74-reload",
-	"MP5": "mp5-reload",
-	"Spas-12": "spas12-reload",
-	"LAW": "m79-reload",
+	"Deagles":   "deserteagle-reload",
+	"MP5":       "mp5-reload",
+	"AK-74":     "ak74-reload",
+	"Steyr AUG": "steyraug-reload",
+	"Spas-12":   "spas12-reload",
+	"Ruger 77":  "ruger77-reload",
+	"M79":       "m79-reload",
+	"Barrett":   "barretm82-reload",
+	"Minimi":    "m249-reload",
+	"Minigun":   "minigun-reload",
+	"USSOCOM":   "colt1911-reload",
+	"Knife":     "clipin",
+	"Chainsaw":  "chainsaw-r",
+	"LAW":       "m79-reload",
 }
 
 var _cache: Dictionary = {}

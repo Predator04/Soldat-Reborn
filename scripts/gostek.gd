@@ -208,6 +208,15 @@ static func _pick_anim(gs: Dictionary) -> String:
 		return "spada" if vel.y > 0.0 else "skok"
 	var vx := vel.x
 	var facing: float = float(gs.get("facing", 1.0))
+	# Prone → flat on the floor. Crawl anim if moving, static prone otherwise.
+	if bool(gs.get("prone", false)):
+		return "lezyidzie" if absf(vx) > 5.0 else "lezy"
+	# Crouch → kuca stack (idle / forward-shuffle / backward-shuffle).
+	if bool(gs.get("crouching", false)):
+		if absf(vx) > 5.0:
+			var same_dir_c: bool = signf(vx) == signf(facing)
+			return "kucaidzie" if same_dir_c else "kucaidzietyl"
+		return "kuca"
 	if absf(vx) > RUN_THRESHOLD:
 		var same_dir: bool = signf(vx) == signf(facing)
 		return "biega" if same_dir else "biegatyl"

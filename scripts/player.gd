@@ -20,22 +20,44 @@ var dead := false
 var aim_dir := Vector2.RIGHT
 
 # ── Weapons ────────────────────────────────────────────
-# `kind` = "hitscan-ish" bullet (default) OR "rocket" (LAW: slow, explodes, splash).
+# `kind`: "bullet" (default) | "rocket" (slow, explodes) | "melee" (single-swing arc) | "melee_cont" (chainsaw).
+# `startup` (optional, seconds): Barrett/Minigun wind-up before the first shot fires while LMB held.
 var weapons := [
-	{"name": "Deagles", "damage": 34.0, "rate": 0.30, "mag": 14, "reload": 1.5, "auto": false, "spread": 0.02, "speed": 1200.0, "pellets": 1, "color": Color(0.92, 0.78, 0.35), "kind": "bullet"},
-	{"name": "MP5",     "damage": 13.0, "rate": 0.075, "mag": 32, "reload": 1.8, "auto": true,  "spread": 0.085, "speed": 950.0, "pellets": 1, "color": Color(0.5, 0.62, 0.8), "kind": "bullet"},
-	{"name": "AK-74",   "damage": 22.0, "rate": 0.11, "mag": 30, "reload": 2.0, "auto": true,  "spread": 0.055, "speed": 1050.0, "pellets": 1, "color": Color(0.72, 0.72, 0.78), "kind": "bullet"},
-	{"name": "Spas-12", "damage": 9.0,  "rate": 0.6,  "mag": 8,  "reload": 2.5, "auto": false, "spread": 0.26, "speed": 850.0, "pellets": 8, "color": Color(0.88, 0.58, 0.3), "kind": "bullet"},
-	{"name": "LAW",     "damage": 90.0, "rate": 1.1,  "mag": 1,  "reload": 3.0, "auto": false, "spread": 0.0,  "speed": 720.0, "pellets": 1, "color": Color(0.85, 0.55, 0.35), "kind": "rocket"},
+	{"name": "Deagles",   "damage": 34.0,  "rate": 0.30,  "mag": 14,  "reload": 1.5,  "auto": false, "spread": 0.02,  "speed": 1200.0, "pellets": 1, "color": Color(0.92, 0.78, 0.35), "kind": "bullet"},
+	{"name": "MP5",       "damage": 13.0,  "rate": 0.075, "mag": 32,  "reload": 1.8,  "auto": true,  "spread": 0.085, "speed": 950.0,  "pellets": 1, "color": Color(0.5, 0.62, 0.8),   "kind": "bullet"},
+	{"name": "AK-74",     "damage": 22.0,  "rate": 0.11,  "mag": 30,  "reload": 2.0,  "auto": true,  "spread": 0.055, "speed": 1050.0, "pellets": 1, "color": Color(0.72, 0.72, 0.78), "kind": "bullet"},
+	{"name": "Steyr AUG", "damage": 18.0,  "rate": 0.117, "mag": 25,  "reload": 2.08, "auto": true,  "spread": 0.075, "speed": 1150.0, "pellets": 1, "color": Color(0.72, 0.68, 0.55), "kind": "bullet"},
+	{"name": "Spas-12",   "damage": 9.0,   "rate": 0.6,   "mag": 8,   "reload": 2.5,  "auto": false, "spread": 0.26,  "speed": 850.0,  "pellets": 8, "color": Color(0.88, 0.58, 0.3),  "kind": "bullet"},
+	{"name": "Ruger 77",  "damage": 82.0,  "rate": 0.65,  "mag": 4,   "reload": 1.4,  "auto": false, "spread": 0.0,   "speed": 1450.0, "pellets": 1, "color": Color(0.78, 0.68, 0.5),  "kind": "bullet"},
+	{"name": "M79",       "damage": 90.0,  "rate": 0.10,  "mag": 1,   "reload": 2.97, "auto": false, "spread": 0.0,   "speed": 470.0,  "pellets": 1, "color": Color(0.55, 0.5, 0.32),  "kind": "rocket"},
+	{"name": "Barrett",   "damage": 245.0, "rate": 3.75,  "mag": 10,  "reload": 1.17, "auto": false, "spread": 0.0,   "speed": 2400.0, "pellets": 1, "color": Color(0.55, 0.55, 0.6),  "kind": "bullet", "startup": 0.32},
+	{"name": "Minimi",    "damage": 23.0,  "rate": 0.15,  "mag": 50,  "reload": 4.17, "auto": true,  "spread": 0.064, "speed": 1180.0, "pellets": 1, "color": Color(0.5, 0.55, 0.4),   "kind": "bullet"},
+	{"name": "Minigun",   "damage": 13.0,  "rate": 0.05,  "mag": 100, "reload": 8.0,  "auto": true,  "spread": 0.3,   "speed": 1275.0, "pellets": 1, "color": Color(0.75, 0.72, 0.78), "kind": "bullet", "startup": 0.42},
+]
+# Secondary slot — the second weapon the soldier carries (Q to swap primary↔secondary).
+var secondary := [
+	{"name": "USSOCOM",  "damage": 27.0, "rate": 0.167, "mag": 14,  "reload": 1.0,  "auto": false, "spread": 0.0, "speed": 800.0, "pellets": 1, "color": Color(0.85, 0.8, 0.6),   "kind": "bullet"},
+	{"name": "Knife",    "damage": 55.0, "rate": 0.5,   "mag": 1,   "reload": 0.05, "auto": false, "spread": 0.0, "speed": 0.0,   "pellets": 0, "color": Color(0.9, 0.9, 0.95),   "kind": "melee",      "range": 34.0},
+	{"name": "Chainsaw", "damage": 3.0,  "rate": 0.10,  "mag": 200, "reload": 1.83, "auto": true,  "spread": 0.0, "speed": 0.0,   "pellets": 0, "color": Color(1.0, 0.7, 0.15),   "kind": "melee_cont", "range": 32.0},
+	{"name": "LAW",      "damage": 90.0, "rate": 1.1,   "mag": 1,   "reload": 3.0,  "auto": false, "spread": 0.0, "speed": 720.0, "pellets": 1, "color": Color(0.85, 0.55, 0.35), "kind": "rocket"},
 ]
 var ammo: Array[int] = []
-var weapon_index := 2  # default = AK-74 (Soldat's #3)
+var secondary_ammo: Array[int] = []
+var weapon_index := 2   # default primary = AK-74 (Soldat's #3)
+var secondary_index := 0  # default secondary = USSOCOM
+var using_secondary := false
 var fire_cd := 0.0
+var spin_up_t := 0.0    # ramps up while LMB held for weapons with a startup wind-up (Barrett, Minigun)
+var lmb_prev := false   # prev-frame LMB state — resets spin_up_t when the trigger releases
 var reloading := false
 var reload_t := 0.0
 var grenades := 3
 var grenade_cd := 0.0
 var muzzle_t := 0.0
+var q_prev := false     # prev-frame Q — swap on rising edge only, not every physics tick
+var x_prev := false     # prev-frame X — prone toggle on rising edge
+var crouching := false
+var prone := false
 
 # ── Feel ───────────────────────────────────────────────
 var coyote_t := 0.0
@@ -43,6 +65,13 @@ var jump_buffer_t := 0.0
 var shake := 0.0
 var cam: Camera2D
 var jet_particles: CPUParticles2D
+
+# Three preallocated collision shapes so crouch/prone can hot-swap without
+# leaking or freeing while physics is still using the current shape.
+var col_shape: CollisionShape2D
+var shape_stand: RectangleShape2D
+var shape_crouch: RectangleShape2D
+var shape_prone: RectangleShape2D
 
 # ── Physics ────────────────────────────────────────────
 const GRAVITY := 1700.0
@@ -74,11 +103,17 @@ func _ready() -> void:
 	tree_exited.connect(func() -> void: Gostek.forget(self))
 	for w in weapons:
 		ammo.append(int(w["mag"]))
-	var shape := CollisionShape2D.new()
-	var rect := RectangleShape2D.new()
-	rect.size = Vector2(20, 42)
-	shape.shape = rect
-	add_child(shape)
+	for w in secondary:
+		secondary_ammo.append(int(w["mag"]))
+	col_shape = CollisionShape2D.new()
+	shape_stand = RectangleShape2D.new()
+	shape_stand.size = Vector2(20, 42)
+	shape_crouch = RectangleShape2D.new()
+	shape_crouch.size = Vector2(22, 28)
+	shape_prone = RectangleShape2D.new()
+	shape_prone.size = Vector2(36, 14)
+	col_shape.shape = shape_stand
+	add_child(col_shape)
 	cam = Camera2D.new()
 	cam.position_smoothing_enabled = true
 	cam.position_smoothing_speed = 8.0
@@ -133,6 +168,19 @@ func _physics_process(delta: float) -> void:
 	var right := Input.is_physical_key_pressed(KEY_D)
 	var jump_pressed := Input.is_physical_key_pressed(KEY_SPACE) or Input.is_physical_key_pressed(KEY_W)
 
+	# Crouch (S hold) + prone (X toggle). Prone locks out crouching.
+	# W/Space or another X press stands us up from prone.
+	var x_now := Input.is_physical_key_pressed(KEY_X)
+	if x_now and not x_prev:
+		prone = not prone
+		if prone:
+			crouching = false
+	x_prev = x_now
+	if prone and jump_pressed:
+		prone = false
+	crouching = Input.is_physical_key_pressed(KEY_S) and not prone
+	_apply_stance_shape()
+
 	var dir := 0.0
 	if left:
 		dir -= 1.0
@@ -152,6 +200,12 @@ func _physics_process(delta: float) -> void:
 	# skip the RUN_SPEED clamp so airborne speed isn't clipped on the landing frame.
 	if on_floor and jump_buffer_t > 0.0 and coyote_t > 0.0:
 		cap = BUNNY_SPEED
+	# Crouch/prone slow the ground cap; airborne cap is untouched so bunny-hops are preserved.
+	if on_floor:
+		if prone:
+			cap *= 0.28
+		elif crouching:
+			cap *= 0.6
 	if dir != 0.0:
 		velocity.x += dir * accel * delta
 	else:
@@ -192,7 +246,7 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 
-	# weapon switching
+	# primary weapon switching (keys 1..9,0). Numbers map to Soldat's classic slot order.
 	if Input.is_physical_key_pressed(KEY_1):
 		_switch_weapon(0)
 	elif Input.is_physical_key_pressed(KEY_2):
@@ -203,6 +257,22 @@ func _physics_process(delta: float) -> void:
 		_switch_weapon(3)
 	elif Input.is_physical_key_pressed(KEY_5):
 		_switch_weapon(4)
+	elif Input.is_physical_key_pressed(KEY_6):
+		_switch_weapon(5)
+	elif Input.is_physical_key_pressed(KEY_7):
+		_switch_weapon(6)
+	elif Input.is_physical_key_pressed(KEY_8):
+		_switch_weapon(7)
+	elif Input.is_physical_key_pressed(KEY_9):
+		_switch_weapon(8)
+	elif Input.is_physical_key_pressed(KEY_0):
+		_switch_weapon(9)
+
+	# Q toggles primary ↔ secondary — swap on the rising edge so a held key doesn't ping-pong.
+	var q_now := Input.is_physical_key_pressed(KEY_Q)
+	if q_now and not q_prev:
+		_toggle_secondary()
+	q_prev = q_now
 
 	# reload
 	if Input.is_physical_key_pressed(KEY_R) and not reloading:
@@ -216,18 +286,39 @@ func _physics_process(delta: float) -> void:
 
 	# shooting
 	fire_cd -= delta
+	var w_active: Dictionary = _active_weapon()
 	if reloading:
 		reload_t -= delta
 		if reload_t <= 0.0:
 			reloading = false
-			ammo[weapon_index] = int(weapons[weapon_index]["mag"])
+			_set_active_mag(int(w_active["mag"]))
 	else:
-		if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and fire_cd <= 0.0:
-			if ammo[weapon_index] > 0:
-				_shoot()
-			else:
-				Sfx.empty()
-				fire_cd = 0.25
+		var lmb := Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+		# Wind-up trackers: Barrett/Minigun need to spin up before their first shot,
+		# then fire at their normal rate as long as LMB stays down.
+		var startup: float = float(w_active.get("startup", 0.0))
+		if lmb:
+			if startup > 0.0:
+				spin_up_t = minf(spin_up_t + delta, startup + 0.5)
+		else:
+			spin_up_t = 0.0
+		if lmb and fire_cd <= 0.0:
+			var can_fire := true
+			if startup > 0.0 and spin_up_t < startup:
+				can_fire = false
+			# Semi-auto: don't refire until LMB is released and re-pressed.
+			if not bool(w_active.get("auto", false)) and lmb_prev:
+				can_fire = false
+			if can_fire:
+				var kind_a := str(w_active.get("kind", "bullet"))
+				if kind_a == "melee" or kind_a == "melee_cont":
+					_perform_melee()
+				elif _active_mag() > 0:
+					_shoot()
+				else:
+					Sfx.empty()
+					fire_cd = 0.25
+		lmb_prev = lmb
 
 	muzzle_t = maxf(0.0, muzzle_t - delta * 10.0)
 
@@ -257,14 +348,22 @@ func _physics_process(delta: float) -> void:
 			var m := get_parent()
 			if m != null and m.has_method("ready_peer_ids"):
 				for pid in m.ready_peer_ids():
-					rpc_id(pid, "net_state", position, velocity, aim_dir, facing, jet_on, health, fuel, weapon_index, ammo[weapon_index], reloading, grenades)
+					rpc_id(pid, "net_state", position, velocity, aim_dir, facing, jet_on, health, fuel, weapon_index, ammo[weapon_index], reloading, grenades, secondary_index, secondary_ammo[secondary_index], using_secondary, crouching, prone)
 		else:
 			# Broadcast so the host relays to other clients (Godot's server_relay).
 			# Using rpc_id(1, ...) would freeze non-host peers' views of this body.
-			rpc("net_state", position, velocity, aim_dir, facing, jet_on, health, fuel, weapon_index, ammo[weapon_index], reloading, grenades)
+			rpc("net_state", position, velocity, aim_dir, facing, jet_on, health, fuel, weapon_index, ammo[weapon_index], reloading, grenades, secondary_index, secondary_ammo[secondary_index], using_secondary, crouching, prone)
 
 
 func _switch_weapon(idx: int) -> void:
+	# Any primary hotkey while holding secondary swaps us back to a primary AND
+	# picks the requested slot — Soldat's classic behavior.
+	if using_secondary:
+		using_secondary = false
+		reloading = false
+		reload_t = 0.0
+		spin_up_t = 0.0
+		lmb_prev = true  # require a fresh click before firing after a slot swap
 	if idx == weapon_index:
 		return
 	# Allow switching mid-reload to cancel it — otherwise the player is hard-locked
@@ -274,11 +373,59 @@ func _switch_weapon(idx: int) -> void:
 		reload_t = 0.0
 	weapon_index = idx
 	fire_cd = 0.15
+	spin_up_t = 0.0
+	lmb_prev = true
+
+
+func _toggle_secondary() -> void:
+	using_secondary = not using_secondary
+	if reloading:
+		reloading = false
+		reload_t = 0.0
+	fire_cd = 0.15
+	spin_up_t = 0.0
+	lmb_prev = true
+
+
+func _active_weapon() -> Dictionary:
+	return secondary[secondary_index] if using_secondary else weapons[weapon_index]
+
+
+func _active_mag() -> int:
+	return secondary_ammo[secondary_index] if using_secondary else ammo[weapon_index]
+
+
+func _set_active_mag(val: int) -> void:
+	if using_secondary:
+		secondary_ammo[secondary_index] = val
+	else:
+		ammo[weapon_index] = val
+
+
+func _dec_active_mag() -> void:
+	_set_active_mag(_active_mag() - 1)
+
+
+func _apply_stance_shape() -> void:
+	if col_shape == null:
+		return
+	var want: RectangleShape2D = shape_stand
+	if prone:
+		want = shape_prone
+	elif crouching:
+		want = shape_crouch
+	if col_shape.shape != want:
+		# set_deferred so the swap doesn't race with physics evaluating the current shape.
+		col_shape.set_deferred("shape", want)
 
 
 func _start_reload() -> void:
-	var w = weapons[weapon_index]
-	if ammo[weapon_index] >= int(w["mag"]):
+	var w := _active_weapon()
+	if _active_mag() >= int(w["mag"]):
+		return
+	# Melee weapons have no meaningful reload; skip so R doesn't lock the swing cooldown.
+	var kind_r := str(w.get("kind", "bullet"))
+	if kind_r == "melee" or kind_r == "melee_cont":
 		return
 	reloading = true
 	reload_t = float(w["reload"])
@@ -286,8 +433,8 @@ func _start_reload() -> void:
 
 
 func _shoot() -> void:
-	var w = weapons[weapon_index]
-	ammo[weapon_index] -= 1
+	var w := _active_weapon()
+	_dec_active_mag()
 	fire_cd = float(w["rate"])
 	var recoil := 240.0 if str(w.get("kind", "bullet")) == "rocket" else 35.0
 	velocity -= aim_dir * recoil
@@ -295,12 +442,37 @@ func _shoot() -> void:
 	for _i in int(w["pellets"]):
 		dirs.append(aim_dir.rotated(randf_range(-float(w["spread"]), float(w["spread"]))))
 	var muzzle: Vector2 = global_position + SoldierArt.muzzle_local(self, aim_dir, facing, str(w["name"]))
+	var slot := (100 + secondary_index) if using_secondary else weapon_index
 	if Net.is_networked():
-		rpc("net_shoot", muzzle, dirs, weapon_index)
+		rpc("net_shoot", muzzle, dirs, slot)
 	else:
-		net_shoot(muzzle, dirs, weapon_index)
-	if ammo[weapon_index] <= 0:
+		net_shoot(muzzle, dirs, slot)
+	if _active_mag() <= 0:
 		_start_reload()
+
+
+# Melee swing / continuous scan. Applies damage to any enemy soldier within a
+# short arc in front of us. Called on LMB in-range for Knife/Chainsaw.
+func _perform_melee() -> void:
+	var w := _active_weapon()
+	fire_cd = float(w["rate"])
+	var kind_m := str(w.get("kind", "melee"))
+	# Broadcast so all peers see the swing feedback (muzzle flash + sfx). Damage
+	# is applied inside net_shoot with the standard authority guard.
+	var slot := (100 + secondary_index) if using_secondary else weapon_index
+	var muzzle: Vector2 = global_position + SoldierArt.muzzle_local(self, aim_dir, facing, str(w["name"]))
+	# `dirs` carries the swing direction as a single unit vector; range is looked
+	# up from the weapon dict on the receiving side.
+	var dirs := PackedVector2Array([aim_dir])
+	if Net.is_networked():
+		rpc("net_shoot", muzzle, dirs, slot)
+	else:
+		net_shoot(muzzle, dirs, slot)
+	# Chainsaw taps its 200-mag "fuel" per swing; Knife is effectively unlimited.
+	if kind_m == "melee_cont":
+		_dec_active_mag()
+		if _active_mag() <= 0:
+			_start_reload()
 
 
 func _throw_grenade() -> void:
@@ -393,7 +565,7 @@ func _emit_kill() -> void:
 # ── RPCs ──────────────────────────────────────────────
 
 @rpc("authority", "call_remote", "unreliable_ordered")
-func net_state(pos: Vector2, vel: Vector2, aim: Vector2, face: float, jetting: bool, hp: float, fuel_val: float, wi: int, mag: int, is_reloading: bool, grens: int) -> void:
+func net_state(pos: Vector2, vel: Vector2, aim: Vector2, face: float, jetting: bool, hp: float, fuel_val: float, wi: int, mag: int, is_reloading: bool, grens: int, sec_i: int, sec_mag: int, use_sec: bool, crouch_f: bool, prone_f: bool) -> void:
 	position = pos
 	velocity = vel
 	aim_dir = aim
@@ -405,19 +577,55 @@ func net_state(pos: Vector2, vel: Vector2, aim: Vector2, face: float, jetting: b
 		weapon_index = wi
 		if ammo.size() > wi:
 			ammo[wi] = mag
+	if sec_i >= 0 and sec_i < secondary.size():
+		secondary_index = sec_i
+		if secondary_ammo.size() > sec_i:
+			secondary_ammo[sec_i] = sec_mag
+	using_secondary = use_sec
+	crouching = crouch_f
+	prone = prone_f
+	_apply_stance_shape()
 	reloading = is_reloading
 	grenades = maxi(0, grens)
 
 
 @rpc("authority", "call_local", "reliable")
 func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int) -> void:
-	if weapon_i < 0 or weapon_i >= weapons.size():
-		return
-	var w = weapons[weapon_i]
-	muzzle_t = 0.10 if str(w.get("kind", "bullet")) == "rocket" else 0.08
-	_shake(6.0 if str(w.get("kind", "bullet")) == "rocket" else 3.5)
-	Sfx.shoot(str(w["name"]))
+	# Slots ≥ 100 are secondaries at (slot - 100).
+	var w: Dictionary
+	if weapon_i >= 100:
+		var si := weapon_i - 100
+		if si < 0 or si >= secondary.size():
+			return
+		w = secondary[si]
+	else:
+		if weapon_i < 0 or weapon_i >= weapons.size():
+			return
+		w = weapons[weapon_i]
 	var kind := str(w.get("kind", "bullet"))
+	muzzle_t = 0.10 if kind == "rocket" else 0.08
+	_shake(6.0 if kind == "rocket" else 3.5)
+	Sfx.shoot(str(w["name"]))
+	if kind == "melee" or kind == "melee_cont":
+		var swing: Vector2 = dirs[0] if dirs.size() > 0 else aim_dir
+		var reach: float = float(w.get("range", 32.0))
+		var dmg: float = float(w["damage"])
+		# Scan soldiers in a short forward arc — apply damage on the authority peer
+		# only (matches how bullet/rocket damage is gated in bullet.gd/rocket.gd).
+		for s in get_tree().get_nodes_in_group("soldier"):
+			if s == self or not is_instance_valid(s):
+				continue
+			if int(s.get("team")) == team or bool(s.get("dead")):
+				continue
+			var to_s: Vector2 = s.global_position - global_position
+			var d: float = to_s.length()
+			if d > reach or d < 1.0:
+				continue
+			if to_s.normalized().dot(swing) < 0.35:  # ~70° arc
+				continue
+			if s.has_method("take_damage") and (multiplayer.multiplayer_peer == null or s.is_multiplayer_authority()):
+				s.take_damage(dmg, display_name, str(w["name"]), team)
+		return
 	for i in dirs.size():
 		var bdir: Vector2 = dirs[i]
 		if kind == "rocket":
@@ -510,7 +718,7 @@ func _spawn_ragdoll() -> void:
 
 
 func _draw() -> void:
-	var w = weapons[weapon_index]
+	var w := _active_weapon()
 	# For non-authority replicas is_on_floor() is stale (no move_and_slide runs on them),
 	# so approximate from vertical velocity.
 	var on_floor := is_on_floor()
@@ -533,4 +741,6 @@ func _draw() -> void:
 		str(w["name"]),
 		on_floor,
 		reloading,
+		crouching,
+		prone,
 	)
