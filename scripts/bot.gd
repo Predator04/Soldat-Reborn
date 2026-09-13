@@ -28,6 +28,16 @@ var target: Node2D = null
 var _target_refresh_cd := 0.0
 var _stuck_t := 0.0
 
+# Ammo state (#36) — bots run dry and reload like players.
+# `_mag_size` + `_reload_time` are stat lookups per loadout.
+var ammo: int = 30
+var reloading: bool = false
+var reload_t: float = 0.0
+const AMMO_STATS := {
+	"AK-74": {"mag": 30, "reload": 2.0},
+	"LAW":   {"mag": 1,  "reload": 3.0},
+}
+
 # grenades
 var grenades := 3
 var grenade_cd := 0.0
@@ -73,6 +83,7 @@ func _ready() -> void:
 			"chain": chains[randi() % chains.size()],
 			"cigar": randf() < 0.2,
 		}
+	ammo = int(AMMO_STATS.get(loadout, AMMO_STATS["AK-74"])["mag"])
 	var shape := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
 	rect.size = Vector2(20, 42)
@@ -173,10 +184,17 @@ func _physics_process(delta: float) -> void:
 			_throw_grenade(dx, dy, dist)
 			grenade_cd = 2.5
 
-	# shoot with lead aim
+	# shoot with lead aim (#36: gated on ammo + reload)
 	fire_cd -= delta
 	muzzle_t = maxf(0.0, muzzle_t - delta * 10.0)
-	if is_instance_valid(target) and fire_cd <= 0.0:
+	if reloading:
+		reload_t -= delta
+		if reload_t <= 0.0:
+			reloading = false
+			ammo = int(AMMO_STATS.get(loadout, AMMO_STATS["AK-74"])["mag"])
+	elif ammo <= 0:
+		_start_reload()
+	elif is_instance_valid(target) and fire_cd <= 0.0:
 		var to_t: Vector2 = target.global_position - global_position
 		var t_len: float = to_t.length()
 		# LAW bots refuse point-blank shots — rocket blast radius 130 would splash themselves to death.
@@ -263,7 +281,19 @@ func _throw_grenade(dx: float, dy: float, dist: float) -> void:
 	get_parent().add_child(g)
 
 
+func _start_reload() -> void:
+	if reloading:
+		return
+	reloading = true
+	reload_t = float(AMMO_STATS.get(loadout, AMMO_STATS["AK-74"])["reload"])
+	Sfx.reload(loadout)
+
+
 func _shoot(to_t: Vector2) -> void:
+	if ammo <= 0:
+		_start_reload()
+		return
+	ammo -= 1
 	var aim := to_t.normalized()
 	ceasefire_t = 0.0
 	Sfx.shoot(loadout)
@@ -313,6 +343,10 @@ func try_pickup_weapon(weapon_name: String) -> bool:
 	# Bots only understand two loadouts today (AK-74 / LAW) — swap if matched.
 	if weapon_name == "LAW" or weapon_name == "AK-74":
 		loadout = weapon_name
+		# Fresh magazine on pickup — mirrors player.try_pickup_weapon.
+		ammo = int(AMMO_STATS.get(loadout, AMMO_STATS["AK-74"])["mag"])
+		reloading = false
+		reload_t = 0.0
 		return true
 	return false
 
@@ -431,7 +465,7 @@ func _draw() -> void:
 		false,
 		loadout,
 		is_on_floor(),
-		false,
+		reloading,
 		false,
 		false,
 		false,
