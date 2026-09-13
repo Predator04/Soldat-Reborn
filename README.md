@@ -12,8 +12,9 @@ past the classic, with most of Soldat 2's feature list folded in.
 - **Game modes** — Deathmatch, Pointmatch, Teammatch, Capture the Flag, Rambomatch, Infiltration, Hold the Flag, **Domination**, **Battle Royale** + Realistic/Survival/Advance sub-modes
 - **Map editor** — in-game editor: place platforms, spawns, flags, control points; save/load custom maps; play-test live
 - **Procedural maps** — seeded generator with re-roll, produces playable layouts for every mode
+- **Classic maps** — 10 original Soldat levels ported from `.pms` (Nuubia, Maya, Aftermath, Hormone, Viet, Scorpion, Warehouse, Baire, Airpirates, Bunker) with scenery + textured terrain
 - **Polish** — gestures/taunts, chat, weapon throw/pickup, ceasefire, bink, game modifiers, character customization, lo-fi mode, local stats, GIF recording, improved grenade physics
-- **Multiplayer** — host-authoritative ENet (host / join), bots, LAN-scale sync
+- **Multiplayer** — host-authoritative ENet (host / join), replicated bots that shoot and damage clients, dedicated headless server mode, LAN-scale sync
 
 ## Controls
 
@@ -71,7 +72,11 @@ CI runs the headless verify on every push (`.github/workflows/ci.yml`).
 
 - **HOST GAME** — pick a map, then share your IP/port (default `7777`).
 - **JOIN GAME** — enter host IP + port.
-- Host-authoritative state sync. Custom maps are single-player; networked play uses the built-in map rotation. See *Known limitations* in `ROADMAP.md`.
+- Host-authoritative state sync, with bots replicated and fighting on all peers.
+- **Dedicated server** — run a headless host with no local player:
+  `SoldatReborn.exe --dedicated [--port 7777] [--map ctf_Nuubia] [--mode dm]`
+  (maps: name or index; modes: `dm`/`tdm`/`ctf`/`inf`/`htf`/`rm`/`pm`/`dom`/`br`).
+- Custom maps are single-player; networked play uses the built-in rotation. See *Known limitations* in `ROADMAP.md`.
 
 ## Project layout
 
