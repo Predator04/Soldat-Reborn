@@ -34,6 +34,7 @@ var _map_synced := false      # client-side: true once host has told us the map
 # this to skip the peer-1 spawn and instead fill the match with bots so a lone
 # joining client has opponents. See #54.
 var is_dedicated := false
+var register_url := ""   # master-server URL from --register (dedicated lobby heartbeat)
 # Per-session counter — bumped on the client every time it receives net_bot_shoot /
 # net_bot_grenade. Used by --smoke-botfire (and the extended --smoke-join print) to
 # confirm that bot fire actually replicates over ENet. See #57.
@@ -92,6 +93,11 @@ func _maybe_run_dedicated() -> void:
 			i += 1
 		elif a.begins_with("--mode="):
 			mode_index = _resolve_mode_arg(a.substr(len("--mode=")))
+		elif a == "--register" and i + 1 < args.size():
+			register_url = args[i + 1]
+			i += 1
+		elif a.begins_with("--register="):
+			register_url = a.substr(len("--register="))
 		i += 1
 	is_dedicated = true
 	if wants_smoke:
@@ -138,6 +144,56 @@ func _start_dedicated(port: int, map_index: int, mode_index: int) -> void:
 	var mode_name: String = MODE_NAMES[mode_index] if mode_index >= 0 and mode_index < MODE_NAMES.size() else "mode#%d" % mode_index
 	print("Dedicated server listening on port %d, map=%s mode=%s" % [port, map_name, mode_name])
 	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	if register_url != "":
+		_start_master_heartbeat(port)
+
+
+func _start_master_heartbeat(port: int) -> void:
+	# Register this dedicated host with a master server every 30s. The master
+	# captures our public IP from the request source, so NAT'd hosts advertise
+	# their external address automatically. Silence failures — a downed master
+	# must never take the game server with it.
+	var http := HTTPRequest.new()
+	http.name = "MasterHeartbeat"
+	add_child(http)
+	var t := Timer.new()
+	t.wait_time = 30.0
+	t.autostart = true
+	t.timeout.connect(_send_master_heartbeat.bind(http, port))
+	add_child(t)
+	_send_master_heartbeat(http, port)
+
+
+func _send_master_heartbeat(http: HTTPRequest, port: int) -> void:
+	if http.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
+		return  # a heartbeat is already in flight — skip this tick
+	var map_idx: int = chosen_map_index
+	var map_name: String = MAP_NAMES[map_idx] if map_idx >= 0 and map_idx < MAP_NAMES.size() else "map#%d" % map_idx
+	var mode_idx: int = Settings.game_mode
+	var mode_name: String = MODE_NAMES[mode_idx] if mode_idx >= 0 and mode_idx < MODE_NAMES.size() else "mode#%d" % mode_idx
+	var body := JSON.stringify({
+		"name": Settings.server_name,
+		"port": port,
+		"map": map_name,
+		"mode": mode_name,
+		"players": _count_human_players(),
+		"max": MAX_PEERS,
+		"password": false,
+		"version": str(ProjectSettings.get_setting("application/config/version", "dev")),
+	})
+	var err := http.request(register_url.rstrip("/") + "/register", PackedStringArray(["Content-Type: application/json"]), HTTPClient.METHOD_POST, body)
+	if err != OK:
+		push_warning("master register to %s failed: %s" % [register_url, error_string(err)])
+
+
+func _count_human_players() -> int:
+	# Count real players (player.gd), excluding bots (bot.gd). A dedicated host
+	# has no local player, so this is exactly the number of joined humans.
+	var n := 0
+	for s in get_tree().get_nodes_in_group("soldier"):
+		if is_instance_valid(s) and s.get_script() != null and String(s.get_script().resource_path).ends_with("player.gd"):
+			n += 1
+	return n
 
 
 func _smoke_dedicated(port: int, map_index: int, mode_index: int) -> void:

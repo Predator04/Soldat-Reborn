@@ -67,6 +67,11 @@ var mod_speed := 1.0          # 0.5–1.5. Player horizontal cap and accel.
 var bot_count := -1
 var bot_skill := 3
 
+# Multiplayer lobby / master server (#33). server_name is what a dedicated host
+# advertises to the master; master_url is the "Browse Servers" list endpoint.
+var server_name := "Soldat Server"
+var master_url := ""
+
 # Convenience: DM / Rambo / Battle Royale are FFA (friendly-fire on), teams disable friendly damage.
 func friendly_fire_on() -> bool:
 	return game_mode == MODE_DM or game_mode == MODE_RM or game_mode == MODE_BR
@@ -115,6 +120,8 @@ func load_settings() -> void:
 	mod_speed = clampf(float(cf.get_value("mods", "speed", 1.0)), 0.5, 1.5)
 	bot_count = clampi(int(cf.get_value("bots", "count", -1)), -1, 8)
 	bot_skill = clampi(int(cf.get_value("bots", "skill", 3)), 1, 5)
+	server_name = str(cf.get_value("net", "server_name", "Soldat Server"))
+	master_url = str(cf.get_value("net", "master_url", ""))
 
 
 func save() -> void:
@@ -147,6 +154,8 @@ func save() -> void:
 	cf.set_value("mods", "speed", mod_speed)
 	cf.set_value("bots", "count", bot_count)
 	cf.set_value("bots", "skill", bot_skill)
+	cf.set_value("net", "server_name", server_name)
+	cf.set_value("net", "master_url", master_url)
 	cf.save(PATH)
 
 

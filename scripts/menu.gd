@@ -53,6 +53,10 @@ var _map_pick: OptionButton
 var _sp_map_pick: OptionButton     # main-menu map selector (built-in + custom)
 var _sp_map_paths: Array = []      # index → "" (auto / built-in) or a user://maps/ path
 var _connecting := false
+var _master_edit: LineEdit
+var _browse_panel: VBoxContainer
+var _browse_list: VBoxContainer
+var _browse_http: HTTPRequest
 
 
 func _ready() -> void:
@@ -68,6 +72,7 @@ func _ready() -> void:
 	_build_stats()
 	_build_host()
 	_build_join()
+	_build_browse()
 	_build_status()
 	_build_footer()
 	Net.status_changed.connect(_on_net_status_changed)
@@ -97,7 +102,7 @@ func _build_title() -> void:
 	add_child(title)
 
 	var ver := Label.new()
-	ver.text = "v1.11.0 · build %d" % _build_number()
+	ver.text = "v1.12.0 · build %d" % _build_number()
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ver.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	ver.offset_top = 140
@@ -405,6 +410,22 @@ func _build_join() -> void:
 	_port_edit.custom_minimum_size = Vector2(0, 36)
 	_join_panel.add_child(_port_edit)
 
+	var master_lbl := Label.new()
+	master_lbl.text = "Master Server URL (for Browse)"
+	master_lbl.add_theme_font_size_override("font_size", 15)
+	_join_panel.add_child(master_lbl)
+
+	_master_edit = LineEdit.new()
+	_master_edit.text = Settings.master_url
+	_master_edit.placeholder_text = "http://192.168.1.50:8080"
+	_master_edit.custom_minimum_size = Vector2(0, 36)
+	_master_edit.text_submitted.connect(func(_t: String) -> void: _on_browse_pressed())
+	_join_panel.add_child(_master_edit)
+
+	var browse := _make_button("BROWSE SERVERS")
+	browse.pressed.connect(_on_browse_pressed)
+	_join_panel.add_child(browse)
+
 	_connect_btn = _make_button("CONNECT")
 	_connect_btn.pressed.connect(_on_connect_pressed)
 	_join_panel.add_child(_connect_btn)
@@ -417,6 +438,112 @@ func _build_join() -> void:
 		_join_panel.visible = false
 		_menu_box.visible = true)
 	_join_panel.add_child(back)
+
+
+func _build_browse() -> void:
+	_browse_http = HTTPRequest.new()
+	_browse_http.request_completed.connect(_on_browse_http_done)
+	add_child(_browse_http)
+
+	_browse_panel = VBoxContainer.new()
+	_browse_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_browse_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_browse_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_browse_panel.add_theme_constant_override("separation", 10)
+	_browse_panel.custom_minimum_size = Vector2(560, 0)
+	_browse_panel.visible = false
+	add_child(_browse_panel)
+
+	var head := Label.new()
+	head.text = "BROWSE SERVERS"
+	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	head.add_theme_font_size_override("font_size", 26)
+	head.add_theme_color_override("font_color", Color(0.95, 0.82, 0.4))
+	_browse_panel.add_child(head)
+
+	_browse_list = VBoxContainer.new()
+	_browse_list.add_theme_constant_override("separation", 6)
+	_browse_panel.add_child(_browse_list)
+
+	var back := _make_button("BACK")
+	back.pressed.connect(func() -> void:
+		_browse_panel.visible = false
+		_join_panel.visible = true)
+	_browse_panel.add_child(back)
+
+
+func _on_browse_pressed() -> void:
+	Settings.master_url = _master_edit.text.strip_edges()
+	Settings.save()
+	_join_panel.visible = false
+	_browse_panel.visible = true
+	_refresh_browse()
+
+
+func _refresh_browse() -> void:
+	for c in _browse_list.get_children():
+		c.queue_free()
+	var wait := Label.new()
+	wait.text = "Fetching server list..."
+	wait.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	wait.add_theme_color_override("font_color", Color(0.7, 0.9, 1.0))
+	_browse_list.add_child(wait)
+	var url: String = Settings.master_url
+	if url == "":
+		wait.text = "Set a master server URL first."
+		return
+	if _browse_http.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
+		_browse_http.cancel_request()
+	_browse_http.request(url.rstrip("/") + "/list")
+
+
+func _on_browse_http_done(_result: int, _code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+	if not is_instance_valid(_browse_list) or not _browse_panel.visible:
+		return
+	for c in _browse_list.get_children():
+		c.queue_free()
+	var parsed = JSON.parse_string(body.get_string_from_utf8())
+	if parsed == null or not (parsed is Dictionary) or not parsed.has("servers"):
+		var err := Label.new()
+		err.text = "No response from master server."
+		err.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		err.add_theme_color_override("font_color", Color(0.9, 0.4, 0.4))
+		_browse_list.add_child(err)
+		return
+	var servers: Array = parsed["servers"]
+	if servers.is_empty():
+		var empty := Label.new()
+		empty.text = "No servers online."
+		empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		empty.add_theme_color_override("font_color", Color(0.7, 0.9, 1.0))
+		_browse_list.add_child(empty)
+		return
+	for s in servers:
+		if not (s is Dictionary):
+			continue
+		var ip: String = str(s.get("ip", ""))
+		var port: int = int(s.get("port", 0))
+		var name: String = str(s.get("name", "Unnamed"))
+		var mapn: String = str(s.get("map", "?"))
+		var mname: String = str(s.get("mode", "?"))
+		var players: int = int(s.get("players", 0))
+		var maxp: int = int(s.get("max", 0))
+		var pwd: bool = bool(s.get("password", false))
+		var btn := Button.new()
+		btn.text = "%s  [%d/%d]  %s / %s%s" % [name, players, maxp, mapn, mname, "  (locked)" if pwd else ""]
+		btn.custom_minimum_size = Vector2(560, 42)
+		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		btn.add_theme_font_size_override("font_size", 17)
+		btn.pressed.connect(_join_server.bind(ip, port))
+		_browse_list.add_child(btn)
+
+
+func _join_server(ip: String, port: int) -> void:
+	_ip_edit.text = ip
+	_port_edit.text = str(port)
+	_browse_panel.visible = false
+	_join_panel.visible = true
+	_on_connect_pressed()
 
 
 func _build_status() -> void:
