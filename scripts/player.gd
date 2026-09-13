@@ -905,11 +905,16 @@ func _die() -> void:
 		var peer_id := get_multiplayer_authority()
 		var m := get_parent()
 		var mode_at_schedule: int = Net.mode
+		# Survival: don't respawn until the round resets — main.gd::_reset_round
+		# rebuilds bodies for everyone at that point.
+		var survival_gate: bool = Settings.survival
 		get_tree().create_timer(2.0).timeout.connect(func() -> void:
 			# Bail if we've since torn down / rehosted / joined — don't respawn into a stale scene.
 			if Net.mode != mode_at_schedule:
 				return
 			if get_tree().current_scene != m:
+				return
+			if survival_gate and is_instance_valid(m) and bool(m.get("round_active")):
 				return
 			if is_instance_valid(m) and m.has_method("_respawn_peer"):
 				m._respawn_peer(peer_id))

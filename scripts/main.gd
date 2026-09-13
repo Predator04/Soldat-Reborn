@@ -899,12 +899,26 @@ func _reset_round() -> void:
 	round_active = true
 	# Survival: nobody respawns during the round, so at reset we wipe surviving
 	# bodies and start everyone fresh.
-	if Settings.survival and not Net.is_networked():
-		for s in get_tree().get_nodes_in_group("soldier"):
-			if is_instance_valid(s):
-				s.queue_free()
-		call_deferred("_spawn_player")
-		call_deferred("_spawn_bots")
+	if Settings.survival:
+		if Net.is_networked():
+			# Only the host owns spawn authority; clients receive net_spawn_player.
+			# Wipe living peer bodies + re-spawn every connected peer.
+			if Net.is_host():
+				for pid in _players_by_id.keys():
+					var p = _players_by_id[pid]
+					if is_instance_valid(p):
+						p.queue_free()
+				_players_by_id.clear()
+				# Peer 1 (host) + every remote peer.
+				_spawn_networked_player(1)
+				for pid in multiplayer.get_peers():
+					_spawn_networked_player(int(pid))
+		else:
+			for s in get_tree().get_nodes_in_group("soldier"):
+				if is_instance_valid(s):
+					s.queue_free()
+			call_deferred("_spawn_player")
+			call_deferred("_spawn_bots")
 	if Net.is_networked() and Net.is_host():
 		_broadcast_match_state()
 
