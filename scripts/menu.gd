@@ -12,6 +12,7 @@ var _menu_box: VBoxContainer
 var _settings_panel: VBoxContainer
 var _mods_panel: VBoxContainer
 var _cos_panel: VBoxContainer
+var _stats_panel: VBoxContainer
 var _join_panel: VBoxContainer
 var _host_panel: VBoxContainer
 var _status_label: Label
@@ -33,6 +34,7 @@ func _ready() -> void:
 	_build_settings()
 	_build_mods()
 	_build_cosmetics()
+	_build_stats()
 	_build_host()
 	_build_join()
 	_build_status()
@@ -165,6 +167,13 @@ func _build_menu() -> void:
 		_menu_box.visible = false
 		_cos_panel.visible = true)
 	_menu_box.add_child(cos)
+
+	var stats := _make_button("STATS")
+	stats.pressed.connect(func() -> void:
+		_refresh_stats_labels()
+		_menu_box.visible = false
+		_stats_panel.visible = true)
+	_menu_box.add_child(stats)
 
 	var quit := _make_button("QUIT")
 	quit.pressed.connect(func() -> void: get_tree().quit())
@@ -316,6 +325,69 @@ func _add_mod_slider(label_text: String, mn: float, mx: float, step: float,
 	slider.value_changed.connect(func(v: float) -> void:
 		val_lbl.text = "%.2fx" % v
 		set_val.call(v))
+
+
+var _stats_body: RichTextLabel = null
+
+
+func _build_stats() -> void:
+	_stats_panel = VBoxContainer.new()
+	_stats_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_stats_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_stats_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_stats_panel.add_theme_constant_override("separation", 12)
+	_stats_panel.custom_minimum_size = Vector2(480, 0)
+	_stats_panel.visible = false
+	add_child(_stats_panel)
+
+	var head := Label.new()
+	head.text = "STATS"
+	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	head.add_theme_font_size_override("font_size", 26)
+	head.add_theme_color_override("font_color", Color(0.95, 0.82, 0.4))
+	_stats_panel.add_child(head)
+
+	_stats_body = RichTextLabel.new()
+	_stats_body.bbcode_enabled = true
+	_stats_body.fit_content = true
+	_stats_body.scroll_active = false
+	_stats_body.custom_minimum_size = Vector2(0, 240)
+	_stats_body.add_theme_font_size_override("normal_font_size", 15)
+	_stats_body.add_theme_color_override("default_color", Color(0.9, 0.9, 0.92))
+	_stats_panel.add_child(_stats_body)
+
+	var reset := _make_button("RESET STATS")
+	reset.pressed.connect(func() -> void:
+		Stats.reset()
+		_refresh_stats_labels())
+	_stats_panel.add_child(reset)
+
+	var back := _make_button("BACK")
+	back.pressed.connect(func() -> void:
+		_stats_panel.visible = false
+		_menu_box.visible = true)
+	_stats_panel.add_child(back)
+
+
+func _refresh_stats_labels() -> void:
+	if _stats_body == null:
+		return
+	var acc := Stats.accuracy() * 100.0
+	var kd := Stats.kd()
+	var lines := PackedStringArray()
+	lines.append("[b]Kills[/b] %d  ·  [b]Deaths[/b] %d  ·  [b]K/D[/b] %.2f" % [Stats.kills, Stats.deaths, kd])
+	lines.append("[b]Suicides[/b] %d" % Stats.suicides)
+	lines.append("[b]Shots[/b] %d  ·  [b]Hits[/b] %d  ·  [b]Accuracy[/b] %.1f%%" % [Stats.shots, Stats.hits, acc])
+	lines.append("[b]Matches[/b] %d  ·  [b]Wins[/b] %d  ·  [b]Losses[/b] %d" % [Stats.matches_played, Stats.wins, Stats.losses])
+	lines.append("")
+	lines.append("[i]Kills by weapon[/i]")
+	var pairs: Array = []
+	for k in Stats.kills_by_weapon.keys():
+		pairs.append([str(k), int(Stats.kills_by_weapon[k])])
+	pairs.sort_custom(func(a, b): return int(a[1]) > int(b[1]))
+	for pair in pairs:
+		lines.append("  %s: %d" % [pair[0], pair[1]])
+	_stats_body.text = "\n".join(lines)
 
 
 func _build_cosmetics() -> void:

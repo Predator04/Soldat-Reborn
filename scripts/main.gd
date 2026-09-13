@@ -1014,6 +1014,16 @@ func _ctf_score(team: int, capturer: String) -> void:
 
 
 func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: String, killer_team: int, victim_team: int) -> void:
+	# Local stats — track the local player's kills / deaths / suicides.
+	# Skips scoreboard synthetic entries (FLAG/POINT etc.) which have killer_team but no soldier.
+	if is_instance_valid(player):
+		var me: String = str(player.display_name)
+		if killer_name == me and victim_name != me:
+			Stats.record_kill(_weapon_name)
+		if victim_name == me and killer_name == me:
+			Stats.record_suicide()
+		elif victim_name == me:
+			Stats.record_death()
 	if Net.is_networked() and not Net.is_host():
 		return
 	if not round_active or killer_team < 0:
@@ -1069,6 +1079,11 @@ func _end_round(team: int) -> void:
 	winner_team = team
 	round_active = false
 	winner_end_t = WINNER_DISPLAY
+	# Record local W/L for the human player. In FFA modes the winner is the local
+	# player's own team id; in team modes it's TEAM_BLUE / TEAM_RED.
+	if is_instance_valid(player):
+		var won: bool = team >= 0 and int(player.team) == team
+		Stats.record_match_end(won)
 	if Net.is_networked() and Net.is_host():
 		_broadcast_match_state()
 

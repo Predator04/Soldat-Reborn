@@ -16,6 +16,7 @@ Sfx="*res://scripts/sfx.gd"
 Settings="*res://scripts/settings.gd"
 Net="*res://scripts/net.gd"
 GifRecorder="*res://scripts/gif_recorder.gd"
+Stats="*res://scripts/stats.gd"
 
 [display]
 

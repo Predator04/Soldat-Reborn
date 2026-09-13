@@ -65,11 +65,23 @@ func _on_body_entered(body: Node) -> void:
 					wname = weapon_name + " (headshot)"
 			if multiplayer.multiplayer_peer == null or body.is_multiplayer_authority():
 				body.take_damage(dmg, killer_name, wname, team)
+			# Local stats: only when the local player fired this bullet.
+			_maybe_record_hit()
 			queue_free()
 			return
 		return
 	_hit = true
 	queue_free()
+
+
+func _maybe_record_hit() -> void:
+	# Route stats through the local player only. Main.player is the human peer's node.
+	var m := get_tree().current_scene
+	if m == null:
+		return
+	var pl = m.get("player")
+	if pl != null and is_instance_valid(pl) and str(pl.get("display_name")) == killer_name:
+		Stats.record_hit()
 
 
 func _draw() -> void:

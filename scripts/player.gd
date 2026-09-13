@@ -740,7 +740,10 @@ func _shoot() -> void:
 	var w := _active_weapon()
 	_dec_active_mag()
 	fire_cd = float(w["rate"])
-	ceasefire_t = 0.0  # firing forfeits spawn protection
+	ceasefire_t = 0.0
+	# Local stats: only count the human player's trigger pulls (bots have their own tally in-file, off-Stats).
+	if multiplayer.multiplayer_peer == null or is_multiplayer_authority():
+		Stats.record_shot()  # firing forfeits spawn protection
 	var kind_s := str(w.get("kind", "bullet"))
 	var recoil := 240.0 if (kind_s == "rocket" or kind_s == "launcher") else 35.0
 	velocity -= aim_dir * recoil
