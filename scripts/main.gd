@@ -18,6 +18,12 @@ var hud: CanvasLayer = null
 var _map: Dictionary = {}
 var _players_by_id: Dictionary = {}  # peer_id -> player node (host only, but also mirrored on clients)
 var _ready_peers: Dictionary = {}    # peer_id -> true (host only, gate for outbound state RPCs)
+# Bot registry (host authority) — bot_id → bot node. Mirrored on clients via the
+# net_spawn_bot/net_despawn_bot RPCs so per-bot state can address each replica.
+var _bots_by_id: Dictionary = {}
+var _next_bot_id: int = 1
+var _bot_sync_cd: float = 0.0
+const BOT_SYNC_HZ := 20.0            # host → clients broadcast rate for bot pos/vel/facing/etc.
 
 # Team modes: fixed team ids (player joins BLUE, enemy bots on RED).
 const TEAM_BLUE := 1
@@ -611,6 +617,10 @@ func _spawn_bots() -> void:
 func _spawn_bot(pos: Vector2, team: int, bname: String, loadout: String = "AK-74") -> void:
 	if not is_inside_tree():
 		return
+	# Clients never spawn bots directly — the host owns bot lifecycle and pushes
+	# spawn/despawn via net_spawn_bot / net_despawn_bot RPCs (issue #55).
+	if Net.is_networked() and not Net.is_host():
+		return
 	var b := bot_scene.instantiate()
 	b.position = _safe_spawn_near(pos, team)
 	b.team = team
@@ -621,9 +631,20 @@ func _spawn_bot(pos: Vector2, team: int, bname: String, loadout: String = "AK-74
 		b.color = Color(0.35, 0.55, 1.0)
 	elif team == TEAM_RED:
 		b.color = Color(0.85, 0.3, 0.25)
+	# Assign a stable id + set host as authority so the bot's own is_multiplayer_authority()
+	# check gates AI to peer 1. Clients skip _physics_process AI (see bot.gd).
+	var assigned_id: int = 0
+	if Net.is_networked() and Net.is_host():
+		assigned_id = _next_bot_id
+		_next_bot_id += 1
+		b.bot_id = assigned_id
+		b.name = "Bot_%d" % assigned_id
+		b.set_multiplayer_authority(1)
 	# Bots respawn on the same slot so the match can accumulate score.
 	# Survival gates this — the next spawn only happens on _reset_round.
 	b.died.connect(func() -> void:
+		if assigned_id > 0:
+			_bots_by_id.erase(assigned_id)
 		if Settings.survival and round_active:
 			return
 		var delay: float = _respawn_delay_for_team(team)
@@ -634,6 +655,15 @@ func _spawn_bot(pos: Vector2, team: int, bname: String, loadout: String = "AK-74
 				return
 			_spawn_bot(pos, team, bname, loadout)))
 	add_child(b)
+	# Reassert authority after add_child so children added in _ready inherit it.
+	if Net.is_networked() and Net.is_host():
+		b.set_multiplayer_authority(1, true)
+		_bots_by_id[assigned_id] = b
+		# Notify already-acked peers of the new bot so they spawn a replica.
+		# _ready_peers may be empty on the first bot batch (dedicated boot) — that's
+		# fine, joiners get all live bots mirrored in net_client_ready below.
+		for pid in _ready_peers.keys():
+			rpc_id(int(pid), "net_spawn_bot", assigned_id, b.position, team, bname, loadout, b.cosmetics)
 
 
 # ── Shared ────────────────────────────────────────────
@@ -831,6 +861,13 @@ func net_client_ready() -> void:
 		if not is_instance_valid(p):
 			continue
 		rpc_id(sender, "net_spawn_player", existing_id, p.position, p.display_name, int(p.team))
+	# Mirror every live bot to the joining peer so they see the current roster
+	# (dedicated server pre-populates before any client connects — issue #55).
+	for bid in _bots_by_id.keys():
+		var b: Node = _bots_by_id[bid]
+		if not is_instance_valid(b):
+			continue
+		rpc_id(sender, "net_spawn_bot", int(bid), b.position, int(b.team), str(b.display_name), str(b.loadout), b.cosmetics)
 	# then spawn a body for the new peer on everyone
 	_spawn_networked_player(sender)
 	# NOTE: _ready_peers[sender] is set only when the client acks the spawn (net_spawn_ack).
@@ -949,6 +986,13 @@ func _process(delta: float) -> void:
 		if _pickup_sync_cd <= 0.0:
 			_pickup_sync_cd = 1.0 / PICKUP_SYNC_HZ
 			_broadcast_pickup_state()
+		# Bot state (pos/vel/facing/health/loadout/dead) streams at 20 Hz — matches
+		# the player net_state cadence so bot bodies read smoothly on clients (#55).
+		if not _bots_by_id.is_empty():
+			_bot_sync_cd -= delta
+			if _bot_sync_cd <= 0.0:
+				_bot_sync_cd = 1.0 / BOT_SYNC_HZ
+				_broadcast_bot_state()
 
 
 func _tick_ctf() -> void:
@@ -1595,3 +1639,102 @@ func net_flag_state(arr: Array) -> void:
 				f.set_meta("carrier", null)
 		else:
 			f.set_meta("carrier", null)
+
+
+# ── Bot replication (issue #55) ───────────────────────
+# Host-only AI, host broadcasts per-bot state at BOT_SYNC_HZ so clients can render
+# a matching replica. Spawn/despawn are reliable RPCs; state is unreliable_ordered
+# to mirror the player net_state cadence.
+
+func _broadcast_bot_state() -> void:
+	if _ready_peers.is_empty():
+		return
+	var arr: Array = []
+	for bid in _bots_by_id.keys():
+		var b: Node = _bots_by_id[bid]
+		if not is_instance_valid(b):
+			continue
+		arr.append({
+			"id": int(bid),
+			"pos": b.position,
+			"vel": b.velocity,
+			"facing": float(b.facing),
+			"jet": bool(b.jet_on),
+			"health": float(b.health),
+			"dead": bool(b.dead),
+			"loadout": str(b.loadout),
+			"ammo": int(b.ammo),
+			"reloading": bool(b.reloading),
+			"muzzle_t": float(b.muzzle_t),
+			"ceasefire": float(b.ceasefire_t),
+		})
+	if arr.is_empty():
+		return
+	for pid in _ready_peers.keys():
+		rpc_id(int(pid), "net_bot_state", arr)
+
+
+@rpc("authority", "reliable")
+func net_spawn_bot(bot_id: int, spawn_pos: Vector2, team: int, display_name: String, loadout: String, cosmetics: Dictionary) -> void:
+	# Free any stale replica with the same id (bot respawn re-uses ids? no — we mint
+	# a fresh id per spawn — but a peer that missed the despawn should still recover).
+	if _bots_by_id.has(bot_id):
+		var old = _bots_by_id[bot_id]
+		if is_instance_valid(old):
+			old.queue_free()
+		_bots_by_id.erase(bot_id)
+	var b := bot_scene.instantiate()
+	b.name = "Bot_%d" % bot_id
+	b.position = spawn_pos
+	b.team = team
+	b.display_name = display_name
+	b.loadout = loadout
+	b.bot_id = bot_id
+	# Copy cosmetics so the client bot reads the same outfit as the host's — bot.gd's
+	# _ready only randomises when cosmetics is empty (see bot.gd:89).
+	if cosmetics != null and not cosmetics.is_empty():
+		b.cosmetics = cosmetics.duplicate(true)
+	if team == TEAM_BLUE:
+		b.color = Color(0.35, 0.55, 1.0)
+	elif team == TEAM_RED:
+		b.color = Color(0.85, 0.3, 0.25)
+	# Host (peer 1) owns the bot's AI + damage authority. Non-authority replicas
+	# skip _physics_process and are driven by net_bot_state (see bot.gd guards).
+	b.set_multiplayer_authority(1)
+	add_child(b)
+	b.set_multiplayer_authority(1, true)
+	_bots_by_id[bot_id] = b
+
+
+@rpc("authority", "reliable")
+func net_bot_die(bot_id: int) -> void:
+	if not _bots_by_id.has(bot_id):
+		return
+	var b = _bots_by_id[bot_id]
+	_bots_by_id.erase(bot_id)
+	if is_instance_valid(b) and b.has_method("die_replica"):
+		b.die_replica()
+	elif is_instance_valid(b):
+		b.queue_free()
+
+
+@rpc("authority", "call_remote", "unreliable_ordered")
+func net_bot_state(arr: Array) -> void:
+	for entry in arr:
+		var id: int = int(entry.get("id", 0))
+		if not _bots_by_id.has(id):
+			continue
+		var b: Node = _bots_by_id[id]
+		if not is_instance_valid(b):
+			continue
+		b.position = entry.get("pos", b.position)
+		b.velocity = entry.get("vel", Vector2.ZERO)
+		b.facing = float(entry.get("facing", b.facing))
+		b.jet_on = bool(entry.get("jet", false))
+		b.health = float(entry.get("health", b.health))
+		b.dead = bool(entry.get("dead", false))
+		b.loadout = str(entry.get("loadout", b.loadout))
+		b.ammo = int(entry.get("ammo", b.ammo))
+		b.reloading = bool(entry.get("reloading", false))
+		b.muzzle_t = float(entry.get("muzzle_t", 0.0))
+		b.ceasefire_t = float(entry.get("ceasefire", 0.0))

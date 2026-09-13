@@ -8,6 +8,9 @@ signal died
 var team := 99
 var display_name := "Bot"
 var loadout := "AK-74"  # or "LAW" — set by Main._spawn_bot before add_child
+# Stable id assigned by the host in MP so per-bot state RPCs can address this body.
+# 0 in SP / on non-networked spawns — no broadcast needed there.
+var bot_id: int = 0
 # Random cosmetic outfit — set in _ready so bots read as distinct characters.
 var cosmetics: Dictionary = {}
 
@@ -119,6 +122,17 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	if dead:
+		return
+
+	# Non-authority replica: AI + physics run only on the host (bot authority = peer 1).
+	# Clients receive pos/vel/facing/health/etc. via main.gd::net_bot_state and just
+	# tick the visual bookkeeping so muzzle flashes decay and jet particles animate.
+	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
+		muzzle_t = maxf(0.0, muzzle_t - delta * 10.0)
+		if jet_particles != null:
+			jet_particles.emitting = jet_on and not Settings.lofi
+			jet_particles.position = Vector2(-facing * 3.3, 1.7)
+		queue_redraw()
 		return
 
 	bink_t = maxf(0.0, bink_t - delta * 100.0)
@@ -414,7 +428,29 @@ func _die() -> void:
 	dead = true
 	Sfx.gib()
 	_emit_kill()
+	# MP host: tell every client to play the death visual + free their replica so
+	# the body vanishes in lockstep with the host (issue #55).
+	if Net.is_networked() and Net.is_host() and bot_id > 0:
+		var m := get_parent()
+		if m != null:
+			m.rpc("net_bot_die", bot_id)
 	# defer FX spawn out of the physics flush (bullet body_entered → take_damage path)
+	if not Settings.lofi:
+		_spawn_gibs.call_deferred()
+		_spawn_ragdoll.call_deferred()
+	died.emit()
+	queue_free()
+
+
+# Called on non-authority peers from main.gd::net_bot_die — plays the visual death
+# (sfx + gibs) and frees the replica. Skips _emit_kill because the host already
+# fired the kill-feed via net_kill_feed.
+func die_replica() -> void:
+	if dead:
+		queue_free()
+		return
+	dead = true
+	Sfx.gib()
 	if not Settings.lofi:
 		_spawn_gibs.call_deferred()
 		_spawn_ragdoll.call_deferred()
@@ -486,6 +522,11 @@ func _draw() -> void:
 		aim = (target.global_position - global_position).normalized()
 	var weapon_col := Color(0.85, 0.55, 0.35) if loadout == "LAW" else Color(0.72, 0.72, 0.78)
 	var weapon_kind := "rocket" if loadout == "LAW" else "bullet"
+	# Non-authority replicas never run move_and_slide, so is_on_floor() is stale.
+	# Approximate from vertical velocity — matches the guard in player.gd::_draw.
+	var on_floor := is_on_floor()
+	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
+		on_floor = absf(velocity.y) < 5.0
 	SoldierArt.draw_soldier(
 		self,
 		color,
@@ -501,7 +542,7 @@ func _draw() -> void:
 		fuel,
 		false,
 		loadout,
-		is_on_floor(),
+		on_floor,
 		reloading,
 		false,
 		false,

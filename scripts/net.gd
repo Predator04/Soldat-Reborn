@@ -164,11 +164,19 @@ func _smoke_join() -> void:
 	map_received.connect(func() -> void:
 		get_tree().change_scene_to_file("res://scenes/main.tscn"))
 	join_game("127.0.0.1", DEFAULT_PORT)
-	get_tree().create_timer(4.0).timeout.connect(func() -> void:
+	# Larger window so the client has time to complete: connect → map_received →
+	# main.tscn._ready → net_client_ready → host mirrors bots via net_spawn_bot.
+	get_tree().create_timer(6.0).timeout.connect(func() -> void:
 		var main := get_tree().current_scene
 		var pbi = main.get("_players_by_id") if main != null else null
 		var pcount: int = pbi.size() if pbi != null else 0
-		print("SMOKE-JOIN id=%d mode=%d players=%d" % [local_id(), mode, pcount])
+		# --smoke-bots debug (#55): count client-side bot replicas so a smoke run can
+		# confirm the host's bot roster reached us over ENet.
+		var bots_visible: int = 0
+		for s in get_tree().get_nodes_in_group("soldier"):
+			if is_instance_valid(s) and s.get_script() != null and String(s.get_script().resource_path).ends_with("bot.gd"):
+				bots_visible += 1
+		print("SMOKE-JOIN id=%d mode=%d players=%d bots_visible=%d" % [local_id(), mode, pcount, bots_visible])
 		leave()
 		get_tree().quit())
 
