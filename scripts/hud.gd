@@ -44,6 +44,9 @@ var vote_panel: PanelContainer
 var lbl_vote_title: Label
 var lbl_vote_tally: Label
 var lbl_vote_timer: Label
+# (#78) Active bonus indicator — bottom-center label showing kind + countdown.
+var lbl_bonus: Label
+const BonusPickup = preload("res://scripts/bonus_pickup.gd")
 static var _taunts: Dictionary = {}
 const CHAT_FEED_MAX := 7
 const CHAT_TTL := 10.0
@@ -322,6 +325,19 @@ func _ready() -> void:
 	lbl_vote_timer.add_theme_color_override("font_color", Color(0.7, 0.78, 0.9))
 	vote_col.add_child(lbl_vote_timer)
 
+	# Bonus effect indicator (#78) — bottom-center over the ammo/weapon strip,
+	# but shifted up enough that it doesn't overlap the standard HUD readouts.
+	lbl_bonus = Label.new()
+	lbl_bonus.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl_bonus.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	lbl_bonus.offset_top = -60
+	lbl_bonus.offset_bottom = -30
+	lbl_bonus.add_theme_font_size_override("font_size", 22)
+	lbl_bonus.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	lbl_bonus.add_theme_constant_override("outline_size", 6)
+	lbl_bonus.visible = false
+	add_child(lbl_bonus)
+
 
 func show_streak_banner(killer_name: String, title: String, killer_team: int, count: int) -> void:
 	# Overwrites any in-progress banner — a rapid escalation from Double → Multi
@@ -502,6 +518,22 @@ func _update_vote_ui() -> void:
 	vote_panel.visible = true
 
 
+func _update_bonus_ui() -> void:
+	if lbl_bonus == null:
+		return
+	if not is_instance_valid(player) or player.get("bonus_kind") == null:
+		lbl_bonus.visible = false
+		return
+	var kind: String = str(player.get("bonus_kind"))
+	if kind == "":
+		lbl_bonus.visible = false
+		return
+	var t: float = float(player.get("bonus_t"))
+	lbl_bonus.text = "%s  %ds" % [BonusPickup.kind_label(kind), int(ceil(t))]
+	lbl_bonus.add_theme_color_override("font_color", BonusPickup.kind_color(kind))
+	lbl_bonus.visible = true
+
+
 func post_chat(author: String, msg: String, is_team: bool) -> void:
 	if not is_instance_valid(chat_feed):
 		return
@@ -671,6 +703,7 @@ func _process(delta: float) -> void:
 		if Settings.show_fps:
 			lbl_fps.text = "%d FPS" % int(round(Engine.get_frames_per_second()))
 	_update_vote_ui()
+	_update_bonus_ui()
 	if _dead:
 		if _death_remaining < 0.0:
 			# Survival: no respawn until the round resets. The desaturated overlay

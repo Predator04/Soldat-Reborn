@@ -11,6 +11,7 @@ const PoaLoader = preload("res://scripts/poa_loader.gd")
 const WeaponPickup = preload("res://scripts/weapon_pickup.gd")
 const MapIO = preload("res://scripts/map_io.gd")
 const Spectator = preload("res://scripts/spectator.gd")
+const BonusPickup = preload("res://scripts/bonus_pickup.gd")
 
 signal kill(killer_name: String, victim_name: String, weapon_name: String, killer_team: int, victim_team: int)
 
@@ -103,6 +104,19 @@ var vote_time_left := 0.0
 var vote_starter := ""           # display_name of who called it
 var _vote_voters: Dictionary = {}  # host-only: peer_id → true (already voted)
 var _vote_cooldown := 0.0          # host-only: gate between votes
+
+# ── Bonus pickups (#78) ───────────────────────────────
+# Host-authoritative: host places boxes, detects collection, applies effect
+# to the toucher and schedules the box slot's respawn. Clients mirror boxes
+# via net_bonus_spawn / net_bonus_despawn.
+const BONUS_RESPAWN := 20.0
+const BONUS_EFFECT_DURATION := 30.0
+const BONUS_MAX_SLOTS := 3
+var _bonus_boxes: Dictionary = {}    # bonus_id → node (host + client)
+var _bonus_slots: Array = []         # host: list of Vector2 spawn positions
+var _bonus_slot_cd: Array = []       # host: seconds until each slot respawns
+var _bonus_slot_active: Array = []   # host: bonus_id currently occupying each slot (0 = empty)
+var _next_bonus_id: int = 1          # host: monotonic id minter
 # Weapon-pickup sync — host broadcasts (id, pos, vel, ang) so client-frozen
 # pickup bodies mirror the host's physics timeline (#34).
 var _pickup_sync_cd := 0.0
@@ -324,6 +338,7 @@ func _ready() -> void:
 	_build_hud()
 	_build_pause_menu()
 	_spawn_mode_entities()
+	_spawn_bonus_boxes_init()
 	kill.connect(_on_kill_scored)
 
 	if Net.is_networked():
@@ -1150,6 +1165,12 @@ func net_client_ready() -> void:
 		if not is_instance_valid(b):
 			continue
 		rpc_id(sender, "net_spawn_bot", int(bid), b.position, int(b.team), str(b.display_name), str(b.loadout), b.cosmetics)
+	# Mirror every live bonus box (#78) so the joiner sees the same crates.
+	for bid in _bonus_boxes.keys():
+		var box: Node = _bonus_boxes[bid]
+		if not is_instance_valid(box):
+			continue
+		rpc_id(sender, "net_bonus_spawn", int(bid), box.position, str(box.get("bonus_kind")))
 	# then spawn a body for the new peer on everyone
 	_spawn_networked_player(sender)
 	# NOTE: _ready_peers[sender] is set only when the client acks the spawn (net_spawn_ack).
@@ -1273,6 +1294,8 @@ func _process(delta: float) -> void:
 	# Client: state is driven entirely by host's net_match_state RPCs.
 	if Net.is_networked() and not Net.is_host():
 		return
+	# Bonus box respawn timer (#78) — host / SP owns spawn cadence.
+	_tick_bonus_boxes(delta)
 	if Settings.game_mode == Settings.MODE_CTF and flags.size() == 2:
 		_tick_ctf()
 	elif Settings.game_mode == Settings.MODE_INF and flags.size() == 1:
@@ -2168,6 +2191,146 @@ func net_vote_end(kind: String, target_label: String, passed: bool, yes_ct: int,
 	vote_yes = 0
 	vote_no = 0
 	vote_time_left = 0.0
+
+
+# ── Bonus pickups (#78) ───────────────────────────────
+# Host owns spawn slots + collection detection. Boxes are Area2D nodes; the
+# BonusPickup script emits `touched` on host only. Application of the effect
+# is routed via each player's net_bonus_apply RPC (call_local) so every peer
+# applies the same effect to the target replica.
+
+func _spawn_bonus_boxes_init() -> void:
+	# Client: waits for host to broadcast net_bonus_spawn. No local slots needed.
+	if Net.is_networked() and not Net.is_host():
+		return
+	var spots: Array = (_map.get("bot_spawns", []) as Array).duplicate()
+	if spots.is_empty():
+		return
+	spots.shuffle()
+	var count: int = mini(BONUS_MAX_SLOTS, spots.size())
+	for i in count:
+		# Lift each slot a bit above the ground so the crate reads floating and
+		# isn't clipped by the terrain body.
+		_bonus_slots.append((spots[i] as Vector2) + Vector2(0, -22.0))
+		_bonus_slot_cd.append(0.0)
+		_bonus_slot_active.append(0)
+	for i in count:
+		_spawn_bonus_at_slot(i)
+
+
+func _spawn_bonus_at_slot(slot_idx: int) -> void:
+	if slot_idx < 0 or slot_idx >= _bonus_slots.size():
+		return
+	if int(_bonus_slot_active[slot_idx]) != 0:
+		return  # slot already occupied
+	var pos: Vector2 = _bonus_slots[slot_idx]
+	var kind: String = BonusPickup.KINDS[randi() % BonusPickup.KINDS.size()]
+	var bid: int = _next_bonus_id
+	_next_bonus_id += 1
+	_bonus_slot_active[slot_idx] = bid
+	_make_bonus_box_local(bid, pos, kind, slot_idx)
+	# Mirror to every acked client.
+	if Net.is_networked() and Net.is_host():
+		for pid in _ready_peers.keys():
+			rpc_id(int(pid), "net_bonus_spawn", bid, pos, kind)
+
+
+func _make_bonus_box_local(bid: int, pos: Vector2, kind: String, slot_idx: int) -> void:
+	# Idempotent: if a box with this id already exists (e.g., late client spawn
+	# arrived after we joined), free it before mounting the replacement.
+	if _bonus_boxes.has(bid):
+		var old: Node = _bonus_boxes[bid]
+		if is_instance_valid(old):
+			old.queue_free()
+	var box: Area2D = BonusPickup.new()
+	box.bonus_id = bid
+	box.bonus_kind = kind
+	box.position = pos
+	box.name = "Bonus_%d" % bid
+	# Host: bind the collision-triggered signal to our collect handler. Client
+	# replicas don't need this — the box is inert until the host says so.
+	if not Net.is_networked() or Net.is_host():
+		box.touched.connect(_on_bonus_touched.bind(bid, slot_idx))
+	_bonus_boxes[bid] = box
+	add_child(box)
+
+
+func _on_bonus_touched(body: Node, bid: int, slot_idx: int) -> void:
+	# Host-only collection. In SP the local player is the sole eligible toucher;
+	# in MP we resolve peer_id via _players_by_id. Bots are ignored — the bonus
+	# system is a player perk.
+	if Net.is_networked() and not Net.is_host():
+		return
+	var box: Node = _bonus_boxes.get(bid, null)
+	if not is_instance_valid(box):
+		return
+	var kind: String = str(box.get("bonus_kind"))
+	var peer_id: int = 0
+	if not Net.is_networked():
+		if body != player:
+			return  # bots + non-player bodies don't collect
+		peer_id = 1
+	else:
+		for pid in _players_by_id.keys():
+			if _players_by_id[pid] == body:
+				peer_id = int(pid)
+				break
+		if peer_id == 0:
+			return  # not a player peer (bot) — ignore
+	# Apply the effect via the target player's call_local RPC so every peer's
+	# replica of that soldier ticks the same effect state.
+	if _players_by_id.has(peer_id):
+		var p: Node = _players_by_id[peer_id]
+		if is_instance_valid(p) and p.has_method("apply_bonus"):
+			p.apply_bonus(kind, BONUS_EFFECT_DURATION)
+	elif not Net.is_networked() and is_instance_valid(player):
+		player.apply_bonus(kind, BONUS_EFFECT_DURATION)
+	# Despawn on every peer.
+	if Net.is_networked() and Net.is_host():
+		rpc("net_bonus_despawn", bid)
+	_despawn_bonus_local(bid)
+	# Free the slot and start the respawn countdown so a new random-kind box
+	# will land there in BONUS_RESPAWN seconds.
+	if slot_idx >= 0 and slot_idx < _bonus_slot_cd.size():
+		_bonus_slot_active[slot_idx] = 0
+		_bonus_slot_cd[slot_idx] = BONUS_RESPAWN
+	# Sfx cue for the local player — reuse the existing UI blip so we don't
+	# need a new sample.
+	Sfx.ui()
+
+
+func _despawn_bonus_local(bid: int) -> void:
+	var box: Node = _bonus_boxes.get(bid, null)
+	if is_instance_valid(box):
+		box.queue_free()
+	_bonus_boxes.erase(bid)
+
+
+func _tick_bonus_boxes(delta: float) -> void:
+	if _bonus_slots.is_empty():
+		return
+	for i in _bonus_slot_cd.size():
+		if int(_bonus_slot_active[i]) != 0:
+			continue
+		var cd: float = float(_bonus_slot_cd[i]) - delta
+		_bonus_slot_cd[i] = cd
+		if cd <= 0.0:
+			_spawn_bonus_at_slot(i)
+
+
+@rpc("authority", "reliable")
+func net_bonus_spawn(bid: int, pos: Vector2, kind: String) -> void:
+	# Host already has this locally; this RPC targets clients only.
+	if Net.is_host():
+		return
+	_make_bonus_box_local(bid, pos, kind, -1)
+
+
+@rpc("authority", "reliable")
+func net_bonus_despawn(bid: int) -> void:
+	if Net.is_host():
+		return
+	_despawn_bonus_local(bid)
 
 
 func _broadcast_flag_state() -> void:

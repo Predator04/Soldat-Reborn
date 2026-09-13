@@ -111,6 +111,19 @@ const ADV_SECONDARY_UNLOCK := [2, 0, 26, 16]
 # WASD keys don't leak into movement while the player is typing.
 var input_locked := false
 
+# Bonus pickup (#78). Applied/cleared via net_bonus_apply / net_bonus_clear
+# (call_local, so every peer applies its own copy). Duration ticks locally on
+# each replica so the visual (predator alpha, red tint) decays in step. The
+# "breaks on fire" clear for predator broadcasts an explicit clear RPC.
+var bonus_kind: String = ""       # "" | "predator" | "berserker" | "vest" | "cluster"
+var bonus_t: float = 0.0
+# Saved state so clear_bonus can restore the pre-effect loadout. Berserker
+# forces the knife slot; cluster forces use_cluster on; both need to snap back.
+var _bonus_saved_use_cluster: bool = false
+var _bonus_saved_using_secondary: bool = false
+var _bonus_saved_secondary_index: int = 0
+var _bonus_saved_color: Color = Color(1, 1, 1)
+
 # ── Feel ───────────────────────────────────────────────
 var coyote_t := 0.0
 var jump_buffer_t := 0.0
@@ -229,6 +242,17 @@ func _physics_process(delta: float) -> void:
 			gesture_t = maxf(0.0, gesture_t - delta)
 			if gesture_t <= 0.0:
 				gesture_anim = ""
+		# Bonus tick on the replica so predator alpha / berserker red decay in
+		# step with the authority peer (both received the same duration via
+		# call_local). Explicit predator break-on-fire is still broadcast.
+		if bonus_kind != "":
+			bonus_t = maxf(0.0, bonus_t - delta)
+			if bonus_t <= 0.0:
+				_clear_bonus_local()
+		# Predator: other peers see the ghost, self stays visible. This branch
+		# only runs on peers where this body is not the local player, so we
+		# always dim when active. (#78)
+		modulate.a = 0.35 if bonus_kind == "predator" else 1.0
 		jet_particles.emitting = jet_on and not dead
 		jet_particles.position = Vector2(-facing * 3.3, 1.7)
 		queue_redraw()
@@ -323,6 +347,12 @@ func _physics_process(delta: float) -> void:
 
 	# horizontal
 	var speed_mul: float = MatchConfig.mod_speed()
+	# Predator bonus (#78) — +35% speed while active. Berserker also gets a
+	# small nudge so the melee rush feels dangerous. Cluster/Vest are neutral.
+	if bonus_kind == "predator":
+		speed_mul *= 1.35
+	elif bonus_kind == "berserker":
+		speed_mul *= 1.15
 	var accel := (GROUND_ACCEL if on_floor else AIR_ACCEL) * speed_mul
 	var cap := (RUN_SPEED if on_floor else BUNNY_SPEED) * speed_mul
 	# Preserve bunny-hop momentum: if a buffered jump will fire this tick,
@@ -424,9 +454,11 @@ func _physics_process(delta: float) -> void:
 	if Input.is_action_pressed("reload") and not reloading:
 		_start_reload()
 
-	# Grenade type toggle (G — rising edge only, matches Q swap pattern)
+	# Grenade type toggle (G — rising edge only, matches Q swap pattern).
+	# Cluster bonus (#78) locks use_cluster on for the whole duration so a stray
+	# G tap can't flip us back to plain frag mid-effect.
 	var g_now := Input.is_action_pressed("grenade_toggle")
-	if g_now and not g_prev:
+	if g_now and not g_prev and bonus_kind != "cluster":
 		use_cluster = not use_cluster
 	g_prev = g_now
 
@@ -500,6 +532,14 @@ func _physics_process(delta: float) -> void:
 	melee_swing_t = maxf(0.0, melee_swing_t - delta)
 	# Bink recovery: at 100 units/sec, a 65-Bink Barrett hit (0.65s) clears in ~2/3 second.
 	bink_t = maxf(0.0, bink_t - delta * 100.0)
+	# Bonus tick (#78). Every peer decrements its own copy; the clear callback
+	# restores saved loadout state (see _clear_bonus_local). Self stays fully
+	# visible under predator — modulate only dims for other viewers.
+	if bonus_kind != "":
+		bonus_t = maxf(0.0, bonus_t - delta)
+		if bonus_t <= 0.0:
+			_clear_bonus_local()
+	modulate.a = 1.0
 	if gesture_t > 0.0:
 		gesture_t = maxf(0.0, gesture_t - delta)
 		if gesture_t <= 0.0:
@@ -685,6 +725,10 @@ func advance_receive_kill() -> PackedStringArray:
 
 
 func _switch_weapon(idx: int) -> void:
+	# Berserker bonus (#78) locks the soldier into the knife slot for the
+	# effect duration — swapping to a primary would defeat "no primary use".
+	if bonus_kind == "berserker":
+		return
 	# Advance: block hotkeys pointing to still-locked primaries.
 	if Settings.advance and not _is_primary_unlocked(idx):
 		return
@@ -710,6 +754,10 @@ func _switch_weapon(idx: int) -> void:
 
 
 func _toggle_secondary() -> void:
+	# Berserker locks us on the knife slot (#78) — Q would take us back to
+	# a primary, undoing the effect.
+	if bonus_kind == "berserker":
+		return
 	# Advance: don't swap into a slot whose weapon isn't unlocked yet.
 	if Settings.advance:
 		if using_secondary and not _is_primary_unlocked(weapon_index):
@@ -790,6 +838,8 @@ func _shoot() -> void:
 	_dec_active_mag()
 	fire_cd = float(w["rate"])
 	ceasefire_t = 0.0
+	# Predator bonus (#78) breaks the instant we open fire.
+	_break_predator_if_active()
 	# Local stats: only count the human player's trigger pulls (bots have their own tally in-file, off-Stats).
 	if multiplayer.multiplayer_peer == null or is_multiplayer_authority():
 		Stats.record_shot()  # firing forfeits spawn protection
@@ -822,6 +872,8 @@ func _perform_melee() -> void:
 	var w := _active_weapon()
 	fire_cd = float(w["rate"])
 	ceasefire_t = 0.0
+	# Predator breaks on melee swing too — any offensive action reveals us.
+	_break_predator_if_active()
 	var kind_m := str(w.get("kind", "melee"))
 	# Broadcast so all peers see the swing feedback (muzzle flash + sfx). Damage
 	# is applied inside net_shoot with the standard authority guard.
@@ -912,6 +964,7 @@ func _throw_grenade() -> void:
 	grenades -= 1
 	Sfx.grenade_throw()
 	ceasefire_t = 0.0
+	_break_predator_if_active()
 	var toss := (aim_dir + Vector2(0, -0.55)).normalized()
 	var target_pos := global_position + aim_dir * 22.0
 	# Short raycast so point-blank wall throws don't spawn the RigidBody2D inside geometry.
@@ -951,6 +1004,10 @@ func take_damage(amount: float, killer := "", weapon := "", killer_team := -1) -
 	# Ceasefire (spawn protection) — soaks incoming damage until it expires or we shoot.
 	if ceasefire_t > 0.0 and killer != display_name:
 		return
+	# Bulletproof Vest bonus (#78) — halves incoming damage. Self-damage
+	# (harakiri / suicide gestures) still applies at full so /kill still works.
+	if bonus_kind == "vest" and killer != display_name:
+		amount *= 0.5
 	health -= amount
 	# Bink kick: apply extra spread proportional to the weapon's Bink stat while active.
 	# bink_t caps at 100 so successive hits don't stack past the max penalty.
@@ -1096,6 +1153,9 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_
 		var swing: Vector2 = dirs[0] if dirs.size() > 0 else aim_dir
 		var reach: float = float(w.get("range", 32.0))
 		var dmg: float = float(w["damage"]) * MatchConfig.mod_damage()
+		# Berserker bonus (#78) — one-hit-kill melee. 999 blows through vest halving.
+		if bonus_kind == "berserker":
+			dmg = 999.0
 		# Scan soldiers in a short forward arc — apply damage on the authority peer
 		# only (matches how bullet/rocket damage is gated in bullet.gd/rocket.gd).
 		for s in get_tree().get_nodes_in_group("soldier"):
@@ -1306,3 +1366,90 @@ func _draw() -> void:
 		grenades,
 		use_cluster,
 	)
+
+
+# ── Bonus pickups (#78) ───────────────────────────────
+# Main routes bonus grants through a call_local RPC named net_bonus_apply on
+# the target player, so every peer applies the effect (visuals + gameplay)
+# consistently. `apply_bonus` is the public entry from Main after it validates
+# host authority — the RPC itself only accepts calls originating on the host.
+
+@rpc("any_peer", "call_local", "reliable")
+func net_bonus_apply(kind: String, duration: float) -> void:
+	# Guard: in MP, only accept from the host (peer 1). local (sender_id 0)
+	# means we ran this via call_local on the caller, which is also host.
+	if multiplayer.multiplayer_peer != null:
+		var sender := multiplayer.get_remote_sender_id()
+		if sender != 0 and sender != 1:
+			return
+	_apply_bonus_local(kind, duration)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func net_bonus_clear() -> void:
+	if multiplayer.multiplayer_peer != null:
+		var sender := multiplayer.get_remote_sender_id()
+		if sender != 0 and sender != 1:
+			return
+	_clear_bonus_local()
+
+
+func apply_bonus(kind: String, duration: float) -> void:
+	# Fire the RPC (call_local) so every peer applies. In SP this just calls
+	# the local method — no multiplayer peer to route through.
+	if Net.is_networked():
+		rpc("net_bonus_apply", kind, duration)
+	else:
+		_apply_bonus_local(kind, duration)
+
+
+func _apply_bonus_local(kind: String, duration: float) -> void:
+	# Snap out of any prior bonus so saved state doesn't stack.
+	if bonus_kind != "":
+		_clear_bonus_local()
+	bonus_kind = kind
+	bonus_t = duration
+	match kind:
+		"berserker":
+			_bonus_saved_using_secondary = using_secondary
+			_bonus_saved_secondary_index = secondary_index
+			_bonus_saved_color = color
+			using_secondary = true
+			secondary_index = 1  # Knife slot
+			reloading = false
+			reload_t = 0.0
+			color = Color(1.0, 0.35, 0.25)
+		"cluster":
+			_bonus_saved_use_cluster = use_cluster
+			use_cluster = true
+		"predator":
+			# Alpha modulate is applied in _physics_process on non-authority replicas.
+			pass
+		"vest":
+			# Damage reduction is applied in take_damage.
+			pass
+
+
+func _clear_bonus_local() -> void:
+	var prev := bonus_kind
+	bonus_kind = ""
+	bonus_t = 0.0
+	match prev:
+		"berserker":
+			using_secondary = _bonus_saved_using_secondary
+			secondary_index = _bonus_saved_secondary_index
+			color = _bonus_saved_color
+		"cluster":
+			use_cluster = _bonus_saved_use_cluster
+	# Predator: restore full alpha in case we were dimmed on a viewer.
+	modulate.a = 1.0
+
+
+func _break_predator_if_active() -> void:
+	# Called from fire/melee/grenade paths on the shooter. Only the authority
+	# peer initiates the broadcast so we don't get 4 RPCs from 4 peers.
+	if bonus_kind != "predator":
+		return
+	if Net.is_networked() and is_multiplayer_authority():
+		rpc("net_bonus_clear")
+	_clear_bonus_local()
