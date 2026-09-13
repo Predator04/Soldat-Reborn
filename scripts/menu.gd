@@ -72,8 +72,9 @@ func _build_title() -> void:
 	sub.text = "jet boots · bunny hop · ragdoll gibs · online"
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	sub.offset_top = 145
-	sub.offset_bottom = 175
+	# Sit below the version band (140-170) so the two labels don't overlap.
+	sub.offset_top = 172
+	sub.offset_bottom = 200
 	sub.add_theme_font_size_override("font_size", 16)
 	sub.add_theme_color_override("font_color", Color(0.65, 0.7, 0.82))
 	add_child(sub)
