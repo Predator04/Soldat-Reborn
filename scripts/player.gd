@@ -424,8 +424,15 @@ func _physics_process(delta: float) -> void:
 				can_fire = false
 			if can_fire:
 				var kind_a := str(w_active.get("kind", "bullet"))
-				if kind_a == "melee" or kind_a == "melee_cont":
+				if kind_a == "melee":
 					_perform_melee()
+				elif kind_a == "melee_cont":
+					# Chainsaw taps its 200-round fuel tank per swing; when empty it
+					# reloads like a firearm rather than draining into negative ammo.
+					if _active_mag() > 0:
+						_perform_melee()
+					else:
+						_start_reload()
 				elif _active_mag() > 0:
 					_shoot()
 				else:
@@ -708,9 +715,10 @@ func _start_reload() -> void:
 	var w := _active_weapon()
 	if _active_mag() >= int(w["mag"]):
 		return
-	# Melee weapons have no meaningful reload; skip so R doesn't lock the swing cooldown.
+	# Knife swings can't be "reloaded" — skip so R doesn't lock the swing cooldown.
+	# Chainsaw (melee_cont) does refuel from its fixed tank when it hits zero.
 	var kind_r := str(w.get("kind", "bullet"))
-	if kind_r == "melee" or kind_r == "melee_cont":
+	if kind_r == "melee":
 		return
 	reloading = true
 	reload_t = float(w["reload"])
@@ -762,10 +770,10 @@ func _perform_melee() -> void:
 	# Show a brief punch pose (bije) on each swing — clears itself in _physics_process.
 	melee_swing_t = 0.25
 	# Chainsaw taps its 200-mag "fuel" per swing; Knife is effectively unlimited.
+	# When the fuel hits 0 the caller in _physics_process triggers the reload —
+	# don't kick it off here so a swing on the last tick still lands damage.
 	if kind_m == "melee_cont":
 		_dec_active_mag()
-		if _active_mag() <= 0:
-			_start_reload()
 
 
 func _find_nearby_m2() -> Node2D:
