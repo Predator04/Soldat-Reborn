@@ -58,7 +58,7 @@ const PARTS := [
 	# Aligned along the back's shoulder→hip axis so the gun rests on the back.
 	# Drawn before front leg so the torso covers the strap and only the barrel
 	# / stock sticks past the body silhouette.
-	["<secondary_back>", 11, 6, 0.15, 0.50, 0.0, "none"],
+	["<secondary_back>", 5, 10, 0.30, 0.50, 0.0, "none"],
 	# --- front leg (RIGHT_*) ----------------------------
 	["udo",    5,  4, 0.20, 0.65, 5.0, "pants"],
 	["noga",   4,  1, 0.15, 0.55, 0.0, "pants"],

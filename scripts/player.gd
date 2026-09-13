@@ -170,12 +170,15 @@ func _ready() -> void:
 		secondary_ammo.append(int(w["mag"]))
 	col_shape = CollisionShape2D.new()
 	shape_stand = RectangleShape2D.new()
-	shape_stand.size = Vector2(20, 42)
+	shape_stand.size = Vector2(14, 24)
 	shape_crouch = RectangleShape2D.new()
-	shape_crouch.size = Vector2(22, 28)
+	shape_crouch.size = Vector2(16, 16)
 	shape_prone = RectangleShape2D.new()
-	shape_prone.size = Vector2(36, 14)
+	shape_prone.size = Vector2(28, 8)
 	col_shape.shape = shape_stand
+	# Feet-anchored: box bottom sits at the body origin (sprite feet, Y≈0) so the
+	# soldier stands ON the ground instead of floating. (#72)
+	col_shape.position = Vector2(0, -shape_stand.size.y * 0.5)
 	add_child(col_shape)
 	cam = Camera2D.new()
 	cam.position_smoothing_enabled = true
@@ -761,16 +764,11 @@ func _apply_stance_shape() -> void:
 	elif crouching:
 		want = shape_crouch
 	if col_shape.shape != want:
-		# Feet-anchored swap: nudge position by (old_half_h - new_half_h) so the
-		# soldier doesn't micro-fall on crouch or pop out of the floor on stand.
-		# Only nudge while on the floor — airborne shape swaps should keep the
-		# center pinned so a mid-air prone doesn't teleport the body downward.
-		var old_h: float = (col_shape.shape as RectangleShape2D).size.y
-		var new_h: float = want.size.y
-		if is_on_floor():
-			position.y += (old_h - new_h) * 0.5
-		# set_deferred so the swap doesn't race with physics evaluating the current shape.
+		# Feet-anchored swap (#72): the box bottom stays at the body origin, so
+		# changing height only moves the top — no body nudge needed, and the
+		# soldier neither micro-falls on crouch nor pops out of the floor on stand.
 		col_shape.set_deferred("shape", want)
+		col_shape.set_deferred("position", Vector2(0, -want.size.y * 0.5))
 
 
 func _start_reload() -> void:
