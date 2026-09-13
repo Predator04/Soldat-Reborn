@@ -2,7 +2,7 @@
 
 All notable changes to Soldat Reborn.
 
-## [1.1.0] — Unreleased
+## [1.1.0] — 2026-09-12
 
 ### Changed
 - Sprites upscaled 4x, soldier rendered 2x larger with 2x pixel density
