@@ -14,6 +14,7 @@ var lbl_status: Label
 var lbl_timer: Label
 var lbl_score: RichTextLabel
 var lbl_winner: Label
+var lbl_winner_note: Label
 var feed: VBoxContainer
 
 # Death screen state
@@ -116,6 +117,19 @@ func _ready() -> void:
 	lbl_winner.add_theme_constant_override("outline_size", 12)
 	lbl_winner.visible = false
 	add_child(lbl_winner)
+
+	# Sub-line under the winner banner — explains why a draw happened (#37).
+	lbl_winner_note = Label.new()
+	lbl_winner_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl_winner_note.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl_winner_note.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	lbl_winner_note.offset_top = 60
+	lbl_winner_note.add_theme_font_size_override("font_size", 22)
+	lbl_winner_note.add_theme_color_override("font_color", Color(0.85, 0.88, 0.95))
+	lbl_winner_note.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	lbl_winner_note.add_theme_constant_override("outline_size", 6)
+	lbl_winner_note.visible = false
+	add_child(lbl_winner_note)
 
 	# Death message + respawn countdown.
 	lbl_death = Label.new()
@@ -491,6 +505,7 @@ func _update_match_ui() -> void:
 		parts.append("[color=#%s][b]%s[/b] %d[/color]" % [col_hex, info["name"], pts])
 	lbl_score.text = "[center]" + "   ·   ".join(parts) + "[/center]"
 	# Winner banner
+	var note: String = str(main.get("winner_note")) if main.get("winner_note") != null else ""
 	if not active and winner >= 0:
 		var info := _team_display_info(winner)
 		lbl_winner.text = "%s WINS" % info["name"]
@@ -502,6 +517,9 @@ func _update_match_ui() -> void:
 		lbl_winner.visible = true
 	else:
 		lbl_winner.visible = false
+	if lbl_winner_note != null:
+		lbl_winner_note.text = note
+		lbl_winner_note.visible = lbl_winner.visible and note != ""
 
 
 func _team_display_info(team_id: int) -> Dictionary:

@@ -61,6 +61,9 @@ var scores: Dictionary = {}          # team_id -> int
 var time_left := ROUND_TIME
 var round_active := true
 var winner_team := -1
+# Human-readable subtitle explaining the end (draws especially — "no scores",
+# "3-3 tie", etc.). Broadcast alongside the rest of match state.
+var winner_note := ""
 var winner_end_t := 0.0
 var _match_sync_cd := 0.0
 var _flag_sync_cd := 0.0
@@ -1163,14 +1166,32 @@ func _end_round(team: int) -> void:
 
 
 func _end_round_by_time() -> void:
+	# Fixes #37: on time-out with an empty or tied scoreboard, describe *why*
+	# the round ended as a draw instead of just showing "DRAW".
+	if scores.is_empty():
+		winner_note = "Time up — no team scored"
+		_end_round(-1)
+		return
 	var top_team := -1
 	var top_score := -1
+	var tied := false
 	for t in scores.keys():
 		var s := int(scores[t])
 		if s > top_score:
 			top_score = s
 			top_team = int(t)
-	_end_round(top_team)
+			tied = false
+		elif s == top_score:
+			tied = true
+	if tied:
+		var pieces: PackedStringArray = PackedStringArray()
+		for t in scores.keys():
+			pieces.append("%d" % int(scores[t]))
+		winner_note = "Tied at %s — time up" % " – ".join(pieces)
+		_end_round(-1)
+	else:
+		winner_note = "Time up — top score %d" % top_score
+		_end_round(top_team)
 
 
 func _reset_round() -> void:
@@ -1187,6 +1208,7 @@ func _reset_round() -> void:
 	_reset_br_zone()
 	time_left = ROUND_TIME
 	winner_team = -1
+	winner_note = ""
 	winner_end_t = 0.0
 	round_active = true
 	# Survival: nobody respawns during the round, so at reset we wipe surviving
@@ -1219,16 +1241,17 @@ func _broadcast_match_state() -> void:
 	if not Net.is_host():
 		return
 	for pid in _ready_peers.keys():
-		rpc_id(int(pid), "net_match_state", scores, time_left, round_active, winner_team, winner_end_t)
+		rpc_id(int(pid), "net_match_state", scores, time_left, round_active, winner_team, winner_end_t, winner_note)
 
 
 @rpc("authority", "reliable")
-func net_match_state(new_scores: Dictionary, tl: float, active: bool, winner: int, we: float) -> void:
+func net_match_state(new_scores: Dictionary, tl: float, active: bool, winner: int, we: float, note: String = "") -> void:
 	scores = new_scores.duplicate(true)
 	time_left = tl
 	round_active = active
 	winner_team = winner
 	winner_end_t = we
+	winner_note = note
 
 
 func _broadcast_flag_state() -> void:
