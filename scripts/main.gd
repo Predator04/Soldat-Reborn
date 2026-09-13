@@ -271,6 +271,31 @@ func _respawn_delay_for_team(t: int) -> float:
 	return 2.0
 
 
+func _safe_spawn_near(pos: Vector2, team: int) -> Vector2:
+	# Slide the spawn horizontally when an enemy soldier is standing on the intended
+	# slot — otherwise the respawning bot pops right into the player's crosshair.
+	const MIN_ENEMY_DIST := 280.0
+	const MAX_STEPS := 6
+	const STEP := 220.0
+	var candidate := pos
+	for step in MAX_STEPS:
+		var clear := true
+		for s in get_tree().get_nodes_in_group("soldier"):
+			if not is_instance_valid(s) or bool(s.get("dead")):
+				continue
+			if int(s.get("team")) == team:
+				continue
+			if candidate.distance_to(s.global_position) < MIN_ENEMY_DIST:
+				clear = false
+				break
+		if clear:
+			return candidate
+		# Alternate left/right around the original slot; clamp to the map interior.
+		var offset := STEP * float(step + 1) * (1.0 if step % 2 == 0 else -1.0)
+		candidate = Vector2(clampf(pos.x + offset, 80.0, MAP_W - 80.0), pos.y)
+	return candidate
+
+
 func _spawn_bots() -> void:
 	var spots: Array = _map["bot_spawns"]
 	var mode: int = Settings.game_mode
@@ -295,7 +320,7 @@ func _spawn_bot(pos: Vector2, team: int, bname: String, loadout: String = "AK-74
 	if not is_inside_tree():
 		return
 	var b := bot_scene.instantiate()
-	b.position = pos
+	b.position = _safe_spawn_near(pos, team)
 	b.team = team
 	b.display_name = bname
 	b.loadout = loadout
