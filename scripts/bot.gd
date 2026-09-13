@@ -319,16 +319,17 @@ func _bullet_incoming() -> bool:
 
 func _throw_grenade(dx: float, dy: float, dist: float) -> void:
 	grenades -= 1
-	Sfx.grenade_throw()
-	var g := grenade_scene.instantiate()
 	# Spawn outside the bot's 11×20 half-extent so physics depenetration doesn't kick the grenade sideways.
-	g.global_position = global_position + Vector2(signf(dx) * 20.0, -8.0)
-	g.team = team
-	g.killer_name = display_name
+	var g_pos: Vector2 = global_position + Vector2(signf(dx) * 20.0, -8.0)
 	var toss := (Vector2(dx, dy) / dist + Vector2(0, -0.6)).normalized()
-	g.linear_velocity = toss * 460.0
-	g.angular_velocity = randf_range(-8.0, 8.0)
-	get_parent().add_child(g)
+	var g_vel: Vector2 = toss * 460.0
+	var g_ang: float = randf_range(-8.0, 8.0)
+	# MP: broadcast so clients also spawn the grenade + play sfx. Physics runs
+	# locally per peer (matches player.net_grenade's model); damage is authority-gated.
+	if Net.is_networked() and multiplayer.has_multiplayer_peer():
+		rpc("net_bot_grenade", g_pos, g_vel, g_ang)
+	else:
+		net_bot_grenade(g_pos, g_vel, g_ang)
 
 
 func _start_reload() -> void:
@@ -346,7 +347,6 @@ func _shoot(to_t: Vector2) -> void:
 	ammo -= 1
 	var aim := to_t.normalized()
 	ceasefire_t = 0.0
-	Sfx.shoot(loadout)
 	# lead the target by its velocity (predictive aim) — use the actual bullet
 	# speed for this loadout so lead is calibrated to what we're about to fire.
 	var speed_est: float = ROCKET_SPEED if loadout == "LAW" else BULLET_SPEED
@@ -357,10 +357,34 @@ func _shoot(to_t: Vector2) -> void:
 	# Bink shakes the bot's aim if they were recently shot.
 	if bink_t > 0.0:
 		aim = aim.rotated(randf_range(-1.0, 1.0) * (bink_t / 100.0) * 0.18)
+	var muzzle: Vector2 = global_position + SoldierArt.muzzle_local(self, aim, facing, loadout) + aim * 4.0
+	# MP: broadcast so clients spawn the tracer/rocket + play sfx (mirrors player.net_shoot).
+	# Damage is gated per-victim in bullet.gd/rocket.gd via is_multiplayer_authority(),
+	# so a client-authority player takes damage locally when a bot's bullet hits them.
+	if Net.is_networked() and multiplayer.has_multiplayer_peer():
+		rpc("net_bot_shoot", muzzle, aim)
+	else:
+		net_bot_shoot(muzzle, aim)
+	# Rockets fire slower so LAW bots aren't oppressive.
+	fire_cd = 1.6 if loadout == "LAW" else 0.45
+
+
+# ── RPCs (issue #57) ──────────────────────────────────
+# Bot authority is the host (peer 1); the host calls these via rpc() when a bot fires
+# so all peers spawn a matching projectile + play sfx. `call_local` covers the host
+# too, keeping SP and the host-side branch of MP on the same code path.
+
+@rpc("authority", "call_local", "reliable")
+func net_bot_shoot(muzzle: Vector2, aim: Vector2) -> void:
+	Sfx.shoot(loadout)
+	muzzle_t = 0.08
+	# Debug counter so --smoke-botfire can confirm the RPC reached the client.
+	if Net.is_client():
+		Net.bot_shots_seen += 1
 	var dmg_mul: float = float(Settings.mod_damage)
 	if loadout == "LAW":
 		var r := rocket_scene.instantiate()
-		r.global_position = global_position + SoldierArt.muzzle_local(self, aim, facing, loadout) + aim * 4.0
+		r.global_position = muzzle
 		r.direction = aim
 		r.speed = ROCKET_SPEED
 		r.damage = 90.0 * dmg_mul
@@ -368,10 +392,9 @@ func _shoot(to_t: Vector2) -> void:
 		r.killer_name = display_name
 		r.weapon_name = "LAW"
 		get_parent().add_child(r)
-		fire_cd = 1.6  # slow rocket bots so they aren't oppressive
 	else:
 		var b := bullet_scene.instantiate()
-		b.global_position = global_position + SoldierArt.muzzle_local(self, aim, facing, loadout) + aim * 4.0
+		b.global_position = muzzle
 		b.direction = aim
 		b.speed = BULLET_SPEED
 		b.damage = 12.0 * dmg_mul
@@ -379,8 +402,20 @@ func _shoot(to_t: Vector2) -> void:
 		b.killer_name = display_name
 		b.weapon_name = "AK-74"
 		get_parent().add_child(b)
-		fire_cd = 0.45
-	muzzle_t = 0.08
+
+
+@rpc("authority", "call_local", "reliable")
+func net_bot_grenade(g_pos: Vector2, g_vel: Vector2, g_ang: float) -> void:
+	Sfx.grenade_throw()
+	if Net.is_client():
+		Net.bot_shots_seen += 1
+	var g := grenade_scene.instantiate()
+	g.global_position = g_pos
+	g.team = team
+	g.killer_name = display_name
+	g.linear_velocity = g_vel
+	g.angular_velocity = g_ang
+	get_parent().add_child(g)
 
 
 const BINK_BY_WEAPON := {

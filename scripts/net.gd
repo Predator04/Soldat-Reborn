@@ -34,6 +34,10 @@ var _map_synced := false      # client-side: true once host has told us the map
 # this to skip the peer-1 spawn and instead fill the match with bots so a lone
 # joining client has opponents. See #54.
 var is_dedicated := false
+# Per-session counter — bumped on the client every time it receives net_bot_shoot /
+# net_bot_grenade. Used by --smoke-botfire (and the extended --smoke-join print) to
+# confirm that bot fire actually replicates over ENet. See #57.
+var bot_shots_seen: int = 0
 
 
 func _ready() -> void:
@@ -50,6 +54,10 @@ func _maybe_run_smoke_test() -> void:
 	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
 	if "--smoke-host" in args:
 		call_deferred("_smoke_host")
+	elif "--smoke-botfire" in args:
+		# Same client path as --smoke-join, but a longer window so remote bots can
+		# see us, target, and fire before we quit. Prints bot_shots_seen. (#57)
+		call_deferred("_smoke_botfire")
 	elif "--smoke-join" in args:
 		call_deferred("_smoke_join")
 
@@ -172,11 +180,76 @@ func _smoke_join() -> void:
 		var pcount: int = pbi.size() if pbi != null else 0
 		# --smoke-bots debug (#55): count client-side bot replicas so a smoke run can
 		# confirm the host's bot roster reached us over ENet.
+		# bot_shots_seen (#57) confirms net_bot_shoot/net_bot_grenade actually reached us.
 		var bots_visible: int = 0
 		for s in get_tree().get_nodes_in_group("soldier"):
 			if is_instance_valid(s) and s.get_script() != null and String(s.get_script().resource_path).ends_with("bot.gd"):
 				bots_visible += 1
-		print("SMOKE-JOIN id=%d mode=%d players=%d bots_visible=%d" % [local_id(), mode, pcount, bots_visible])
+		print("SMOKE-JOIN id=%d mode=%d players=%d bots_visible=%d bot_shots_seen=%d" % [local_id(), mode, pcount, bots_visible, bot_shots_seen])
+		leave()
+		get_tree().quit())
+
+
+func _smoke_botfire() -> void:
+	# Same handshake as _smoke_join but with a longer post-connect window so remote
+	# bots have time to lock on to our joining player and open fire. 20s is enough
+	# even on the widest built-in map for a bot to spot us, close to ENGAGE_RANGE,
+	# clear line of sight, and land the first tracer. Verifies #57.
+	map_received.connect(func() -> void:
+		get_tree().change_scene_to_file("res://scenes/main.tscn"))
+	join_game("127.0.0.1", DEFAULT_PORT)
+	# Track the lowest HP the local player was seen at during the smoke — the
+	# player may already have died and respawned (or died and not yet respawned)
+	# by the time we print, so a single snapshot of main.player.health can miss
+	# the damage that already happened.
+	var min_hp_ref := [100.0]
+	var deaths_ref := [0]
+	var timer := Timer.new()
+	timer.wait_time = 0.2
+	timer.one_shot = false
+	timer.autostart = true
+	add_child(timer)
+	var last_player_ref := [null]
+	timer.timeout.connect(func() -> void:
+		var main := get_tree().current_scene
+		if main == null:
+			return
+		var p = main.get("player")
+		if p != null and is_instance_valid(p):
+			# Detect respawn: main.player pointer changed → count the death of the previous body.
+			if last_player_ref[0] != null and last_player_ref[0] != p:
+				deaths_ref[0] += 1
+				min_hp_ref[0] = 100.0
+			last_player_ref[0] = p
+			var h: float = float(p.health)
+			if h < min_hp_ref[0]:
+				min_hp_ref[0] = h
+		elif last_player_ref[0] != null:
+			# main.player went null after being valid — the body was freed (dead pre-respawn).
+			deaths_ref[0] += 1
+			last_player_ref[0] = null)
+	get_tree().create_timer(20.0).timeout.connect(func() -> void:
+		var main := get_tree().current_scene
+		var pbi = main.get("_players_by_id") if main != null else null
+		var pcount: int = pbi.size() if pbi != null else 0
+		var bots_visible: int = 0
+		var bot_bullets_visible: int = 0
+		for s in get_tree().get_nodes_in_group("soldier"):
+			if is_instance_valid(s) and s.get_script() != null and String(s.get_script().resource_path).ends_with("bot.gd"):
+				bots_visible += 1
+		# A tracer/rocket still in-flight from a bot proves the projectile landed
+		# in our world (not just an RPC receipt). Bullets carry the shooter's team;
+		# bots use team 99 (FFA) or TEAM_RED (2) / TEAM_BLUE (1) in team modes.
+		for b in get_tree().get_nodes_in_group("bullet"):
+			if not is_instance_valid(b):
+				continue
+			var kn: String = str(b.get("killer_name"))
+			if kn.begins_with("Bot ") or kn.begins_with("Red Bot") or kn.begins_with("Blue Bot"):
+				bot_bullets_visible += 1
+		var local_hp: float = -1.0
+		if main != null and main.get("player") != null and is_instance_valid(main.player):
+			local_hp = float(main.player.health)
+		print("SMOKE-BOTFIRE id=%d mode=%d players=%d bots_visible=%d bot_shots_seen=%d bot_bullets_visible=%d local_hp=%.1f min_hp=%.1f deaths=%d" % [local_id(), mode, pcount, bots_visible, bot_shots_seen, bot_bullets_visible, local_hp, min_hp_ref[0], deaths_ref[0]])
 		leave()
 		get_tree().quit())
 
@@ -253,8 +326,11 @@ func _set_status(s: String) -> void:
 func _on_peer_connected(id: int) -> void:
 	if is_host():
 		_set_status("Peer %d joined · hosting" % id)
-		# Push chosen map to the new peer immediately so they build the same terrain.
-		rpc_id(id, "net_set_map", chosen_map_index)
+		# Push chosen map AND mode to the new peer immediately so they build the
+		# same terrain and run the same game rules (issue #57: without mode sync,
+		# a joining client would run their local Settings.game_mode which defaults
+		# to CTF, spawning flags in a Deathmatch host's world).
+		rpc_id(id, "net_set_map", chosen_map_index, Settings.game_mode)
 
 
 func _on_peer_disconnected(id: int) -> void:
@@ -284,7 +360,11 @@ func _on_server_disconnected() -> void:
 
 
 @rpc("authority", "reliable")
-func net_set_map(idx: int) -> void:
+func net_set_map(idx: int, mode_idx: int = -1) -> void:
 	chosen_map_index = idx
+	# Mode is optional (older/hypothetical callers may omit it) — the -1 sentinel
+	# keeps the client on its local Settings.game_mode in that case.
+	if mode_idx >= 0:
+		Settings.game_mode = mode_idx
 	_map_synced = true
 	map_received.emit()

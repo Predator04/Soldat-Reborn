@@ -800,10 +800,20 @@ func _bind_local_camera(p: Node) -> void:
 # ── Networked spawn path ──────────────────────────────
 
 func _spawn_networked_player(peer_id: int) -> void:
+	# FFA MP (DM/RM): spawn joining players at a random bot_spawn — classic Soldat
+	# spawn-point behavior. Puts them in the action zone instead of the map corner
+	# where player_spawn typically sits (Ascent/Towers/Pillars have player_spawn at
+	# (200,1775) but every bot_spawn is >2000px away, so a fresh joiner would never
+	# actually meet a bot within the first ~10s). Team modes keep player_spawn so
+	# team sides stay coherent. (#57)
+	var t: int = _assign_team_for_peer(peer_id)
 	var base: Vector2 = _map["player_spawn"]
+	if Net.is_networked() and not Settings.is_team_mode():
+		var bs: Array = _map.get("bot_spawns", [])
+		if not bs.is_empty():
+			base = bs[randi() % bs.size()]
 	var spawn_pos := base + Vector2(randf_range(-140.0, 140.0), 0.0)
 	var display_name := "Host" if peer_id == 1 else "Player %d" % peer_id
-	var t: int = _assign_team_for_peer(peer_id)
 	rpc("net_spawn_player", peer_id, spawn_pos, display_name, t)
 
 
