@@ -34,6 +34,11 @@ var weapon_menu: Control  # left-side Soldat weapon selection panel (#70)
 var lbl_fps: Label        # top-right FPS overlay — visible only when Settings.show_fps (#73)
 var lbl_spectate: Label   # "Spectating: <name>" label while dead (#75)
 var lbl_spectate_hint: Label  # controls hint under the spectate label
+# (#76) Kill-streak / multi-kill announcement banner. Overwrites-on-escalation:
+# a Double Kill followed by a Rampage swaps the same label instead of stacking.
+var lbl_streak: Label
+var _streak_tween: Tween = null
+const STREAK_HOLD := 2.0
 static var _taunts: Dictionary = {}
 const CHAT_FEED_MAX := 7
 const CHAT_TTL := 10.0
@@ -245,6 +250,78 @@ func _ready() -> void:
 	lbl_spectate_hint.add_theme_constant_override("outline_size", 3)
 	lbl_spectate_hint.visible = false
 	add_child(lbl_spectate_hint)
+
+	# Streak / multi-kill banner (#76) — big center-screen text, fades over ~2s.
+	# Positioned above the map/timer strip so it reads over gameplay without
+	# fighting the top bar for space. Font color set per-call to the killer's team.
+	lbl_streak = Label.new()
+	lbl_streak.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl_streak.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl_streak.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	lbl_streak.offset_top = -260
+	lbl_streak.offset_bottom = -260
+	lbl_streak.add_theme_font_size_override("font_size", 42)
+	lbl_streak.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	lbl_streak.add_theme_constant_override("outline_size", 8)
+	lbl_streak.modulate = Color(1, 1, 1, 0)
+	lbl_streak.visible = false
+	add_child(lbl_streak)
+
+
+func show_streak_banner(killer_name: String, title: String, killer_team: int, count: int) -> void:
+	# Overwrites any in-progress banner — a rapid escalation from Double → Multi
+	# should read as one crescendo, not two overlapping labels.
+	if lbl_streak == null:
+		return
+	var info := _team_display_info(killer_team)
+	var col: Color = info.get("color", Color(1.0, 0.85, 0.35))
+	lbl_streak.text = "%s\n%s  ×%d" % [title.to_upper(), killer_name, count]
+	lbl_streak.add_theme_color_override("font_color", col)
+	lbl_streak.visible = true
+	lbl_streak.modulate = Color(col.r, col.g, col.b, 1.0)
+	if _streak_tween != null and _streak_tween.is_valid():
+		_streak_tween.kill()
+	_streak_tween = create_tween()
+	_streak_tween.tween_interval(STREAK_HOLD)
+	_streak_tween.tween_property(lbl_streak, "modulate:a", 0.0, 0.6)
+	_streak_tween.tween_callback(func() -> void:
+		if is_instance_valid(lbl_streak):
+			lbl_streak.visible = false)
+	# Local sound cue — reuse the explosion sample so it thumps like Soldat's
+	# original bass-drum announcer without adding an sfx table entry.
+	Sfx._play_event("explode", -4.0, 0.85)
+
+
+func post_streak_ended(ender_name: String, victim_name: String, streak_len: int, ender_team: int) -> void:
+	# Reuses the kill-feed lane so streak enders read alongside the frag they came
+	# from, at the same fade-out cadence and team color as everything else.
+	if not is_instance_valid(feed):
+		return
+	var info := _team_display_info(ender_team)
+	var col: Color = info.get("color", Color(1.0, 0.85, 0.35))
+	var lbl := Label.new()
+	lbl.text = "%s ended %s's %d-kill streak" % [ender_name, victim_name, streak_len]
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	lbl.add_theme_font_size_override("font_size", 14)
+	lbl.add_theme_color_override("font_color", col)
+	lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	lbl.add_theme_constant_override("outline_size", 3)
+	feed.add_child(lbl)
+	feed.move_child(lbl, 0)
+	_feed_entries.push_front(lbl)
+	while _feed_entries.size() > FEED_MAX:
+		var old: Label = _feed_entries.pop_back()
+		if is_instance_valid(old):
+			old.queue_free()
+	var t := Timer.new()
+	t.wait_time = FEED_TTL
+	t.one_shot = true
+	t.autostart = true
+	lbl.add_child(t)
+	t.timeout.connect(func() -> void:
+		_feed_entries.erase(lbl)
+		if is_instance_valid(lbl):
+			lbl.queue_free())
 
 
 func set_spectate_target(name: String, col: Color) -> void:

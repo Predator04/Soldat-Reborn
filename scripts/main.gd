@@ -17,6 +17,15 @@ signal kill(killer_name: String, victim_name: String, weapon_name: String, kille
 var player: Node2D = null            # LOCAL player (whichever peer owns us)
 var hud: CanvasLayer = null
 var spectator: Node2D = null         # (#75) follow/free-cam while dead — owns its own Camera2D
+# (#76) Kill-streak + multi-kill announcer state. Keyed by killer's display_name.
+# {"streak": int (kills-per-life), "multi": int (kills within 2s), "multi_t": float,
+#  "team": int (last-known team for banner tint)}. Runs on every peer so banners
+# render locally; the kill-feed replication path (kill.emit → net_kill_feed) drives it.
+var _streaks: Dictionary = {}
+const STREAK_TITLES := {2: "Double Kill", 3: "Multi Kill", 4: "Killing Spree", 5: "Rampage", 6: "Godlike"}
+const STREAK_ULTRA := "Ultra Godlike"    # 7+ collapses into a single top rung
+const MULTI_KILL_WINDOW := 2.0            # seconds since previous kill still counts as multi
+const STREAK_ANNOUNCE_END_MIN := 3        # streak length that earns an "ended X's N-kill streak" line
 var _map: Dictionary = {}
 var _players_by_id: Dictionary = {}  # peer_id -> player node (host only, but also mirrored on clients)
 var _ready_peers: Dictionary = {}    # peer_id -> true (host only, gate for outbound state RPCs)
@@ -730,6 +739,67 @@ func _begin_spectator() -> void:
 func _end_spectator() -> void:
 	if spectator != null and is_instance_valid(spectator):
 		spectator.deactivate()
+
+
+# ── Kill streaks + multi-kills (#76) ──────────────────
+# Reads killer/victim from the shared kill signal. Runs on every peer so the
+# banner lookup is identical everywhere without an extra RPC. Synthetic entries
+# (FLAG capture, POINT capture, etc.) carry a killer_team but the "victim" is
+# a scoreboard label, not a soldier — those still increment the killer's streak
+# so a flag-capture-during-spree escalates the announcement naturally.
+func _track_kill_streaks(killer_name: String, victim_name: String, killer_team: int) -> void:
+	if killer_name == "":
+		return
+	# Suicide or team-kill: reset the killer's own streak. No banner.
+	var is_self: bool = killer_name == victim_name
+	if is_self:
+		_reset_streak(killer_name)
+		return
+	# Before incrementing, capture the victim's pre-death streak for the
+	# "ended <name>'s N-kill streak" announcement.
+	var ended: int = 0
+	if _streaks.has(victim_name):
+		ended = int((_streaks[victim_name] as Dictionary).get("streak", 0))
+	# Increment killer's own counters.
+	var now := Time.get_ticks_msec() / 1000.0
+	var s: Dictionary = _streaks.get(killer_name, {"streak": 0, "multi": 0, "multi_t": 0.0, "team": killer_team})
+	s["team"] = killer_team
+	s["streak"] = int(s.get("streak", 0)) + 1
+	if float(s.get("multi_t", 0.0)) > now:
+		s["multi"] = int(s.get("multi", 0)) + 1
+	else:
+		s["multi"] = 1
+	s["multi_t"] = now + MULTI_KILL_WINDOW
+	_streaks[killer_name] = s
+	# Announce banner: whichever count is louder (streak or multi).
+	var count: int = maxi(int(s["streak"]), int(s["multi"]))
+	if count >= 2 and hud != null and hud.has_method("show_streak_banner"):
+		hud.show_streak_banner(killer_name, _streak_title(count), int(s["team"]), count)
+	# Streak-ended feed line — reuse the existing kill-feed styling for consistency.
+	if ended >= STREAK_ANNOUNCE_END_MIN and hud != null and hud.has_method("post_streak_ended"):
+		hud.post_streak_ended(killer_name, victim_name, ended, killer_team)
+	# Victim loses their life-scoped streak. Multi window also clears — they're dead.
+	_reset_streak(victim_name)
+
+
+func _reset_streak(name: String) -> void:
+	if name == "":
+		return
+	if not _streaks.has(name):
+		return
+	var s: Dictionary = _streaks[name]
+	s["streak"] = 0
+	s["multi"] = 0
+	s["multi_t"] = 0.0
+	_streaks[name] = s
+
+
+func _streak_title(count: int) -> String:
+	if STREAK_TITLES.has(count):
+		return String(STREAK_TITLES[count])
+	if count >= 7:
+		return STREAK_ULTRA
+	return "Multi Kill"
 
 
 func _respawn_delay_for_team(t: int) -> float:
@@ -1612,6 +1682,9 @@ func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: Str
 			Stats.record_suicide()
 		elif victim_name == me:
 			Stats.record_death()
+	# (#76) Streak + multi-kill announcer — runs on every peer (banner is local
+	# per-viewer) so it must live above the host-only early-return below.
+	_track_kill_streaks(killer_name, victim_name, killer_team)
 	if Net.is_networked() and not Net.is_host():
 		return
 	if not round_active or killer_team < 0:
