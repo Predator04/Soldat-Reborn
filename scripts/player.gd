@@ -280,12 +280,13 @@ func _physics_process(delta: float) -> void:
 	jump_buffer_t = JUMP_BUFFER if jump_pressed else maxf(0.0, jump_buffer_t - delta)
 
 	# horizontal
-	var accel := GROUND_ACCEL if on_floor else AIR_ACCEL
-	var cap := RUN_SPEED if on_floor else BUNNY_SPEED
+	var speed_mul: float = float(Settings.mod_speed)
+	var accel := (GROUND_ACCEL if on_floor else AIR_ACCEL) * speed_mul
+	var cap := (RUN_SPEED if on_floor else BUNNY_SPEED) * speed_mul
 	# Preserve bunny-hop momentum: if a buffered jump will fire this tick,
 	# skip the RUN_SPEED clamp so airborne speed isn't clipped on the landing frame.
 	if on_floor and jump_buffer_t > 0.0 and coyote_t > 0.0:
-		cap = BUNNY_SPEED
+		cap = BUNNY_SPEED * speed_mul
 	# Crouch/prone slow the ground cap; airborne cap is untouched so bunny-hops are preserved.
 	# Roll trumps both — a short window at ROLL_SPEED before ground friction reasserts.
 	if on_floor:
@@ -311,7 +312,7 @@ func _physics_process(delta: float) -> void:
 		fuel = maxf(0.0, fuel - JET_DRAIN * delta)
 		jet_on = true
 	elif on_floor:
-		fuel = minf(100.0, fuel + JET_REGEN * delta)
+		fuel = minf(100.0, fuel + JET_REGEN * float(Settings.mod_jet) * delta)
 
 	# jump / bunny hop (coyote + buffer aware)
 	if jump_buffer_t > 0.0 and coyote_t > 0.0:
@@ -322,7 +323,7 @@ func _physics_process(delta: float) -> void:
 		Sfx.jump()
 
 	if not on_floor:
-		velocity.y += GRAVITY * delta
+		velocity.y += GRAVITY * float(Settings.mod_gravity) * delta
 		velocity.y = minf(velocity.y, MAX_FALL)
 
 	# aim
@@ -977,7 +978,7 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int) -> vo
 	if kind == "melee" or kind == "melee_cont":
 		var swing: Vector2 = dirs[0] if dirs.size() > 0 else aim_dir
 		var reach: float = float(w.get("range", 32.0))
-		var dmg: float = float(w["damage"])
+		var dmg: float = float(w["damage"]) * float(Settings.mod_damage)
 		# Scan soldiers in a short forward arc — apply damage on the authority peer
 		# only (matches how bullet/rocket damage is gated in bullet.gd/rocket.gd).
 		for s in get_tree().get_nodes_in_group("soldier"):
@@ -1001,7 +1002,7 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int) -> vo
 			r.global_position = shot_pos + bdir * 4.0
 			r.direction = bdir
 			r.speed = float(w["speed"])
-			r.damage = float(w["damage"])
+			r.damage = float(w["damage"]) * float(Settings.mod_damage)
 			r.team = team
 			r.killer_name = display_name
 			r.weapon_name = str(w["name"])
@@ -1013,7 +1014,7 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int) -> vo
 			b.global_position = shot_pos + bdir * 4.0
 			b.direction = bdir
 			b.speed = float(w["speed"])
-			b.damage = float(w["damage"])
+			b.damage = float(w["damage"]) * float(Settings.mod_damage)
 			b.team = team
 			b.killer_name = display_name
 			b.weapon_name = str(w["name"])

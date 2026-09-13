@@ -44,7 +44,7 @@ func _explode() -> void:
 			if same_team and not is_self and not Settings.friendly_fire_on():
 				continue
 			if multiplayer.multiplayer_peer == null or s.is_multiplayer_authority():
-				s.take_damage(damage * (1.0 - d / blast_radius), killer_name, wname, team)
+				s.take_damage(damage * float(Settings.mod_damage) * (1.0 - d / blast_radius), killer_name, wname, team)
 	var p := CPUParticles2D.new()
 	p.amount = 55
 	p.lifetime = 0.5

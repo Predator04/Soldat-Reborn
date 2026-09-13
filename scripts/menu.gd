@@ -10,6 +10,7 @@ const MODE_NAMES := [
 
 var _menu_box: VBoxContainer
 var _settings_panel: VBoxContainer
+var _mods_panel: VBoxContainer
 var _join_panel: VBoxContainer
 var _host_panel: VBoxContainer
 var _status_label: Label
@@ -29,6 +30,7 @@ func _ready() -> void:
 	_build_title()
 	_build_menu()
 	_build_settings()
+	_build_mods()
 	_build_host()
 	_build_join()
 	_build_status()
@@ -150,6 +152,12 @@ func _build_menu() -> void:
 		_settings_panel.visible = true)
 	_menu_box.add_child(settings)
 
+	var mods := _make_button("MODIFIERS")
+	mods.pressed.connect(func() -> void:
+		_menu_box.visible = false
+		_mods_panel.visible = true)
+	_menu_box.add_child(mods)
+
 	var quit := _make_button("QUIT")
 	quit.pressed.connect(func() -> void: get_tree().quit())
 	_menu_box.add_child(quit)
@@ -209,6 +217,89 @@ func _build_settings() -> void:
 		_settings_panel.visible = false
 		_menu_box.visible = true)
 	_settings_panel.add_child(back)
+
+
+func _build_mods() -> void:
+	_mods_panel = VBoxContainer.new()
+	_mods_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_mods_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_mods_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_mods_panel.add_theme_constant_override("separation", 10)
+	_mods_panel.custom_minimum_size = Vector2(460, 0)
+	_mods_panel.visible = false
+	add_child(_mods_panel)
+
+	var head := Label.new()
+	head.text = "MODIFIERS"
+	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	head.add_theme_font_size_override("font_size", 26)
+	head.add_theme_color_override("font_color", Color(0.95, 0.82, 0.4))
+	_mods_panel.add_child(head)
+
+	_add_mod_slider("Gravity", 0.5, 2.0, 0.05, func() -> float: return Settings.mod_gravity,
+		func(v: float) -> void:
+			Settings.mod_gravity = v
+			Settings.save())
+	_add_mod_slider("Jet fuel regen", 0.5, 2.0, 0.05, func() -> float: return Settings.mod_jet,
+		func(v: float) -> void:
+			Settings.mod_jet = v
+			Settings.save())
+	_add_mod_slider("Weapon damage", 0.5, 2.0, 0.05, func() -> float: return Settings.mod_damage,
+		func(v: float) -> void:
+			Settings.mod_damage = v
+			Settings.save())
+	_add_mod_slider("Player speed", 0.5, 1.5, 0.05, func() -> float: return Settings.mod_speed,
+		func(v: float) -> void:
+			Settings.mod_speed = v
+			Settings.save())
+
+	var reset := _make_button("RESET TO STOCK")
+	reset.pressed.connect(func() -> void:
+		Settings.mod_gravity = 1.0
+		Settings.mod_jet = 1.0
+		Settings.mod_damage = 1.0
+		Settings.mod_speed = 1.0
+		Settings.save()
+		# Rebuild the panel so slider values reflect the reset.
+		for c in _mods_panel.get_children():
+			c.queue_free()
+		_mods_panel.queue_free()
+		_build_mods()
+		_mods_panel.visible = true)
+	_mods_panel.add_child(reset)
+
+	var back := _make_button("BACK")
+	back.pressed.connect(func() -> void:
+		_mods_panel.visible = false
+		_menu_box.visible = true)
+	_mods_panel.add_child(back)
+
+
+func _add_mod_slider(label_text: String, mn: float, mx: float, step: float,
+	get_val: Callable, set_val: Callable) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	_mods_panel.add_child(row)
+	var lbl := Label.new()
+	lbl.text = label_text
+	lbl.custom_minimum_size = Vector2(160, 0)
+	lbl.add_theme_font_size_override("font_size", 15)
+	row.add_child(lbl)
+	var slider := HSlider.new()
+	slider.min_value = mn
+	slider.max_value = mx
+	slider.step = step
+	slider.value = float(get_val.call())
+	slider.custom_minimum_size = Vector2(220, 0)
+	row.add_child(slider)
+	var val_lbl := Label.new()
+	val_lbl.text = "%.2fx" % float(slider.value)
+	val_lbl.custom_minimum_size = Vector2(56, 0)
+	val_lbl.add_theme_font_size_override("font_size", 14)
+	row.add_child(val_lbl)
+	slider.value_changed.connect(func(v: float) -> void:
+		val_lbl.text = "%.2fx" % v
+		set_val.call(v))
 
 
 func _build_host() -> void:

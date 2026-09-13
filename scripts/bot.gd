@@ -40,7 +40,7 @@ var strafe_dir := 1.0
 var strafe_t := 0.0
 var dodge_cd := 0.0
 
-const GRAVITY := 1700.0
+const BASE_GRAVITY := 1700.0
 const RUN_SPEED := 230.0
 const JUMP_VEL := -430.0
 const JET_THRUST := -1050.0
@@ -146,7 +146,7 @@ func _physics_process(delta: float) -> void:
 		fuel = minf(100.0, fuel + 32.0 * delta)
 
 	if not on_floor:
-		velocity.y += GRAVITY * delta
+		velocity.y += BASE_GRAVITY * float(Settings.mod_gravity) * delta
 		velocity.y = minf(velocity.y, MAX_FALL)
 
 	if dir != 0.0:
@@ -265,12 +265,13 @@ func _shoot(to_t: Vector2) -> void:
 	# Bink shakes the bot's aim if they were recently shot.
 	if bink_t > 0.0:
 		aim = aim.rotated(randf_range(-1.0, 1.0) * (bink_t / 100.0) * 0.18)
+	var dmg_mul: float = float(Settings.mod_damage)
 	if loadout == "LAW":
 		var r := rocket_scene.instantiate()
 		r.global_position = global_position + SoldierArt.muzzle_local(self, aim, facing, loadout) + aim * 4.0
 		r.direction = aim
 		r.speed = ROCKET_SPEED
-		r.damage = 90.0
+		r.damage = 90.0 * dmg_mul
 		r.team = team
 		r.killer_name = display_name
 		r.weapon_name = "LAW"
@@ -281,7 +282,7 @@ func _shoot(to_t: Vector2) -> void:
 		b.global_position = global_position + SoldierArt.muzzle_local(self, aim, facing, loadout) + aim * 4.0
 		b.direction = aim
 		b.speed = BULLET_SPEED
-		b.damage = 12.0
+		b.damage = 12.0 * dmg_mul
 		b.team = team
 		b.killer_name = display_name
 		b.weapon_name = "AK-74"

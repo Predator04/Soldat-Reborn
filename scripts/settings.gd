@@ -28,6 +28,14 @@ var realistic := false   # no jet, no HUD ammo, head-shot 1HK (issue #19)
 var survival := false    # no respawn until round end (issue #20)
 var advance := false     # weapon unlock ladder (issue #21)
 
+# Modifiers (#24) — scale the base rules without changing the game mode.
+# 1.0 = stock Soldat. Menu clamps the visible range; code should treat these as
+# untrusted floats and use them at their scale sites (see player.gd / grenade.gd).
+var mod_gravity := 1.0        # 0.5–2.0. Applied to player + grenade gravity.
+var mod_jet := 1.0            # 0.5–2.0. Scales jet regen (higher = faster refill).
+var mod_damage := 1.0         # 0.5–2.0. Multiplies outgoing bullet / rocket / melee damage.
+var mod_speed := 1.0          # 0.5–1.5. Player horizontal cap and accel.
+
 # Convenience: DM / Rambo / Battle Royale are FFA (friendly-fire on), teams disable friendly damage.
 func friendly_fire_on() -> bool:
 	return game_mode == MODE_DM or game_mode == MODE_RM or game_mode == MODE_BR
@@ -54,6 +62,10 @@ func load_settings() -> void:
 	realistic = bool(cf.get_value("game", "realistic", false))
 	survival = bool(cf.get_value("game", "survival", false))
 	advance = bool(cf.get_value("game", "advance", false))
+	mod_gravity = clampf(float(cf.get_value("mods", "gravity", 1.0)), 0.5, 2.0)
+	mod_jet = clampf(float(cf.get_value("mods", "jet", 1.0)), 0.5, 2.0)
+	mod_damage = clampf(float(cf.get_value("mods", "damage", 1.0)), 0.5, 2.0)
+	mod_speed = clampf(float(cf.get_value("mods", "speed", 1.0)), 0.5, 1.5)
 
 
 func save() -> void:
@@ -66,6 +78,10 @@ func save() -> void:
 	cf.set_value("game", "realistic", realistic)
 	cf.set_value("game", "survival", survival)
 	cf.set_value("game", "advance", advance)
+	cf.set_value("mods", "gravity", mod_gravity)
+	cf.set_value("mods", "jet", mod_jet)
+	cf.set_value("mods", "damage", mod_damage)
+	cf.set_value("mods", "speed", mod_speed)
 	cf.save(PATH)
 
 
