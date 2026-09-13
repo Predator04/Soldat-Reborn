@@ -74,6 +74,12 @@ static func draw_soldier(
 	rolling: bool = false,
 	ceasefire: bool = false,
 	cosmetics: Dictionary = {},
+	# #60: drives the belt-grenade + back-slung weapon overlays and the blood
+	# damage layer. Callers pass their current runtime state; gostek.gd only
+	# reads these keys via `gs`, so cosmetics stays a pure user-config dict.
+	back_weapon_name: String = "",
+	grenade_count: int = 0,
+	use_cluster: bool = false,
 ) -> void:
 	if jet_on and not dead:
 		_draw_jet_flame(node, facing)
@@ -99,6 +105,10 @@ static func draw_soldier(
 		"gesture_anim": gesture_anim,
 		"rolling": rolling,
 		"cosmetics": cosmetics,
+		"health": health,
+		"back_weapon": back_weapon_name,
+		"grenades": grenade_count,
+		"use_cluster": use_cluster,
 	}
 	Gostek.draw_body(node, gs, body_color)
 

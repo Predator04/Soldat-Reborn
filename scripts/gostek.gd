@@ -36,10 +36,15 @@ const AIM_ARM_LIMIT := 0.28
 #   [sprite_key, p1, p2, cx_frac, cy_frac, flex_units, color_kind]
 # Matches the GostekBase entries in GostekGraphics.inc for a plain
 # soldier plus the customizable head + optional torso pieces.
-# `sprite_key` may be a resolved name (e.g. "helm") OR the tag "<head>"
+# `sprite_key` may be a resolved name (e.g. "helm") OR a tag like `<head>`
 # which draw_body swaps for the current head cosmetic (or skips).
-# Vest / chain / cigar rows are marked `<vest>`, `<chain>`, `<cigar>` and
-# are skipped when the corresponding cosmetics flag is off.
+# Detail overlays (#60):
+#   <dreadlocks>     dred tuft, sits on top of the head; needs a hair head
+#   <dogtag>         metal dogtag hanging from the chain, over the chest
+#   <grenade_belt>   frag/cluster grenade sprite riding on the hip belt
+#   <secondary_back> the currently-inactive weapon slung across the back
+# Blood/damage sprites (ranny/*.png) auto-overlay on top of the wounded body
+# parts once health drops below WOUND_HEALTH.
 const PARTS := [
 	# --- back leg (LEFT_*) ------------------------------
 	["udo",    6,  3, 0.20, 0.50, 5.0, "pants"],
@@ -49,6 +54,11 @@ const PARTS := [
 	["ramie", 11, 14, 0.00, 0.50, 0.0, "main"],
 	["reka",  14, 15, 0.00, 0.50, 5.0, "main"],
 	["dlon",  15, 19, 0.00, 0.40, 0.0, "skin"],
+	# --- back-slung secondary weapon --------------------
+	# Aligned along the back's shoulder→hip axis so the gun rests on the back.
+	# Drawn before front leg so the torso covers the strap and only the barrel
+	# / stock sticks past the body silhouette.
+	["<secondary_back>", 11, 6, 0.15, 0.50, 0.0, "none"],
 	# --- front leg (RIGHT_*) ----------------------------
 	["udo",    5,  4, 0.20, 0.65, 5.0, "pants"],
 	["noga",   4,  1, 0.15, 0.55, 0.0, "pants"],
@@ -57,10 +67,17 @@ const PARTS := [
 	["klata", 10, 11, 0.10, 0.30, 0.0, "main"],
 	["<vest>", 10, 11, 0.10, 0.30, 0.0, "main"],
 	["<chain>", 10, 11, 0.15, 0.32, 0.0, "none"],
+	# Dogtag hangs from chest (joint 10) down toward hip (joint 5). Drawn on
+	# top of the chain so it reads as attached.
+	["<dogtag>", 10, 5, 0.00, 0.50, 0.0, "none"],
 	["biodro", 5,  6, 0.25, 0.60, 0.0, "main"],
+	# Grenade on the belt line — hip axis anchors it centered between hips.
+	["<grenade_belt>", 5, 6, 0.50, 0.50, 0.0, "none"],
 	["morda",  9, 12, 0.00, 0.50, 0.0, "skin"],
 	["<cigar>", 9, 12, 0.00, 0.50, 0.0, "none"],
 	["<head>", 9, 12, 0.00, 0.50, 0.0, "helm"],
+	# Dreadlocks tuft — anchors at top of head and extends toward the neck.
+	["<dreadlocks>", 12, 9, 0.00, 0.50, 0.0, "skin"],
 	# --- front arm (RIGHT_*) — over torso, holds weapon -
 	["ramie", 10, 13, 0.00, 0.60, 0.0, "main"],
 	["reka",  13, 16, 0.00, 0.60, 5.0, "main"],
@@ -71,6 +88,39 @@ const PARTS := [
 # The special values "none" (bald) and "helm" (default) are handled inline.
 const HEAD_KEYS := ["helm", "kap", "hair1", "hair2", "hair3", "hair4", "none"]
 const CHAIN_KEYS := {"silver": "lancuch", "gold": "zlotylancuch"}
+
+# Body-part basenames that have a ranny/*.png blood counterpart. Anything
+# below this HP threshold starts blending the wound sprite over the part.
+const WOUND_HEALTH := 60.0
+const WOUND_KEYS := {"biodro": true, "klata": true, "morda": true, "noga": true, "ramie": true, "reka": true, "udo": true}
+
+# Weapon sprite paths for the back-slung secondary. Keyed by weapon name so
+# the caller can pass "AK-74"/"USSOCOM"/etc. and we resolve to the same PNGs
+# soldier_art.gd already uses for the in-hand render. Missing entries silently
+# skip the overlay.
+const BACK_WEAPON_TEX := {
+	"Deagles":      "res://assets/weapons-gfx/deserteagle.png",
+	"MP5":          "res://assets/weapons-gfx/mp5.png",
+	"AK-74":        "res://assets/weapons-gfx/ak74.png",
+	"Steyr AUG":    "res://assets/weapons-gfx/steyraug.png",
+	"Spas-12":      "res://assets/weapons-gfx/spas12.png",
+	"Ruger 77":     "res://assets/weapons-gfx/ruger77.png",
+	"M79":          "res://assets/weapons-gfx/m79.png",
+	"Barrett":      "res://assets/weapons-gfx/barretm82.png",
+	"Minimi":       "res://assets/weapons-gfx/m249.png",
+	"Minigun":      "res://assets/weapons-gfx/minigun.png",
+	"USSOCOM":      "res://assets/weapons-gfx/colt1911.png",
+	"Knife":        "res://assets/weapons-gfx/knife.png",
+	"Chainsaw":     "res://assets/weapons-gfx/chainsaw.png",
+	"LAW":          "res://assets/weapons-gfx/law.png",
+	"Flamethrower": "res://assets/weapons-gfx/flamer.png",
+	"Rambo Bow":    "res://assets/weapons-gfx/bow.png",
+}
+
+# Grenade belt sprites — cluster/frag come from weapons-gfx/ since they double
+# as the world projectile texture.
+const GRENADE_BELT_FRAG := "res://assets/weapons-gfx/frag-grenade.png"
+const GRENADE_BELT_CLUSTER := "res://assets/weapons-gfx/cluster-grenade.png"
 
 const SKIN := Color(0.98, 0.82, 0.65)
 
@@ -102,6 +152,14 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 	var arm_pivot: Vector2 = _joint_local(frame, 10, flip)
 
 	var cos: Dictionary = gs.get("cosmetics", {})
+	# Damage overlay strength (#60). Blood sprites blend over the wounded parts
+	# once HP dips below WOUND_HEALTH; capped so a nearly-dead soldier still
+	# reads as their base color instead of pure red.
+	var wound_alpha := 0.0
+	if not dead:
+		var hp: float = float(gs.get("health", 100.0))
+		if hp < WOUND_HEALTH:
+			wound_alpha = clampf((WOUND_HEALTH - hp) / (WOUND_HEALTH - 10.0), 0.0, 0.9)
 	for spec in PARTS:
 		var key: String = spec[0]
 		var p1_id: int = spec[1]
@@ -110,6 +168,9 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 		var cy_frac: float = spec[4]
 		var flex: float = spec[5]
 		var col_kind: String = spec[6]
+		# Track the raw body-part key (pre-cosmetic-resolve) so we can look up
+		# the ranny/*.png wound sprite on the same transform.
+		var wound_key: String = key if WOUND_KEYS.has(key) else ""
 
 		# Resolve cosmetic placeholders. Missing / disabled → skip the row.
 		match key:
@@ -136,6 +197,28 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 				if not bool(cos.get("cigar", false)):
 					continue
 				key = "cygaro"
+			"<dogtag>":
+				if not bool(cos.get("dogtag", false)):
+					continue
+				key = "metal"
+			"<dreadlocks>":
+				if not bool(cos.get("dreadlocks", false)):
+					continue
+				# Dreads only make sense with a hair head — skip on helm/kap/bald so
+				# a tuft doesn't float over a helmet.
+				if not str(cos.get("head", "helm")).begins_with("hair"):
+					continue
+				key = "dred"
+			"<grenade_belt>":
+				var g_count: int = int(gs.get("grenades", 0))
+				if g_count <= 0:
+					continue
+				key = GRENADE_BELT_CLUSTER if bool(gs.get("use_cluster", false)) else GRENADE_BELT_FRAG
+			"<secondary_back>":
+				var bw: String = str(gs.get("back_weapon", ""))
+				if bw == "" or not BACK_WEAPON_TEX.has(bw):
+					continue
+				key = str(BACK_WEAPON_TEX[bw])
 
 		var p1 := _joint_local(frame, p1_id, flip)
 		var p2 := _joint_local(frame, p2_id, flip)
@@ -187,6 +270,18 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 
 		node.draw_set_transform(p1, angle, Vector2(sx, sy))
 		node.draw_texture_rect(tex, Rect2(-cx, -cy, w, h), false, col)
+
+		# Wound blood overlay (#60). Same transform + rect, so the blood sits
+		# in register on top of the part. Ranny PNGs mirror the base body-part
+		# dimensions so re-using `w`/`h`/`cx`/`cy` keeps alignment.
+		if wound_alpha > 0.0 and wound_key != "":
+			var wound_tex := _tex("ranny/" + wound_key, false)
+			if flip:
+				var w_mirror := _tex("ranny/" + wound_key, true)
+				if w_mirror != null:
+					wound_tex = w_mirror
+			if wound_tex != null:
+				node.draw_texture_rect(wound_tex, Rect2(-cx, -cy, w, h), false, Color(1.0, 1.0, 1.0, wound_alpha))
 
 	node.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
@@ -354,7 +449,28 @@ static func _arm_adjust(pos: Vector2, pivot: Vector2, aim_offset: float) -> Vect
 
 
 static func _tex(key: String, mirror: bool) -> Texture2D:
-	var nm: String = key + ("2" if mirror else "")
+	# Two extra key shapes (#60):
+	#   "ranny/<part>"  — wound sprite in the ranny/ subfolder
+	#   "res://…/foo.png" — absolute path (back-slung weapon, belt grenade)
+	# Absolute paths have no *2.png mirror variant; return null on mirror so
+	# draw_body falls back to sy=-1.0 flipping.
+	if key.begins_with("res://"):
+		if mirror:
+			return null
+		if _tex_cache.has(key):
+			return _tex_cache[key]
+		var abs_tex: Texture2D = null
+		if ResourceLoader.exists(key):
+			abs_tex = load(key) as Texture2D
+		_tex_cache[key] = abs_tex
+		return abs_tex
+	var base: String = key
+	var subdir: String = ""
+	var slash: int = key.rfind("/")
+	if slash >= 0:
+		subdir = key.substr(0, slash + 1)
+		base = key.substr(slash + 1)
+	var nm: String = subdir + base + ("2" if mirror else "")
 	if _tex_cache.has(nm):
 		return _tex_cache[nm]
 	var path: String = DIR + nm + ".png"

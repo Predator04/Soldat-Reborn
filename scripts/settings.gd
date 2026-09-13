@@ -13,14 +13,18 @@ var lofi := false              # low-end mode: no particles, no gib meshes, no g
 
 # Cosmetics — the local player's persistent character look.
 # Values match filenames in assets/gostek-gfx/:
-#   head:  "helm" | "kap" | "hair1" | "hair2" | "hair3" | "hair4" | "none"
-#   chain: "none" | "silver" | "gold"
-#   vest:  bool (kamizelka on/off)
-#   cigar: bool (cygaro on/off)
+#   head:       "helm" | "kap" | "hair1" | "hair2" | "hair3" | "hair4" | "none"
+#   chain:      "none" | "silver" | "gold"
+#   vest:       bool (kamizelka on/off)
+#   cigar:      bool (cygaro on/off)
+#   dreadlocks: bool (dred tuft overlay on top of hair, issue #60)
+#   dogtag:     bool (metal dogtag hanging over torso, issue #60)
 var cos_head := "helm"
 var cos_vest := true
 var cos_chain := "none"
 var cos_cigar := false
+var cos_dreadlocks := false
+var cos_dogtag := false
 
 # Game mode: 0 = Deathmatch, 1 = Teammatch, 2 = CTF, 3 = Infiltration,
 # 4 = Hold the Flag, 5 = Rambomatch, 6 = Pointmatch, 7 = Domination,
@@ -84,6 +88,8 @@ func load_settings() -> void:
 	cos_vest = bool(cf.get_value("cosmetics", "vest", true))
 	cos_chain = str(cf.get_value("cosmetics", "chain", "none"))
 	cos_cigar = bool(cf.get_value("cosmetics", "cigar", false))
+	cos_dreadlocks = bool(cf.get_value("cosmetics", "dreadlocks", false))
+	cos_dogtag = bool(cf.get_value("cosmetics", "dogtag", false))
 	mod_gravity = clampf(float(cf.get_value("mods", "gravity", 1.0)), 0.5, 2.0)
 	mod_jet = clampf(float(cf.get_value("mods", "jet", 1.0)), 0.5, 2.0)
 	mod_damage = clampf(float(cf.get_value("mods", "damage", 1.0)), 0.5, 2.0)
@@ -106,6 +112,8 @@ func save() -> void:
 	cf.set_value("cosmetics", "vest", cos_vest)
 	cf.set_value("cosmetics", "chain", cos_chain)
 	cf.set_value("cosmetics", "cigar", cos_cigar)
+	cf.set_value("cosmetics", "dreadlocks", cos_dreadlocks)
+	cf.set_value("cosmetics", "dogtag", cos_dogtag)
 	cf.set_value("mods", "gravity", mod_gravity)
 	cf.set_value("mods", "jet", mod_jet)
 	cf.set_value("mods", "damage", mod_damage)

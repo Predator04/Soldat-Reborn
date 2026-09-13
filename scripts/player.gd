@@ -152,6 +152,8 @@ func _ready() -> void:
 			"vest": Settings.cos_vest,
 			"chain": Settings.cos_chain,
 			"cigar": Settings.cos_cigar,
+			"dreadlocks": Settings.cos_dreadlocks,
+			"dogtag": Settings.cos_dogtag,
 		}
 	# Release the per-instance skeleton state dict when this node is freed so long
 	# sessions don't leak dict entries in Gostek._states.
@@ -1231,6 +1233,9 @@ func _draw() -> void:
 	var on_floor := is_on_floor()
 	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
 		on_floor = absf(velocity.y) < 5.0
+	# #60: the currently-inactive weapon slings across the back. When holding
+	# secondary, the primary rides back; otherwise the chosen secondary does.
+	var back_wn: String = str(weapons[weapon_index]["name"]) if using_secondary else str(secondary[secondary_index]["name"])
 	SoldierArt.draw_soldier(
 		self,
 		color,
@@ -1255,4 +1260,7 @@ func _draw() -> void:
 		roll_t > 0.0,
 		ceasefire_t > 0.0,
 		cosmetics,
+		back_wn,
+		grenades,
+		use_cluster,
 	)

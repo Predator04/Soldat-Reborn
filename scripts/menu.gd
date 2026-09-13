@@ -512,6 +512,22 @@ func _build_cosmetics() -> void:
 		Settings.save())
 	_cos_panel.add_child(cigar)
 
+	var dreadlocks := CheckButton.new()
+	dreadlocks.text = "Dreadlocks (dred)"
+	dreadlocks.button_pressed = Settings.cos_dreadlocks
+	dreadlocks.toggled.connect(func(on: bool) -> void:
+		Settings.cos_dreadlocks = on
+		Settings.save())
+	_cos_panel.add_child(dreadlocks)
+
+	var dogtag := CheckButton.new()
+	dogtag.text = "Dogtag (metal)"
+	dogtag.button_pressed = Settings.cos_dogtag
+	dogtag.toggled.connect(func(on: bool) -> void:
+		Settings.cos_dogtag = on
+		Settings.save())
+	_cos_panel.add_child(dogtag)
+
 	var back := _make_button("BACK")
 	back.pressed.connect(func() -> void:
 		_cos_panel.visible = false

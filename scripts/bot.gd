@@ -92,11 +92,16 @@ func _ready() -> void:
 	if cosmetics.is_empty():
 		var heads := ["helm", "kap", "hair1", "hair2", "hair3", "hair4"]
 		var chains := ["none", "silver", "gold"]
+		var head_pick: String = heads[randi() % heads.size()]
 		cosmetics = {
-			"head": heads[randi() % heads.size()],
+			"head": head_pick,
 			"vest": randf() < 0.4,
 			"chain": chains[randi() % chains.size()],
 			"cigar": randf() < 0.2,
+			# Dreadlocks only make sense with a hair head; roll separately so bald
+			# / helmeted bots don't render orphan dred tufts. (#60)
+			"dreadlocks": head_pick.begins_with("hair") and randf() < 0.35,
+			"dogtag": randf() < 0.3,
 		}
 	ammo = int(AMMO_STATS.get(loadout, AMMO_STATS["AK-74"])["mag"])
 	var shape := CollisionShape2D.new()
@@ -581,6 +586,8 @@ func _draw() -> void:
 	var on_floor := is_on_floor()
 	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
 		on_floor = absf(velocity.y) < 5.0
+	# #60: bots carry a fixed loadout with no secondary slot, so nothing rides
+	# their back for now. Belt grenade shows when their grenade pool is > 0.
 	SoldierArt.draw_soldier(
 		self,
 		color,
@@ -605,4 +612,7 @@ func _draw() -> void:
 		false,
 		ceasefire_t > 0.0,
 		cosmetics,
+		"",
+		grenades,
+		false,
 	)
