@@ -429,8 +429,10 @@ func net_bot_shoot(muzzle: Vector2, aim: Vector2, proj_id: int = 0) -> void:
 	var dmg_mul: float = float(Settings.mod_damage)
 	if loadout == "LAW":
 		var r := rocket_scene.instantiate()
+		# #69: name by bot_id so two LAW bots can't collide their proj_id counters
+		# and shove a rocket into `@RigidBody2D@nnn`-style auto-name territory.
 		if Net.is_networked() and proj_id > 0:
-			r.name = "BotRocket_%d_%d" % [get_multiplayer_authority(), proj_id]
+			r.name = "BotRocket_%d_%d" % [bot_id, proj_id]
 		r.global_position = muzzle
 		r.direction = aim
 		r.speed = ROCKET_SPEED
@@ -459,8 +461,11 @@ func net_bot_grenade(g_pos: Vector2, g_vel: Vector2, g_ang: float, proj_id: int 
 	if Net.is_client():
 		Net.bot_shots_seen += 1
 	var g := grenade_scene.instantiate()
+	# #69: name by bot_id so simultaneous throws from different bots don't
+	# collide (proj_id is per-bot). Bot_id is host-assigned and mirrored to
+	# clients in net_spawn_bot, so the path is identical on every peer.
 	if Net.is_networked() and proj_id > 0:
-		g.name = "BotGrenade_%d_%d" % [get_multiplayer_authority(), proj_id]
+		g.name = "BotGrenade_%d_%d" % [bot_id, proj_id]
 	g.global_position = g_pos
 	g.team = team
 	g.killer_name = display_name

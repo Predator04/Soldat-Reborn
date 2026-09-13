@@ -1799,8 +1799,11 @@ func net_pickup_state(arr: Array) -> void:
 		var wp: Node = by_id.get(id) as Node
 		if wp == null:
 			# First time we're hearing about this pickup — spawn a client-frozen copy.
+			# #69: give it a stable name matching the id so future per-instance RPCs
+			# (should we ever add pickup-level state sync) resolve on both peers.
 			var new_wp := WeaponPickup.new()
 			new_wp.pickup_id = id
+			new_wp.name = "Pickup_%d" % id
 			new_wp.weapon_name = str(entry.get("name", "AK-74"))
 			new_wp.team = int(entry.get("team", 0))
 			new_wp.thrower_name = str(entry.get("thrower", ""))

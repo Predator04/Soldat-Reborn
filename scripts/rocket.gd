@@ -22,7 +22,11 @@ var _velocity := Vector2.ZERO
 # state. Preserves the existing damage authority guard in _explode().
 const BROADCAST_HZ := 20.0
 const LERP_RATE := 22.0
-var _broadcast_cd: float = 0.0
+# #69: hold off first broadcast for ~200ms so the reliable spawn RPC
+# (net_bot_shoot / net_shoot) has time to deliver the spawn on remote peers
+# before the unreliable state stream begins. Without this the state RPC beats
+# the spawn RPC and produces "Node not found: Main/BotRocket_1_1" spam.
+var _broadcast_cd: float = 0.20
 var _target_pos: Vector2 = Vector2.ZERO
 var _target_dir: Vector2 = Vector2.RIGHT
 var _has_target := false
@@ -56,15 +60,18 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
 		# Non-authority: lerp toward the shooter's broadcast transform so shooter
-		# and victim see the rocket + explosion at the same spot (#61). Life still
-		# ticks so client-side cleanup fires if RPCs stop arriving.
+		# and victim see the rocket + explosion at the same spot (#61). We used to
+		# self-destruct via _life so client-side cleanup fires if RPCs stop arriving,
+		# but that raced with the authority's net_explode + reliable state broadcasts
+		# — the client would queue_free just as a trailing state RPC arrived. #69:
+		# extend the fallback life so the reliable net_explode always wins.
 		if _has_target:
 			var t: float = clampf(delta * LERP_RATE, 0.0, 1.0)
 			position = position.lerp(_target_pos + _target_dir * speed * delta, t)
 			direction = _target_dir
 			_smoke.direction = -direction
 		_life -= delta
-		if _life <= 0.0:
+		if _life <= -6.0:
 			_explode()
 		queue_redraw()
 		return
@@ -83,14 +90,16 @@ func _physics_process(delta: float) -> void:
 		_explode()
 	queue_redraw()
 	# Broadcast transform to non-authority peers (#61).
-	if multiplayer.multiplayer_peer != null:
+	# #69: once we've exploded, stop broadcasting — the client has queue_freed
+	# via reliable net_explode and any trailing state RPC would print "Node not found".
+	if multiplayer.multiplayer_peer != null and not _exploded:
 		_broadcast_cd -= delta
 		if _broadcast_cd <= 0.0:
 			_broadcast_cd = 1.0 / BROADCAST_HZ
 			rpc("net_projectile_state", global_position, direction)
 
 
-@rpc("authority", "call_remote", "unreliable_ordered")
+@rpc("authority", "call_remote", "reliable")
 func net_projectile_state(pos: Vector2, dir: Vector2) -> void:
 	_target_pos = pos
 	_target_dir = dir
@@ -108,6 +117,10 @@ func net_explode(pos: Vector2) -> void:
 func _on_body_entered(body: Node) -> void:
 	# Same-team direct impact: skip damage but still consume the rocket so it doesn't
 	# fly through and hit again elsewhere. Splash from the fuse path can still happen.
+	# #69: non-authority peers must NOT self-explode — they'd queue_free ahead of any
+	# trailing state RPC from the authority. Only the shooter decides when to blow.
+	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
+		return
 	if body is CharacterBody2D and body.get("team") == team:
 		queue_free()
 		return

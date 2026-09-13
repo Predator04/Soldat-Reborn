@@ -1190,6 +1190,8 @@ func net_drop_weapon(weapon_name: String, from_pos: Vector2, aim: Vector2) -> vo
 		var m := get_parent()
 		if m != null and m.has_method("next_pickup_id"):
 			wp.pickup_id = int(m.next_pickup_id())
+			# #69: stable name so both peers refer to this pickup by the same path.
+			wp.name = "Pickup_%d" % wp.pickup_id
 	var parent := get_parent()
 	if parent != null:
 		parent.add_child(wp)

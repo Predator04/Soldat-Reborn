@@ -15,7 +15,11 @@ var is_fragment := false  # true for the child mini-grenades from a cluster
 # grenade lands in the same spot on every screen.
 const BROADCAST_HZ := 20.0
 const LERP_RATE := 22.0
-var _broadcast_cd: float = 0.0
+# #69: hold off broadcasting for ~200ms after spawn so the reliable spawn RPC
+# has time to land on remote peers. Without this the unreliable state RPC can
+# beat the reliable spawn RPC to the client, producing "Node not found" spam
+# until the reliable stream catches up.
+var _broadcast_cd: float = 0.20
 var _target_pos: Vector2 = Vector2.ZERO
 var _target_vel: Vector2 = Vector2.ZERO
 var _target_rot: float = 0.0
@@ -46,13 +50,16 @@ func _ready() -> void:
 	mass = 0.25
 	gravity_scale = 0.9 * float(Settings.mod_gravity)
 	# Non-authority: freeze the body kinematic so we can lerp its transform in from
-	# the authority peer without physics fighting us. Fuse still ticks locally so
-	# the explosion fires at ~the same moment (drift stays well under 1 frame at
-	# 20Hz broadcast).
+	# the authority peer without physics fighting us. Explosion is now driven only
+	# by the authority's reliable net_explode RPC (#69) so the client never queue_frees
+	# ahead of trailing state RPCs. A very long fallback timer catches the case where
+	# net_explode is somehow lost, keeping stale grenades from lingering forever.
 	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
 		freeze_mode = RigidBody2D.FREEZE_MODE_KINEMATIC
 		freeze = true
-	get_tree().create_timer(fuse).timeout.connect(_explode)
+		get_tree().create_timer(fuse + 8.0).timeout.connect(_explode)
+	else:
+		get_tree().create_timer(fuse).timeout.connect(_explode)
 
 
 func _physics_process(delta: float) -> void:
@@ -60,6 +67,17 @@ func _physics_process(delta: float) -> void:
 	if multiplayer.multiplayer_peer == null:
 		return
 	if is_multiplayer_authority():
+		# Cluster fragments don't have stable names across peers (each peer runs
+		# its own randomised _explode). Broadcasting their state would target a
+		# path the client doesn't have. Their in-flight visual doesn't need sync —
+		# the parent's net_explode already synced the impact point (#69).
+		if is_fragment:
+			return
+		# #69: stop broadcasting once we've exploded — otherwise trailing state
+		# RPCs land on nodes the client has already queue_freed via the reliable
+		# net_explode, producing "Node not found" spam.
+		if _exploded:
+			return
 		_broadcast_cd -= delta
 		if _broadcast_cd <= 0.0:
 			_broadcast_cd = 1.0 / BROADCAST_HZ
@@ -73,7 +91,7 @@ func _physics_process(delta: float) -> void:
 		rotation = lerp_angle(rotation, _target_rot, t)
 
 
-@rpc("authority", "call_remote", "unreliable_ordered")
+@rpc("authority", "call_remote", "reliable")
 func net_projectile_state(pos: Vector2, vel: Vector2, rot: float) -> void:
 	_target_pos = pos
 	_target_vel = vel
