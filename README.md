@@ -2,18 +2,18 @@
 
 A Godot 4.7 rebuild of the classic 2D run-and-gun shooter **Soldat** — jet boots,
 bunny-hop momentum, ragdoll gibs, grenades, and online multiplayer — rebuilt with
-Soldat's own art and sound (CC BY 4.0) and an animated skeletal soldier.
+Soldat's own art and sound (CC BY 4.0) and an animated skeletal soldier. Feature-complete
+past the classic, with most of Soldat 2's feature list folded in.
 
 ## Features
 
-- Run / bunny-hop / jet boots with fuel management, crouch and prone
-- Full 10-weapon primary roster: Deagles, MP5, AK-74, Steyr AUG, Spas-12, Ruger 77, M79, Barrett M82A1, FN Minimi, XM214 Minigun
-- 4 secondary weapons (Q to swap): USSOCOM, Combat Knife, Chainsaw, M72 LAW
-- Grenades (arc throw, bounce, splash damage)
-- 3 maps: Ascent / Towers / Pillars (cycled per game)
-- Match system: team score, 5-minute round timer or first-to-20 wins, winner banner
-- Single-player vs 3 AI bots, plus ENet multiplayer (host / join)
-- Real Soldat assets: skeletal soldier animation (`.poa` rig), weapon sprites, sound effects
+- **Movement** — run / bunny-hop / jet boots with fuel, crouch, prone, roll, backflip-friendly physics
+- **Weapons** — 10 primaries (Deagles, MP5, AK-74, Steyr AUG, Spas-12, Ruger 77, M79, Barrett, Minimi, Minigun) + 4 secondaries (USSOCOM, Knife, Chainsaw, LAW) + Flamethrower, Rambo Bow, Frag/Cluster grenades, M2 stationary gun
+- **Game modes** — Deathmatch, Pointmatch, Teammatch, Capture the Flag, Rambomatch, Infiltration, Hold the Flag, **Domination**, **Battle Royale** + Realistic/Survival/Advance sub-modes
+- **Map editor** — in-game editor: place platforms, spawns, flags, control points; save/load custom maps; play-test live
+- **Procedural maps** — seeded generator with re-roll, produces playable layouts for every mode
+- **Polish** — gestures/taunts, chat, weapon throw/pickup, ceasefire, bink, game modifiers, character customization, lo-fi mode, local stats, GIF recording, improved grenade physics
+- **Multiplayer** — host-authoritative ENet (host / join), bots, LAN-scale sync
 
 ## Controls
 
@@ -21,15 +21,26 @@ Soldat's own art and sound (CC BY 4.0) and an animated skeletal soldier.
 |-----|--------|
 | A / D | Move left / right |
 | W (or SPACE) | Jump (also stands up from prone) |
-| S | Crouch (hold) |
+| S | Crouch (hold) — rolls while moving |
 | X | Prone (toggle) |
 | Right click | Jet boots (hold in air) |
-| Mouse | Aim |
-| Left click | Shoot |
-| 1–0 | Primary weapon: 1 Deagles · 2 MP5 · 3 AK-74 · 4 Steyr AUG · 5 Spas-12 · 6 Ruger 77 · 7 M79 · 8 Barrett · 9 Minimi · 0 Minigun |
-| Q | Swap between primary and secondary (USSOCOM · Knife · Chainsaw · LAW) |
+| Mouse / Left click | Aim / shoot |
+| 1–0 | Primary: 1 Deagles · 2 MP5 · 3 AK-74 · 4 Steyr AUG · 5 Spas-12 · 6 Ruger 77 · 7 M79 · 8 Barrett · 9 Minimi · 0 Minigun |
+| Q | Swap primary / secondary (USSOCOM · Knife · Chainsaw · LAW) |
 | R | Reload |
 | E | Throw grenade |
+| G | Toggle grenade type (frag / cluster) |
+| F | Throw away current weapon |
+| / | Gesture console — `/victory /smoke /tabac /takeoff /kill /brutalkill /mercy` |
+| T / Y | Chat (global / team); ALT+keys for taunts |
+| F9 | Record a GIF of gameplay |
+
+## Map editor & procedural generation
+
+- Launch from the menu (**MAP EDITOR**) or open an existing map.
+- **Editor controls:** toolbar to place platforms (drag), markers (click), move/delete (right-click); middle-drag pan, wheel zoom, ESC exit, F5 play-test.
+- Maps save to `user://maps/*.json` and are selectable in the menu alongside the built-in rotation.
+- **GENERATE + PLAY** rolls a seeded procedural map and drops you straight in.
 
 ## Run it
 
@@ -55,16 +66,18 @@ CI runs the headless verify on every push (`.github/workflows/ci.yml`).
 
 - **HOST GAME** — pick a map, then share your IP/port (default `7777`).
 - **JOIN GAME** — enter host IP + port.
-- LAN-scale: per-frame state sync. See *Known limitations* in `ROADMAP.md`.
+- Host-authoritative state sync. Custom maps are single-player; networked play uses the built-in map rotation. See *Known limitations* in `ROADMAP.md`.
 
 ## Project layout
 
 - `scripts/` — game code (`player.gd`, `bot.gd`, `gostek.gd`, `poa_loader.gd`,
-  `soldier_art.gd`, `sfx.gd`, `net.gd`, `main.gd`, `hud.gd`, `menu.gd`, `settings.gd`, …)
+  `soldier_art.gd`, `sfx.gd`, `net.gd`, `main.gd`, `hud.gd`, `menu.gd`, `settings.gd`,
+  `map_editor.gd`, `map_gen.gd`, `map_io.gd`, `stats.gd`, `gif_recorder.gd`, …)
 - `scenes/` — `.tscn` scene files
 - `assets/` — ported Soldat assets: `gostek-gfx/` (soldier parts), `weapons-gfx/`,
-  `sfx/` (sounds), `anims/` (`.poa` animation data), `textures/`, `sparks-gfx/`
-- `references/poa-format.md` — the `.poa` animation format, verified against Soldat's MIT source
+  `sfx/` (sounds), `anims/` (`.poa` animation data), `textures/`, `interface-gfx/`
+- `references/` — `.poa` format, weapon stats (`weapons-stats.md`), game overview
+  (`soldat-intro.md`), commands/gestures/movement (`soldat-commands-gestures.md`)
 - `ROADMAP.md` — what's done, backlog, and known issues
 - `CHANGELOG.md` — release history
 
