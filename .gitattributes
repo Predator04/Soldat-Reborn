@@ -1,0 +1,10 @@
+# Normalize line endings and mark generated/binary files.
+* text=auto
+
+# Binary / generated — don't diff
+*.png binary
+*.wav binary
+*.ogg binary
+*.poa -text
+*.exe binary
+*.zip binary
