@@ -8,6 +8,7 @@ var parallax_script := preload("res://scripts/parallax.gd")
 var hud_script := preload("res://scripts/hud.gd")
 const PoaLoader = preload("res://scripts/poa_loader.gd")
 const WeaponPickup = preload("res://scripts/weapon_pickup.gd")
+const MapIO = preload("res://scripts/map_io.gd")
 
 signal kill(killer_name: String, victim_name: String, weapon_name: String, killer_team: int, victim_team: int)
 
@@ -155,11 +156,18 @@ func _ready() -> void:
 	PoaLoader.preload_all()
 	if Net.is_networked():
 		# Host picks the map (via Net.chosen_map_index). Clients receive it before
-		# reaching this scene, so both peers build the same terrain.
+		# reaching this scene, so both peers build the same terrain. Networked
+		# games always use built-in maps — custom maps are singleplayer-only.
 		_map = MAPS[Net.chosen_map_index % MAPS.size()]
 	else:
-		_map = MAPS[Settings.map_index % MAPS.size()]
-		Settings.map_index = (Settings.map_index + 1) % MAPS.size()
+		# Custom map (from the editor / user://maps/) short-circuits the built-in
+		# rotation when Settings.custom_map_path is set (issue #31).
+		_map = {}
+		if Settings.custom_map_path != "":
+			_map = MapIO.load_from_file(Settings.custom_map_path)
+		if _map.is_empty():
+			_map = MAPS[Settings.map_index % MAPS.size()]
+			Settings.map_index = (Settings.map_index + 1) % MAPS.size()
 	_build_sky()
 	_build_parallax()
 	_build_terrain()
@@ -441,9 +449,14 @@ func _build_hud() -> void:
 
 func _spawn_flags() -> void:
 	# CTF bases: BLUE on the far left, RED on the far right of the map's ground row.
+	# Custom maps (editor) can override the pair via `ctf_flags: [blue, red]`.
 	var ground_y: float = float(_map.get("ctf_ground_y", 1830.0))
 	var blue_base := Vector2(300, ground_y)
 	var red_base := Vector2(MAP_W - 300, ground_y)
+	var custom: Array = _map.get("ctf_flags", [])
+	if custom.size() >= 2:
+		blue_base = custom[0]
+		red_base = custom[1]
 	flags = [
 		_make_flag(TEAM_BLUE, blue_base),
 		_make_flag(TEAM_RED, red_base),
@@ -453,9 +466,13 @@ func _spawn_flags() -> void:
 func _spawn_flag_inf() -> void:
 	# INF: single neutral flag near the center. Attackers (RED) deliver to the
 	# defenders' base (BLUE) to score. Defenders return the flag by touching it.
+	# Custom maps override the flag + defender base via `inf_flag` / `ctf_flags[0]`.
 	var ground_y: float = float(_map.get("ctf_ground_y", 1830.0))
-	var center := Vector2(MAP_W * 0.5, ground_y)
+	var center: Vector2 = _map.get("inf_flag", Vector2(MAP_W * 0.5, ground_y))
 	var defender_base := Vector2(300, ground_y)
+	var custom_flags: Array = _map.get("ctf_flags", [])
+	if custom_flags.size() >= 1:
+		defender_base = custom_flags[0]
 	var f := _make_flag(0, center)
 	f.set_meta("capture_point", defender_base)
 	flags = [f]
@@ -464,7 +481,7 @@ func _spawn_flag_inf() -> void:
 func _spawn_flag_htf() -> void:
 	# HTF: single neutral flag mid-map. The carrying team ticks score per second.
 	var ground_y: float = float(_map.get("ctf_ground_y", 1830.0))
-	var center := Vector2(MAP_W * 0.5, ground_y)
+	var center: Vector2 = _map.get("htf_flag", Vector2(MAP_W * 0.5, ground_y))
 	flags = [_make_flag(0, center)]
 
 
@@ -481,7 +498,7 @@ func _spawn_rambo_bow() -> void:
 	wp.team = -1
 	wp.thrower_name = ""
 	wp.damage_on_hit = 0.0
-	wp.global_position = Vector2(MAP_W * 0.5, ground_y - 40.0)
+	wp.global_position = _map.get("rambo_pos", Vector2(MAP_W * 0.5, ground_y - 40.0))
 	wp.set_meta("rambo_spawn", true)
 	if Net.is_networked() and Net.is_host():
 		wp.pickup_id = next_pickup_id()
@@ -734,7 +751,7 @@ func _tick_ctf() -> void:
 			continue
 		var flag_team: int = int(f.get_meta("team"))
 		var home: Vector2 = f.get_meta("home")
-		var carrier = f.get_meta("carrier")
+		var carrier: Variant = f.get_meta("carrier") if f.has_meta("carrier") else null
 		if is_instance_valid(carrier):
 			if bool(carrier.get("dead")):
 				# Carrier died — drop flag at their last position.
@@ -748,7 +765,8 @@ func _tick_ctf() -> void:
 					continue
 				var other_team: int = int(other.get_meta("team"))
 				var other_home: Vector2 = other.get_meta("home")
-				if int(carrier.get("team")) == other_team and other.get_meta("carrier") == null:
+				var other_carrier: Variant = other.get_meta("carrier") if other.has_meta("carrier") else null
+				if int(carrier.get("team")) == other_team and other_carrier == null:
 					if f.global_position.distance_to(other_home) < 40.0:
 						_ctf_score(int(carrier.get("team")), str(carrier.get("display_name")))
 						# Return both flags to base.
@@ -780,7 +798,7 @@ func _tick_inf() -> void:
 		return
 	var home: Vector2 = f.get_meta("home")
 	var capture: Vector2 = f.get_meta("capture_point")
-	var carrier = f.get_meta("carrier")
+	var carrier: Variant = f.get_meta("carrier") if f.has_meta("carrier") else null
 	if is_instance_valid(carrier):
 		if bool(carrier.get("dead")):
 			f.position = carrier.global_position
@@ -823,7 +841,7 @@ func _tick_htf(delta: float) -> void:
 	if not is_instance_valid(f):
 		return
 	var home: Vector2 = f.get_meta("home")
-	var carrier = f.get_meta("carrier")
+	var carrier: Variant = f.get_meta("carrier") if f.has_meta("carrier") else null
 	if is_instance_valid(carrier):
 		if bool(carrier.get("dead")):
 			f.position = carrier.global_position
@@ -897,12 +915,20 @@ func _tick_rambo() -> void:
 
 func _spawn_dom_points() -> void:
 	# Three capture points along the map — left, center, right — on the ground row.
+	# Custom maps override the trio via `dom_points: [Vector2, Vector2, Vector2]`.
 	var ground_y: float = float(_map.get("ctf_ground_y", 1830.0))
-	var slots := [
+	var default_slots := [
 		{"pos": Vector2(MAP_W * 0.20, ground_y - 30.0), "name": "A"},
 		{"pos": Vector2(MAP_W * 0.50, ground_y - 30.0), "name": "B"},
 		{"pos": Vector2(MAP_W * 0.80, ground_y - 30.0), "name": "C"},
 	]
+	var slots: Array = default_slots
+	var custom: Array = _map.get("dom_points", [])
+	if custom.size() >= 1:
+		slots = []
+		var labels := ["A", "B", "C", "D", "E"]
+		for i in custom.size():
+			slots.append({"pos": custom[i], "name": labels[mini(i, labels.size() - 1)]})
 	var visual := preload("res://scripts/dom_point_visual.gd")
 	for slot in slots:
 		var a := Area2D.new()
@@ -1262,7 +1288,7 @@ func _broadcast_flag_state() -> void:
 			arr.append({"pos": Vector2.ZERO, "carrier": 0})
 			continue
 		var cid := 0
-		var carrier = f.get_meta("carrier")
+		var carrier: Variant = f.get_meta("carrier") if f.has_meta("carrier") else null
 		if is_instance_valid(carrier):
 			var nm := String(carrier.name)
 			if nm.begins_with("Player_"):

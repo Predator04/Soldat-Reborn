@@ -7,6 +7,7 @@ var sfx_volume := 1.0          # 0.0 = muted, 1.0 = full
 var screen_shake := true
 var fullscreen := false
 var map_index := 0             # which map layout the next game loads
+var custom_map_path := ""      # if non-empty, main.gd loads this JSON map (issue #31)
 var lofi := false              # low-end mode: no particles, no gib meshes, no glow
 
 # Cosmetics — the local player's persistent character look.
@@ -70,6 +71,7 @@ func load_settings() -> void:
 	screen_shake = bool(cf.get_value("game", "screen_shake", true))
 	fullscreen = bool(cf.get_value("video", "fullscreen", false))
 	map_index = int(cf.get_value("game", "map_index", 0))
+	custom_map_path = str(cf.get_value("game", "custom_map_path", ""))
 	game_mode = int(cf.get_value("game", "game_mode", MODE_DM))
 	realistic = bool(cf.get_value("game", "realistic", false))
 	survival = bool(cf.get_value("game", "survival", false))
@@ -91,6 +93,7 @@ func save() -> void:
 	cf.set_value("game", "screen_shake", screen_shake)
 	cf.set_value("video", "fullscreen", fullscreen)
 	cf.set_value("game", "map_index", map_index)
+	cf.set_value("game", "custom_map_path", custom_map_path)
 	cf.set_value("game", "game_mode", game_mode)
 	cf.set_value("game", "realistic", realistic)
 	cf.set_value("game", "survival", survival)

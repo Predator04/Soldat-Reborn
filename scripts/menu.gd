@@ -1,6 +1,8 @@
 extends Control
 ## Main menu — Play (vs bots), Host, Join, Settings, Quit.
 
+const MapIO = preload("res://scripts/map_io.gd")
+
 const MAP_NAMES := ["Ascent", "Towers", "Pillars"]
 const MODE_NAMES := [
 	"Deathmatch", "Teammatch", "Capture the Flag",
@@ -20,6 +22,8 @@ var _ip_edit: LineEdit
 var _port_edit: LineEdit
 var _connect_btn: Button
 var _map_pick: OptionButton
+var _sp_map_pick: OptionButton     # main-menu map selector (built-in + custom)
+var _sp_map_paths: Array = []      # index → "" (auto / built-in) or a user://maps/ path
 var _connecting := false
 
 
@@ -132,11 +136,24 @@ func _build_menu() -> void:
 		Settings.save())
 	subs.add_child(adv_cb)
 
+	# Map picker (SP): built-in rotation + specific built-in + custom maps.
+	_sp_map_pick = OptionButton.new()
+	_sp_map_pick.custom_minimum_size = Vector2(300, 36)
+	_menu_box.add_child(_sp_map_pick)
+	_refresh_sp_map_pick()
+	_sp_map_pick.item_selected.connect(_on_sp_map_selected)
+
 	var play := _make_button("PLAY vs BOTS")
 	play.pressed.connect(func() -> void:
 		Net.set_singleplayer()
 		get_tree().change_scene_to_file("res://scenes/main.tscn"))
 	_menu_box.add_child(play)
+
+	var editor := _make_button("MAP EDITOR")
+	editor.pressed.connect(func() -> void:
+		Net.set_singleplayer()
+		get_tree().change_scene_to_file("res://scenes/map_editor.tscn"))
+	_menu_box.add_child(editor)
 
 	var host := _make_button("HOST GAME")
 	host.pressed.connect(func() -> void:
@@ -646,3 +663,52 @@ func _on_net_disconnected() -> void:
 	_connecting = false
 	if is_instance_valid(_connect_btn):
 		_connect_btn.disabled = false
+
+
+# ── SP map picker ─────────────────────────────────────
+
+func _refresh_sp_map_pick() -> void:
+	if _sp_map_pick == null:
+		return
+	_sp_map_pick.clear()
+	_sp_map_paths.clear()
+	# Slot 0: rotate through built-in maps (legacy behavior).
+	_sp_map_pick.add_item("Map: Rotate built-in")
+	_sp_map_paths.append("")
+	# Slots 1..N: pinned built-in.
+	for name in MAP_NAMES:
+		_sp_map_pick.add_item("Map: %s" % name)
+		_sp_map_paths.append("builtin:%s" % name)
+	# Slots N+1..: custom maps in user://maps/, excluding the play-test temp.
+	for path_v in MapIO.list_files():
+		var path: String = String(path_v)
+		if path.ends_with("/_playtest.json"):
+			continue
+		_sp_map_pick.add_item("Custom: %s" % path.get_file().get_basename())
+		_sp_map_paths.append(path)
+	# Select whichever slot matches the current Settings state.
+	var sel := 0
+	if Settings.custom_map_path != "":
+		var idx := _sp_map_paths.find(Settings.custom_map_path)
+		if idx >= 0:
+			sel = idx
+	elif Settings.map_index >= 0 and Settings.map_index < MAP_NAMES.size():
+		# Rotation mode leaves map_index cycling, so we can't distinguish "pinned"
+		# from "rotating" — keep slot 0 selected by default.
+		sel = 0
+	_sp_map_pick.selected = sel
+
+
+func _on_sp_map_selected(idx: int) -> void:
+	if idx < 0 or idx >= _sp_map_paths.size():
+		return
+	var v: String = _sp_map_paths[idx]
+	if v == "":
+		Settings.custom_map_path = ""
+	elif v.begins_with("builtin:"):
+		Settings.custom_map_path = ""
+		var name := v.substr(len("builtin:"))
+		Settings.map_index = maxi(MAP_NAMES.find(name), 0)
+	else:
+		Settings.custom_map_path = v
+	Settings.save()
