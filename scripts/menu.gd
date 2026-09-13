@@ -54,6 +54,16 @@ func _build_title() -> void:
 	title.add_theme_constant_override("outline_size", 8)
 	add_child(title)
 
+	var ver := Label.new()
+	ver.text = "v1.1.0 · build 44"
+	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ver.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	ver.offset_top = 140
+	ver.offset_bottom = 170
+	ver.add_theme_font_size_override("font_size", 18)
+	ver.add_theme_color_override("font_color", Color(0.65, 0.68, 0.75))
+	add_child(ver)
+
 	var sub := Label.new()
 	sub.text = "jet boots · bunny hop · ragdoll gibs · online"
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
