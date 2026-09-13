@@ -84,6 +84,9 @@ var gesture_t := 0.0
 # Ends early the moment the soldier fires/throws (Soldat behavior).
 var ceasefire_t := 0.0
 const CEASEFIRE_SECS := 3.0
+# M2 mount — set to the M2 node while mounted. Skips all normal movement /
+# firing paths; m2.gd drives position + fires directly.
+var mounted_m2: Node2D = null
 # Input lock — HUD sets this while the chat/command LineEdit is focused so held
 # WASD keys don't leak into movement while the player is typing.
 var input_locked := false
@@ -196,6 +199,18 @@ func _physics_process(delta: float) -> void:
 				gesture_anim = ""
 		jet_particles.emitting = jet_on and not dead
 		jet_particles.position = Vector2(-facing * 3.3, 1.7)
+		queue_redraw()
+		return
+
+	# Mounted on an M2 — the turret drives position, aim, and firing.
+	if mounted_m2 != null:
+		velocity = Vector2.ZERO
+		if was_jet:
+			Sfx.jet(false)
+			was_jet = false
+		jet_on = false
+		jet_particles.emitting = false
+		muzzle_t = maxf(0.0, muzzle_t - delta * 10.0)
 		queue_redraw()
 		return
 
@@ -350,11 +365,15 @@ func _physics_process(delta: float) -> void:
 		use_cluster = not use_cluster
 	g_prev = g_now
 
-	# F — throw current weapon (issue #11). Knife throws deal damage; other
-	# weapons become physics pickups that any soldier can grab.
+	# F — mount an M2 if we're standing on one, otherwise throw the current
+	# weapon (issue #11). Mount only when we're not already mounted.
 	var f_now := Input.is_physical_key_pressed(KEY_F)
 	if f_now and not f_prev:
-		_drop_active_weapon()
+		var m2 := _find_nearby_m2()
+		if m2 != null and mounted_m2 == null:
+			m2.mount(self)
+		else:
+			_drop_active_weapon()
 	f_prev = f_now
 
 	# grenade
@@ -690,6 +709,25 @@ func _perform_melee() -> void:
 		_dec_active_mag()
 		if _active_mag() <= 0:
 			_start_reload()
+
+
+func _find_nearby_m2() -> Node2D:
+	for m in get_tree().get_nodes_in_group("m2_gun"):
+		if not is_instance_valid(m):
+			continue
+		if m.get("operator") != null:
+			continue
+		if global_position.distance_to(m.global_position) < 32.0:
+			return m
+	return null
+
+
+func mount_m2(m2: Node2D) -> void:
+	mounted_m2 = m2
+
+
+func dismount_m2() -> void:
+	mounted_m2 = null
 
 
 func _drop_active_weapon() -> void:

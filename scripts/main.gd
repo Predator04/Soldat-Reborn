@@ -81,6 +81,7 @@ const MAPS := [
 		],
 		"player_spawn": Vector2(200, 1775),
 		"bot_spawns": [Vector2(3400, 1320), Vector2(4200, 770), Vector2(2400, 890), Vector2(4200, 1460)],
+		"m2_mounts": [Vector2(2400, 1130), Vector2(600, 780), Vector2(4200, 780)],
 	},
 	{
 		"name": "Pillars",
@@ -102,6 +103,7 @@ const MAPS := [
 		],
 		"player_spawn": Vector2(200, 1775),
 		"bot_spawns": [Vector2(2400, 1370), Vector2(3600, 1570), Vector2(4000, 1470), Vector2(3200, 1220)],
+		"m2_mounts": [Vector2(2400, 1120)],
 	},
 ]
 
@@ -185,6 +187,19 @@ func _build_terrain() -> void:
 		_make_platform(pl["p"], pl["s"], Color(0.28, 0.32, 0.4))
 	_make_platform(Vector2(0, MAP_H / 2.0), Vector2(40, MAP_H * 2.0), Color(0.2, 0.23, 0.28))
 	_make_platform(Vector2(MAP_W, MAP_H / 2.0), Vector2(40, MAP_H * 2.0), Color(0.2, 0.23, 0.28))
+	_spawn_m2_mounts()
+
+
+func _spawn_m2_mounts() -> void:
+	var mounts: Array = _map.get("m2_mounts", [])
+	if mounts.is_empty():
+		return
+	var M2 = preload("res://scripts/m2.gd")
+	for pos in mounts:
+		var m2 := Node2D.new()
+		m2.set_script(M2)
+		m2.position = pos
+		add_child(m2)
 
 
 # ── Singleplayer spawn path ───────────────────────────
