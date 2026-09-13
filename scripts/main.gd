@@ -243,11 +243,69 @@ func _spawn_m2_mounts() -> void:
 	if mounts.is_empty():
 		return
 	var M2 = preload("res://scripts/m2.gd")
+	var idx: int = 0
 	for pos in mounts:
 		var m2 := Node2D.new()
 		m2.set_script(M2)
 		m2.position = pos
+		m2.name = "M2_%d" % idx
+		m2.set("m2_id", idx)
+		idx += 1
 		add_child(m2)
+
+
+func find_m2(id: int) -> Node2D:
+	# Called by m2.gd RPC receivers to look up their peer counterpart.
+	for m in get_tree().get_nodes_in_group("m2_gun"):
+		if is_instance_valid(m) and int(m.get("m2_id")) == id:
+			return m
+	return null
+
+
+@rpc("any_peer", "call_local", "reliable")
+func net_m2_mount(m2_id: int, peer_id: int) -> void:
+	# In MP the operator's peer id is what all peers use to identify who's driving
+	# the turret. Client-initiated mounts route through host as the authority so
+	# a race between two clients grabbing the same mount is arbitrated centrally.
+	if Net.is_networked() and Net.is_host() and multiplayer.get_remote_sender_id() != 0:
+		# Rebroadcast to everyone (call_local ensures host also applies it).
+		rpc("net_m2_mount", m2_id, peer_id)
+		return
+	var m2 := find_m2(m2_id)
+	if m2 == null:
+		return
+	# Find operator by peer_id.
+	var op: Node2D = null
+	if _players_by_id.has(peer_id):
+		op = _players_by_id[peer_id]
+	if not is_instance_valid(op):
+		return
+	if m2.has_method("net_mount"):
+		m2.net_mount(op)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func net_m2_dismount(m2_id: int) -> void:
+	if Net.is_networked() and Net.is_host() and multiplayer.get_remote_sender_id() != 0:
+		rpc("net_m2_dismount", m2_id)
+		return
+	var m2 := find_m2(m2_id)
+	if m2 != null and m2.has_method("net_dismount"):
+		m2.net_dismount()
+
+
+@rpc("any_peer", "unreliable_ordered")
+func net_m2_state(m2_id: int, aim_dir: Vector2) -> void:
+	var m2 := find_m2(m2_id)
+	if m2 != null and m2.has_method("net_apply_state"):
+		m2.net_apply_state(aim_dir)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func net_m2_fire(m2_id: int, muzzle: Vector2, aim_dir: Vector2, shooter_team: int, shooter_name: String) -> void:
+	var m2 := find_m2(m2_id)
+	if m2 != null and m2.has_method("net_apply_fire"):
+		m2.net_apply_fire(muzzle, aim_dir, shooter_team, shooter_name)
 
 
 # ── Singleplayer spawn path ───────────────────────────

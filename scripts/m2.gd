@@ -19,6 +19,8 @@ var operator: Node2D = null
 var fire_cd := 0.0
 var aim_dir := Vector2.RIGHT
 var _bullet_scene := preload("res://scenes/bullet.tscn")
+# Stable id — Main assigns on spawn so RPCs can address a specific mount.
+var m2_id: int = -1
 
 
 func _ready() -> void:
@@ -31,15 +33,67 @@ func mount(pl: Node2D) -> void:
 		return
 	if operator != null:
 		return
+	# In MP: route the mount through Main so every peer applies it as authority.
+	# The local player who pressed F asks the host to arbitrate.
+	if Net.is_networked():
+		var peer_id: int = int(pl.get_multiplayer_authority())
+		var main := get_parent()
+		if main != null and main.has_method("net_m2_mount"):
+			if Net.is_host():
+				main.rpc("net_m2_mount", m2_id, peer_id)
+			else:
+				main.rpc_id(1, "net_m2_mount", m2_id, peer_id)
+		return
+	net_mount(pl)
+
+
+func dismount() -> void:
+	if Net.is_networked():
+		var main := get_parent()
+		if main != null and main.has_method("net_m2_dismount"):
+			if Net.is_host():
+				main.rpc("net_m2_dismount", m2_id)
+			else:
+				main.rpc_id(1, "net_m2_dismount", m2_id)
+		return
+	net_dismount()
+
+
+func net_mount(pl: Node2D) -> void:
+	if not is_instance_valid(pl) or operator != null:
+		return
 	operator = pl
 	if pl.has_method("mount_m2"):
 		pl.mount_m2(self)
 
 
-func dismount() -> void:
+func net_dismount() -> void:
 	if is_instance_valid(operator) and operator.has_method("dismount_m2"):
 		operator.dismount_m2()
 	operator = null
+
+
+func net_apply_state(new_aim: Vector2) -> void:
+	# Remote peers use this to mirror the operator's turret direction.
+	aim_dir = new_aim
+	if is_instance_valid(operator):
+		operator.set("facing", 1.0 if aim_dir.x >= 0.0 else -1.0)
+
+
+func net_apply_fire(muzzle: Vector2, dir: Vector2, shooter_team: int, shooter_name: String) -> void:
+	fire_cd = RATE
+	var b := _bullet_scene.instantiate()
+	b.global_position = muzzle
+	b.direction = dir
+	b.speed = SPEED
+	b.damage = DAMAGE
+	b.team = shooter_team
+	b.killer_name = shooter_name
+	b.weapon_name = "M2"
+	get_parent().add_child(b)
+	Sfx.shoot("Minigun")
+	if is_instance_valid(operator) and operator.has_method("_shake"):
+		operator._shake(1.8)
 
 
 func _process(delta: float) -> void:
@@ -55,12 +109,18 @@ func _process(delta: float) -> void:
 	# gunner, not a moving soldier while mounted.
 	operator.global_position = global_position + Vector2(0, -12)
 	operator.set("velocity", Vector2.ZERO)
+	# In MP, only the operator's own peer reads input + drives the turret.
+	# Other peers just render whatever aim_dir was last set via net_apply_state.
+	var is_local_driver: bool = true
+	if Net.is_networked():
+		is_local_driver = int(operator.get_multiplayer_authority()) == Net.local_id()
+	if not is_local_driver:
+		return
 	# Aim = operator's mouse, clamped to a sensible turret cone.
 	var mouse: Vector2 = operator.get_global_mouse_position()
 	var to_mouse := mouse - global_position
 	if to_mouse.length() > 1.0:
 		var a := to_mouse.normalized()
-		# Clamp elevation: min y (up) is -AIM_MAX_ELEV, max y (down) is +AIM_MAX_DEPRESS.
 		var min_y := -AIM_MAX_ELEV
 		var max_y := AIM_MAX_DEPRESS
 		if a.y < min_y or a.y > max_y:
@@ -70,33 +130,34 @@ func _process(delta: float) -> void:
 			a = Vector2(new_x, new_y)
 		aim_dir = a
 		operator.set("facing", 1.0 if aim_dir.x >= 0.0 else -1.0)
+	# Broadcast state so remote peers see the barrel swing.
+	if Net.is_networked():
+		var main := get_parent()
+		if main != null and main.has_method("net_m2_state"):
+			main.rpc("net_m2_state", m2_id, aim_dir)
 	# Dismount if the operator taps a directional key.
 	if Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_SPACE) \
 			or Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_D) \
 			or Input.is_physical_key_pressed(KEY_S):
 		dismount()
 		return
-	# Fire on LMB — hitscan-fast bullets with a tight cone. Skip in networked mode
-	# to keep the RPC surface small; M2 is currently SP-only.
-	if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and fire_cd <= 0.0 and not Net.is_networked():
+	# Fire on LMB — hitscan-fast bullets with a tight cone.
+	if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and fire_cd <= 0.0:
 		_fire()
 
 
 func _fire() -> void:
-	fire_cd = RATE
-	var b := _bullet_scene.instantiate()
 	var muzzle := global_position + Vector2(0, -14) + aim_dir * 26.0
-	b.global_position = muzzle
-	b.direction = aim_dir.rotated(randf_range(-SPREAD, SPREAD))
-	b.speed = SPEED
-	b.damage = DAMAGE
-	b.team = int(operator.get("team"))
-	b.killer_name = str(operator.get("display_name"))
-	b.weapon_name = "M2"
-	get_parent().add_child(b)
-	Sfx.shoot("Minigun")
-	if operator.has_method("_shake"):
-		operator._shake(1.8)
+	var dir := aim_dir.rotated(randf_range(-SPREAD, SPREAD))
+	var op_team: int = int(operator.get("team"))
+	var op_name: String = str(operator.get("display_name"))
+	if Net.is_networked():
+		var main := get_parent()
+		if main != null and main.has_method("net_m2_fire"):
+			main.rpc("net_m2_fire", m2_id, muzzle, dir, op_team, op_name)
+		return
+	# SP path: apply locally.
+	net_apply_fire(muzzle, dir, op_team, op_name)
 
 
 func _draw() -> void:
