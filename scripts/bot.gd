@@ -171,7 +171,7 @@ func _physics_process(delta: float) -> void:
 		# LAW bots refuse point-blank shots — rocket blast radius 130 would splash themselves to death.
 		if loadout == "LAW" and t_len < ROCKET_MIN_RANGE:
 			pass
-		elif t_len < ENGAGE_RANGE:
+		elif t_len < ENGAGE_RANGE and _has_line_of_sight(target):
 			_shoot(to_t)
 
 	queue_redraw()
@@ -205,6 +205,23 @@ func _refresh_target(delta: float = 0.0) -> void:
 			best_d2 = d2
 			best = s
 	target = best
+
+
+func _has_line_of_sight(t: Node2D) -> bool:
+	# Cast a ray from the bot's chest to the target's chest. If any StaticBody2D
+	# terrain sits in the way we skip the shot — otherwise the bot happily plinks
+	# through walls, which reads as an aim-bot to human players.
+	if not is_instance_valid(t):
+		return false
+	var space := get_world_2d().direct_space_state
+	var from := global_position + Vector2(0, -8)
+	var to := t.global_position + Vector2(0, -8)
+	var q := PhysicsRayQueryParameters2D.create(from, to)
+	q.exclude = [self, t]
+	q.collide_with_areas = false
+	q.collide_with_bodies = true
+	var hit := space.intersect_ray(q)
+	return hit.is_empty()
 
 
 func _bullet_incoming() -> bool:
