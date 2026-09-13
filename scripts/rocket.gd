@@ -11,6 +11,7 @@ var weapon_name := "LAW"
 
 var _life := 4.0
 var _smoke: CPUParticles2D
+var _exploded := false
 
 
 func _ready() -> void:
@@ -54,6 +55,9 @@ func _on_body_entered(body: Node) -> void:
 
 
 func _explode() -> void:
+	if _exploded:
+		return
+	_exploded = true
 	Sfx.explode()
 	for s in get_tree().get_nodes_in_group("soldier"):
 		if not is_instance_valid(s):

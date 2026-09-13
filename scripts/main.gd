@@ -8,7 +8,7 @@ var parallax_script := preload("res://scripts/parallax.gd")
 var hud_script := preload("res://scripts/hud.gd")
 const PoaLoader = preload("res://scripts/poa_loader.gd")
 
-signal kill(killer_name: String, victim_name: String, weapon_name: String, killer_team: int)
+signal kill(killer_name: String, victim_name: String, weapon_name: String, killer_team: int, victim_team: int)
 
 var player: Node2D = null            # LOCAL player (whichever peer owns us)
 var hud: CanvasLayer = null
@@ -44,8 +44,8 @@ const MAPS := [
 			{"p": Vector2(2250, 660), "s": Vector2(240, 22)},
 			{"p": Vector2(2700, 800), "s": Vector2(240, 22)},
 		],
-		"player_spawn": Vector2(200, 1050),
-		"bot_spawns": [Vector2(1000, 1050), Vector2(1600, 500), Vector2(2400, 1050), Vector2(2900, 760)],
+		"player_spawn": Vector2(200, 1025),
+		"bot_spawns": [Vector2(1000, 1025), Vector2(1600, 500), Vector2(2400, 1025), Vector2(2900, 760)],
 	},
 	{
 		"name": "Towers",
@@ -58,8 +58,8 @@ const MAPS := [
 			{"p": Vector2(1000, 980), "s": Vector2(180, 22)},
 			{"p": Vector2(2200, 980), "s": Vector2(180, 22)},
 		],
-		"player_spawn": Vector2(200, 1050),
-		"bot_spawns": [Vector2(500, 640), Vector2(2700, 640), Vector2(1600, 560), Vector2(1600, 1050)],
+		"player_spawn": Vector2(200, 1025),
+		"bot_spawns": [Vector2(500, 640), Vector2(2700, 640), Vector2(1600, 560), Vector2(1600, 1025)],
 	},
 	{
 		"name": "Pillars",
@@ -72,8 +72,8 @@ const MAPS := [
 			{"p": Vector2(600, 880), "s": Vector2(130, 22)},
 			{"p": Vector2(2600, 880), "s": Vector2(130, 22)},
 		],
-		"player_spawn": Vector2(200, 1050),
-		"bot_spawns": [Vector2(800, 860), Vector2(1600, 640), Vector2(2400, 860), Vector2(1600, 1050)],
+		"player_spawn": Vector2(200, 1025),
+		"bot_spawns": [Vector2(800, 860), Vector2(1600, 640), Vector2(2400, 860), Vector2(1600, 1025)],
 	},
 ]
 
@@ -295,9 +295,9 @@ func net_despawn_player(peer_id: int) -> void:
 		player = null
 
 
-@rpc("any_peer", "call_local", "reliable")
-func net_kill_feed(killer_name: String, victim_name: String, weapon_name: String, killer_team: int) -> void:
-	kill.emit(killer_name, victim_name, weapon_name, killer_team)
+@rpc("authority", "call_local", "reliable")
+func net_kill_feed(killer_name: String, victim_name: String, weapon_name: String, killer_team: int, victim_team: int) -> void:
+	kill.emit(killer_name, victim_name, weapon_name, killer_team, victim_team)
 
 
 # ── Match / score / round ─────────────────────────────
@@ -321,10 +321,13 @@ func _process(delta: float) -> void:
 			_broadcast_match_state()
 
 
-func _on_kill_scored(_killer_name: String, _victim_name: String, _weapon_name: String, killer_team: int) -> void:
+func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: String, killer_team: int, victim_team: int) -> void:
 	if Net.is_networked() and not Net.is_host():
 		return
 	if not round_active or killer_team < 0:
+		return
+	# Suicide or team-kill: no score for the victim's own team.
+	if killer_name == victim_name or killer_team == victim_team:
 		return
 	scores[killer_team] = int(scores.get(killer_team, 0)) + 1
 	if scores[killer_team] >= SCORE_TO_WIN:

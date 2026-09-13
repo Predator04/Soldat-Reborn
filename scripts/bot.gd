@@ -177,7 +177,7 @@ func _bullet_incoming() -> bool:
 		var d: float = to_b.length()
 		if d < 150.0 and d > 1.0:
 			var bvel: Vector2 = b.get("direction") * float(b.get("speed"))
-			if to_b.normalized().dot(bvel.normalized()) > 0.6:
+			if to_b.normalized().dot(bvel.normalized()) < -0.6:
 				return true
 	return false
 
@@ -258,7 +258,7 @@ func _emit_kill() -> void:
 		return
 	var parent := get_parent()
 	if parent != null and parent.has_signal("kill"):
-		parent.emit_signal("kill", last_killer, display_name, last_weapon, last_killer_team)
+		parent.emit_signal("kill", last_killer, display_name, last_weapon, last_killer_team, team)
 
 
 func _spawn_gibs() -> void:

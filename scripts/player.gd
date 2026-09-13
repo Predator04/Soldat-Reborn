@@ -139,6 +139,10 @@ func _physics_process(delta: float) -> void:
 	# horizontal
 	var accel := GROUND_ACCEL if on_floor else AIR_ACCEL
 	var cap := RUN_SPEED if on_floor else BUNNY_SPEED
+	# Preserve bunny-hop momentum: if a buffered jump will fire this tick,
+	# skip the RUN_SPEED clamp so airborne speed isn't clipped on the landing frame.
+	if on_floor and jump_buffer_t > 0.0 and coyote_t > 0.0:
+		cap = BUNNY_SPEED
 	if dir != 0.0:
 		velocity.x += dir * accel * delta
 	else:
@@ -244,7 +248,9 @@ func _physics_process(delta: float) -> void:
 				for pid in m.ready_peer_ids():
 					rpc_id(pid, "net_state", position, velocity, aim_dir, facing, jet_on, health, fuel, weapon_index, ammo[weapon_index], reloading, grenades)
 		else:
-			rpc_id(1, "net_state", position, velocity, aim_dir, facing, jet_on, health, fuel, weapon_index, ammo[weapon_index], reloading, grenades)
+			# Broadcast so the host relays to other clients (Godot's server_relay).
+			# Using rpc_id(1, ...) would freeze non-host peers' views of this body.
+			rpc("net_state", position, velocity, aim_dir, facing, jet_on, health, fuel, weapon_index, ammo[weapon_index], reloading, grenades)
 
 
 func _switch_weapon(idx: int) -> void:
@@ -320,10 +326,12 @@ func _die() -> void:
 	dead = true
 	Sfx.gib()
 	if Net.is_networked():
-		if is_multiplayer_authority():
+		# Host emits (not victim) so the kill is not lost if the dying client disconnects
+		# between take_damage and the RPC flush.
+		if Net.is_host():
 			var m := get_parent()
 			if m != null:
-				m.rpc("net_kill_feed", last_killer, display_name, last_weapon, last_killer_team)
+				m.rpc("net_kill_feed", last_killer, display_name, last_weapon, last_killer_team, team)
 	else:
 		_emit_kill()
 	# defer FX spawn out of the physics flush (bullet body_entered → take_damage path)
@@ -344,7 +352,7 @@ func _emit_kill() -> void:
 		return
 	var parent := get_parent()
 	if parent != null and parent.has_signal("kill"):
-		parent.emit_signal("kill", last_killer, display_name, last_weapon, last_killer_team)
+		parent.emit_signal("kill", last_killer, display_name, last_weapon, last_killer_team, team)
 
 
 # ── RPCs ──────────────────────────────────────────────

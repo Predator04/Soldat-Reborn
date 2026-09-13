@@ -48,12 +48,16 @@ func _ready() -> void:
 
 	_jet_player = AudioStreamPlayer.new()
 	_jet_player.volume_db = -12.0
-	var jet_stream := _load("jet_loop")
-	if jet_stream != null:
-		# Loop the sample continuously while jet_on stays true.
+	var jet_src := _load("jet_loop")
+	if jet_src != null:
+		# Duplicate so loop_mode mutation doesn't leak onto the shared cached stream.
+		var jet_stream: AudioStreamWAV = jet_src.duplicate() as AudioStreamWAV
 		jet_stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
 		jet_stream.loop_begin = 0
-		jet_stream.loop_end = jet_stream.data.size() / 2  # 16-bit mono → samples = bytes/2
+		# hum.wav is 8-bit mono; derive per-sample byte count from actual format so
+		# the loop point lands at the real end instead of halfway through.
+		var bytes_per_sample: int = (2 if jet_stream.format == AudioStreamWAV.FORMAT_16_BITS else 1) * (2 if jet_stream.stereo else 1)
+		jet_stream.loop_end = jet_stream.data.size() / bytes_per_sample
 		_jet_player.stream = jet_stream
 	add_child(_jet_player)
 
