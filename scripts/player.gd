@@ -992,8 +992,8 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int) -> vo
 			r.team = team
 			r.killer_name = display_name
 			r.weapon_name = str(w["name"])
-			# M79 (launcher) lobs — gravity>0 flips rocket.gd into ballistic mode.
-			r.gravity = float(w.get("gravity", 0.0))
+			# M79 (launcher) lobs — grav>0 flips rocket.gd into ballistic mode.
+			r.grav = float(w.get("gravity", 0.0))
 			get_parent().add_child(r)
 		else:
 			var b := bullet_scene.instantiate()
@@ -1010,7 +1010,7 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int) -> vo
 				b.life = float(w.get("life", 0.35))
 			elif kind == "arrow":
 				b.visual = "arrow"
-				b.gravity = float(w.get("gravity", 0.0))
+				b.grav = float(w.get("gravity", 0.0))
 			get_parent().add_child(b)
 
 

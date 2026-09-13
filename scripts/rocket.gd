@@ -10,7 +10,7 @@ var killer_name := ""
 var weapon_name := "LAW"
 # Gravity acceleration applied per second — 0 keeps LAW's straight flight, ~980
 # gives the M79 grenade its characteristic arc.
-var gravity := 0.0
+var grav := 0.0
 
 var _life := 4.0
 var _smoke: CPUParticles2D
@@ -45,8 +45,8 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	# Straight-flight LAW keeps its constant velocity; M79 lobs by adding gravity to _velocity.
-	if gravity > 0.0:
-		_velocity.y += gravity * delta
+	if grav > 0.0:
+		_velocity.y += grav * delta
 		position += _velocity * delta
 		direction = _velocity.normalized()
 	else:

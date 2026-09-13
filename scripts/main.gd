@@ -47,6 +47,8 @@ var round_active := true
 var winner_team := -1
 var winner_end_t := 0.0
 var _match_sync_cd := 0.0
+var _flag_sync_cd := 0.0
+const FLAG_SYNC_HZ := 8.0
 
 const MAP_W := 4800.0
 const MAP_H := 2000.0
@@ -138,6 +140,7 @@ func _ready() -> void:
 	_build_parallax()
 	_build_terrain()
 	_build_hud()
+	_spawn_mode_entities()
 	kill.connect(_on_kill_scored)
 
 	if Net.is_networked():
@@ -150,17 +153,16 @@ func _ready() -> void:
 	else:
 		_spawn_player()
 		_spawn_bots()
-		# Flag / pickup entities are per-mode.
-		if Settings.game_mode == Settings.MODE_CTF:
-			_spawn_flags()
-		elif Settings.game_mode == Settings.MODE_INF:
-			_spawn_flag_inf()
-		elif Settings.game_mode == Settings.MODE_HTF:
-			_spawn_flag_htf()
-		elif Settings.game_mode == Settings.MODE_RM:
-			_spawn_rambo_bow()
-		elif Settings.game_mode == Settings.MODE_PM:
-			_spawn_point_pickups()
+
+
+func _spawn_mode_entities() -> void:
+	# Called on both host and client so flags/pickups appear on all peers.
+	match Settings.game_mode:
+		Settings.MODE_CTF: _spawn_flags()
+		Settings.MODE_INF: _spawn_flag_inf()
+		Settings.MODE_HTF: _spawn_flag_htf()
+		Settings.MODE_RM:  _spawn_rambo_bow()
+		Settings.MODE_PM:  _spawn_point_pickups()
 
 
 func _build_sky() -> void:
@@ -427,7 +429,32 @@ func _spawn_networked_player(peer_id: int) -> void:
 	var base: Vector2 = _map["player_spawn"]
 	var spawn_pos := base + Vector2(randf_range(-140.0, 140.0), 0.0)
 	var display_name := "Host" if peer_id == 1 else "Player %d" % peer_id
-	rpc("net_spawn_player", peer_id, spawn_pos, display_name)
+	var t: int = _assign_team_for_peer(peer_id)
+	rpc("net_spawn_player", peer_id, spawn_pos, display_name, t)
+
+
+func _assign_team_for_peer(peer_id: int) -> int:
+	# Deathmatch / Rambomatch stay FFA — team = peer_id so every soldier is a
+	# distinct hostile entity.
+	if not Settings.is_team_mode():
+		return peer_id
+	# Team modes: alternate BLUE/RED to keep sides balanced. INF is asymmetric —
+	# first peer defends (BLUE), everyone else attacks.
+	var blue_count := 0
+	var red_count := 0
+	for pid in _players_by_id.keys():
+		if int(pid) == peer_id:
+			continue
+		var p = _players_by_id[pid]
+		if not is_instance_valid(p):
+			continue
+		if int(p.team) == TEAM_BLUE:
+			blue_count += 1
+		elif int(p.team) == TEAM_RED:
+			red_count += 1
+	if Settings.game_mode == Settings.MODE_INF:
+		return TEAM_BLUE if blue_count == 0 else TEAM_RED
+	return TEAM_BLUE if blue_count <= red_count else TEAM_RED
 
 
 func _respawn_peer(peer_id: int) -> void:
@@ -459,7 +486,7 @@ func net_client_ready() -> void:
 		var p: Node = _players_by_id[existing_id]
 		if not is_instance_valid(p):
 			continue
-		rpc_id(sender, "net_spawn_player", existing_id, p.position, p.display_name)
+		rpc_id(sender, "net_spawn_player", existing_id, p.position, p.display_name, int(p.team))
 	# then spawn a body for the new peer on everyone
 	_spawn_networked_player(sender)
 	# NOTE: _ready_peers[sender] is set only when the client acks the spawn (net_spawn_ack).
@@ -475,7 +502,7 @@ func net_spawn_ack() -> void:
 
 
 @rpc("authority", "call_local", "reliable")
-func net_spawn_player(peer_id: int, spawn_pos: Vector2, display_name: String) -> void:
+func net_spawn_player(peer_id: int, spawn_pos: Vector2, display_name: String, assigned_team: int = -1) -> void:
 	# Free stale record if this peer had a prior body (e.g., on respawn).
 	if _players_by_id.has(peer_id):
 		var old = _players_by_id[peer_id]
@@ -486,7 +513,13 @@ func net_spawn_player(peer_id: int, spawn_pos: Vector2, display_name: String) ->
 	p.name = "Player_%d" % peer_id
 	p.position = spawn_pos
 	p.display_name = display_name
-	p.team = peer_id  # FFA: each peer owns their own team so bullets damage everyone else
+	# Backward-compat: pre-#22 callers may send no team → fall back to FFA.
+	var t: int = assigned_team if assigned_team >= 0 else peer_id
+	p.team = t
+	if t == TEAM_BLUE:
+		p.color = Color(0.35, 0.55, 1.0)
+	elif t == TEAM_RED:
+		p.color = Color(0.85, 0.3, 0.25)
 	p.set_multiplayer_authority(peer_id)
 	add_child(p)
 	# Re-apply after add_child so children created in _ready (cam, jet_particles) inherit authority.
@@ -557,6 +590,12 @@ func _process(delta: float) -> void:
 		if _match_sync_cd <= 0.0:
 			_match_sync_cd = 1.0 / MATCH_SYNC_HZ
 			_broadcast_match_state()
+		# Flag positions + carriers stream faster so grabs/drops feel snappy.
+		if flags.size() > 0:
+			_flag_sync_cd -= delta
+			if _flag_sync_cd <= 0.0:
+				_flag_sync_cd = 1.0 / FLAG_SYNC_HZ
+				_broadcast_flag_state()
 
 
 func _tick_ctf() -> void:
@@ -884,3 +923,42 @@ func net_match_state(new_scores: Dictionary, tl: float, active: bool, winner: in
 	round_active = active
 	winner_team = winner
 	winner_end_t = we
+
+
+func _broadcast_flag_state() -> void:
+	# Each flag: {pos, carrier peer_id (0 = none)}. Only sent to acked peers.
+	var arr: Array = []
+	for f in flags:
+		if not is_instance_valid(f):
+			arr.append({"pos": Vector2.ZERO, "carrier": 0})
+			continue
+		var cid := 0
+		var carrier = f.get_meta("carrier")
+		if is_instance_valid(carrier):
+			var nm := String(carrier.name)
+			if nm.begins_with("Player_"):
+				cid = int(nm.substr(7))
+		arr.append({"pos": f.position, "carrier": cid})
+	for pid in _ready_peers.keys():
+		rpc_id(int(pid), "net_flag_state", arr)
+
+
+@rpc("authority", "reliable")
+func net_flag_state(arr: Array) -> void:
+	for i in arr.size():
+		if i >= flags.size():
+			break
+		var f = flags[i]
+		if not is_instance_valid(f):
+			continue
+		var entry: Dictionary = arr[i]
+		f.position = entry.get("pos", f.position)
+		var cid := int(entry.get("carrier", 0))
+		if cid > 0 and _players_by_id.has(cid):
+			var p = _players_by_id[cid]
+			if is_instance_valid(p):
+				f.set_meta("carrier", p)
+			else:
+				f.set_meta("carrier", null)
+		else:
+			f.set_meta("carrier", null)

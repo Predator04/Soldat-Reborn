@@ -13,7 +13,7 @@ var visual := ""
 # Custom lifetime; 0 = default 3s. Flames get ~0.35s so the cone is short.
 var life := 0.0
 # Optional gravity — arrows sag slightly, standard bullets are 0.
-var gravity := 0.0
+var grav := 0.0
 var _hit := false
 var _velocity := Vector2.ZERO
 
@@ -32,8 +32,8 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if gravity > 0.0:
-		_velocity.y += gravity * delta
+	if grav > 0.0:
+		_velocity.y += grav * delta
 		position += _velocity * delta
 		direction = _velocity.normalized()
 	else:
