@@ -80,7 +80,7 @@ const MAP_W := 4800.0
 const MAP_H := 2000.0
 const GROUND_Y := 1900.0
 
-const MAPS := [
+var MAPS := [
 	{
 		"name": "Ascent",
 		# Rolling hills climbing left → right, with a tunnel bored through the
