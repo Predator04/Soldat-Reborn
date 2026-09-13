@@ -48,6 +48,7 @@ var _host_panel: VBoxContainer
 var _status_label: Label
 var _ip_edit: LineEdit
 var _port_edit: LineEdit
+var _host_port_edit: LineEdit
 var _connect_btn: Button
 var _map_pick: OptionButton
 var _sp_map_pick: OptionButton     # main-menu map selector (built-in + custom)
@@ -348,6 +349,17 @@ func _build_host() -> void:
 	_map_pick.custom_minimum_size = Vector2(0, 36)
 	_host_panel.add_child(_map_pick)
 
+	var port_lbl := Label.new()
+	port_lbl.text = "Port"
+	port_lbl.add_theme_font_size_override("font_size", 15)
+	_host_panel.add_child(port_lbl)
+
+	_host_port_edit = LineEdit.new()
+	_host_port_edit.text = str(Net.DEFAULT_PORT)
+	_host_port_edit.placeholder_text = str(Net.DEFAULT_PORT)
+	_host_port_edit.custom_minimum_size = Vector2(0, 36)
+	_host_panel.add_child(_host_port_edit)
+
 	var start := _make_button("START HOSTING")
 	start.pressed.connect(func() -> void:
 		var idx := _map_pick.get_selected_id()
@@ -357,7 +369,8 @@ func _build_host() -> void:
 		Settings.map_index = idx
 		Settings.save()
 		start.disabled = true
-		if Net.host_game(Net.DEFAULT_PORT, idx):
+		var port := int(_host_port_edit.text) if _host_port_edit.text.is_valid_int() else Net.DEFAULT_PORT
+		if Net.host_game(port, idx):
 			get_tree().change_scene_to_file("res://scenes/main.tscn")
 		else:
 			# Net.host_game already set the status text; re-enable so the user can retry.
