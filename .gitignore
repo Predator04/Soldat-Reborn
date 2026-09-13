@@ -2,6 +2,7 @@
 build/
 *.exe
 GodotEngine/
+prompt.md
 
 # tools/ship_assets.py is a dev-only regeneration helper (it reads the
 # original Soldat asset packs to rebuild assets/{scenery,textures}). The
