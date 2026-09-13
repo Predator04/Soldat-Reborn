@@ -33,6 +33,10 @@ var weapons := [
 	{"name": "Barrett",   "damage": 245.0, "rate": 3.75,  "mag": 10,  "reload": 1.17, "auto": false, "spread": 0.0,   "speed": 2400.0, "pellets": 1, "color": Color(0.55, 0.55, 0.6),  "kind": "bullet", "startup": 0.32, "bink": 65.0},
 	{"name": "Minimi",    "damage": 23.0,  "rate": 0.15,  "mag": 50,  "reload": 4.17, "auto": true,  "spread": 0.064, "speed": 1180.0, "pellets": 1, "color": Color(0.5, 0.55, 0.4),   "kind": "bullet", "bink": 30.0},
 	{"name": "Minigun",   "damage": 13.0,  "rate": 0.05,  "mag": 100, "reload": 8.0,  "auto": true,  "spread": 0.3,   "speed": 1275.0, "pellets": 1, "color": Color(0.75, 0.72, 0.78), "kind": "bullet", "startup": 0.42, "bink": 15.0},
+	# Flamethrower — kind "flame" spawns short-lived orange puffs, so the cone dies at ~120px.
+	{"name": "Flamethrower", "damage": 19.0, "rate": 0.06,  "mag": 200, "reload": 5.0,  "auto": true,  "spread": 0.12, "speed": 420.0, "pellets": 1, "color": Color(1.0, 0.5, 0.15), "kind": "flame", "bink": 0.0, "life": 0.35},
+	# Rambo Bow — kind "arrow" is a slow, sagging projectile.
+	{"name": "Rambo Bow",    "damage": 12.0, "rate": 1.0,   "mag": 1,   "reload": 2.5,  "auto": false, "spread": 0.0,  "speed": 900.0, "pellets": 1, "color": Color(0.6, 0.4, 0.2),  "kind": "arrow", "bink": 0.0, "gravity": 240.0},
 ]
 # Secondary slot — the second weapon the soldier carries (Q to swap primary↔secondary).
 var secondary := [
@@ -53,6 +57,9 @@ var reloading := false
 var reload_t := 0.0
 var grenades := 3
 var grenade_cd := 0.0
+# Grenade type toggle — press G to swap Frag ↔ Cluster.
+var use_cluster := false
+var g_prev := false
 var muzzle_t := 0.0
 var q_prev := false     # prev-frame Q — swap on rising edge only, not every physics tick
 var x_prev := false     # prev-frame X — prone toggle on rising edge
@@ -281,6 +288,12 @@ func _physics_process(delta: float) -> void:
 	# reload
 	if Input.is_physical_key_pressed(KEY_R) and not reloading:
 		_start_reload()
+
+	# Grenade type toggle (G — rising edge only, matches Q swap pattern)
+	var g_now := Input.is_physical_key_pressed(KEY_G)
+	if g_now and not g_prev:
+		use_cluster = not use_cluster
+	g_prev = g_now
 
 	# grenade
 	grenade_cd -= delta
@@ -521,9 +534,9 @@ func _throw_grenade() -> void:
 	var g_vel := toss * 480.0
 	var g_ang := randf_range(-8.0, 8.0)
 	if Net.is_networked():
-		rpc("net_grenade", g_pos, g_vel, g_ang)
+		rpc("net_grenade", g_pos, g_vel, g_ang, use_cluster)
 	else:
-		net_grenade(g_pos, g_vel, g_ang)
+		net_grenade(g_pos, g_vel, g_ang, use_cluster)
 
 
 func _shake(amount: float) -> void:
@@ -686,17 +699,30 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int) -> vo
 			b.team = team
 			b.killer_name = display_name
 			b.weapon_name = str(w["name"])
+			# Kind-specific visuals + physics — flames die fast, arrows sag.
+			if kind == "flame":
+				b.visual = "flame"
+				b.life = float(w.get("life", 0.35))
+			elif kind == "arrow":
+				b.visual = "arrow"
+				b.gravity = float(w.get("gravity", 0.0))
 			get_parent().add_child(b)
 
 
 @rpc("authority", "call_local", "reliable")
-func net_grenade(g_pos: Vector2, g_vel: Vector2, g_ang: float) -> void:
+func net_grenade(g_pos: Vector2, g_vel: Vector2, g_ang: float, cluster: bool = false) -> void:
 	var g := grenade_scene.instantiate()
 	g.global_position = g_pos
 	g.team = team
 	g.killer_name = display_name
 	g.linear_velocity = g_vel
 	g.angular_velocity = g_ang
+	g.cluster = cluster
+	if cluster:
+		# Cluster acts as a mid-air airburst — shorter fuse feels correct, and Dmg 1500-like
+		# comes from the fragment cascade, not the initial pop.
+		g.fuse = 1.4
+		g.damage = 40.0
 	get_parent().add_child(g)
 
 

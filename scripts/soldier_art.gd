@@ -7,20 +7,22 @@ extends RefCounted
 const HP_BAR_Y := -21.0
 
 const WEAPON_SPRITE := {
-	"Deagles":   "res://assets/weapons-gfx/deserteagle.png",
-	"MP5":       "res://assets/weapons-gfx/mp5.png",
-	"AK-74":     "res://assets/weapons-gfx/ak74.png",
-	"Steyr AUG": "res://assets/weapons-gfx/steyraug.png",
-	"Spas-12":   "res://assets/weapons-gfx/spas12.png",
-	"Ruger 77":  "res://assets/weapons-gfx/ruger77.png",
-	"M79":       "res://assets/weapons-gfx/m79.png",
-	"Barrett":   "res://assets/weapons-gfx/barretm82.png",
-	"Minimi":    "res://assets/weapons-gfx/m249.png",
-	"Minigun":   "res://assets/weapons-gfx/minigun.png",
-	"USSOCOM":   "res://assets/weapons-gfx/colt1911.png",
-	"Knife":     "res://assets/weapons-gfx/knife.png",
-	"Chainsaw":  "res://assets/weapons-gfx/chainsaw.png",
-	"LAW":       "res://assets/weapons-gfx/law.png",
+	"Deagles":      "res://assets/weapons-gfx/deserteagle.png",
+	"MP5":          "res://assets/weapons-gfx/mp5.png",
+	"AK-74":        "res://assets/weapons-gfx/ak74.png",
+	"Steyr AUG":    "res://assets/weapons-gfx/steyraug.png",
+	"Spas-12":      "res://assets/weapons-gfx/spas12.png",
+	"Ruger 77":     "res://assets/weapons-gfx/ruger77.png",
+	"M79":          "res://assets/weapons-gfx/m79.png",
+	"Barrett":      "res://assets/weapons-gfx/barretm82.png",
+	"Minimi":       "res://assets/weapons-gfx/m249.png",
+	"Minigun":      "res://assets/weapons-gfx/minigun.png",
+	"USSOCOM":      "res://assets/weapons-gfx/colt1911.png",
+	"Knife":        "res://assets/weapons-gfx/knife.png",
+	"Chainsaw":     "res://assets/weapons-gfx/chainsaw.png",
+	"LAW":          "res://assets/weapons-gfx/law.png",
+	"Flamethrower": "res://assets/weapons-gfx/flamer.png",
+	"Rambo Bow":    "res://assets/weapons-gfx/bow.png",
 }
 
 # Grip pivot (cx, cy) per weapon — matches Soldat's GostekGraphics.inc values.
@@ -35,10 +37,12 @@ const WEAPON_PIVOT := {
 	"Barrett":   [0.15, 0.50],
 	"Minimi":    [0.15, 0.50],
 	"Minigun":   [0.05, 0.50],
-	"USSOCOM":   [0.20, 0.70],
-	"Knife":     [-0.10, 0.50],
-	"Chainsaw":  [0.10, 0.50],
-	"LAW":       [0.10, 0.60],
+	"USSOCOM":      [0.20, 0.70],
+	"Knife":        [-0.10, 0.50],
+	"Chainsaw":     [0.10, 0.50],
+	"LAW":          [0.10, 0.60],
+	"Flamethrower": [0.10, 0.55],
+	"Rambo Bow":    [0.20, 0.50],
 }
 
 static var _tex_cache: Dictionary = {}

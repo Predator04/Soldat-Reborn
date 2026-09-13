@@ -223,7 +223,8 @@ func _process(delta: float) -> void:
 		mag = player.ammo[wi]
 	lbl_ammo.text = "%d / %d" % [mag, int(w["mag"])] + ("  · RELOADING" if player.reloading else "")
 	lbl_weapon.text = str(w["name"])
-	lbl_grenades.text = "GRENADES %d" % player.grenades
+	var gtype := "CLUSTER" if bool(player.get("use_cluster")) else "FRAG"
+	lbl_grenades.text = "GRENADES %d  [%s]" % [player.grenades, gtype]
 
 
 func _update_match_ui() -> void:

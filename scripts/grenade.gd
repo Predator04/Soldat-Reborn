@@ -6,6 +6,9 @@ var killer_name := ""
 var fuse := 1.7
 var damage := 72.0
 var blast_radius := 120.0
+# Cluster mode: on explosion, spawn a burst of smaller fragment grenades that also explode.
+var cluster := false
+var is_fragment := false  # true for the child mini-grenades from a cluster
 
 
 func _ready() -> void:
@@ -26,7 +29,11 @@ func _physics_process(_delta: float) -> void:
 
 
 func _explode() -> void:
-	Sfx.explode()
+	if cluster:
+		Sfx.cluster_explode()
+	else:
+		Sfx.explode()
+	var wname: String = "Cluster" if (cluster or is_fragment) else "Grenade"
 	for s in get_tree().get_nodes_in_group("soldier"):
 		if not is_instance_valid(s):
 			continue
@@ -35,7 +42,7 @@ func _explode() -> void:
 			# Damage everyone in radius including thrower/teammates (matches rocket model).
 			# Suicide/team-kill scoring is filtered in main._on_kill_scored.
 			if multiplayer.multiplayer_peer == null or s.is_multiplayer_authority():
-				s.take_damage(damage * (1.0 - d / blast_radius), killer_name, "Grenade", team)
+				s.take_damage(damage * (1.0 - d / blast_radius), killer_name, wname, team)
 	var p := CPUParticles2D.new()
 	p.amount = 55
 	p.lifetime = 0.5
@@ -53,9 +60,34 @@ func _explode() -> void:
 	p.color = Color(1.0, 0.6, 0.2)
 	get_parent().add_child(p)
 	get_tree().create_timer(0.8).timeout.connect(p.queue_free)
+	# Cluster parent spawns 5 fragment sub-grenades on death; short random fuses cascade the pops.
+	if cluster:
+		var parent := get_parent()
+		var frag_scene: PackedScene = load("res://scenes/grenade.tscn") as PackedScene
+		if frag_scene != null and parent != null:
+			for i in 5:
+				var frag := frag_scene.instantiate()
+				frag.global_position = global_position + Vector2(randf_range(-6.0, 6.0), -8.0)
+				frag.team = team
+				frag.killer_name = killer_name
+				frag.is_fragment = true
+				frag.fuse = randf_range(0.4, 0.9)
+				frag.damage = 45.0
+				frag.blast_radius = 90.0
+				var ang: float = randf_range(-PI, 0.0)
+				var spd: float = randf_range(180.0, 320.0)
+				frag.linear_velocity = Vector2(cos(ang), sin(ang)) * spd
+				frag.angular_velocity = randf_range(-10.0, 10.0)
+				parent.add_child(frag)
 	queue_free()
 
 
 func _draw() -> void:
-	draw_circle(Vector2.ZERO, 5.0, Color(0.35, 0.42, 0.3))
-	draw_circle(Vector2.ZERO, 2.0, Color(0.5, 0.55, 0.4))
+	if cluster:
+		draw_circle(Vector2.ZERO, 5.5, Color(0.5, 0.25, 0.15))
+		draw_circle(Vector2.ZERO, 2.2, Color(1.0, 0.7, 0.25))
+	elif is_fragment:
+		draw_circle(Vector2.ZERO, 3.5, Color(0.55, 0.25, 0.15))
+	else:
+		draw_circle(Vector2.ZERO, 5.0, Color(0.35, 0.42, 0.3))
+		draw_circle(Vector2.ZERO, 2.0, Color(0.5, 0.55, 0.4))
