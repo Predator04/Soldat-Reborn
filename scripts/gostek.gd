@@ -13,11 +13,8 @@ const DIR := "res://assets/gostek-gfx/"
 # Scale factor from .poa loader units → local Godot pixels. The loader
 # already applies Anims.pas SCALE=3; this puts feet at ~+20 (bottom of
 # the CharacterBody2D collision box) and head at ~-25.
-const POA_TO_PIXEL := 4.8
-const FEET_OFFSET_Y := 40.0
-# Textures are stored upscaled 4x on disk; we render at 2x the original logical
-# size, so blit them at half their pixel dimensions.
-const TEX_RENDER_SCALE := 0.5
+const POA_TO_PIXEL := 2.4
+const FEET_OFFSET_Y := 20.0
 
 # Anims.pas runs its animation counter at physics tick rate (~60 Hz).
 const TICK_RATE := 60.0
@@ -102,8 +99,8 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 		if tex == null:
 			continue
 
-		var w := float(tex.get_width()) * TEX_RENDER_SCALE
-		var h := float(tex.get_height()) * TEX_RENDER_SCALE
+		var w := float(tex.get_width())
+		var h := float(tex.get_height())
 		var sx := 1.0
 		if flex > 0.0:
 			var ref_len := flex * POA_TO_PIXEL

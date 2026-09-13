@@ -44,8 +44,8 @@ const MAPS := [
 			{"p": Vector2(2250, 660), "s": Vector2(240, 22)},
 			{"p": Vector2(2700, 800), "s": Vector2(240, 22)},
 		],
-		"player_spawn": Vector2(200, 1005),
-		"bot_spawns": [Vector2(1000, 1005), Vector2(1600, 480), Vector2(2400, 1005), Vector2(2900, 740)],
+		"player_spawn": Vector2(200, 1025),
+		"bot_spawns": [Vector2(1000, 1025), Vector2(1600, 500), Vector2(2400, 1025), Vector2(2900, 760)],
 	},
 	{
 		"name": "Towers",
@@ -58,8 +58,8 @@ const MAPS := [
 			{"p": Vector2(1000, 980), "s": Vector2(180, 22)},
 			{"p": Vector2(2200, 980), "s": Vector2(180, 22)},
 		],
-		"player_spawn": Vector2(200, 1005),
-		"bot_spawns": [Vector2(500, 620), Vector2(2700, 620), Vector2(1600, 540), Vector2(1600, 1005)],
+		"player_spawn": Vector2(200, 1025),
+		"bot_spawns": [Vector2(500, 640), Vector2(2700, 640), Vector2(1600, 560), Vector2(1600, 1025)],
 	},
 	{
 		"name": "Pillars",
@@ -72,8 +72,8 @@ const MAPS := [
 			{"p": Vector2(600, 880), "s": Vector2(130, 22)},
 			{"p": Vector2(2600, 880), "s": Vector2(130, 22)},
 		],
-		"player_spawn": Vector2(200, 1005),
-		"bot_spawns": [Vector2(800, 840), Vector2(1600, 620), Vector2(2400, 840), Vector2(1600, 1005)],
+		"player_spawn": Vector2(200, 1025),
+		"bot_spawns": [Vector2(800, 860), Vector2(1600, 640), Vector2(2400, 860), Vector2(1600, 1025)],
 	},
 ]
 
