@@ -50,6 +50,8 @@ var _heartbeat_timer: Timer = null
 
 
 func _ready() -> void:
+	if _maybe_print_version():
+		return
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected)
@@ -57,6 +59,20 @@ func _ready() -> void:
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
 	_maybe_run_smoke_test()
 	_maybe_run_dedicated()
+
+
+func _maybe_print_version() -> bool:
+	# --version / -v: print the game version and exit before doing anything else
+	# (dedicated host, smoke tests, menu). Matches the /version chat command. (#100)
+	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
+	if not (("--version" in args) or ("-v" in args)):
+		return false
+	var ver: String = String(ProjectSettings.get_setting("application/config/version", ""))
+	if ver.is_empty():
+		ver = "unknown"
+	print("Soldat Reborn ", ver)
+	get_tree().quit()
+	return true
 
 
 func _maybe_run_smoke_test() -> void:
