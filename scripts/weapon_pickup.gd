@@ -83,13 +83,37 @@ func _on_body_entered(body: Node) -> void:
 			picked = body.try_pickup_weapon(weapon_name, mag_on_drop)
 		elif body.has_method("net_remote_pickup"):
 			# Host is authoritative for pickup contacts, but the loadout lives on
-			# the body's owning peer — RPC the grant and consume unconditionally (#83).
-			body.rpc_id(body.get_multiplayer_authority(), "net_remote_pickup", weapon_name, mag_on_drop)
-			picked = true
+			# the body's owning peer. Pre-check the body's loadout so we don't
+			# route a grant a client will silently reject — otherwise the pickup
+			# is consumed with no weapon delivered (#98).
+			if _body_has_weapon(body, weapon_name):
+				body.rpc_id(body.get_multiplayer_authority(), "net_remote_pickup", weapon_name, mag_on_drop)
+				picked = true
 		if picked:
 			_consumed = true
 			Sfx.ui()
 			queue_free()
+
+
+func _body_has_weapon(body: Node, wname: String) -> bool:
+	# Mirrors try_pickup_weapon's check on player.gd: the weapon must live in
+	# either the body's primary `weapons` list or its `secondary` list for the
+	# grant to land. Both arrays are dicts with a "name" key.
+	var primaries: Variant = body.get("weapons")
+	if primaries != null:
+		for w in primaries:
+			if str(w.get("name", "")) == wname:
+				return true
+	var secondaries: Variant = body.get("secondary")
+	if secondaries != null:
+		for w in secondaries:
+			if str(w.get("name", "")) == wname:
+				return true
+	# Bots today only understand AK-74 / LAW — mirror bot.try_pickup_weapon's
+	# rule so a bot-owned peer doesn't ghost-eat a Barrett drop.
+	if body.get("weapons") == null and body.get("secondary") == null:
+		return wname == "AK-74" or wname == "LAW"
+	return false
 
 
 func _draw() -> void:
