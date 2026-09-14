@@ -2161,10 +2161,21 @@ func _reset_round() -> void:
 				_spawn_networked_player(1)
 				for pid in multiplayer.get_peers():
 					_spawn_networked_player(int(pid))
+				# #92: surviving bots kept last round's HP/ammo/pos while players
+				# started fresh — wipe them too and re-spawn via net_spawn_bot so
+				# clients mirror the reset.
+				for bid in _bots_by_id.keys():
+					var b = _bots_by_id[bid]
+					if is_instance_valid(b):
+						rpc("net_bot_despawn", bid)
+						b.queue_free()
+				_bots_by_id.clear()
+				call_deferred("_spawn_bots")
 		else:
 			for s in get_tree().get_nodes_in_group("soldier"):
 				if is_instance_valid(s):
 					s.queue_free()
+			_bots_by_id.clear()
 			call_deferred("_spawn_player")
 			call_deferred("_spawn_bots")
 	else:
