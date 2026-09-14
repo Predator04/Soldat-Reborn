@@ -26,7 +26,10 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	add_theme_constant_override("separation", 10)
 	custom_minimum_size = Vector2(540, 0)
-	set_anchors_preset(Control.PRESET_CENTER)
+	# Center via keep_offsets=true: set_anchors_preset's default "resize" mode
+	# bakes in parent-sized offsets when run inside _ready (in-tree), which pushes
+	# the panel off-screen. keep_offsets leaves offsets at 0 and grow BOTH centers.
+	set_anchors_preset(Control.PRESET_CENTER, true)
 	grow_horizontal = Control.GROW_DIRECTION_BOTH
 	grow_vertical = Control.GROW_DIRECTION_BOTH
 	_build()

@@ -50,7 +50,7 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	add_theme_constant_override("separation", 8)
 	custom_minimum_size = Vector2(500, 0)
-	set_anchors_preset(Control.PRESET_CENTER)
+	set_anchors_preset(Control.PRESET_CENTER, true)
 	grow_horizontal = Control.GROW_DIRECTION_BOTH
 	grow_vertical = Control.GROW_DIRECTION_BOTH
 	_pending_map_idx = clampi(Settings.map_index, 0, MAP_NAMES.size() - 1)
