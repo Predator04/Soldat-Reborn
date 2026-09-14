@@ -1507,6 +1507,17 @@ func net_kill_feed(killer_name: String, victim_name: String, weapon_name: String
 
 @rpc("any_peer", "call_local", "reliable")
 func net_chat(author: String, msg: String, scope: String, sender_team: int) -> void:
+	# #105: never trust client-supplied author / sender_team. In a networked
+	# match, resolve both from the sender's peer_id so a client can't
+	# impersonate other players or leak team chat across teams. Host-local
+	# announcer messages (see hud.post_chat calls elsewhere) bypass this RPC.
+	if Net.is_networked():
+		var sender: int = multiplayer.get_remote_sender_id()
+		if sender > 0 and _players_by_id.has(sender):
+			var p: Node = _players_by_id[sender]
+			if is_instance_valid(p):
+				author = str(p.display_name)
+				sender_team = int(p.team)
 	# Team chat is filtered locally so opponents don't see it. Global chat is
 	# visible to everyone. Route through the HUD's chat feed.
 	if scope == "team" and is_instance_valid(player) and int(player.team) != sender_team:
