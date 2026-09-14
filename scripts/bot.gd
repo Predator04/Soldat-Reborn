@@ -146,6 +146,18 @@ const ROCKET_MIN_RANGE := 180.0  # LAW splashes 130px — don't rocket own feet
 const HOP_COOLDOWN := 1.2  # min gap between wander bunny-hops so bots don't hop-spam
 const WANDER_FLIP_MIN := 3.0
 const WANDER_FLIP_MAX := 6.0
+# Ladder awareness (#89) — bots mirror the player's climb engage/dismount so
+# ladder-gated targets are reachable. Constants match player.gd so the physics
+# and detection footprint read the same.
+const CLIMB_SPEED := 150.0
+const CLIMB_BODY_PAD_TOP := 24.0
+const CLIMB_BODY_PAD_BOTTOM := 6.0
+const LADDER_SEEK_RANGE := 150.0   # walk to a ladder within this horizontal band
+const LADDER_SEEK_UP := -40.0      # target must be at least this many px above
+
+var on_ladder := false
+var climbing := false
+var _active_ladder: Node2D = null
 
 var bullet_scene := preload("res://scenes/bullet.tscn")
 var grenade_scene := preload("res://scenes/grenade.tscn")
@@ -262,86 +274,144 @@ func _physics_process(delta: float) -> void:
 		_retreat_t = 1.8
 	_prev_health = health
 
-	# circle-strafe: flip lateral direction periodically while engaged
-	strafe_t -= delta
-	if strafe_t <= 0.0:
-		strafe_dir = 1.0 if randf() < 0.5 else -1.0
-		strafe_t = randf_range(0.5, 1.2)
-
-	var dir := 0.0
-	if is_instance_valid(target):
-		if _retreat_t > 0.0 or reloading:
-			# Back off — can't fight effectively while hurt/reloading, so put
-			# distance between us and the target instead of pressing in.
-			dir = -signf(dx) if absf(dx) > 12.0 else -strafe_dir
-		elif absf(dx) > 120.0:
-			dir = signf(dx)
+	# ── Ladder awareness (#89) — mirrors player.gd::_find_ladder_overlap engage.
+	# Engage when overlapping a ladder with the target above; dismount on losing
+	# overlap or closing the vertical gap. Constants match the player so climb
+	# footprint reads the same on both.
+	var new_ladder: Node2D = _find_ladder_overlap()
+	on_ladder = new_ladder != null
+	var target_above: bool = is_instance_valid(target) and dy < LADDER_SEEK_UP
+	if not climbing and on_ladder and target_above:
+		climbing = true
+		_active_ladder = new_ladder
+		if was_jet:
+			Sfx.jet(false)
+			was_jet = false
+		jet_on = false
+		velocity.y = 0.0
+	if climbing:
+		if not on_ladder or not is_instance_valid(target) or absf(dy) <= 10.0:
+			climbing = false
+			_active_ladder = null
 		else:
-			dir = strafe_dir  # close in → strafe around
-	else:
-		# Idle wander: pick a fresh direction periodically, flip early when we
-		# reach the map edge. Prior code hard-coded `dir = 1.0` which piled
-		# every targetless bot at the right wall.
-		wander_t -= delta
-		if global_position.x < 200.0:
-			wander_dir = 1.0
-		elif global_position.x > 4600.0:
-			wander_dir = -1.0
-		elif wander_t <= 0.0:
-			wander_dir = 1.0 if randf() < 0.5 else -1.0
-			wander_t = randf_range(WANDER_FLIP_MIN, WANDER_FLIP_MAX)
-		dir = wander_dir
+			_active_ladder = new_ladder
+	# Seek a ladder when target is above and one is within LADDER_SEEK_RANGE
+	# horizontal — walk to its center-x instead of jetting into the wall.
+	var seek_lad: Node2D = null
+	if not climbing and target_above:
+		seek_lad = _find_seek_ladder(dx, dy)
 
-	velocity.x = move_toward(velocity.x, dir * RUN_SPEED * MatchConfig.mod_speed(), 1300.0 * MatchConfig.mod_speed() * delta)
-	_hop_cd = maxf(0.0, _hop_cd - delta)
-
-	# dodge-jump when an enemy bullet is closing in
-	dodge_cd -= delta
-	if dodge_cd <= 0.0 and _bullet_incoming():
-		if on_floor:
-			velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
-			Sfx.jump()
-		dodge_cd = 0.5
-
-	# jump / jet toward the target when it's above us
-	jet_on = false
-	jump_cd -= delta
-	if is_instance_valid(target):
-		# Bunny-hop toward a distant target: on floor, target > 260 away, hop
-		# with a small horizontal boost so bots can actually close the gap.
-		var dist_h: float = absf(dx)
-		if dy < -50.0 and on_floor and jump_cd <= 0.0:
-			velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
-			jump_cd = 0.9
-			Sfx.jump()
-		elif on_floor and jump_cd <= 0.0 and dist_h > 260.0 and _hop_cd <= 0.0:
-			velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
-			velocity.x = signf(dx) * maxf(RUN_SPEED * MatchConfig.mod_speed(), absf(velocity.x) * 1.08)
-			jump_cd = 0.35
-			_hop_cd = HOP_COOLDOWN
-			Sfx.jump()
-		elif dy < -80.0 and not on_floor and fuel > 0.0:
-			velocity.y += JET_THRUST * MatchConfig.mod_jet() * MatchConfig.mod_gravity() * delta
-			fuel = maxf(0.0, fuel - (40.0 / maxf(0.1, MatchConfig.mod_jet())) * delta)
-			jet_on = true
-	if jet_on and not was_jet:
-		Sfx.jet(true)
-	elif not jet_on and was_jet:
-		Sfx.jet(false)
-	was_jet = jet_on
-	jet_particles.emitting = jet_on and not Settings.lofi
-	jet_particles.position = Vector2(-facing * 3.3, 1.7)
-	if on_floor:
+	if climbing and _active_ladder != null:
+		# Ladder physics — vertical toward target, snap horizontal to center.
+		var vy_climb: float = 0.0
+		if dy < -8.0:
+			vy_climb = -CLIMB_SPEED
+		elif dy > 8.0:
+			vy_climb = CLIMB_SPEED
+		velocity.y = vy_climb
+		var target_x: float = float(_active_ladder.get_meta("center_x", global_position.x))
+		var to_center: float = target_x - global_position.x
+		velocity.x = clampf(to_center * 9.0, -CLIMB_SPEED, CLIMB_SPEED)
+		if is_instance_valid(target) and absf(dx) > 8.0:
+			facing = signf(dx)
+		jet_on = false
+		if jet_particles != null:
+			jet_particles.emitting = false
+			jet_particles.position = Vector2(-facing * 3.3, 1.7)
 		fuel = minf(100.0, fuel + 32.0 * delta)
+		jump_cd = maxf(0.0, jump_cd - delta)
+		_hop_cd = maxf(0.0, _hop_cd - delta)
+		dodge_cd = maxf(0.0, dodge_cd - delta)
+		move_and_slide()
+	else:
+		# circle-strafe: flip lateral direction periodically while engaged
+		strafe_t -= delta
+		if strafe_t <= 0.0:
+			strafe_dir = 1.0 if randf() < 0.5 else -1.0
+			strafe_t = randf_range(0.5, 1.2)
 
-	if not on_floor:
-		velocity.y += BASE_GRAVITY * MatchConfig.mod_gravity() * delta
-		velocity.y = minf(velocity.y, MAX_FALL)
+		var dir := 0.0
+		if seek_lad != null:
+			# Head straight for the ladder's center-x so the next tick's overlap
+			# check can engage the climb.
+			var lcx: float = float(seek_lad.get_meta("center_x", seek_lad.global_position.x))
+			var to_lcx: float = lcx - global_position.x
+			dir = 0.0 if absf(to_lcx) < 6.0 else signf(to_lcx)
+		elif is_instance_valid(target):
+			if _retreat_t > 0.0 or reloading:
+				# Back off — can't fight effectively while hurt/reloading, so put
+				# distance between us and the target instead of pressing in.
+				dir = -signf(dx) if absf(dx) > 12.0 else -strafe_dir
+			elif absf(dx) > 120.0:
+				dir = signf(dx)
+			else:
+				dir = strafe_dir  # close in → strafe around
+		else:
+			# Idle wander: pick a fresh direction periodically, flip early when we
+			# reach the map edge. Prior code hard-coded `dir = 1.0` which piled
+			# every targetless bot at the right wall.
+			wander_t -= delta
+			if global_position.x < 200.0:
+				wander_dir = 1.0
+			elif global_position.x > 4600.0:
+				wander_dir = -1.0
+			elif wander_t <= 0.0:
+				wander_dir = 1.0 if randf() < 0.5 else -1.0
+				wander_t = randf_range(WANDER_FLIP_MIN, WANDER_FLIP_MAX)
+			dir = wander_dir
 
-	if dir != 0.0:
-		facing = dir
+		velocity.x = move_toward(velocity.x, dir * RUN_SPEED * MatchConfig.mod_speed(), 1300.0 * MatchConfig.mod_speed() * delta)
+		_hop_cd = maxf(0.0, _hop_cd - delta)
 
-	move_and_slide()
+		# dodge-jump when an enemy bullet is closing in
+		dodge_cd -= delta
+		if dodge_cd <= 0.0 and _bullet_incoming():
+			if on_floor:
+				velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
+				Sfx.jump()
+			dodge_cd = 0.5
+
+		# jump / jet toward the target when it's above us
+		jet_on = false
+		jump_cd -= delta
+		# When seeking a ladder we suppress jet/jump — the goal is to walk over
+		# to the ladder base, not jet-boot the wall next to it.
+		if is_instance_valid(target) and seek_lad == null:
+			# Bunny-hop toward a distant target: on floor, target > 260 away, hop
+			# with a small horizontal boost so bots can actually close the gap.
+			var dist_h: float = absf(dx)
+			if dy < -50.0 and on_floor and jump_cd <= 0.0:
+				velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
+				jump_cd = 0.9
+				Sfx.jump()
+			elif on_floor and jump_cd <= 0.0 and dist_h > 260.0 and _hop_cd <= 0.0:
+				velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
+				velocity.x = signf(dx) * maxf(RUN_SPEED * MatchConfig.mod_speed(), absf(velocity.x) * 1.08)
+				jump_cd = 0.35
+				_hop_cd = HOP_COOLDOWN
+				Sfx.jump()
+			elif dy < -80.0 and not on_floor and fuel > 0.0:
+				velocity.y += JET_THRUST * MatchConfig.mod_jet() * MatchConfig.mod_gravity() * delta
+				fuel = maxf(0.0, fuel - (40.0 / maxf(0.1, MatchConfig.mod_jet())) * delta)
+				jet_on = true
+		if jet_on and not was_jet:
+			Sfx.jet(true)
+		elif not jet_on and was_jet:
+			Sfx.jet(false)
+		was_jet = jet_on
+		jet_particles.emitting = jet_on and not Settings.lofi
+		jet_particles.position = Vector2(-facing * 3.3, 1.7)
+		if on_floor:
+			fuel = minf(100.0, fuel + 32.0 * delta)
+
+		if not on_floor:
+			velocity.y += BASE_GRAVITY * MatchConfig.mod_gravity() * delta
+			velocity.y = minf(velocity.y, MAX_FALL)
+
+		if dir != 0.0:
+			facing = dir
+
+		move_and_slide()
 
 	# lob a grenade at mid-range
 	grenade_cd -= delta
@@ -443,6 +513,65 @@ func _has_line_of_sight(t: Node2D) -> bool:
 	q.collide_with_bodies = true
 	var hit := space.intersect_ray(q)
 	return hit.is_empty()
+
+
+func _find_ladder_overlap() -> Node2D:
+	# Mirrors player.gd::_find_ladder_overlap — rect-vs-rect against each
+	# ladder Area2D's stored bounds. Body half-width ~10 (bot shape 20×42).
+	var pcx: float = global_position.x
+	var pfeet: float = global_position.y
+	var phead: float = pfeet - CLIMB_BODY_PAD_TOP
+	var closest: Node2D = null
+	var best_dx: float = 1e9
+	for lad in get_tree().get_nodes_in_group("ladder"):
+		if not is_instance_valid(lad):
+			continue
+		var lx: float = float(lad.get_meta("center_x", lad.global_position.x))
+		var half_w: float = float(lad.get_meta("half_w", 10.0))
+		var top: float = float(lad.get_meta("top_y", lad.global_position.y - 60.0))
+		var bot: float = float(lad.get_meta("bottom_y", lad.global_position.y + 60.0))
+		var dxl: float = absf(pcx - lx)
+		if dxl > half_w + 8.0:
+			continue
+		if pfeet + CLIMB_BODY_PAD_BOTTOM < top - 2.0 or phead > bot + 2.0:
+			continue
+		if dxl < best_dx:
+			best_dx = dxl
+			closest = lad
+	return closest
+
+
+func _find_seek_ladder(dx: float, dy: float) -> Node2D:
+	# When the target is above and out of jet range, pick the nearest ladder
+	# within LADDER_SEEK_RANGE horizontal that spans the target vertically —
+	# so the bot walks to the ladder base instead of jet-booting the wall.
+	if dy >= LADDER_SEEK_UP:
+		return null
+	var target_y: float = global_position.y + dy
+	var pcx: float = global_position.x
+	var best: Node2D = null
+	var best_d: float = LADDER_SEEK_RANGE
+	for lad in get_tree().get_nodes_in_group("ladder"):
+		if not is_instance_valid(lad):
+			continue
+		var lx: float = float(lad.get_meta("center_x", lad.global_position.x))
+		var top: float = float(lad.get_meta("top_y", lad.global_position.y - 60.0))
+		var bot: float = float(lad.get_meta("bottom_y", lad.global_position.y + 60.0))
+		# The ladder must overlap our current Y (or below) up to the target's Y.
+		if top > global_position.y + 8.0:
+			continue
+		if bot < target_y - 32.0:
+			continue
+		# Only pull toward a ladder that lies between us and the target x,
+		# or is at least on the same side. Cross-map ladders don't help.
+		var to_lad: float = lx - pcx
+		if signf(dx) != 0.0 and signf(to_lad) != 0.0 and signf(to_lad) != signf(dx):
+			continue
+		var d: float = absf(to_lad)
+		if d < best_d:
+			best_d = d
+			best = lad
+	return best
 
 
 func _bullet_incoming() -> bool:
