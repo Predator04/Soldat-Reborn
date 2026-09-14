@@ -90,6 +90,10 @@ const GG_LADDER_NAMES := [
 	"LAW", "Barrett", "Chainsaw", "Knife",
 ]
 var _gg_levels: Dictionary = {}
+# Per-soldier kill tally for Gun Game (#91). Keyed by display_name so it
+# survives death/respawn. Host-authoritative; mirrored to clients via the
+# match-state broadcast. Cleared with _gg_levels on round reset.
+var _gg_kills: Dictionary = {}
 
 # ── Match state (host-authoritative in MP) ─────────────
 const SCORE_TO_WIN := 20
@@ -1960,6 +1964,10 @@ func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: Str
 			if Settings.survival:
 				_check_survival_end()
 			return
+		# #91: track per-killer kill count so the GG scoreboard reads live.
+		# Advances on every non-suicide kill (rung/grenade/off-rung alike) so
+		# players see kill throughput even when the ladder hasn't moved yet.
+		_gg_kills[killer_name] = int(_gg_kills.get(killer_name, 0)) + 1
 		var k_lvl: int = _gg_get(killer_name)
 		var weapon_key: String = str(_weapon_name).replace(" (headshot)", "")
 		# Ladder advances only on kills with the killer's CURRENT rung weapon.
@@ -2094,6 +2102,30 @@ func _end_round(team: int) -> void:
 func _end_round_by_time() -> void:
 	# Fixes #37: on time-out with an empty or tied scoreboard, describe *why*
 	# the round ended as a draw instead of just showing "DRAW".
+	# Gun Game (#91): use the ladder itself — highest rung wins, kills break ties.
+	if Settings.game_mode == Settings.MODE_GG:
+		var top_name: String = ""
+		var top_lvl: int = -1
+		var top_kills: int = -1
+		var top_team: int = -1
+		for s in get_tree().get_nodes_in_group("soldier"):
+			if not is_instance_valid(s):
+				continue
+			var nm: String = str(s.get("display_name"))
+			var lvl: int = _gg_get(nm)
+			var kills: int = int(_gg_kills.get(nm, 0))
+			if lvl > top_lvl or (lvl == top_lvl and kills > top_kills):
+				top_lvl = lvl
+				top_kills = kills
+				top_name = nm
+				top_team = int(s.get("team"))
+		if top_name == "":
+			winner_note = "Time up — no rung climbed"
+			_end_round(-1)
+		else:
+			winner_note = "Time up — top rung: %s on rung %d/%d" % [top_name, top_lvl + 1, GG_GOLD_KNIFE_LEVEL]
+			_end_round(top_team)
+		return
 	if scores.is_empty():
 		winner_note = "Time up — no team scored"
 		_end_round(-1)
@@ -2125,6 +2157,7 @@ func _reset_round() -> void:
 	_htf_accum.clear()
 	_dom_accum.clear()
 	_gg_levels.clear()
+	_gg_kills.clear()
 	# Reset control points to neutral so the next round has fresh objectives.
 	for a in _dom_points:
 		if not is_instance_valid(a):
@@ -2236,17 +2269,23 @@ func _broadcast_match_state() -> void:
 	if not Net.is_host():
 		return
 	for pid in _ready_peers.keys():
-		rpc_id(int(pid), "net_match_state", scores, time_left, round_active, winner_team, winner_end_t, winner_note)
+		rpc_id(int(pid), "net_match_state", scores, time_left, round_active, winner_team, winner_end_t, winner_note, _gg_levels, _gg_kills)
 
 
 @rpc("authority", "reliable")
-func net_match_state(new_scores: Dictionary, tl: float, active: bool, winner: int, we: float, note: String = "") -> void:
+func net_match_state(new_scores: Dictionary, tl: float, active: bool, winner: int, we: float, note: String = "", gg_ranks: Dictionary = {}, gg_kills: Dictionary = {}) -> void:
 	scores = new_scores.duplicate(true)
 	time_left = tl
 	round_active = active
 	winner_team = winner
 	winner_end_t = we
 	winner_note = note
+	# #91 / #97: mirror GG ladder + kills so the scoreboard reads live on the
+	# client and joining peers see the correct rung without waiting for the
+	# next kill event. Empty dicts (non-GG modes) are a no-op.
+	if not gg_ranks.is_empty():
+		_gg_levels = gg_ranks.duplicate(true)
+	_gg_kills = gg_kills.duplicate(true)
 
 
 func _broadcast_mode_state() -> void:

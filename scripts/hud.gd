@@ -841,33 +841,39 @@ func _update_match_ui() -> void:
 	# Timer MM:SS
 	var s := int(maxf(0.0, tl))
 	lbl_timer.text = "%d:%02d" % [s / 60, s % 60]
-	# Scoreboard (team_id → "name score" with color), sorted by team_id for stability.
-	var entries: Array = []
-	# ensure all teams currently on the field appear, even at 0-0
-	for soldier in get_tree().get_nodes_in_group("soldier"):
-		if not is_instance_valid(soldier):
-			continue
-		var t: int = int(soldier.team)
-		if not scores.has(t):
-			entries.append(t)
-	for k in scores.keys():
-		entries.append(int(k))
-	var seen: Dictionary = {}
-	var ordered: Array = []
-	for e in entries:
-		if seen.has(e):
-			continue
-		seen[e] = true
-		ordered.append(e)
-	ordered.sort()
-	var parts: PackedStringArray = PackedStringArray()
-	for team in ordered:
-		var info := _team_display_info(team)
-		var col: Color = info["color"]
-		var col_hex: String = col.to_html(false)
-		var pts: int = int(scores.get(team, 0))
-		parts.append("[color=#%s][b]%s[/b] %d[/color]" % [col_hex, info["name"], pts])
-	lbl_score.text = "[center]" + "   ·   ".join(parts) + "[/center]"
+	if Settings.game_mode == Settings.MODE_GG:
+		# #91: GG scoreboard — per-soldier rung + kills instead of team scores.
+		# Reads _gg_levels + _gg_kills off main (host authoritative, mirrored
+		# to clients via net_match_state).
+		_render_gg_scoreboard(main)
+	else:
+		# Scoreboard (team_id → "name score" with color), sorted by team_id for stability.
+		var entries: Array = []
+		# ensure all teams currently on the field appear, even at 0-0
+		for soldier in get_tree().get_nodes_in_group("soldier"):
+			if not is_instance_valid(soldier):
+				continue
+			var t: int = int(soldier.team)
+			if not scores.has(t):
+				entries.append(t)
+		for k in scores.keys():
+			entries.append(int(k))
+		var seen: Dictionary = {}
+		var ordered: Array = []
+		for e in entries:
+			if seen.has(e):
+				continue
+			seen[e] = true
+			ordered.append(e)
+		ordered.sort()
+		var parts: PackedStringArray = PackedStringArray()
+		for team in ordered:
+			var info := _team_display_info(team)
+			var col: Color = info["color"]
+			var col_hex: String = col.to_html(false)
+			var pts: int = int(scores.get(team, 0))
+			parts.append("[color=#%s][b]%s[/b] %d[/color]" % [col_hex, info["name"], pts])
+		lbl_score.text = "[center]" + "   ·   ".join(parts) + "[/center]"
 	# Winner banner
 	var note: String = str(main.get("winner_note")) if main.get("winner_note") != null else ""
 	if not active and winner >= 0:
@@ -884,6 +890,38 @@ func _update_match_ui() -> void:
 	if lbl_winner_note != null:
 		lbl_winner_note.text = note
 		lbl_winner_note.visible = lbl_winner.visible and note != ""
+
+
+func _render_gg_scoreboard(main: Node) -> void:
+	# #91: GG-specific scoreboard. Each row is "NAME  RUNG X/16  Y kills".
+	# Highest rung first, kills break ties. Colors come from the soldier body
+	# so BLUE/RED/YOU still read at a glance.
+	var gg_levels: Dictionary = main.get("_gg_levels") if main.get("_gg_levels") != null else {}
+	var gg_kills: Dictionary = main.get("_gg_kills") if main.get("_gg_kills") != null else {}
+	var rungs_total: int = PlayerScript.GG_LADDER.size() if PlayerScript.GG_LADDER != null else 16
+	var rows: Array = []
+	for soldier in get_tree().get_nodes_in_group("soldier"):
+		if not is_instance_valid(soldier):
+			continue
+		var nm: String = str(soldier.get("display_name"))
+		if nm == "":
+			continue
+		var lvl: int = int(gg_levels.get(nm, 0))
+		var kills: int = int(gg_kills.get(nm, 0))
+		var col: Color = soldier.color if soldier.get("color") != null else Color(0.85, 0.85, 0.85)
+		rows.append({"name": nm, "lvl": lvl, "kills": kills, "col": col})
+	rows.sort_custom(func(a, b) -> bool:
+		if a["lvl"] != b["lvl"]:
+			return a["lvl"] > b["lvl"]
+		return a["kills"] > b["kills"])
+	if rows.is_empty():
+		lbl_score.text = "[center]Gun Game[/center]"
+		return
+	var parts: PackedStringArray = PackedStringArray()
+	for row in rows:
+		var col_hex: String = (row["col"] as Color).to_html(false)
+		parts.append("[color=#%s][b]%s[/b] R%d/%d · %dk[/color]" % [col_hex, row["name"], int(row["lvl"]) + 1, rungs_total, row["kills"]])
+	lbl_score.text = "[center]" + "   ·   ".join(parts) + "[/center]"
 
 
 func _team_display_info(team_id: int) -> Dictionary:
