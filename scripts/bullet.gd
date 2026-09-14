@@ -117,20 +117,40 @@ func _draw() -> void:
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
+const _BULLET_STEMS := {
+	"Deagles": "eagles-bullet",
+	"MP5": "mp5-bullet",
+	"AK-74": "ak74-bullet",
+	"Steyr AUG": "steyraug-bullet",
+	"Spas-12": "spas12-bullet",
+	"Ruger 77": "ruger77-bullet",
+	"Barrett": "barretm82-bullet",
+	"Minimi": "m249-bullet",
+	"Minigun": "minigun-bullet",
+	"USSOCOM": "colt-bullet",
+}
+# #95: preload every bullet sprite once at file scope instead of load()-ing per
+# spawn. Minigun @ 15 rps × 4 bots pumped thousands of ResourceLoader dict hits
+# a second through here. `_BULLET_TEX[stem]` returns the cached Texture2D so
+# _load_sprite is a single dict lookup + get_size().
+const _BULLET_TEX := {
+	"bullet":             preload("res://assets/weapons-gfx/bullet.png"),
+	"eagles-bullet":      preload("res://assets/weapons-gfx/eagles-bullet.png"),
+	"mp5-bullet":         preload("res://assets/weapons-gfx/mp5-bullet.png"),
+	"ak74-bullet":        preload("res://assets/weapons-gfx/ak74-bullet.png"),
+	"steyraug-bullet":    preload("res://assets/weapons-gfx/steyraug-bullet.png"),
+	"spas12-bullet":      preload("res://assets/weapons-gfx/spas12-bullet.png"),
+	"ruger77-bullet":     preload("res://assets/weapons-gfx/ruger77-bullet.png"),
+	"barretm82-bullet":   preload("res://assets/weapons-gfx/barretm82-bullet.png"),
+	"m249-bullet":        preload("res://assets/weapons-gfx/m249-bullet.png"),
+	"minigun-bullet":     preload("res://assets/weapons-gfx/minigun-bullet.png"),
+	"colt-bullet":        preload("res://assets/weapons-gfx/colt-bullet.png"),
+}
+
+
 func _load_sprite() -> void:
 	# Per-weapon bullet sprite (original Soldat draws bullets as sprites, not lines).
-	var stem := "bullet"
-	match weapon_name:
-		"Deagles": stem = "eagles-bullet"
-		"MP5": stem = "mp5-bullet"
-		"AK-74": stem = "ak74-bullet"
-		"Steyr AUG": stem = "steyraug-bullet"
-		"Spas-12": stem = "spas12-bullet"
-		"Ruger 77": stem = "ruger77-bullet"
-		"Barrett": stem = "barretm82-bullet"
-		"Minimi": stem = "m249-bullet"
-		"Minigun": stem = "minigun-bullet"
-		"USSOCOM": stem = "colt-bullet"
-	_sprite = load("res://assets/weapons-gfx/%s.png" % stem)
+	var stem: String = String(_BULLET_STEMS.get(weapon_name, "bullet"))
+	_sprite = _BULLET_TEX.get(stem, _BULLET_TEX.get("bullet"))
 	if _sprite != null:
 		_sprite_size = _sprite.get_size() * (1.0 / 3.0)
