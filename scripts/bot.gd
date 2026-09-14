@@ -626,14 +626,14 @@ const BINK_BY_WEAPON := {
 }
 
 
-func try_pickup_weapon(weapon_name: String) -> bool:
+func try_pickup_weapon(weapon_name: String, mag: int = -1) -> bool:
 	# Bots only understand two loadouts today (AK-74 / LAW) — swap if matched.
 	if weapon_name == "LAW" or weapon_name == "AK-74":
 		loadout = weapon_name
-		# Fresh magazine on pickup — mirrors player.try_pickup_weapon. Snap the
-		# active weapon back to the primary too so pickups don't leave a bot
-		# clutching its pistol (#79).
-		ammo = int(AMMO_STATS.get(loadout, AMMO_STATS["AK-74"])["mag"])
+		# Mirrors player.try_pickup_weapon: preserve the thrown mag if the pickup
+		# was dropped mid-fight; -1 (world pickup / legacy) means full mag.
+		var full: int = int(AMMO_STATS.get(loadout, AMMO_STATS["AK-74"])["mag"])
+		ammo = full if mag < 0 else clampi(mag, 0, full)
 		using_secondary = false
 		reloading = false
 		reload_t = 0.0
@@ -642,21 +642,27 @@ func try_pickup_weapon(weapon_name: String) -> bool:
 
 
 @rpc("any_peer", "call_local", "reliable")
-func net_remote_pickup(weapon_name: String) -> void:
+func net_remote_pickup(weapon_name: String, mag: int = -1) -> void:
 	# Parity with player.net_remote_pickup (#83). Bots are host-authoritative so
 	# this normally runs locally on the host anyway; keeps the pickup call site uniform.
 	if multiplayer.multiplayer_peer != null:
 		var sender := multiplayer.get_remote_sender_id()
-		if sender != 0 and sender != 1:
+		if sender == 0:
+			if not Net.is_host():
+				return
+		elif sender != 1:
 			return
-	try_pickup_weapon(weapon_name)
+	try_pickup_weapon(weapon_name, mag)
 
 
 @rpc("any_peer", "call_local", "reliable")
 func net_remote_damage(amount: float, killer: String, weapon: String, killer_team: int) -> void:
 	if multiplayer.multiplayer_peer != null:
 		var sender := multiplayer.get_remote_sender_id()
-		if sender != 0 and sender != 1:
+		if sender == 0:
+			if not Net.is_host():
+				return
+		elif sender != 1:
 			return
 	take_damage(amount, killer, weapon, killer_team)
 

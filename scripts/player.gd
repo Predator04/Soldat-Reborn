@@ -1133,6 +1133,7 @@ func _drop_active_weapon() -> void:
 		return
 	var w := _active_weapon()
 	var wname := str(w["name"])
+	var wmag := _active_mag()
 	_thrown[wname] = true
 	# Mirror _throw_grenade: throwing a weapon (esp. a Knife pickup that deals
 	# contact damage) is an offensive action — drop spawn protection and break
@@ -1143,11 +1144,11 @@ func _drop_active_weapon() -> void:
 		# Route through the host so only one authoritative RigidBody2D exists per drop.
 		# Clients used to spawn their own physics copy that diverged frame to frame.
 		if Net.is_host():
-			net_drop_weapon(wname, global_position, aim_dir)
+			net_drop_weapon(wname, global_position, aim_dir, wmag)
 		else:
-			rpc_id(1, "net_request_drop", wname, global_position, aim_dir)
+			rpc_id(1, "net_request_drop", wname, global_position, aim_dir, wmag)
 	else:
-		net_drop_weapon(wname, global_position, aim_dir)
+		net_drop_weapon(wname, global_position, aim_dir, wmag)
 	_switch_after_drop()
 
 
@@ -1195,7 +1196,7 @@ func _switch_after_drop() -> void:
 
 
 @rpc("any_peer", "reliable")
-func net_request_drop(weapon_name: String, from_pos: Vector2, aim: Vector2) -> void:
+func net_request_drop(weapon_name: String, from_pos: Vector2, aim: Vector2, mag: int = -1) -> void:
 	if not Net.is_host():
 		return
 	# Validate: the sender must actually own this body, be alive, and hold the
@@ -1217,8 +1218,13 @@ func net_request_drop(weapon_name: String, from_pos: Vector2, aim: Vector2) -> v
 		return
 	_last_drop_ms = now
 	# Snap the pickup to the player's authoritative position — client-reported
-	# from_pos is a hint only.
-	net_drop_weapon(weapon_name, global_position, aim)
+	# from_pos is a hint only. Clamp mag so a modded client can't over-refill on
+	# next pickup (upper bound is the weapon's max; -1 = "full" is banned here
+	# because a client-hostile default would otherwise turn drop+pickup into a
+	# free reload).
+	var max_mag: int = _loadout_mag(weapon_name)
+	var clamped: int = clampi(mag, 0, max_mag) if mag >= 0 else 0
+	net_drop_weapon(weapon_name, global_position, aim, clamped)
 
 
 func _loadout_has(weapon_name: String) -> bool:
@@ -1231,17 +1237,31 @@ func _loadout_has(weapon_name: String) -> bool:
 	return false
 
 
-func try_pickup_weapon(weapon_name: String) -> bool:
+func _loadout_mag(weapon_name: String) -> int:
+	for w in weapons:
+		if str(w["name"]) == weapon_name:
+			return int(w["mag"])
+	for w in secondary:
+		if str(w["name"]) == weapon_name:
+			return int(w["mag"])
+	return 0
+
+
+func try_pickup_weapon(weapon_name: String, mag: int = -1) -> bool:
 	# Only the authority peer mutates the loadout — otherwise net_state loops.
 	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
 		return false
-	# Re-grant a thrown weapon so it becomes selectable again (#87).
-	if _thrown.has(weapon_name):
-		_thrown.erase(weapon_name)
+	# Only clear the thrown flag if the pickup we're absorbing is one WE threw —
+	# otherwise walking over a stranger's pickup silently re-arms a thrown weapon
+	# without picking it up (was a free-refill exploit via #87).
+	var was_thrown_by_me: bool = _thrown.has(weapon_name)
 	var picked: bool = false
 	for i in weapons.size():
 		if str(weapons[i]["name"]) == weapon_name:
-			ammo[i] = int(weapons[i]["mag"])
+			# -1 preserves legacy full-mag behaviour (world pickups, tests). A
+			# drop-and-pickup passes the actual mag so empty→pickup can't refill.
+			var full: int = int(weapons[i]["mag"])
+			ammo[i] = full if mag < 0 else clampi(mag, 0, full)
 			weapon_index = i
 			using_secondary = false
 			reloading = false
@@ -1251,13 +1271,16 @@ func try_pickup_weapon(weapon_name: String) -> bool:
 	if not picked:
 		for i in secondary.size():
 			if str(secondary[i]["name"]) == weapon_name:
-				secondary_ammo[i] = int(secondary[i]["mag"])
+				var full: int = int(secondary[i]["mag"])
+				secondary_ammo[i] = full if mag < 0 else clampi(mag, 0, full)
 				secondary_index = i
 				using_secondary = true
 				reloading = false
 				reload_t = 0.0
 				picked = true
 				break
+	if picked and was_thrown_by_me:
+		_thrown.erase(weapon_name)
 	# Gun Game: keep the rung/weapon coupling intact — re-snap to the current
 	# gg_level's weapon so a stray pickup can't force us out of our rung slot.
 	if picked and Settings.game_mode == Settings.MODE_GG:
@@ -1266,7 +1289,7 @@ func try_pickup_weapon(weapon_name: String) -> bool:
 
 
 @rpc("any_peer", "call_local", "reliable")
-func net_remote_pickup(weapon_name: String) -> void:
+func net_remote_pickup(weapon_name: String, mag: int = -1) -> void:
 	# Host-authoritative pickup contact routed to the body's owning peer (#83).
 	# Only host may originate — local invocation (sender_id 0) is only valid on host.
 	if multiplayer.multiplayer_peer != null:
@@ -1276,7 +1299,7 @@ func net_remote_pickup(weapon_name: String) -> void:
 				return
 		elif sender != 1:
 			return
-	try_pickup_weapon(weapon_name)
+	try_pickup_weapon(weapon_name, mag)
 
 
 @rpc("any_peer", "call_local", "reliable")
@@ -1578,12 +1601,15 @@ func net_grenade(g_pos: Vector2, g_vel: Vector2, g_ang: float, cluster: bool = f
 
 
 @rpc("authority", "call_local", "reliable")
-func net_drop_weapon(weapon_name: String, from_pos: Vector2, aim: Vector2) -> void:
+func net_drop_weapon(weapon_name: String, from_pos: Vector2, aim: Vector2, mag: int = -1) -> void:
 	var wp := WeaponPickup.new()
 	wp.weapon_name = weapon_name
 	wp.team = team
 	wp.thrower_name = display_name
 	wp.damage_on_hit = 55.0 if weapon_name == "Knife" else 0.0
+	# Persist thrown magazine count so pickup grants the same rounds instead of a
+	# free refill (empty→drop→pickup was an infinite-ammo exploit).
+	wp.mag_on_drop = mag
 	wp.global_position = from_pos + aim * 20.0
 	wp.linear_velocity = aim * 520.0 + Vector2(0, -160.0)
 	wp.angular_velocity = randf_range(-8.0, 8.0)

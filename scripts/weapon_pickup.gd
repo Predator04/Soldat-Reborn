@@ -10,6 +10,9 @@ var weapon_name := "AK-74"
 var team := 0            # thrower's team — used by the knife-in-flight damage check
 var thrower_name := ""
 var damage_on_hit := 0.0 # non-zero for Knife
+# Mag rounds remaining when the pickup was dropped. Preserved so an empty-mag
+# throw → walk-over-pickup cycle can't be used as a free reload. -1 = full.
+var mag_on_drop: int = -1
 var _consumed := false
 var _life := 20.0        # despawn if not picked up in 20s
 var _grace := 0.15       # brief window where the thrower can't re-grab it
@@ -77,11 +80,11 @@ func _on_body_entered(body: Node) -> void:
 	if body.has_method("try_pickup_weapon"):
 		var picked: bool = false
 		if multiplayer.multiplayer_peer == null or body.is_multiplayer_authority():
-			picked = body.try_pickup_weapon(weapon_name)
+			picked = body.try_pickup_weapon(weapon_name, mag_on_drop)
 		elif body.has_method("net_remote_pickup"):
 			# Host is authoritative for pickup contacts, but the loadout lives on
 			# the body's owning peer — RPC the grant and consume unconditionally (#83).
-			body.rpc_id(body.get_multiplayer_authority(), "net_remote_pickup", weapon_name)
+			body.rpc_id(body.get_multiplayer_authority(), "net_remote_pickup", weapon_name, mag_on_drop)
 			picked = true
 		if picked:
 			_consumed = true

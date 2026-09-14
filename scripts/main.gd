@@ -2102,6 +2102,13 @@ func _reset_round() -> void:
 		a.set_meta("progress", 0.0)
 		a.set_meta("cap_team", 0)
 	_reset_br_zone()
+	# Wipe stale weapon pickups so a knife lying on the ground from last round
+	# doesn't linger into the fresh round. `restore_for_round` already clears
+	# per-player `_thrown` sets on host; the physics bodies need parity.
+	if not Net.is_networked() or Net.is_host():
+		for wp in get_tree().get_nodes_in_group("weapon_pickup"):
+			if is_instance_valid(wp):
+				wp.queue_free()
 	time_left = ROUND_TIME
 	winner_team = -1
 	winner_note = ""
