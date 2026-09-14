@@ -147,6 +147,10 @@ var _next_bonus_id: int = 1          # host: monotonic id minter
 var _pickup_sync_cd := 0.0
 const PICKUP_SYNC_HZ := 10.0
 var _next_pickup_id: int = 1
+# #107: throttle DOM/PM/BR mode-state broadcasts so we don't spam a
+# per-peer RPC every host frame for objectives that change at UI speed.
+var _mode_sync_cd := 0.0
+const MODE_SYNC_HZ := 10.0
 
 const MAP_W := 4800.0
 const MAP_H := 2000.0
@@ -1592,7 +1596,11 @@ func _process(delta: float) -> void:
 		# DOM cap progress, PM pickup availability, BR zone size — client _process
 		# early-returns before the mode ticks, so without this broadcast clients
 		# see stale objectives (neutral points, ghost diamonds, static BR ring).
-		_broadcast_mode_state()
+		# #107: throttled to MODE_SYNC_HZ; was called every frame.
+		_mode_sync_cd -= delta
+		if _mode_sync_cd <= 0.0:
+			_mode_sync_cd = 1.0 / MODE_SYNC_HZ
+			_broadcast_mode_state()
 		# Bot state (pos/vel/facing/health/loadout/dead) streams at 20 Hz — matches
 		# the player net_state cadence so bot bodies read smoothly on clients (#55).
 		if not _bots_by_id.is_empty():
