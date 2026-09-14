@@ -2,15 +2,9 @@
   "hooks": {
     "PostToolUse": [
       {
-        "matcher": "Edit(*.gd)",
+        "matcher": "Edit|Write",
         "hooks": [
-          { "type": "command", "command": "bash tools/check_gd.sh" }
-        ]
-      },
-      {
-        "matcher": "Write(*.gd)",
-        "hooks": [
-          { "type": "command", "command": "bash tools/check_gd.sh" }
+          { "type": "command", "command": "cd \"$CLAUDE_PROJECT_DIR\" && bash tools/check_gd.sh" }
         ]
       }
     ]
