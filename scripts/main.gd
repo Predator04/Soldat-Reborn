@@ -1334,6 +1334,11 @@ func net_client_ready() -> void:
 	# host-initiated spawn between now and net_spawn_ack still needs to reach
 	# this peer, otherwise it'd be permanently invisible (#84).
 	_connected_peers[sender] = true
+	# #97: send the Gun Game rung snapshot FIRST so the spawn RPCs below read
+	# from a populated _gg_levels. Previously the joiner spawned replicas at
+	# rung 0 and only self-healed on the next kill.
+	if Settings.game_mode == Settings.MODE_GG:
+		rpc_id(sender, "net_gg_state_sync", _gg_levels)
 	# tell the new peer about all currently living players
 	for existing_id in _players_by_id.keys():
 		var p: Node = _players_by_id[existing_id]
@@ -1353,11 +1358,6 @@ func net_client_ready() -> void:
 		if not is_instance_valid(box):
 			continue
 		rpc_id(sender, "net_bonus_spawn", int(bid), box.position, str(box.get("bonus_kind")))
-	# Gun Game: hand the joining peer the full rung snapshot so its first
-	# net_spawn_player / net_spawn_bot reads the correct level locally instead
-	# of seeding every replica at rung 0 until the next net_gg_set_level fires.
-	if Settings.game_mode == Settings.MODE_GG:
-		rpc_id(sender, "net_gg_state_sync", _gg_levels)
 	# then spawn a body for the new peer on everyone
 	_spawn_networked_player(sender)
 	# NOTE: _ready_peers[sender] is set only when the client acks the spawn (net_spawn_ack).
