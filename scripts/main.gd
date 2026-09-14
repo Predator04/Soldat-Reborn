@@ -763,15 +763,47 @@ func net_m2_dismount(m2_id: int) -> void:
 @rpc("any_peer", "unreliable_ordered")
 func net_m2_state(m2_id: int, aim_dir: Vector2) -> void:
 	var m2 := find_m2(m2_id)
-	if m2 != null and m2.has_method("net_apply_state"):
-		m2.net_apply_state(aim_dir)
+	if m2 == null or not m2.has_method("net_apply_state"):
+		return
+	# Only the current operator may steer the barrel — reject spoofed aim from
+	# non-operators (aim-spoof / attribution exploit).
+	if multiplayer.multiplayer_peer != null:
+		var sender := multiplayer.get_remote_sender_id()
+		var op = m2.get("operator")
+		if not is_instance_valid(op):
+			return
+		var op_peer := int(op.get_multiplayer_authority())
+		if sender == 0:
+			if op_peer != multiplayer.get_unique_id():
+				return
+		elif sender != op_peer:
+			return
+	m2.net_apply_state(aim_dir)
 
 
 @rpc("any_peer", "call_local", "reliable")
 func net_m2_fire(m2_id: int, muzzle: Vector2, aim_dir: Vector2, shooter_team: int, shooter_name: String) -> void:
 	var m2 := find_m2(m2_id)
-	if m2 != null and m2.has_method("net_apply_fire"):
-		m2.net_apply_fire(muzzle, aim_dir, shooter_team, shooter_name)
+	if m2 == null or not m2.has_method("net_apply_fire"):
+		return
+	# Only the current operator may spawn M2 bullets. Also lock shooter_team +
+	# shooter_name to the operator's own so kill attribution can't be forged.
+	var op_team := shooter_team
+	var op_name := shooter_name
+	if multiplayer.multiplayer_peer != null:
+		var sender := multiplayer.get_remote_sender_id()
+		var op = m2.get("operator")
+		if not is_instance_valid(op):
+			return
+		var op_peer := int(op.get_multiplayer_authority())
+		if sender == 0:
+			if op_peer != multiplayer.get_unique_id():
+				return
+		elif sender != op_peer:
+			return
+		op_team = int(op.get("team"))
+		op_name = str(op.get("display_name"))
+	m2.net_apply_fire(muzzle, aim_dir, op_team, op_name)
 
 
 # ── Singleplayer spawn path ───────────────────────────

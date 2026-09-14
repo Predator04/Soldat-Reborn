@@ -71,6 +71,8 @@ var f_prev := false     # prev-frame F — throw current weapon on rising edge
 # #87: weapons the player has thrown (name -> true). Thrown weapons are removed
 # from the active roster until re-picked up (or respawn).
 var _thrown: Dictionary = {}
+# Host-side rate-limit on drop RPCs so a modded client can't spam pickup spawns.
+var _last_drop_ms: int = 0
 var crouching := false
 var prone := false
 # Roll — S pressed while running triggers a short forward burst (Soldat's roll).
@@ -1189,9 +1191,37 @@ func _switch_after_drop() -> void:
 func net_request_drop(weapon_name: String, from_pos: Vector2, aim: Vector2) -> void:
 	if not Net.is_host():
 		return
-	# Host relays the drop on its own timeline as authority so all peers see
-	# the same physics body governed by the same peer.
-	net_drop_weapon(weapon_name, from_pos, aim)
+	# Validate: the sender must actually own this body, be alive, and hold the
+	# weapon they're dropping. Otherwise a modded client can spawn arbitrary
+	# pickups (LAW, Barrett, …) by RPCing net_request_drop with any name.
+	var sender := multiplayer.get_remote_sender_id()
+	if sender != int(get_multiplayer_authority()):
+		return
+	if dead:
+		return
+	if not _loadout_has(weapon_name):
+		return
+	if _thrown.has(weapon_name):
+		return
+	# Rate-limit repeated drops (throw cooldown lives on the client; enforce a
+	# floor here too so a hostile client can't spam pickup spawns).
+	var now := Time.get_ticks_msec()
+	if now - _last_drop_ms < 200:
+		return
+	_last_drop_ms = now
+	# Snap the pickup to the player's authoritative position — client-reported
+	# from_pos is a hint only.
+	net_drop_weapon(weapon_name, global_position, aim)
+
+
+func _loadout_has(weapon_name: String) -> bool:
+	for w in weapons:
+		if str(w["name"]) == weapon_name:
+			return true
+	for w in secondary:
+		if str(w["name"]) == weapon_name:
+			return true
+	return false
 
 
 func try_pickup_weapon(weapon_name: String) -> bool:
@@ -1231,10 +1261,13 @@ func try_pickup_weapon(weapon_name: String) -> bool:
 @rpc("any_peer", "call_local", "reliable")
 func net_remote_pickup(weapon_name: String) -> void:
 	# Host-authoritative pickup contact routed to the body's owning peer (#83).
-	# Only accept from host (peer 1) — pickup contacts run there exclusively.
+	# Only host may originate — local invocation (sender_id 0) is only valid on host.
 	if multiplayer.multiplayer_peer != null:
 		var sender := multiplayer.get_remote_sender_id()
-		if sender != 0 and sender != 1:
+		if sender == 0:
+			if not Net.is_host():
+				return
+		elif sender != 1:
 			return
 	try_pickup_weapon(weapon_name)
 
@@ -1244,7 +1277,10 @@ func net_remote_damage(amount: float, killer: String, weapon: String, killer_tea
 	# Host-authoritative knife-contact damage routed to the victim's owning peer (#83).
 	if multiplayer.multiplayer_peer != null:
 		var sender := multiplayer.get_remote_sender_id()
-		if sender != 0 and sender != 1:
+		if sender == 0:
+			if not Net.is_host():
+				return
+		elif sender != 1:
 			return
 	take_damage(amount, killer, weapon, killer_team)
 
@@ -1677,11 +1713,15 @@ func _draw() -> void:
 
 @rpc("any_peer", "call_local", "reliable")
 func net_bonus_apply(kind: String, duration: float) -> void:
-	# Guard: in MP, only accept from the host (peer 1). local (sender_id 0)
-	# means we ran this via call_local on the caller, which is also host.
+	# Only host may originate bonus grants. On the host's own call_local half
+	# sender_id is 0; on remote peers applying the broadcast sender_id is 1.
+	# Reject anything else — a modded client could otherwise self-grant a vest.
 	if multiplayer.multiplayer_peer != null:
 		var sender := multiplayer.get_remote_sender_id()
-		if sender != 0 and sender != 1:
+		if sender == 0:
+			if not Net.is_host():
+				return
+		elif sender != 1:
 			return
 	_apply_bonus_local(kind, duration)
 
@@ -1690,7 +1730,10 @@ func net_bonus_apply(kind: String, duration: float) -> void:
 func net_bonus_clear() -> void:
 	if multiplayer.multiplayer_peer != null:
 		var sender := multiplayer.get_remote_sender_id()
-		if sender != 0 and sender != 1:
+		if sender == 0:
+			if not Net.is_host():
+				return
+		elif sender != 1:
 			return
 	_clear_bonus_local()
 
