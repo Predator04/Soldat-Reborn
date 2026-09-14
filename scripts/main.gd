@@ -510,20 +510,30 @@ func _make_platform(pos: Vector2, size: Vector2, col: Color, tex_path: String = 
 	shape.shape = rect
 	body.add_child(shape)
 	var vis := Polygon2D.new()
-	vis.polygon = PackedVector2Array([
+	var poly := PackedVector2Array([
 		Vector2(-size.x / 2.0, -size.y / 2.0),
 		Vector2(size.x / 2.0, -size.y / 2.0),
 		Vector2(size.x / 2.0, size.y / 2.0),
 		Vector2(-size.x / 2.0, size.y / 2.0),
 	])
+	vis.polygon = poly
 	vis.color = col
 	if tex_path != "" and ResourceLoader.exists(tex_path):
 		var tex: Texture2D = load(tex_path) as Texture2D
 		if tex != null:
 			vis.texture = tex
 			vis.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
-			# Modulate lightly so texture blends with the rock/dirt color instead of overwhelming it.
-			vis.color = Color(0.85, 0.85, 0.9, 1.0)
+			# #112: explicit UVs = polygon coords + half-size so the texture starts
+			# at (0,0) in the top-left and tiles at 1 world-pixel per texture-pixel.
+			# Polygon2D falls back to (0,0)-mapped UVs when uv is empty, which
+			# stretches one tile across the whole platform — invisible on a
+			# 5000-pixel-wide baseline floor. Modulate stays at pure white so the
+			# tiled grass/rock reads at full contrast against the sky.
+			var uvs := PackedVector2Array()
+			for p in poly:
+				uvs.append(p + size * 0.5)
+			vis.uv = uvs
+			vis.color = Color(1, 1, 1, 1)
 	body.add_child(vis)
 	add_child(body)
 	return body
@@ -558,11 +568,20 @@ func _make_polygon_body(points: PackedVector2Array, col: Color, tex_path: String
 				for uv in uvs_norm:
 					uv_px.append(Vector2(uv.x * ts.x, uv.y * ts.y))
 				vis.uv = uv_px
-				vis.color = Color(1, 1, 1, 1)
 			else:
-				# Legacy remake maps: no per-poly UVs, tint darker so the tiled
-				# texture blends with the terrain color.
-				vis.color = Color(0.9, 0.88, 0.9, 1.0)
+				# #112: procedural remake maps (Ascent/Towers/Pillars) don't carry
+				# per-vertex UVs. Polygon2D with an empty uv array stretches ONE
+				# texture across the whole polygon, so a 1000×200 hill shows a
+				# single blurry pixel of grass instead of tiling. Generate UVs
+				# from world-space vertex positions so the texture repeats at its
+				# native size (1 world pixel = 1 texture pixel).
+				var uv_px := PackedVector2Array()
+				for pt in points:
+					uv_px.append(pt)
+				vis.uv = uv_px
+			# Pure-white modulate so the tiled texture reads at full contrast
+			# instead of getting washed toward the fallback terrain_color.
+			vis.color = Color(1, 1, 1, 1)
 			textured = true
 	body.add_child(vis)
 	if draw_outline:
