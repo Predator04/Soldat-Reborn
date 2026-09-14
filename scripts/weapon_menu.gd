@@ -70,25 +70,27 @@ func _process(_delta: float) -> void:
 		visible = false
 		_was_dead = false
 		_picked = false
+		return
+	if not _was_dead:
+		# Just died — baseline the current loadout so the existing weapon
+		# doesn't read as an instant "pick".
+		_was_dead = true
+		_picked = false
+		_base_wi = int(player.get("weapon_index"))
+		_base_si = int(player.get("secondary_index"))
+		_base_us = bool(player.get("using_secondary"))
 	else:
-		if not _was_dead:
-			# Just died — baseline the current loadout so the existing weapon
-			# doesn't read as an instant "pick".
-			_was_dead = true
-			_picked = false
-			_base_wi = int(player.get("weapon_index"))
-			_base_si = int(player.get("secondary_index"))
-			_base_us = bool(player.get("using_secondary"))
-		else:
-			var wi: int = int(player.get("weapon_index"))
-			var si: int = int(player.get("secondary_index"))
-			var us: bool = bool(player.get("using_secondary"))
-			if wi != _base_wi or si != _base_si or us != _base_us:
-				_picked = true
-				_base_wi = wi
-				_base_si = si
-				_base_us = us
-		visible = not _picked
+		var wi: int = int(player.get("weapon_index"))
+		var si: int = int(player.get("secondary_index"))
+		var us: bool = bool(player.get("using_secondary"))
+		if wi != _base_wi or si != _base_si or us != _base_us:
+			_picked = true
+			_base_wi = wi
+			_base_si = si
+			_base_us = us
+	visible = not _picked
+	if not visible:
+		return  # already picked — skip hover tracking + redraw entirely
 	# Track hover from local coordinates. Redraw every frame so the current-weapon
 	# highlight tracks player.weapon_index / secondary_index / using_secondary live.
 	var mouse := get_local_mouse_position()

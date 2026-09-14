@@ -93,6 +93,7 @@ func _maybe_record_hit() -> void:
 	var pl = m.get("player")
 	if pl != null and is_instance_valid(pl) and str(pl.get("display_name")) == killer_name:
 		Stats.record_hit()
+		Sfx.hit()
 
 
 func _draw() -> void:

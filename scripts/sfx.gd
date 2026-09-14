@@ -149,6 +149,13 @@ func melee_swing() -> void:
 	_play_event("melee_swing", -8.0, randf_range(0.95, 1.05))
 
 
+# "You hit someone" grunt — picks a random Soldat hit-arg sample for variety.
+# Called from bullet.gd only when the LOCAL player's shot lands, so it reads as
+# your own hit confirmation and stays silent for remote players.
+func hit() -> void:
+	_play_key(["hit-arg", "hit-arg2", "hit-arg3"][randi() % 3], -6.0, randf_range(0.9, 1.1))
+
+
 # Grenade throw arm-swing.
 func grenade_throw() -> void:
 	_play_event("grenade_throw", -10.0, 1.0)
