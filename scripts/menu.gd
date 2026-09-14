@@ -60,6 +60,12 @@ var _master_edit: LineEdit
 var _browse_panel: VBoxContainer
 var _browse_list: VBoxContainer
 var _browse_http: HTTPRequest
+# #93: keyboard focus seed — the first interactive control the arrow keys
+# should land on when a panel is shown. Nulled defensively for panels the
+# user never opens, so grab_focus never fires on a freed control.
+var _menu_first_focus: Control = null
+var _host_first_focus: Control = null
+var _join_first_focus: Control = null
 
 
 func _ready() -> void:
@@ -82,6 +88,10 @@ func _ready() -> void:
 	Net.connected.connect(_on_net_connected)
 	Net.disconnected.connect(_on_net_disconnected)
 	Net.map_received.connect(_on_map_received)
+	# #93: seed keyboard focus so arrow keys / gamepad D-pad navigate before
+	# the user has to mouse-click a widget.
+	if _menu_first_focus != null:
+		_menu_first_focus.call_deferred("grab_focus")
 
 
 func _build_backdrop() -> void:
@@ -209,6 +219,7 @@ func _build_menu() -> void:
 		Net.set_singleplayer()
 		get_tree().change_scene_to_file("res://scenes/main.tscn"))
 	_menu_box.add_child(play)
+	_menu_first_focus = play
 
 	var editor := _make_button("MAP EDITOR")
 	editor.pressed.connect(func() -> void:
@@ -226,13 +237,17 @@ func _build_menu() -> void:
 	var host := _make_button("HOST GAME")
 	host.pressed.connect(func() -> void:
 		_menu_root.visible = false
-		_host_root.visible = true)
+		_host_root.visible = true
+		if _host_first_focus != null:
+			_host_first_focus.call_deferred("grab_focus"))
 	_menu_box.add_child(host)
 
 	var join := _make_button("JOIN GAME")
 	join.pressed.connect(func() -> void:
 		_menu_root.visible = false
-		_join_root.visible = true)
+		_join_root.visible = true
+		if _join_first_focus != null:
+			_join_first_focus.call_deferred("grab_focus"))
 	_menu_box.add_child(join)
 
 	_menu_box.add_child(UITheme.spacer(4))
@@ -401,6 +416,7 @@ func _build_host() -> void:
 	_host_panel.add_child(UITheme.spacer(6))
 
 	var start := _make_button("START HOSTING", true)
+	_host_first_focus = start
 	start.pressed.connect(func() -> void:
 		var idx := _map_pick.get_selected_id()
 		if idx < 0:
@@ -492,6 +508,7 @@ func _build_join() -> void:
 	_connect_btn = _make_button("CONNECT", true)
 	_connect_btn.pressed.connect(_on_connect_pressed)
 	_join_panel.add_child(_connect_btn)
+	_join_first_focus = _connect_btn
 
 	var back := _make_button("BACK")
 	back.pressed.connect(func() -> void:

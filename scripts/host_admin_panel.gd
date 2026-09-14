@@ -241,6 +241,8 @@ func _build() -> void:
 	var back := _make_button("BACK")
 	back.pressed.connect(func() -> void: back_pressed.emit())
 	col_root.add_child(back)
+	# #93: seed focus on BACK so arrow keys work before a mouse click.
+	back.call_deferred("grab_focus")
 
 
 func _do_restart() -> void:

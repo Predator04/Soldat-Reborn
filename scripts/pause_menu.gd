@@ -19,6 +19,9 @@ var _host_admin_btn: Button      # shortcut on the pause list; only visible to h
 var _quit_confirm: VBoxContainer
 var _dim: ColorRect
 var _open := false
+# #93: focus seeds so arrow-key / gamepad nav lands somewhere sensible on open.
+var _resume_btn: Button = null
+var _quit_cancel_btn: Button = null
 
 
 func _ready() -> void:
@@ -79,6 +82,7 @@ func _build_main_menu() -> void:
 	var resume := _make_button("RESUME", true)
 	resume.pressed.connect(close)
 	_menu_box.add_child(resume)
+	_resume_btn = resume
 
 	var settings := _make_button("SETTINGS")
 	settings.pressed.connect(_open_settings)
@@ -167,6 +171,7 @@ func _build_quit_confirm() -> void:
 	var no := _make_button("CANCEL", true)
 	no.pressed.connect(_close_quit_confirm)
 	_quit_confirm.add_child(no)
+	_quit_cancel_btn = no
 
 
 func _make_button(text: String, primary: bool = false) -> Button:
@@ -234,6 +239,9 @@ func open() -> void:
 	# Free the OS cursor so mouse buttons work reliably on the pause menu.
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	get_tree().paused = true
+	# #93: focus resume so arrow-key nav works before a mouse click.
+	if _resume_btn != null:
+		_resume_btn.call_deferred("grab_focus")
 
 
 func close() -> void:
@@ -252,6 +260,8 @@ func _open_settings() -> void:
 func _close_settings() -> void:
 	_settings_panel.visible = false
 	_menu_wrapper.visible = true
+	if _resume_btn != null:
+		_resume_btn.call_deferred("grab_focus")
 
 
 func _open_host_admin() -> void:
@@ -262,6 +272,8 @@ func _open_host_admin() -> void:
 func _close_host_admin() -> void:
 	_host_admin_panel.visible = false
 	_menu_wrapper.visible = true
+	if _resume_btn != null:
+		_resume_btn.call_deferred("grab_focus")
 
 
 func _open_controls() -> void:
@@ -277,11 +289,15 @@ func _close_controls() -> void:
 func _open_quit_confirm() -> void:
 	_menu_wrapper.visible = false
 	_quit_confirm_wrapper.visible = true
+	if _quit_cancel_btn != null:
+		_quit_cancel_btn.call_deferred("grab_focus")
 
 
 func _close_quit_confirm() -> void:
 	_quit_confirm_wrapper.visible = false
 	_menu_wrapper.visible = true
+	if _resume_btn != null:
+		_resume_btn.call_deferred("grab_focus")
 
 
 func _exit_to_menu() -> void:

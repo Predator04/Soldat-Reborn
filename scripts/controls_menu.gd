@@ -106,6 +106,8 @@ func _build() -> void:
 		_abort_capture()
 		back_pressed.emit())
 	buttons.add_child(back)
+	# #93: seed focus on BACK so arrow keys work before a mouse click.
+	back.call_deferred("grab_focus")
 
 
 func _make_row(action_id: String, row_idx: int) -> Control:
