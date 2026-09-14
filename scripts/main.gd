@@ -1519,6 +1519,10 @@ func _process(delta: float) -> void:
 		if _pickup_sync_cd <= 0.0:
 			_pickup_sync_cd = 1.0 / PICKUP_SYNC_HZ
 			_broadcast_pickup_state()
+		# DOM cap progress, PM pickup availability, BR zone size — client _process
+		# early-returns before the mode ticks, so without this broadcast clients
+		# see stale objectives (neutral points, ghost diamonds, static BR ring).
+		_broadcast_mode_state()
 		# Bot state (pos/vel/facing/health/loadout/dead) streams at 20 Hz — matches
 		# the player net_state cadence so bot bodies read smoothly on clients (#55).
 		if not _bots_by_id.is_empty():
@@ -2205,6 +2209,78 @@ func net_match_state(new_scores: Dictionary, tl: float, active: bool, winner: in
 	winner_team = winner
 	winner_end_t = we
 	winner_note = note
+
+
+func _broadcast_mode_state() -> void:
+	if not Net.is_host():
+		return
+	if _ready_peers.is_empty():
+		return
+	var mode: int = Settings.game_mode
+	# Only bundle state that's relevant to the current mode — reduces payload
+	# for DM/TDM/CTF etc. where none of this applies.
+	var payload: Dictionary = {}
+	if mode == Settings.MODE_DOM:
+		var dom: Array = []
+		for a in _dom_points:
+			if not is_instance_valid(a):
+				dom.append([0, 0.0, 0])
+				continue
+			dom.append([int(a.get_meta("owner_team", 0)), float(a.get_meta("progress", 0.0)), int(a.get_meta("cap_team", 0))])
+		payload["dom"] = dom
+	elif mode == Settings.MODE_PM:
+		var pm: Array = []
+		for p in get_tree().get_nodes_in_group("point_pickup"):
+			if is_instance_valid(p):
+				pm.append(p.get_meta("spawn_pos", p.global_position))
+		payload["pm"] = pm
+	elif mode == Settings.MODE_BR:
+		payload["br"] = {"c": _br_zone_center, "r": _br_zone_radius}
+	if payload.is_empty():
+		return
+	for pid in _ready_peers.keys():
+		rpc_id(int(pid), "net_mode_state", payload)
+
+
+@rpc("authority", "unreliable_ordered")
+func net_mode_state(payload: Dictionary) -> void:
+	# Client-side apply of host-authoritative mode state. Runs on client only —
+	# host mutates these directly in its own ticks and short-circuits its net_
+	# broadcast for itself.
+	if not Net.is_networked() or Net.is_host():
+		return
+	if payload.has("dom"):
+		var dom: Array = payload["dom"]
+		for i in mini(dom.size(), _dom_points.size()):
+			var a = _dom_points[i]
+			if not is_instance_valid(a):
+				continue
+			var entry: Array = dom[i]
+			a.set_meta("owner_team", int(entry[0]))
+			a.set_meta("progress", float(entry[1]))
+			a.set_meta("cap_team", int(entry[2]))
+	if payload.has("pm"):
+		var alive: Array = payload["pm"]
+		var alive_set: Dictionary = {}
+		for pos in alive:
+			alive_set[str(pos)] = true
+		var have_set: Dictionary = {}
+		for p in get_tree().get_nodes_in_group("point_pickup"):
+			if not is_instance_valid(p):
+				continue
+			var key: String = str(p.get_meta("spawn_pos", p.global_position))
+			if not alive_set.has(key):
+				p.queue_free()
+			else:
+				have_set[key] = true
+		# Spawn any pickup we don't have locally (host respawned it after cooldown).
+		for pos in alive:
+			if not have_set.has(str(pos)):
+				_spawn_point_pickup(pos)
+	if payload.has("br"):
+		var br: Dictionary = payload["br"]
+		_br_zone_center = br.get("c", _br_zone_center)
+		_br_zone_radius = float(br.get("r", _br_zone_radius))
 
 
 # ── Vote system (#77) ─────────────────────────────────
