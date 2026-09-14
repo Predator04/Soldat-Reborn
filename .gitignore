@@ -12,3 +12,5 @@ prompt.md
 # Local audit / scratch files
 audit_prompt.md
 claude_audit.log
+fix_*_prompt.md
+claude_fix_*.log
