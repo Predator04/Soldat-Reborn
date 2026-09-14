@@ -341,7 +341,7 @@ func _physics_process(delta: float) -> void:
 		q_prev = Input.is_action_pressed("secondary_swap")
 		g_prev = Input.is_action_pressed("grenade_toggle")
 		f_prev = Input.is_action_pressed("weapon_throw")
-		lmb_prev = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+		lmb_prev = Input.is_action_pressed("fire")
 		queue_redraw()
 		return
 
@@ -369,7 +369,7 @@ func _physics_process(delta: float) -> void:
 		q_prev = Input.is_action_pressed("secondary_swap")
 		g_prev = Input.is_action_pressed("grenade_toggle")
 		f_prev = Input.is_action_pressed("weapon_throw")
-		lmb_prev = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+		lmb_prev = Input.is_action_pressed("fire")
 		queue_redraw()
 		return
 
@@ -548,14 +548,24 @@ func _physics_process(delta: float) -> void:
 			velocity.y += GRAVITY * mg * delta
 			velocity.y = minf(velocity.y, MAX_FALL)
 
-	# aim
-	var mouse := get_global_mouse_position()
-	var to_mouse := mouse - global_position
-	if to_mouse.length() > 1.0:
-		aim_dir = to_mouse.normalized()
-		# Small deadband around vertical so facing doesn't pop as the mouse crosses through x=0.
+	# aim — gamepad right stick when deflected past its deadzone, mouse otherwise.
+	# The stick check has to come first: on a system with both connected, a
+	# stationary mouse must not overwrite active stick input, and a resting stick
+	# must not overwrite mouse aim. The 0.2 threshold matches the aim_* action
+	# deadzone set in controls_map.gd and keeps drift/idle jitter from twitching aim.
+	var stick := Input.get_vector("aim_left", "aim_right", "aim_up", "aim_down", 0.2)
+	if stick.length() > 0.0:
+		aim_dir = stick.normalized()
 		if absf(aim_dir.x) > 0.05:
 			facing = signf(aim_dir.x)
+	else:
+		var mouse := get_global_mouse_position()
+		var to_mouse := mouse - global_position
+		if to_mouse.length() > 1.0:
+			aim_dir = to_mouse.normalized()
+			# Small deadband around vertical so facing doesn't pop as the mouse crosses through x=0.
+			if absf(aim_dir.x) > 0.05:
+				facing = signf(aim_dir.x)
 
 	move_and_slide()
 

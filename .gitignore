@@ -10,7 +10,5 @@ prompt.md
 # renders correctly without running it.
 
 # Local audit / scratch files
-audit_prompt.md
-claude_audit.log
-fix_*_prompt.md
-claude_fix_*.log
+*_prompt.md
+claude_*.log

@@ -185,42 +185,50 @@ func _pad(px: int) -> Control:
 
 
 func _input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo:
-		if event.physical_keycode == KEY_ESCAPE:
-			# Don't hijack ESC while the HUD's chat / command LineEdit is focused —
-			# the LineEdit uses ESC to close itself.
-			if not _open:
-				var focused := get_viewport().gui_get_focus_owner()
-				if focused != null and focused is LineEdit:
-					return
-			if _open:
-				# ESC in a sub-panel steps back to the main pause list.
-				# Controls capture handles its own ESC (to cancel a rebind) —
-				# only back out once nothing is being captured, otherwise the
-				# user would lose their rebind session on the first ESC.
-				if _controls_panel.visible:
-					if _controls_panel._capturing_action != "":
-						_controls_panel._abort_capture()
-					else:
-						_close_controls()
-					get_viewport().set_input_as_handled()
-					return
-				if _settings_panel.visible:
-					_close_settings()
-					get_viewport().set_input_as_handled()
-					return
-				if _host_admin_panel.visible:
-					_close_host_admin()
-					get_viewport().set_input_as_handled()
-					return
-				if _quit_confirm_wrapper.visible:
-					_close_quit_confirm()
-					get_viewport().set_input_as_handled()
-					return
-				close()
-			else:
-				open()
-			get_viewport().set_input_as_handled()
+	# ESC (keyboard) or Start (gamepad) — both bind to the `pause` action (#115).
+	# Falls back to a bare KEY_ESCAPE check so a user who somehow unbound `pause`
+	# in the Controls menu still has a way to open the pause overlay.
+	var triggered := false
+	if InputMap.has_action("pause") and event.is_action_pressed("pause"):
+		triggered = true
+	elif event is InputEventKey and event.pressed and not event.echo \
+			and event.physical_keycode == KEY_ESCAPE:
+		triggered = true
+	if triggered:
+		# Don't hijack while the HUD's chat / command LineEdit is focused —
+		# the LineEdit uses ESC to close itself.
+		if not _open:
+			var focused := get_viewport().gui_get_focus_owner()
+			if focused != null and focused is LineEdit:
+				return
+		if _open:
+			# ESC/Start in a sub-panel steps back to the main pause list.
+			# Controls capture handles its own ESC (to cancel a rebind) —
+			# only back out once nothing is being captured, otherwise the
+			# user would lose their rebind session on the first ESC.
+			if _controls_panel.visible:
+				if _controls_panel._capturing_action != "":
+					_controls_panel._abort_capture()
+				else:
+					_close_controls()
+				get_viewport().set_input_as_handled()
+				return
+			if _settings_panel.visible:
+				_close_settings()
+				get_viewport().set_input_as_handled()
+				return
+			if _host_admin_panel.visible:
+				_close_host_admin()
+				get_viewport().set_input_as_handled()
+				return
+			if _quit_confirm_wrapper.visible:
+				_close_quit_confirm()
+				get_viewport().set_input_as_handled()
+				return
+			close()
+		else:
+			open()
+		get_viewport().set_input_as_handled()
 
 
 func open() -> void:

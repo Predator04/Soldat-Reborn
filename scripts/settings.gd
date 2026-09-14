@@ -88,6 +88,10 @@ func _ready() -> void:
 	load_settings()
 	# Apply persisted key rebinds over the InputMap defaults baked into project.godot.
 	ControlsMap.load_and_apply()
+	# #115: install gamepad defaults + create joy-only actions (aim_*, pause).
+	# Runs AFTER load_and_apply so a saved config that predates gamepad support
+	# still ends up with the default controller bindings.
+	ControlsMap.install_defaults()
 
 
 func load_settings() -> void:
