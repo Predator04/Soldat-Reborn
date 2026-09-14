@@ -872,23 +872,65 @@ func _spawn_bots() -> void:
 	var desired: int = spots.size() if MatchConfig.bot_count() < 0 else MatchConfig.bot_count()
 	if desired <= 0 or spots.is_empty():
 		return
-	var mode: int = Settings.game_mode
 	for i in desired:
-		var slot: Vector2 = spots[i % spots.size()]
-		var loadout := "LAW" if i == desired - 1 else "AK-74"
-		if Settings.is_team_mode():
-			if mode == Settings.MODE_INF:
-				# INF: bots are attackers (RED). Player defends solo on BLUE.
-				_spawn_bot(slot, TEAM_RED, "Red Bot %d" % (i + 1), loadout)
-			else:
-				# TDM/CTF/HTF/PM: split bots BLUE/RED evenly.
-				var on_blue: bool = i < desired / 2
-				var t: int = TEAM_BLUE if on_blue else TEAM_RED
-				var nm := "Blue Bot %d" % (i + 1) if on_blue else "Red Bot %d" % (i + 1)
-				_spawn_bot(slot, t, nm, loadout)
+		_spawn_bot_at(i, desired)
+
+
+func _spawn_bot_at(i: int, desired: int) -> void:
+	var spots: Array = _map["bot_spawns"]
+	var slot: Vector2 = spots[i % spots.size()]
+	var loadout := "LAW" if i == desired - 1 else "AK-74"
+	var mode: int = Settings.game_mode
+	if Settings.is_team_mode():
+		if mode == Settings.MODE_INF:
+			# INF: bots are attackers (RED). Player defends solo on BLUE.
+			_spawn_bot(slot, TEAM_RED, "Red Bot %d" % (i + 1), loadout)
 		else:
-			# DM/RM: bot team 99 is a dedicated non-peer id → hostile to any human peer.
-			_spawn_bot(slot, 99, "Bot %d" % (i + 1), loadout)
+			# TDM/CTF/HTF/PM: split bots BLUE/RED evenly.
+			var on_blue: bool = i < desired / 2
+			var t: int = TEAM_BLUE if on_blue else TEAM_RED
+			var nm := "Blue Bot %d" % (i + 1) if on_blue else "Red Bot %d" % (i + 1)
+			_spawn_bot(slot, t, nm, loadout)
+	else:
+		# DM/RM: bot team 99 is a dedicated non-peer id → hostile to any human peer.
+		_spawn_bot(slot, 99, "Bot %d" % (i + 1), loadout)
+
+
+# Reconcile the live bot count to MatchConfig.bot_count() — called when the host
+# tweaks the bot-count slider mid-match so new bots appear / extras vanish without
+# a full restart. Host/SP only; clients get spawn/despawn pushed via RPC.
+func _reconcile_bots() -> void:
+	if Net.is_networked() and not Net.is_host():
+		return
+	var spots: Array = _map["bot_spawns"]
+	if spots.is_empty():
+		return
+	var desired: int = spots.size() if MatchConfig.bot_count() < 0 else MatchConfig.bot_count()
+	var live: Array = _live_bots()
+	var diff: int = desired - live.size()
+	if diff > 0:
+		for i in range(live.size(), desired):
+			_spawn_bot_at(i, desired)
+	elif diff < 0:
+		for i in range(desired, live.size()):
+			_despawn_bot(live[i])
+
+
+func _live_bots() -> Array:
+	var out: Array = []
+	for n in get_tree().get_nodes_in_group("soldier"):
+		if is_instance_valid(n) and n.get("loadout") != null and not bool(n.get("dead")):
+			out.append(n)
+	return out
+
+
+func _despawn_bot(b: Node) -> void:
+	var bid: int = int(b.get("bot_id"))
+	if Net.is_networked() and Net.is_host() and bid > 0:
+		rpc("net_bot_despawn", bid)
+		_bots_by_id.erase(bid)
+	if is_instance_valid(b):
+		b.queue_free()
 
 
 func _spawn_bot(pos: Vector2, team: int, bname: String, loadout: String = "AK-74") -> void:
@@ -2511,6 +2553,16 @@ func net_spawn_bot(bot_id: int, spawn_pos: Vector2, team: int, display_name: Str
 	add_child(b)
 	b.set_multiplayer_authority(1, true)
 	_bots_by_id[bot_id] = b
+
+
+@rpc("authority", "reliable")
+func net_bot_despawn(bot_id: int) -> void:
+	if not _bots_by_id.has(bot_id):
+		return
+	var b = _bots_by_id[bot_id]
+	_bots_by_id.erase(bot_id)
+	if is_instance_valid(b):
+		b.queue_free()
 
 
 @rpc("authority", "reliable")

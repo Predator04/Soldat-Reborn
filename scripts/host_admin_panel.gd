@@ -156,7 +156,11 @@ func _build() -> void:
 		bc_val.text = "Auto" if n < 0 else str(n)
 		Settings.bot_count = n
 		Settings.save()
-		MatchConfig.host_broadcast())
+		MatchConfig.host_broadcast()
+		# Spawn/despawn bots to match the new count immediately (host/SP only).
+		var m := get_tree().current_scene
+		if m != null and m.has_method("_reconcile_bots"):
+			m._reconcile_bots())
 
 	col.add_child(_labelled_slider("Bot skill", 1.0, 5.0, 1.0,
 		float(Settings.bot_skill),
