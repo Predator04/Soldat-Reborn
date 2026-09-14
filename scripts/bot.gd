@@ -694,6 +694,9 @@ func _spawn_ragdoll() -> void:
 	var count := 7
 	for _i in count:
 		var body := RigidBody2D.new()
+		# Gibs are cosmetic — zero collision so they can't snag the player/bots.
+		body.collision_layer = 0
+		body.collision_mask = 0
 		body.position = global_position + Vector2(randf_range(-8.0, 8.0), randf_range(-20.0, 0.0))
 		var shape := CollisionShape2D.new()
 		var rect := RectangleShape2D.new()
