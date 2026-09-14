@@ -30,6 +30,10 @@ const STREAK_ANNOUNCE_END_MIN := 3        # streak length that earns an "ended X
 var _map: Dictionary = {}
 var _players_by_id: Dictionary = {}  # peer_id -> player node (host only, but also mirrored on clients)
 var _ready_peers: Dictionary = {}    # peer_id -> true (host only, gate for outbound state RPCs)
+# Peers whose main.tscn is loaded — populated on net_client_ready (before the
+# spawn ack). Gates reliable spawn broadcasts so bots/bonuses spawned between
+# the client's "ready" and its ack don't get permanently missed (#84).
+var _connected_peers: Dictionary = {}
 # Bot registry (host authority) — bot_id → bot node. Mirrored on clients via the
 # net_spawn_bot/net_despawn_bot RPCs so per-bot state can address each replica.
 var _bots_by_id: Dictionary = {}
@@ -1050,10 +1054,14 @@ func _spawn_bot(pos: Vector2, team: int, bname: String, loadout: String = "AK-74
 	if Net.is_networked() and Net.is_host():
 		b.set_multiplayer_authority(1, true)
 		_bots_by_id[assigned_id] = b
-		# Notify already-acked peers of the new bot so they spawn a replica.
-		# _ready_peers may be empty on the first bot batch (dedicated boot) — that's
-		# fine, joiners get all live bots mirrored in net_client_ready below.
-		for pid in _ready_peers.keys():
+		# Notify every peer whose main.tscn is loaded so they spawn a replica.
+		# We gate on _connected_peers (populated in net_client_ready) instead of
+		# _ready_peers (populated on net_spawn_ack) so bots spawned in the gap
+		# between the client's "ready" and its ack still reach the joining peer
+		# — otherwise those bots would be permanently invisible to it (#84).
+		# _connected_peers may be empty on the first bot batch (dedicated boot) —
+		# that's fine, joiners get all live bots mirrored in net_client_ready below.
+		for pid in _connected_peers.keys():
 			rpc_id(int(pid), "net_spawn_bot", assigned_id, b.position, team, bname, loadout, b.cosmetics)
 
 
@@ -1250,6 +1258,7 @@ func _respawn_peer(peer_id: int) -> void:
 func _on_net_peer_disconnected(id: int) -> void:
 	if Net.is_host():
 		_ready_peers.erase(id)
+		_connected_peers.erase(id)
 		rpc("net_despawn_player", id)
 		# If the disconnecting peer was the votekick target, resolve the vote
 		# immediately — no one benefits from a countdown against a phantom.
@@ -1266,6 +1275,10 @@ func net_client_ready() -> void:
 	if not Net.is_host():
 		return
 	var sender := multiplayer.get_remote_sender_id()
+	# Mark the peer as able to receive reliable spawn RPCs BEFORE we mirror — any
+	# host-initiated spawn between now and net_spawn_ack still needs to reach
+	# this peer, otherwise it'd be permanently invisible (#84).
+	_connected_peers[sender] = true
 	# tell the new peer about all currently living players
 	for existing_id in _players_by_id.keys():
 		var p: Node = _players_by_id[existing_id]
@@ -2404,9 +2417,10 @@ func _spawn_bonus_at_slot(slot_idx: int) -> void:
 	_next_bonus_id += 1
 	_bonus_slot_active[slot_idx] = bid
 	_make_bonus_box_local(bid, pos, kind, slot_idx)
-	# Mirror to every acked client.
+	# Mirror to every client whose main.tscn is loaded (see #84 for why we key
+	# off _connected_peers rather than the acked-only _ready_peers).
 	if Net.is_networked() and Net.is_host():
-		for pid in _ready_peers.keys():
+		for pid in _connected_peers.keys():
 			rpc_id(int(pid), "net_bonus_spawn", bid, pos, kind)
 
 
