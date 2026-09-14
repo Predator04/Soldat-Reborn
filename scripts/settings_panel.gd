@@ -89,7 +89,7 @@ func _build() -> void:
 	col_root.add_child(back)
 	# #93: seed focus so arrow-key nav lands on BACK when the panel opens,
 	# without the user needing to mouse-click a widget first.
-	back.call_deferred("grab_focus")
+	UITheme.safe_grab_focus_deferred(back)
 
 
 # ── Card factory ──────────────────────────────────────────

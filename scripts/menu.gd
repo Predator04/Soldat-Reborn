@@ -90,8 +90,7 @@ func _ready() -> void:
 	Net.map_received.connect(_on_map_received)
 	# #93: seed keyboard focus so arrow keys / gamepad D-pad navigate before
 	# the user has to mouse-click a widget.
-	if _menu_first_focus != null:
-		_menu_first_focus.call_deferred("grab_focus")
+	UITheme.safe_grab_focus_deferred(_menu_first_focus)
 
 
 func _build_backdrop() -> void:
@@ -238,16 +237,14 @@ func _build_menu() -> void:
 	host.pressed.connect(func() -> void:
 		_menu_root.visible = false
 		_host_root.visible = true
-		if _host_first_focus != null:
-			_host_first_focus.call_deferred("grab_focus"))
+		UITheme.safe_grab_focus_deferred(_host_first_focus))
 	_menu_box.add_child(host)
 
 	var join := _make_button("JOIN GAME")
 	join.pressed.connect(func() -> void:
 		_menu_root.visible = false
 		_join_root.visible = true
-		if _join_first_focus != null:
-			_join_first_focus.call_deferred("grab_focus"))
+		UITheme.safe_grab_focus_deferred(_join_first_focus))
 	_menu_box.add_child(join)
 
 	_menu_box.add_child(UITheme.spacer(4))

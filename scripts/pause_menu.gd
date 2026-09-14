@@ -240,8 +240,7 @@ func open() -> void:
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	get_tree().paused = true
 	# #93: focus resume so arrow-key nav works before a mouse click.
-	if _resume_btn != null:
-		_resume_btn.call_deferred("grab_focus")
+	UITheme.safe_grab_focus_deferred(_resume_btn)
 
 
 func close() -> void:
@@ -260,8 +259,7 @@ func _open_settings() -> void:
 func _close_settings() -> void:
 	_settings_panel.visible = false
 	_menu_wrapper.visible = true
-	if _resume_btn != null:
-		_resume_btn.call_deferred("grab_focus")
+	UITheme.safe_grab_focus_deferred(_resume_btn)
 
 
 func _open_host_admin() -> void:
@@ -272,8 +270,7 @@ func _open_host_admin() -> void:
 func _close_host_admin() -> void:
 	_host_admin_panel.visible = false
 	_menu_wrapper.visible = true
-	if _resume_btn != null:
-		_resume_btn.call_deferred("grab_focus")
+	UITheme.safe_grab_focus_deferred(_resume_btn)
 
 
 func _open_controls() -> void:
@@ -289,15 +286,13 @@ func _close_controls() -> void:
 func _open_quit_confirm() -> void:
 	_menu_wrapper.visible = false
 	_quit_confirm_wrapper.visible = true
-	if _quit_cancel_btn != null:
-		_quit_cancel_btn.call_deferred("grab_focus")
+	UITheme.safe_grab_focus_deferred(_quit_cancel_btn)
 
 
 func _close_quit_confirm() -> void:
 	_quit_confirm_wrapper.visible = false
 	_menu_wrapper.visible = true
-	if _resume_btn != null:
-		_resume_btn.call_deferred("grab_focus")
+	UITheme.safe_grab_focus_deferred(_resume_btn)
 
 
 func _exit_to_menu() -> void:

@@ -48,6 +48,22 @@ const RADIUS := 4
 const PAD := 12
 
 
+# ── Focus helpers ─────────────────────────────────────
+
+# #101: safe deferred grab_focus. Callers use this instead of
+# c.call_deferred("grab_focus") so the focus attempt no-ops if the target has
+# been freed or removed from the tree by the time the deferred queue drains
+# (dedicated server boot: menu.tscn → main.tscn scene change fires between the
+# queue and the flush, leaving orphaned Control instances the built-in grab_focus
+# would error on with `!is_inside_tree()`).
+static func safe_grab_focus_deferred(c: Control) -> void:
+	if c == null:
+		return
+	(func() -> void:
+		if is_instance_valid(c) and c.is_inside_tree():
+			c.grab_focus()).call_deferred()
+
+
 # ── Panels ─────────────────────────────────────────────
 
 static func panel_style(bg: Color = COL_PANEL, border: Color = COL_BORDER, radius: int = RADIUS) -> StyleBoxFlat:
