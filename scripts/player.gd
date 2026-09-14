@@ -110,6 +110,30 @@ var advance_kills := 0
 const ADV_PRIMARY_UNLOCK := [10, 4, 6, 8, 12, 14, 20, 22, 18, 24, 28, 30]
 # Indexed by secondary_index — 4 slots (USSOCOM, Knife, Chainsaw, LAW).
 const ADV_SECONDARY_UNLOCK := [2, 0, 26, 16]
+
+# Gun Game (MODE_GG) — 16-rung weapon ladder, weak → strong, knife last.
+# `sec` picks the slot (secondary vs primary); `idx` is the index inside that
+# slot's array (see `weapons` / `secondary` above). A kill bumps gg_level by 1;
+# a knife kill at the final rung wins the round.
+var gg_level := 0
+const GG_LADDER := [
+	{"name": "USSOCOM",      "sec": true,  "idx": 0},
+	{"name": "Deagles",      "sec": false, "idx": 0},
+	{"name": "MP5",          "sec": false, "idx": 1},
+	{"name": "Steyr AUG",    "sec": false, "idx": 3},
+	{"name": "AK-74",        "sec": false, "idx": 2},
+	{"name": "Spas-12",      "sec": false, "idx": 4},
+	{"name": "Ruger 77",     "sec": false, "idx": 5},
+	{"name": "Minimi",       "sec": false, "idx": 8},
+	{"name": "M79",          "sec": false, "idx": 6},
+	{"name": "Minigun",      "sec": false, "idx": 9},
+	{"name": "Flamethrower", "sec": false, "idx": 10},
+	{"name": "Rambo Bow",    "sec": false, "idx": 11},
+	{"name": "LAW",          "sec": true,  "idx": 3},
+	{"name": "Barrett",      "sec": false, "idx": 7},
+	{"name": "Chainsaw",     "sec": true,  "idx": 2},
+	{"name": "Knife",        "sec": true,  "idx": 1},
+]
 # Input lock — HUD sets this while the chat/command LineEdit is focused so held
 # WASD keys don't leak into movement while the player is typing.
 var input_locked := false
@@ -184,6 +208,10 @@ func _ready() -> void:
 		ammo.append(int(w["mag"]))
 	for w in secondary:
 		secondary_ammo.append(int(w["mag"]))
+	# Gun Game: spawn on the current rung's weapon so every soldier starts on the
+	# same weak weapon (level 0 = USSOCOM). Level persists across deaths.
+	if Settings.game_mode == Settings.MODE_GG:
+		_apply_gg_weapon()
 	col_shape = CollisionShape2D.new()
 	shape_stand = RectangleShape2D.new()
 	shape_stand.size = Vector2(14, 24)
@@ -743,6 +771,9 @@ func advance_receive_kill() -> PackedStringArray:
 
 
 func _switch_weapon(idx: int) -> void:
+	# Gun Game: your rung IS your weapon. Number-key / hotkey switching is locked.
+	if Settings.game_mode == Settings.MODE_GG:
+		return
 	# Berserker bonus (#78) locks the soldier into the knife slot for the
 	# effect duration — swapping to a primary would defeat "no primary use".
 	if bonus_kind == "berserker":
@@ -775,6 +806,9 @@ func _switch_weapon(idx: int) -> void:
 
 
 func _toggle_secondary() -> void:
+	# Gun Game: rung IS the weapon — Q swap is locked.
+	if Settings.game_mode == Settings.MODE_GG:
+		return
 	# Berserker locks us on the knife slot (#78) — Q would take us back to
 	# a primary, undoing the effect.
 	if bonus_kind == "berserker":
@@ -789,6 +823,35 @@ func _toggle_secondary() -> void:
 	if reloading:
 		reloading = false
 		reload_t = 0.0
+	fire_cd = 0.15
+	spin_up_t = 0.0
+	lmb_prev = true
+
+
+func _apply_gg_weapon() -> void:
+	# Snap the active weapon to the current gg_level rung. Called on spawn and on
+	# every level change. Fills the target slot's mag so the new rung is usable
+	# immediately (no forced reload) and cancels an in-progress reload.
+	if gg_level < 0 or gg_level >= GG_LADDER.size():
+		return
+	var rung: Dictionary = GG_LADDER[gg_level]
+	var idx: int = int(rung["idx"])
+	if bool(rung["sec"]):
+		if idx < 0 or idx >= secondary.size():
+			return
+		secondary_index = idx
+		using_secondary = true
+		if idx < secondary_ammo.size():
+			secondary_ammo[idx] = int(secondary[idx]["mag"])
+	else:
+		if idx < 0 or idx >= weapons.size():
+			return
+		weapon_index = idx
+		using_secondary = false
+		if idx < ammo.size():
+			ammo[idx] = int(weapons[idx]["mag"])
+	reloading = false
+	reload_t = 0.0
 	fire_cd = 0.15
 	spin_up_t = 0.0
 	lmb_prev = true
@@ -1196,6 +1259,10 @@ func restore_for_round() -> void:
 	ceasefire_t = CEASEFIRE_SECS
 	# #87: thrown weapons come back on the clean-slate reset.
 	_thrown.clear()
+	# Gun Game: round reset clears the ladder for a fresh race.
+	if Settings.game_mode == Settings.MODE_GG:
+		gg_level = 0
+		_apply_gg_weapon()
 
 
 # ── RPCs ──────────────────────────────────────────────

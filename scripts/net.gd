@@ -23,7 +23,7 @@ const MAP_NAMES := [
 const MODE_NAMES := [
 	"Deathmatch", "Teammatch", "Capture the Flag",
 	"Infiltration", "Hold the Flag", "Rambomatch", "Pointmatch",
-	"Domination", "Battle Royale",
+	"Domination", "Battle Royale", "Gun Game",
 ]
 
 var mode: int = Mode.SINGLEPLAYER
@@ -127,7 +127,7 @@ func _resolve_mode_arg(v: String) -> int:
 		if String(MODE_NAMES[i]).to_lower() == needle:
 			return i
 	# Common shorthand aliases (dm/tdm/ctf/inf/htf/rm/pm/dom/br) → mode index.
-	var aliases := {"dm": 0, "tdm": 1, "ctf": 2, "inf": 3, "htf": 4, "rm": 5, "pm": 6, "dom": 7, "br": 8}
+	var aliases := {"dm": 0, "tdm": 1, "ctf": 2, "inf": 3, "htf": 4, "rm": 5, "pm": 6, "dom": 7, "br": 8, "gg": 9}
 	if aliases.has(needle):
 		return int(aliases[needle])
 	return Settings.game_mode

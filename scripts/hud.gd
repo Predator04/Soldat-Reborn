@@ -725,6 +725,7 @@ func _process(delta: float) -> void:
 		Settings.MODE_PM:  mode_str = "PM · "
 		Settings.MODE_DOM: mode_str = "DOM · "
 		Settings.MODE_BR:  mode_str = "BR · "
+		Settings.MODE_GG:  mode_str = "GG · "
 	# Sub-modes append to the tag so players notice.
 	var tags: PackedStringArray = PackedStringArray()
 	if Settings.realistic:
@@ -770,6 +771,16 @@ func _process(delta: float) -> void:
 	lbl_fuel.visible = not Settings.realistic
 	lbl_ammo.text = "%d / %d" % [mag, int(w["mag"])] + ("  · RELOADING" if player.reloading else "")
 	lbl_weapon.text = str(w["name"])
+	# Gun Game: overwrite the weapon label with the ladder rung so players see
+	# their race progress at a glance. Knife rung nudges them to close the deal.
+	if Settings.game_mode == Settings.MODE_GG:
+		var lvl: int = int(player.get("gg_level"))
+		var ladder: Array = player.get("GG_LADDER")
+		if ladder != null and ladder.size() > 0:
+			var idx: int = clampi(lvl, 0, ladder.size() - 1)
+			var wname: String = str((ladder[idx] as Dictionary).get("name", ""))
+			var suffix: String = "  · Knife kill to win" if lvl >= ladder.size() - 1 else ""
+			lbl_weapon.text = "Gun Game — %s (%d/%d)%s" % [wname, lvl + 1, ladder.size(), suffix]
 	var gtype := "CLUSTER" if bool(player.get("use_cluster")) else "FRAG"
 	lbl_grenades.text = "GRENADES %d  [%s]" % [player.grenades, gtype]
 

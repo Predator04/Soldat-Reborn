@@ -71,6 +71,13 @@ const BR_SHRINK_RATE := 42.0   # px/sec — full ring closes in ~52s
 const BR_ZONE_MIN := 180.0
 const BR_ZONE_DPS := 22.0      # damage/sec applied outside the ring
 
+# Gun Game (MODE_GG) — per-soldier rung on the 16-weapon ladder, keyed by
+# display_name so the level survives death/respawn (a fresh body reads its
+# rung from here in _spawn_*). Host-authoritative in MP; the RPC below fans
+# each update out to every peer so client-owned players re-apply the weapon.
+const GG_KNIFE_LEVEL := 15
+var _gg_levels: Dictionary = {}
+
 # ── Match state (host-authoritative in MP) ─────────────
 const SCORE_TO_WIN := 20
 const ROUND_TIME := 300.0
@@ -721,6 +728,9 @@ func _spawn_player() -> void:
 	if Settings.advance:
 		p.set("using_secondary", true)
 		p.set("secondary_index", 1)  # Knife
+	# Gun Game: restore the persisted rung so death keeps you on the same weapon.
+	if Settings.game_mode == Settings.MODE_GG:
+		p.gg_level = _gg_get(str(p.display_name))
 	p.died.connect(_on_player_died)
 	add_child(p)
 	player = p
@@ -959,6 +969,10 @@ func _spawn_bot(pos: Vector2, team: int, bname: String, loadout: String = "AK-74
 		b.bot_id = assigned_id
 		b.name = "Bot_%d" % assigned_id
 		b.set_multiplayer_authority(1)
+	# Gun Game: bots share the players' ladder — restore the persisted rung so
+	# a bot that climbed pre-death re-spawns holding the same rung's weapon.
+	if Settings.game_mode == Settings.MODE_GG:
+		b.gg_level = _gg_get(bname)
 	# Bots respawn on the same slot so the match can accumulate score.
 	# Survival gates this — the next spawn only happens on _reset_round.
 	b.died.connect(func() -> void:
@@ -1278,6 +1292,9 @@ func net_spawn_player(peer_id: int, spawn_pos: Vector2, display_name: String, as
 	elif t == TEAM_RED:
 		p.color = Color(0.85, 0.3, 0.25)
 	p.set_multiplayer_authority(peer_id)
+	# Gun Game: restore persisted rung on respawn so death doesn't reset progress.
+	if Settings.game_mode == Settings.MODE_GG:
+		p.gg_level = _gg_get(display_name)
 	add_child(p)
 	# Re-apply after add_child so children created in _ready (cam, jet_particles) inherit authority.
 	p.set_multiplayer_authority(peer_id, true)
@@ -1785,6 +1802,34 @@ func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: Str
 		if Settings.survival:
 			_check_survival_end()
 		return
+	# Gun Game: each kill advances the killer one rung on the ladder; a knife
+	# kill demotes the victim. Reaching (and killing at) the knife rung wins.
+	# No team scoring — race to the knife.
+	if Settings.game_mode == Settings.MODE_GG:
+		var k_lvl: int = _gg_get(killer_name)
+		var weapon_key: String = str(_weapon_name).replace(" (headshot)", "")
+		var is_knife_kill: bool = weapon_key == "Knife"
+		if k_lvl >= GG_KNIFE_LEVEL:
+			winner_note = "%s reached the knife" % killer_name
+			_end_round(killer_team)
+			if Net.is_networked() and Net.is_host():
+				_broadcast_match_state()
+			return
+		# Broadcast the new killer level; every peer applies it to the body
+		# they own (host owns bots + host player; each client owns their player).
+		if Net.is_networked():
+			rpc("net_gg_set_level", killer_name, k_lvl + 1)
+			if is_knife_kill:
+				rpc("net_gg_set_level", victim_name, _gg_get(victim_name) - 1)
+		else:
+			_gg_set(killer_name, k_lvl + 1)
+			if is_knife_kill:
+				_gg_set(victim_name, _gg_get(victim_name) - 1)
+		if Settings.survival:
+			_check_survival_end()
+		if Net.is_networked() and Net.is_host():
+			_broadcast_match_state()
+		return
 	# Rambo mode: only the current bow carrier's kills count.
 	if Settings.game_mode == Settings.MODE_RM:
 		var carrier_is_killer := false
@@ -1824,6 +1869,35 @@ func _check_survival_end() -> void:
 			winner_t = int(k)
 			break
 		_end_round(winner_t)
+
+
+func _gg_get(display_name: String) -> int:
+	return int(_gg_levels.get(display_name, 0))
+
+
+func _gg_set(display_name: String, level: int) -> void:
+	# Store the clamped level, then push it into whichever live body carries the
+	# name. Only the peer that owns the body mutates it — non-authority replicas
+	# will pick up the swap through the usual net_state / net_bot_state stream.
+	var clamped: int = clampi(level, 0, GG_KNIFE_LEVEL)
+	_gg_levels[display_name] = clamped
+	for s in get_tree().get_nodes_in_group("soldier"):
+		if not is_instance_valid(s):
+			continue
+		if str(s.get("display_name")) != display_name:
+			continue
+		if not s.has_method("_apply_gg_weapon"):
+			continue
+		if multiplayer.multiplayer_peer != null and not s.is_multiplayer_authority():
+			continue
+		s.gg_level = clamped
+		s._apply_gg_weapon()
+		break
+
+
+@rpc("authority", "call_local", "reliable")
+func net_gg_set_level(display_name: String, level: int) -> void:
+	_gg_set(display_name, level)
 
 
 func _end_round(team: int) -> void:
@@ -1872,6 +1946,7 @@ func _reset_round() -> void:
 	scores.clear()
 	_htf_accum.clear()
 	_dom_accum.clear()
+	_gg_levels.clear()
 	# Reset control points to neutral so the next round has fresh objectives.
 	for a in _dom_points:
 		if not is_instance_valid(a):
@@ -2550,6 +2625,10 @@ func net_spawn_bot(bot_id: int, spawn_pos: Vector2, team: int, display_name: Str
 	# Host (peer 1) owns the bot's AI + damage authority. Non-authority replicas
 	# skip _physics_process and are driven by net_bot_state (see bot.gd guards).
 	b.set_multiplayer_authority(1)
+	# Gun Game: mirror the client's cached rung so the newly-spawned replica
+	# reads the right weapon in-hand even before the first net_bot_state tick.
+	if Settings.game_mode == Settings.MODE_GG:
+		b.gg_level = _gg_get(display_name)
 	add_child(b)
 	b.set_multiplayer_authority(1, true)
 	_bots_by_id[bot_id] = b

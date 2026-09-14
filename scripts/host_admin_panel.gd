@@ -39,7 +39,7 @@ const MAP_NAMES := [
 const MODE_NAMES := [
 	"Deathmatch", "Teammatch", "Capture the Flag",
 	"Infiltration", "Hold the Flag", "Rambomatch", "Pointmatch",
-	"Domination", "Battle Royale",
+	"Domination", "Battle Royale", "Gun Game",
 ]
 
 var _pending_map_idx: int = 0

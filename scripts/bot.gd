@@ -44,9 +44,24 @@ var reload_t: float = 0.0
 var using_secondary: bool = false
 var secondary_ammo: int = 0
 const AMMO_STATS := {
-	"AK-74":   {"mag": 30, "reload": 2.0},
-	"LAW":     {"mag": 1,  "reload": 3.0},
-	"USSOCOM": {"mag": 14, "reload": 1.0},
+	"AK-74":        {"mag": 30,  "reload": 2.0},
+	"LAW":          {"mag": 1,   "reload": 3.0},
+	"USSOCOM":      {"mag": 14,  "reload": 1.0},
+	# Gun Game ladder weapons — bots fall back to AK-74 stats when a name isn't
+	# listed here, but explicit entries let the reload cadence read right.
+	"Deagles":      {"mag": 14,  "reload": 1.5},
+	"MP5":          {"mag": 32,  "reload": 1.8},
+	"Steyr AUG":    {"mag": 25,  "reload": 2.1},
+	"Spas-12":      {"mag": 8,   "reload": 2.5},
+	"Ruger 77":     {"mag": 4,   "reload": 1.4},
+	"M79":          {"mag": 1,   "reload": 3.0},
+	"Barrett":      {"mag": 10,  "reload": 1.2},
+	"Minimi":       {"mag": 50,  "reload": 4.2},
+	"Minigun":      {"mag": 100, "reload": 8.0},
+	"Flamethrower": {"mag": 200, "reload": 5.0},
+	"Rambo Bow":    {"mag": 1,   "reload": 2.5},
+	"Knife":        {"mag": 1,   "reload": 0.5},
+	"Chainsaw":     {"mag": 200, "reload": 1.8},
 }
 
 # Per-weapon combat stats for bots (#80). `damage` + `speed` are mirrored
@@ -74,6 +89,11 @@ const WEAPON_STATS := {
 	"Rambo Bow":    {"damage": 12.0,  "rate": 1.5,   "speed": 900.0,  "kind": "bullet"},
 	"USSOCOM":      {"damage": 27.0,  "rate": 0.167, "speed": 800.0,  "kind": "bullet"},
 	"LAW":          {"damage": 90.0,  "rate": 1.6,   "speed": 720.0,  "kind": "rocket"},
+	# Gun Game melee rungs: bots don't do full melee arc scans, so approximate with
+	# a very-short-life bullet — travels ~60px then dies harmlessly. Damage still
+	# routes through take_damage with the correct weapon_name for GG kill scoring.
+	"Knife":        {"damage": 55.0,  "rate": 0.5,   "speed": 600.0,  "kind": "bullet", "life": 0.10},
+	"Chainsaw":     {"damage": 20.0,  "rate": 0.10,  "speed": 600.0,  "kind": "bullet", "life": 0.10},
 }
 
 # grenades
@@ -84,6 +104,17 @@ var grenade_cd := 0.0
 var bink_t := 0.0
 # Ceasefire (spawn protection) — invulnerable for the first few seconds after spawn.
 var ceasefire_t := 3.0
+
+# Gun Game rung (MODE_GG). Bots climb the same 16-weapon ladder as players —
+# a kill bumps the level, a knife death demotes by one. GG_LADDER only stores
+# the loadout string; the primary/secondary split matters for players.gd, but
+# bots swap by re-setting `loadout` so `using_secondary` stays false.
+var gg_level := 0
+const GG_LADDER := [
+	"USSOCOM", "Deagles", "MP5", "Steyr AUG", "AK-74",
+	"Spas-12", "Ruger 77", "Minimi", "M79", "Minigun",
+	"Flamethrower", "Rambo Bow", "LAW", "Barrett", "Chainsaw", "Knife",
+]
 
 # strafe / dodge
 var strafe_dir := 1.0
@@ -156,6 +187,9 @@ func _ready() -> void:
 		}
 	ammo = int(AMMO_STATS.get(loadout, AMMO_STATS["AK-74"])["mag"])
 	secondary_ammo = int(AMMO_STATS["USSOCOM"]["mag"])
+	# Gun Game: force loadout to the current rung so every bot starts on level 0.
+	if Settings.game_mode == Settings.MODE_GG:
+		_apply_gg_weapon()
 	var shape := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
 	rect.size = Vector2(20, 42)
@@ -440,6 +474,20 @@ func _throw_grenade(dx: float, dy: float, dist: float) -> void:
 		net_bot_grenade(g_pos, g_vel, g_ang, 0)
 
 
+func _apply_gg_weapon() -> void:
+	# Snap loadout to the current Gun Game rung. Bots don't use their secondary
+	# slot for GG — the primary IS the ladder weapon, so `using_secondary` is
+	# force-cleared and the primary mag refills to the new weapon's cap.
+	if gg_level < 0 or gg_level >= GG_LADDER.size():
+		return
+	var wname: String = String(GG_LADDER[gg_level])
+	loadout = wname
+	using_secondary = false
+	ammo = int(AMMO_STATS.get(wname, AMMO_STATS["AK-74"])["mag"])
+	reloading = false
+	reload_t = 0.0
+
+
 func _start_reload() -> void:
 	if reloading:
 		return
@@ -541,6 +589,10 @@ func net_bot_shoot(muzzle: Vector2, aim: Vector2, proj_id: int = 0) -> void:
 		b.weapon_name = active_weapon
 		b.team = team
 		b.killer_name = display_name
+		# Gun Game melee rungs (Knife/Chainsaw) set a short "life" so bot bullets
+		# only reach ~60px — approximates melee range for the bot's shoot path.
+		if stats.has("life"):
+			b.life = float(stats["life"])
 		get_parent().add_child(b)
 
 
@@ -690,6 +742,10 @@ func restore_for_round() -> void:
 	muzzle_t = 0.0
 	bink_t = 0.0
 	ceasefire_t = 3.0
+	# Gun Game: fresh round → back to level 0.
+	if Settings.game_mode == Settings.MODE_GG:
+		gg_level = 0
+		_apply_gg_weapon()
 
 
 func _spawn_gibs() -> void:

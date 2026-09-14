@@ -47,6 +47,7 @@ const MODE_RM := 5
 const MODE_PM := 6
 const MODE_DOM := 7
 const MODE_BR := 8
+const MODE_GG := 9
 var game_mode := MODE_DM
 
 # Sub-mode overlays — toggle-able flags applied on top of the base mode.
@@ -72,9 +73,9 @@ var bot_skill := 3
 var server_name := "Soldat Server"
 var master_url := ""
 
-# Convenience: DM / Rambo / Battle Royale are FFA (friendly-fire on), teams disable friendly damage.
+# Convenience: DM / Rambo / Battle Royale / Gun Game are FFA (friendly-fire on), teams disable friendly damage.
 func friendly_fire_on() -> bool:
-	return game_mode == MODE_DM or game_mode == MODE_RM or game_mode == MODE_BR
+	return game_mode == MODE_DM or game_mode == MODE_RM or game_mode == MODE_BR or game_mode == MODE_GG
 
 
 func is_team_mode() -> bool:
