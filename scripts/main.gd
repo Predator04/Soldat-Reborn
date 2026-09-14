@@ -758,6 +758,11 @@ func net_m2_mount(m2_id: int, peer_id: int) -> void:
 	# the turret. Client-initiated mounts route through host as the authority so
 	# a race between two clients grabbing the same mount is arbitrated centrally.
 	if Net.is_networked() and Net.is_host() and multiplayer.get_remote_sender_id() != 0:
+		# #106: reject spoofed mounts — a client can only mount themselves, not
+		# another peer. Without this guard, any client could force other peers'
+		# screens to show a different player driving the M2.
+		if peer_id != multiplayer.get_remote_sender_id():
+			return
 		# Rebroadcast to everyone (call_local ensures host also applies it).
 		rpc("net_m2_mount", m2_id, peer_id)
 		return
@@ -777,6 +782,13 @@ func net_m2_mount(m2_id: int, peer_id: int) -> void:
 @rpc("any_peer", "call_local", "reliable")
 func net_m2_dismount(m2_id: int) -> void:
 	if Net.is_networked() and Net.is_host() and multiplayer.get_remote_sender_id() != 0:
+		# #106: only the current operator may dismount themselves — reject any
+		# client trying to knock another player off the turret.
+		var m2_local := find_m2(m2_id)
+		if m2_local != null:
+			var op = m2_local.get("operator")
+			if is_instance_valid(op) and int(op.get_multiplayer_authority()) != multiplayer.get_remote_sender_id():
+				return
 		rpc("net_m2_dismount", m2_id)
 		return
 	var m2 := find_m2(m2_id)
