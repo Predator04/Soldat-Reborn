@@ -62,7 +62,7 @@ var _browse_http: HTTPRequest
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	Input.set_custom_mouse_cursor(load("res://assets/interface-gfx/menucursor.png"), Input.CURSOR_ARROW, Vector2(36, 36))
+	Input.set_custom_mouse_cursor(load("res://assets/interface-gfx/menucursor.png"), Input.CURSOR_ARROW, Vector2(0, 0))
 	Settings.apply_display()
 	Net.leave()  # clean state on returning to menu from a game
 	_build_backdrop()

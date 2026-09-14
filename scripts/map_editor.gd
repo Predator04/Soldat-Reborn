@@ -59,7 +59,7 @@ func _fresh_map() -> Dictionary:
 func _ready() -> void:
 	if DisplayServer.get_name() != "headless":
 		Input.set_custom_mouse_cursor(load("res://assets/interface-gfx/menucursor.png"),
-			Input.CURSOR_ARROW, Vector2(36, 36))
+			Input.CURSOR_ARROW, Vector2(0, 0))
 	_cam = Camera2D.new()
 	_cam.zoom = Vector2(0.45, 0.45)
 	_cam.position = Vector2(MAP_W * 0.5, MAP_H * 0.55)
