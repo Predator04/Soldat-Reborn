@@ -49,6 +49,33 @@ const AMMO_STATS := {
 	"USSOCOM": {"mag": 14, "reload": 1.0},
 }
 
+# Per-weapon combat stats for bots (#80). `damage` + `speed` are mirrored
+# straight from player.gd so a Barrett bullet hurts like a Barrett bullet
+# and a Minigun tracer travels at Minigun speed. `rate` is a BOT cadence
+# — not the player rate — so bots aren't oppressive at every loadout: AK-74
+# stays at the pre-#80 flat 0.45, Barrett cools to 2.2 between shots (vs the
+# player's 3.75), and slower guns get bot-tuned intervals. Before #80 every
+# non-LAW bot fired AK-74 damage at 0.45s regardless of loadout, so a
+# Barrett bot hit like an AK. `kind` drives the bullet-vs-rocket branch;
+# specialised kinds (flame/arrow/launcher) fall through to a bullet since
+# bots don't spawn with those loadouts today. Fallback = AK-74 stats.
+const WEAPON_STATS := {
+	"Deagles":      {"damage": 34.0,  "rate": 0.44,  "speed": 1200.0, "kind": "bullet"},
+	"MP5":          {"damage": 13.0,  "rate": 0.10,  "speed": 950.0,  "kind": "bullet"},
+	"AK-74":        {"damage": 22.0,  "rate": 0.45,  "speed": 1050.0, "kind": "bullet"},
+	"Steyr AUG":    {"damage": 18.0,  "rate": 0.15,  "speed": 1150.0, "kind": "bullet"},
+	"Spas-12":      {"damage": 9.0,   "rate": 0.9,   "speed": 850.0,  "kind": "bullet"},
+	"Ruger 77":     {"damage": 82.0,  "rate": 1.0,   "speed": 1450.0, "kind": "bullet"},
+	"M79":          {"damage": 90.0,  "rate": 3.0,   "speed": 470.0,  "kind": "bullet"},
+	"Barrett":      {"damage": 245.0, "rate": 2.2,   "speed": 2400.0, "kind": "bullet"},
+	"Minimi":       {"damage": 23.0,  "rate": 0.20,  "speed": 1180.0, "kind": "bullet"},
+	"Minigun":      {"damage": 13.0,  "rate": 0.066, "speed": 1275.0, "kind": "bullet"},
+	"Flamethrower": {"damage": 19.0,  "rate": 0.08,  "speed": 420.0,  "kind": "bullet"},
+	"Rambo Bow":    {"damage": 12.0,  "rate": 1.5,   "speed": 900.0,  "kind": "bullet"},
+	"USSOCOM":      {"damage": 27.0,  "rate": 0.167, "speed": 800.0,  "kind": "bullet"},
+	"LAW":          {"damage": 90.0,  "rate": 1.6,   "speed": 720.0,  "kind": "rocket"},
+}
+
 # grenades
 var grenades := 3
 var grenade_cd := 0.0
@@ -433,17 +460,13 @@ func _shoot(to_t: Vector2) -> void:
 			_start_reload()
 			return
 		ammo -= 1
+	var active_weapon: String = "USSOCOM" if using_secondary else loadout
+	var stats: Dictionary = WEAPON_STATS.get(active_weapon, WEAPON_STATS["AK-74"])
 	var aim := to_t.normalized()
 	ceasefire_t = 0.0
 	# lead the target by its velocity (predictive aim) — use the actual bullet
 	# speed for this loadout so lead is calibrated to what we're about to fire.
-	var speed_est: float
-	if using_secondary:
-		speed_est = 800.0  # USSOCOM (#79)
-	elif loadout == "LAW":
-		speed_est = ROCKET_SPEED
-	else:
-		speed_est = BULLET_SPEED
+	var speed_est: float = float(stats["speed"])
 	if is_instance_valid(target) and target is CharacterBody2D:
 		var t_est: float = to_t.length() / speed_est
 		var lead: Vector2 = target.global_position + target.velocity * t_est
@@ -455,27 +478,21 @@ func _shoot(to_t: Vector2) -> void:
 	# widens the cone so shots miss; high skill barely wavers.
 	if _skill_aim_spread > 0.0:
 		aim = aim.rotated(randf_range(-1.0, 1.0) * _skill_aim_spread)
-	var active_weapon: String = "USSOCOM" if using_secondary else loadout
 	var muzzle: Vector2 = global_position + SoldierArt.muzzle_local(self, aim, facing, active_weapon) + aim * 4.0
 	# MP: broadcast so clients spawn the tracer/rocket + play sfx (mirrors player.net_shoot).
 	# Damage is gated per-victim in bullet.gd/rocket.gd via is_multiplayer_authority();
 	# rockets additionally sync transform from the host as authority (#61).
 	if Net.is_networked() and multiplayer.has_multiplayer_peer():
 		var pid: int = 0
-		if loadout == "LAW" and not using_secondary:
+		if String(stats["kind"]) == "rocket":
 			pid = _next_proj_id
 			_next_proj_id += 1
 		rpc("net_bot_shoot", muzzle, aim, pid)
 	else:
 		net_bot_shoot(muzzle, aim, 0)
-	# Rockets fire slower so LAW bots aren't oppressive; USSOCOM secondary fires
-	# at its player-side cadence (#79).
-	if using_secondary:
-		fire_cd = 0.167
-	elif loadout == "LAW":
-		fire_cd = 1.6
-	else:
-		fire_cd = 0.45
+	# Fire cadence tracks the active weapon's rate (#80) — a Barrett bot no
+	# longer fires at AK cadence, a Minigun no longer at 0.45s.
+	fire_cd = float(stats["rate"])
 
 
 # ── RPCs (issue #57) ──────────────────────────────────
@@ -486,14 +503,17 @@ func _shoot(to_t: Vector2) -> void:
 @rpc("authority", "call_local", "reliable")
 func net_bot_shoot(muzzle: Vector2, aim: Vector2, proj_id: int = 0) -> void:
 	# Active weapon = USSOCOM secondary if the bot has swapped, else primary loadout (#79).
+	# Damage/speed come from the WEAPON_STATS table (#80) — before that fix, every
+	# non-LAW bot fired AK-74 damage at BULLET_SPEED regardless of loadout.
 	var active_weapon: String = "USSOCOM" if using_secondary else loadout
+	var stats: Dictionary = WEAPON_STATS.get(active_weapon, WEAPON_STATS["AK-74"])
 	Sfx.shoot(active_weapon)
 	muzzle_t = 0.08
 	# Debug counter so --smoke-botfire can confirm the RPC reached the client.
 	if Net.is_client():
 		Net.bot_shots_seen += 1
 	var dmg_mul: float = MatchConfig.mod_damage()
-	if active_weapon == "LAW":
+	if String(stats["kind"]) == "rocket":
 		var r := rocket_scene.instantiate()
 		# #69: name by bot_id so two LAW bots can't collide their proj_id counters
 		# and shove a rocket into `@RigidBody2D@nnn`-style auto-name territory.
@@ -501,11 +521,11 @@ func net_bot_shoot(muzzle: Vector2, aim: Vector2, proj_id: int = 0) -> void:
 			r.name = "BotRocket_%d_%d" % [bot_id, proj_id]
 		r.global_position = muzzle
 		r.direction = aim
-		r.speed = ROCKET_SPEED
-		r.damage = 90.0 * dmg_mul
+		r.speed = float(stats["speed"])
+		r.damage = float(stats["damage"]) * dmg_mul
 		r.team = team
 		r.killer_name = display_name
-		r.weapon_name = "LAW"
+		r.weapon_name = active_weapon
 		get_parent().add_child(r)
 		if Net.is_networked() and proj_id > 0:
 			r.set_multiplayer_authority(get_multiplayer_authority())
@@ -513,15 +533,9 @@ func net_bot_shoot(muzzle: Vector2, aim: Vector2, proj_id: int = 0) -> void:
 		var b := bullet_scene.instantiate()
 		b.global_position = muzzle
 		b.direction = aim
-		if using_secondary:
-			# USSOCOM (player.gd secondary): 27 dmg, 800 speed.
-			b.speed = 800.0
-			b.damage = 27.0 * dmg_mul
-			b.weapon_name = "USSOCOM"
-		else:
-			b.speed = BULLET_SPEED
-			b.damage = 12.0 * dmg_mul
-			b.weapon_name = "AK-74"
+		b.speed = float(stats["speed"])
+		b.damage = float(stats["damage"]) * dmg_mul
+		b.weapon_name = active_weapon
 		b.team = team
 		b.killer_name = display_name
 		get_parent().add_child(b)
