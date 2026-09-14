@@ -155,6 +155,10 @@ func _start_master_heartbeat(port: int) -> void:
 	# must never take the game server with it.
 	var http := HTTPRequest.new()
 	http.name = "MasterHeartbeat"
+	# A hung connect used to pin the client status permanently and silently kill
+	# every future heartbeat — cap the request so the next 30s tick recovers (#86.2).
+	http.timeout = 15
+	http.request_completed.connect(_on_master_heartbeat_completed)
 	add_child(http)
 	var t := Timer.new()
 	t.wait_time = 30.0
@@ -184,6 +188,14 @@ func _send_master_heartbeat(http: HTTPRequest, port: int) -> void:
 	var err := http.request(register_url.rstrip("/") + "/register", PackedStringArray(["Content-Type: application/json"]), HTTPClient.METHOD_POST, body)
 	if err != OK:
 		push_warning("master register to %s failed: %s" % [register_url, error_string(err)])
+
+
+func _on_master_heartbeat_completed(result: int, _response_code: int, _headers: PackedStringArray, _body: PackedByteArray) -> void:
+	# Log timeouts / transport failures at warning level so an offline master is
+	# visible in logs but doesn't disrupt hosting (#86.2). The HTTPRequest node
+	# is reusable — the next 30s tick will fire another request unblocked.
+	if result != HTTPRequest.RESULT_SUCCESS:
+		push_warning("master heartbeat result=%d — will retry on next tick" % result)
 
 
 func _count_human_players() -> int:

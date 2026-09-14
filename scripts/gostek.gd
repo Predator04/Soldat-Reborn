@@ -228,6 +228,10 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 
 		var p1 := _joint_local(frame, p1_id, flip)
 		var p2 := _joint_local(frame, p2_id, flip)
+		# Skip parts anchored on a missing joint — _joint_local returns Vector2.INF
+		# when a frame slot is unset (see #86.4).
+		if not p1.is_finite() or not p2.is_finite():
+			continue
 		# Front arm (RIGHT_*) — rotate joints 13/16/20 around the RIGHT shoulder
 		# (joint 10) so the arm nudges toward aim_dir. Small clamp; canned .poa
 		# still owns the base pose.
@@ -304,6 +308,11 @@ static func joint_pos(node: CanvasItem, joint_id_1based: int) -> Vector2:
 	var facing: float = float(st.get("facing", 1.0))
 	var flip := facing < 0.0
 	var pos := _joint_local(frame, joint_id_1based, flip)
+	# Preserve the pre-#86.4 external contract: callers (soldier_art.gd) gate on
+	# has_frame() but still assume a finite return, so translate the internal
+	# "unset joint" sentinel back to Vector2.ZERO here.
+	if not pos.is_finite():
+		return Vector2.ZERO
 	var aim_offset: float = float(st.get("aim_offset", 0.0))
 	if aim_offset != 0.0 and (joint_id_1based == 13 or joint_id_1based == 16 or joint_id_1based == 20):
 		var pivot := _joint_local(frame, 10, flip)
@@ -313,6 +322,19 @@ static func joint_pos(node: CanvasItem, joint_id_1based: int) -> Vector2:
 
 static func forget(node: CanvasItem) -> void:
 	_states.erase(node.get_instance_id())
+
+
+static func _gc_states() -> void:
+	# Drop entries whose instance_from_id resolves to null — those soldiers were
+	# freed without an explicit forget() call. Cheap when it runs; the guard in
+	# _tick keeps it out of the hot path unless the dict grows past ~a match's
+	# worth of live entries.
+	var stale: Array = []
+	for id in _states.keys():
+		if instance_from_id(int(id)) == null:
+			stale.append(id)
+	for id in stale:
+		_states.erase(id)
 
 
 static func has_frame(node: CanvasItem) -> bool:
@@ -325,6 +347,11 @@ static func has_frame(node: CanvasItem) -> bool:
 
 static func _tick(node: CanvasItem, gs: Dictionary) -> PackedVector2Array:
 	var id := node.get_instance_id()
+	# Sweep stale entries — if a soldier is freed without a Gostek.forget()
+	# call, its instance_id never gets resolved back to a live node. Drop those
+	# so the static _states dict doesn't leak across scene reloads (#86.3).
+	if _states.size() > 32:
+		_gc_states()
 	var st: Dictionary = _states.get(id, {})
 	if st.is_empty():
 		st = {
@@ -431,12 +458,13 @@ static func _pick_anim(gs: Dictionary) -> String:
 static func _joint_local(frame: PackedVector2Array, joint_id_1based: int, flip: bool) -> Vector2:
 	var idx := joint_id_1based - 1
 	if idx < 0 or idx >= frame.size():
-		return Vector2.ZERO
+		return Vector2.INF
 	var v := frame[idx]
-	# Blank frame slots stay Vector2.ZERO — treat those as unset so callers'
-	# is_zero_approx() guards don't get FEET_OFFSET_Y masking the missing joint.
+	# Blank frame slots surface as Vector2.INF — an unambiguous "unset" sentinel
+	# so callers can distinguish missing joints from a joint legitimately at
+	# origin (previously Vector2.ZERO conflated the two — see #86.4).
 	if v == Vector2.ZERO:
-		return Vector2.ZERO
+		return Vector2.INF
 	var out := Vector2(v.x * POA_TO_PIXEL, v.y * POA_TO_PIXEL + FEET_OFFSET_Y)
 	if flip:
 		out.x = -out.x
@@ -468,7 +496,12 @@ static func _is_front_arm(p1_id: int, p2_id: int) -> bool:
 
 
 static func _arm_adjust(pos: Vector2, pivot: Vector2, aim_offset: float) -> Vector2:
-	if aim_offset == 0.0 or pos == Vector2.ZERO:
+	# Skip rotation when there's no aim offset or when the caller passes the
+	# explicit "unset joint" sentinel (Vector2.INF from _joint_local). Comparing
+	# against Vector2.ZERO used to conflate "unset" with "joint legitimately at
+	# origin" — a real risk once FEET_OFFSET_Y is tweaked or a joint blends
+	# through (0,0) during a cross-fade. (#86.4)
+	if aim_offset == 0.0 or not pos.is_finite() or not pivot.is_finite():
 		return pos
 	return pivot + (pos - pivot).rotated(aim_offset)
 

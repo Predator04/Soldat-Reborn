@@ -522,7 +522,11 @@ func _physics_process(delta: float) -> void:
 		# mod_gravity so peak height feels the same under heavier gravity.
 		if jump_buffer_t > 0.0 and coyote_t > 0.0:
 			velocity.y = JUMP_VEL * mg
-			velocity.x = clampf(velocity.x * 1.06, -BUNNY_SPEED, BUNNY_SPEED)
+			# Scale the hop's lateral clamp by speed_mul so the Predator/Berserker
+			# bonuses (and any host speed mod) can boost a hop above the base
+			# BUNNY_SPEED cap — otherwise the powerup felt inert while airborne (#86.5).
+			var hop_cap: float = BUNNY_SPEED * speed_mul
+			velocity.x = clampf(velocity.x * 1.06, -hop_cap, hop_cap)
 			coyote_t = 0.0
 			jump_buffer_t = 0.0
 			Sfx.jump()

@@ -2738,26 +2738,50 @@ func net_bot_die(bot_id: int) -> void:
 
 @rpc("authority", "call_remote", "unreliable_ordered")
 func net_bot_state(arr: Array) -> void:
+	# Defend against malformed payloads — a corrupt / crafted packet used to
+	# crash the client on the raw assignments (#86.1). Skip entries that aren't
+	# dictionaries; guard each field so an incorrect type keeps the previous
+	# value instead of forcing an invalid assignment.
 	for entry in arr:
+		if typeof(entry) != TYPE_DICTIONARY:
+			continue
 		var id: int = int(entry.get("id", 0))
 		if not _bots_by_id.has(id):
 			continue
 		var b: Node = _bots_by_id[id]
 		if not is_instance_valid(b):
 			continue
-		b.position = entry.get("pos", b.position)
-		b.velocity = entry.get("vel", Vector2.ZERO)
-		b.facing = float(entry.get("facing", b.facing))
+		var pos_v: Variant = entry.get("pos", null)
+		if typeof(pos_v) == TYPE_VECTOR2:
+			b.position = pos_v
+		var vel_v: Variant = entry.get("vel", null)
+		if typeof(vel_v) == TYPE_VECTOR2:
+			b.velocity = vel_v
+		var facing_v: Variant = entry.get("facing", null)
+		if typeof(facing_v) == TYPE_FLOAT or typeof(facing_v) == TYPE_INT:
+			b.facing = float(facing_v)
 		b.jet_on = bool(entry.get("jet", false))
-		b.health = float(entry.get("health", b.health))
+		var health_v: Variant = entry.get("health", null)
+		if typeof(health_v) == TYPE_FLOAT or typeof(health_v) == TYPE_INT:
+			b.health = float(health_v)
 		b.dead = bool(entry.get("dead", false))
-		b.loadout = str(entry.get("loadout", b.loadout))
-		b.ammo = int(entry.get("ammo", b.ammo))
+		var loadout_v: Variant = entry.get("loadout", null)
+		if typeof(loadout_v) == TYPE_STRING or typeof(loadout_v) == TYPE_STRING_NAME:
+			b.loadout = String(loadout_v)
+		var ammo_v: Variant = entry.get("ammo", null)
+		if typeof(ammo_v) == TYPE_INT or typeof(ammo_v) == TYPE_FLOAT:
+			b.ammo = int(ammo_v)
 		b.reloading = bool(entry.get("reloading", false))
-		b.muzzle_t = float(entry.get("muzzle_t", 0.0))
-		b.ceasefire_t = float(entry.get("ceasefire", 0.0))
+		var mz_v: Variant = entry.get("muzzle_t", null)
+		if typeof(mz_v) == TYPE_FLOAT or typeof(mz_v) == TYPE_INT:
+			b.muzzle_t = float(mz_v)
+		var cf_v: Variant = entry.get("ceasefire", null)
+		if typeof(cf_v) == TYPE_FLOAT or typeof(cf_v) == TYPE_INT:
+			b.ceasefire_t = float(cf_v)
 		# #79: apply secondary state so the client-side replica draws the same
 		# in-hand weapon as the host (physics-side ammo tracking is irrelevant
 		# on the replica because _physics_process is authority-gated).
 		b.using_secondary = bool(entry.get("using_secondary", b.using_secondary))
-		b.secondary_ammo = int(entry.get("secondary_ammo", b.secondary_ammo))
+		var sa_v: Variant = entry.get("secondary_ammo", null)
+		if typeof(sa_v) == TYPE_INT or typeof(sa_v) == TYPE_FLOAT:
+			b.secondary_ammo = int(sa_v)
