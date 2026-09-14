@@ -2,6 +2,9 @@ extends CanvasLayer
 ## HUD — health, fuel, ammo, weapon, grenades, kill feed, scoreboard, round timer, winner banner.
 
 const UITheme = preload("res://scripts/ui_theme.gd")
+# Preload player.gd so we can read its GG_LADDER constant — Object.get() only
+# exposes member vars, not script constants, so we go through the script class.
+const PlayerScript = preload("res://scripts/player.gd")
 
 var player: Node2D
 var map_name := ""
@@ -801,7 +804,10 @@ func _process(delta: float) -> void:
 	# their race progress at a glance. Knife rung nudges them to close the deal.
 	if Settings.game_mode == Settings.MODE_GG:
 		var lvl: int = int(player.get("gg_level"))
-		var ladder: Array = player.get("GG_LADDER")
+		# GG_LADDER is a script const on player.gd, not a member var — Object.get()
+		# returns null for constants, so read the array through the script class
+		# (bug slipped in with aed7530's Gun Game HUD path).
+		var ladder: Array = PlayerScript.GG_LADDER
 		if ladder != null and ladder.size() > 0:
 			if lvl > ladder.size() - 1:
 				lbl_weapon.text = "Gun Game — Golden Knife · kill to win"

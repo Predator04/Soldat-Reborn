@@ -321,9 +321,14 @@ func _on_lmb_release(mp: Vector2) -> void:
 			r.position = _snap(mp) - Vector2(w * 0.5, h)
 		if w > h:
 			# User dragged wider than tall — swap so it's still a vertical ladder.
+			# Also recenter r.position around the drag midpoint so the resulting
+			# tall/narrow ladder stays inside the drag box instead of extending
+			# past the bottom of what the user drew (regression from ladder tool).
+			var center := r.position + r.size * 0.5
 			var tmp := w
 			w = h
 			h = tmp
+			r.position = center - Vector2(w * 0.5, h * 0.5)
 		var pos := _snap(r.position)
 		var arr: Array = _map.get("ladders", [])
 		arr.append({"x": pos.x, "y": pos.y, "w": w, "h": h})
