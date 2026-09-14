@@ -129,6 +129,33 @@ var _prev_health := 100.0
 var wander_dir := 1.0
 var wander_t := 0.0
 var _hop_cd := 0.0
+# #114 — obstacle / burst / pickup state.
+# `_ledge_hop_cd` throttles preemptive hops so a bot pressed against a wall
+# doesn't spam jumps every frame (feels like a jitter bug).
+# `_burst_shots` counts shots in the current burst for auto weapons; when it
+# hits the per-weapon burst cap, fire_cd gets a small pause so bots don't
+# hose a 100-round mag in one continuous stream.
+# `_pickup_target` biases movement toward a nearby weapon / bonus pickup when
+# no enemy is closer — bots grab loot instead of running past it.
+# `_pickup_scan_cd` throttles the O(pickups) scan so it isn't per-frame.
+var _ledge_hop_cd: float = 0.0
+var _burst_shots: int = 0
+var _burst_cool: float = 0.0
+var _pickup_target: Node2D = null
+var _pickup_scan_cd: float = 0.0
+# Per-weapon burst caps: how many consecutive shots before we pause. Semi-auto
+# guns already have generous fire_cd (Barrett 2.2s, Ruger 1.0s) — no cap needed.
+# Auto guns get short bursts so the aim jitter (bink) has time to settle and
+# the bot reads as thinking rather than as a spray-lock aim-bot.
+const BURST_CAP := {
+	"MP5": 6,
+	"AK-74": 5,
+	"Steyr AUG": 5,
+	"Minimi": 10,
+	"Minigun": 20,
+	"Flamethrower": 25,
+}
+const BURST_PAUSE := 0.35
 
 const BASE_GRAVITY := 1700.0
 # Bots run slightly faster than the player (205) so they can still close distance,
@@ -258,7 +285,10 @@ func _physics_process(delta: float) -> void:
 
 	bink_t = maxf(0.0, bink_t - delta * 100.0)
 	ceasefire_t = maxf(0.0, ceasefire_t - delta)
+	_ledge_hop_cd = maxf(0.0, _ledge_hop_cd - delta)
+	_burst_cool = maxf(0.0, _burst_cool - delta)
 	_refresh_target(delta)
+	_scan_pickup(delta)
 
 	var on_floor := is_on_floor()
 	var dx := 0.0
@@ -266,6 +296,20 @@ func _physics_process(delta: float) -> void:
 	if is_instance_valid(target):
 		dx = target.global_position.x - global_position.x
 		dy = target.global_position.y - global_position.y
+	# #114: when a nearby pickup is worth grabbing, temporarily prefer walking
+	# to it — but only if it's closer than the current enemy so we don't run
+	# past an enemy for a marginal weapon swap. Overwrites dx/dy for the
+	# movement branch only; combat/aim still targets the true enemy so we
+	# keep shooting on the way.
+	var pickup_override := false
+	if is_instance_valid(_pickup_target):
+		var p_dx: float = _pickup_target.global_position.x - global_position.x
+		var p_dy: float = _pickup_target.global_position.y - global_position.y
+		var enemy_far: bool = not is_instance_valid(target) or (dx * dx + dy * dy) > 300.0 * 300.0
+		if enemy_far or (p_dx * p_dx + p_dy * p_dy) < 200.0 * 200.0:
+			dx = p_dx
+			dy = p_dy
+			pickup_override = true
 
 	# Self-preservation: entering critical HP starts a brief retreat; keep it
 	# refreshing only on the crossing so a low-HP bot still re-engages.
@@ -273,6 +317,17 @@ func _physics_process(delta: float) -> void:
 	if health < 35.0 and _prev_health >= 35.0:
 		_retreat_t = 1.8
 	_prev_health = health
+	# #114: low HP + engaged + not already reloading → reload during the retreat
+	# so we come back at full mag. Without this bots would retreat, walk back
+	# with a partial mag, get outfought again. Bots pass on this if the active
+	# mag is already ≥ half full — no gain to burning the reload window.
+	if _retreat_t > 0.0 and not reloading:
+		var active_mag: int = secondary_ammo if using_secondary else ammo
+		var full_mag: int = int(AMMO_STATS.get(
+			"USSOCOM" if using_secondary else loadout,
+			AMMO_STATS["AK-74"])["mag"])
+		if active_mag < full_mag / 2:
+			_start_reload()
 
 	# ── Ladder awareness (#89) — mirrors player.gd::_find_ladder_overlap engage.
 	# Engage when overlapping a ladder with the target above; dismount on losing
@@ -363,6 +418,17 @@ func _physics_process(delta: float) -> void:
 		velocity.x = move_toward(velocity.x, dir * RUN_SPEED * MatchConfig.mod_speed(), 1300.0 * MatchConfig.mod_speed() * delta)
 		_hop_cd = maxf(0.0, _hop_cd - delta)
 
+		# #114 — preemptive ledge/wall hop. If we're walking into a wall or about
+		# to walk off a ledge, jump. Independent of the stuck-detection retry so
+		# bots skip low walls and small gaps on the first attempt instead of
+		# grinding for 0.5s. Throttled to avoid jump-spam when pressed flat.
+		if dir != 0.0 and on_floor and jump_cd <= 0.0 and _ledge_hop_cd <= 0.0:
+			if _wall_ahead(dir) or _ledge_ahead(dir):
+				velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
+				velocity.x = dir * maxf(RUN_SPEED * MatchConfig.mod_speed(), absf(velocity.x) * 1.05)
+				jump_cd = 0.4
+				_ledge_hop_cd = 0.5
+
 		# dodge-jump when an enemy bullet is closing in
 		dodge_cd -= delta
 		if dodge_cd <= 0.0 and _bullet_incoming():
@@ -449,7 +515,7 @@ func _physics_process(delta: float) -> void:
 			_start_reload()
 		else:
 			_start_reload()
-	elif is_instance_valid(target) and fire_cd <= 0.0 and _retreat_t <= 0.0:
+	elif is_instance_valid(target) and fire_cd <= 0.0 and _retreat_t <= 0.0 and _burst_cool <= 0.0:
 		var to_t: Vector2 = target.global_position - global_position
 		var t_len: float = to_t.length()
 		# LAW bots refuse point-blank rocket shots — 130px splash would kill themselves.
@@ -495,7 +561,103 @@ func _refresh_target(delta: float = 0.0) -> void:
 		if d2 < best_d2:
 			best_d2 = d2
 			best = s
+	# #114: switching targets resets the auto-weapon burst counter — a fresh
+	# enemy should get a fresh burst instead of inheriting mid-mag cooldown.
+	if best != target:
+		_burst_shots = 0
 	target = best
+
+
+func _wall_ahead(dir: float) -> bool:
+	# #114: cast a short forward ray at chest height to detect an immediate wall.
+	# Only returns true when there's static terrain within ~24px in our travel
+	# direction — that's the case where a hop is worth the fuel over a normal
+	# run. Ignores dynamic bodies (soldiers, pickups) so we don't jump on them.
+	if dir == 0.0:
+		return false
+	var space := get_world_2d().direct_space_state
+	var from := global_position + Vector2(0, -6)
+	var to := from + Vector2(dir * 24.0, 0)
+	var q := PhysicsRayQueryParameters2D.create(from, to)
+	q.exclude = [self]
+	q.collide_with_areas = false
+	q.collide_with_bodies = true
+	var hit := space.intersect_ray(q)
+	if hit.is_empty():
+		return false
+	# Bots share the same collision layer as soldiers — filter out dynamic
+	# bodies so we only react to terrain (StaticBody2D platforms + walls).
+	var col: Object = hit.get("collider", null)
+	return col is StaticBody2D
+
+
+func _ledge_ahead(dir: float) -> bool:
+	# #114: floor drops off within a step forward — reads as a ledge the bot
+	# would otherwise walk off. Cast a downward probe just past the foot to
+	# see if there's ground below at a reachable depth. Used to bias wanderers
+	# away from cliffs so they don't repeatedly plunge into the map floor.
+	if dir == 0.0 or not is_on_floor():
+		return false
+	var space := get_world_2d().direct_space_state
+	# Sample one step-length ahead + ~40px below current feet — jump-recoverable.
+	var from := global_position + Vector2(dir * 22.0, 0)
+	var to := from + Vector2(0, 46.0)
+	var q := PhysicsRayQueryParameters2D.create(from, to)
+	q.exclude = [self]
+	q.collide_with_areas = false
+	q.collide_with_bodies = true
+	var hit := space.intersect_ray(q)
+	return hit.is_empty()
+
+
+func _scan_pickup(delta: float) -> void:
+	# #114: prefer a nearby pickup over closing on an enemy when the pickup is
+	# beneficial and close enough that the detour pays. Bots understand:
+	# • bonus boxes: always desirable — grant timed buffs.
+	# • weapon pickups: only weapons try_pickup_weapon accepts (AK-74 / LAW).
+	# The scan is throttled to ~4 Hz so a 20-bot match doesn't linear-scan
+	# every frame. If we're already heading to a pickup, keep it unless it's
+	# invalidated (freed, consumed).
+	_pickup_scan_cd -= delta
+	if is_instance_valid(_pickup_target) and _pickup_target.get_parent() != null:
+		return
+	_pickup_target = null
+	if _pickup_scan_cd > 0.0:
+		return
+	_pickup_scan_cd = 0.25
+	# Only pursue pickups when we're not in the middle of a retreat / hurt.
+	if _retreat_t > 0.0 or health < 30.0:
+		return
+	# Bots don't pick up weapons in Gun Game (loadout is locked to the rung).
+	var can_swap: bool = Settings.game_mode != Settings.MODE_GG
+	var best: Node2D = null
+	var best_d2: float = 240.0 * 240.0  # within ~240px is a reasonable detour
+	for wp in get_tree().get_nodes_in_group("weapon_pickup"):
+		if not is_instance_valid(wp):
+			continue
+		if not can_swap:
+			continue
+		var wname: String = str(wp.get("weapon_name"))
+		# Bots today accept AK-74 / LAW / their current loadout — anything else
+		# would ghost-consume (see weapon_pickup._body_has_weapon fallback).
+		if wname != "AK-74" and wname != "LAW":
+			continue
+		# Don't detour to swap the weapon we already carry.
+		if wname == loadout:
+			continue
+		var d2: float = (wp.global_position - global_position).length_squared()
+		if d2 < best_d2:
+			best_d2 = d2
+			best = wp
+	for bx in get_tree().get_nodes_in_group("bonus_pickup"):
+		if not is_instance_valid(bx):
+			continue
+		var d2: float = (bx.global_position - global_position).length_squared()
+		# Bonus boxes are more valuable, so widen their pursuit range slightly.
+		if d2 < 300.0 * 300.0 and d2 < best_d2:
+			best_d2 = d2
+			best = bx
+	_pickup_target = best
 
 
 func _has_line_of_sight(t: Node2D) -> bool:
@@ -675,6 +837,18 @@ func _shoot(to_t: Vector2) -> void:
 	# Fire cadence tracks the active weapon's rate (#80) — a Barrett bot no
 	# longer fires at AK cadence, a Minigun no longer at 0.45s.
 	fire_cd = float(stats["rate"])
+	# #114: burst control for auto weapons — after BURST_CAP shots in a row,
+	# insert BURST_PAUSE seconds so the bink can settle and bots don't hose
+	# the entire mag as one continuous stream. Semi-auto weapons (not in the
+	# table) get no burst cap because their fire_cd is already ≥ BURST_PAUSE.
+	var cap: int = int(BURST_CAP.get(active_weapon, 0))
+	if cap > 0:
+		_burst_shots += 1
+		if _burst_shots >= cap:
+			_burst_cool = BURST_PAUSE
+			_burst_shots = 0
+	else:
+		_burst_shots = 0
 
 
 # ── RPCs (issue #57) ──────────────────────────────────
