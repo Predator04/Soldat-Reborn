@@ -43,6 +43,11 @@ var register_url := ""   # master-server URL from --register (dedicated lobby he
 # net_bot_grenade. Used by --smoke-botfire (and the extended --smoke-join print) to
 # confirm that bot fire actually replicates over ENet. See #57.
 var bot_shots_seen: int = 0
+# #103: cumulative count of client-side bullets actually spawned by net_bot_shoot.
+# Complements bot_bullets_visible (a transient snapshot — bullets die on hit or
+# after ~3s of flight) so smoke tests can distinguish "bullet was spawned but
+# already expired" from "no bullet was ever created".
+var bot_bullets_seen: int = 0
 # Master-server heartbeat (dedicated mode). Owned by _start_master_heartbeat /
 # _stop_master_heartbeat so leave() can tear them down instead of leaking.
 var _heartbeat_http: HTTPRequest = null
@@ -304,9 +309,12 @@ func _smoke_join() -> void:
 
 func _smoke_botfire() -> void:
 	# Same handshake as _smoke_join but with a longer post-connect window so remote
-	# bots have time to lock on to our joining player and open fire. 20s is enough
-	# even on the widest built-in map for a bot to spot us, close to ENGAGE_RANGE,
-	# clear line of sight, and land the first tracer. Verifies #57.
+	# bots have time to lock on to our joining player and open fire. Verifies #57.
+	# #103: after spawn we teleport the local body to bot_spawns[0] + a small
+	# horizontal offset, which pins the smoke against a bot at guaranteed engage
+	# range instead of spawning at a random bot_spawn (Ascent's spawns range
+	# 2200–4460 in x with 380 px vertical spread, and a randomly-picked corner
+	# routinely left every bot outside ENGAGE_RANGE for the full 20s window).
 	map_received.connect(func() -> void:
 		get_tree().change_scene_to_file("res://scenes/main.tscn"))
 	join_game("127.0.0.1", DEFAULT_PORT)
@@ -316,6 +324,12 @@ func _smoke_botfire() -> void:
 	# the damage that already happened.
 	var min_hp_ref := [100.0]
 	var deaths_ref := [0]
+	# #103: track the peak concurrent bot bullets in-flight, since a one-shot
+	# snapshot at t=20s almost always shows 0 (bullets self-free on hit or after
+	# ~3s of flight). Cumulative counts live on Net.bot_bullets_seen /
+	# Net.bot_shots_seen.
+	var max_bullets_ref := [0]
+	var teleported_ref := [false]
 	var timer := Timer.new()
 	timer.wait_time = 0.2
 	timer.one_shot = false
@@ -336,10 +350,28 @@ func _smoke_botfire() -> void:
 			var h: float = float(p.health)
 			if h < min_hp_ref[0]:
 				min_hp_ref[0] = h
+			# Pin the local body to bot_spawns[0] once, right after the first
+			# spawn — guarantees a bot is within ENGAGE_RANGE for the whole window.
+			if not teleported_ref[0]:
+				var m: Dictionary = main.get("_map") if main.get("_map") != null else {}
+				var bs: Array = m.get("bot_spawns", [])
+				if not bs.is_empty():
+					p.global_position = bs[0] + Vector2(80.0, -20.0)
+					teleported_ref[0] = true
 		elif last_player_ref[0] != null:
 			# main.player went null after being valid — the body was freed (dead pre-respawn).
 			deaths_ref[0] += 1
-			last_player_ref[0] = null)
+			last_player_ref[0] = null
+		# Peak concurrent bot bullets.
+		var cur: int = 0
+		for b in get_tree().get_nodes_in_group("bullet"):
+			if not is_instance_valid(b):
+				continue
+			var kn: String = str(b.get("killer_name"))
+			if kn.begins_with("Bot ") or kn.begins_with("Red Bot") or kn.begins_with("Blue Bot"):
+				cur += 1
+		if cur > max_bullets_ref[0]:
+			max_bullets_ref[0] = cur)
 	get_tree().create_timer(20.0).timeout.connect(func() -> void:
 		var main := get_tree().current_scene
 		var pbi = main.get("_players_by_id") if main != null else null
@@ -361,7 +393,7 @@ func _smoke_botfire() -> void:
 		var local_hp: float = -1.0
 		if main != null and main.get("player") != null and is_instance_valid(main.player):
 			local_hp = float(main.player.health)
-		print("SMOKE-BOTFIRE id=%d mode=%d players=%d bots_visible=%d bot_shots_seen=%d bot_bullets_visible=%d local_hp=%.1f min_hp=%.1f deaths=%d" % [local_id(), mode, pcount, bots_visible, bot_shots_seen, bot_bullets_visible, local_hp, min_hp_ref[0], deaths_ref[0]])
+		print("SMOKE-BOTFIRE id=%d mode=%d players=%d bots_visible=%d bot_shots_seen=%d bot_bullets_seen=%d bot_bullets_max=%d bot_bullets_visible=%d local_hp=%.1f min_hp=%.1f deaths=%d" % [local_id(), mode, pcount, bots_visible, bot_shots_seen, bot_bullets_seen, max_bullets_ref[0], bot_bullets_visible, local_hp, min_hp_ref[0], deaths_ref[0]])
 		leave()
 		get_tree().quit())
 

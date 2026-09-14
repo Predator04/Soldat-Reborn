@@ -725,6 +725,8 @@ func net_bot_shoot(muzzle: Vector2, aim: Vector2, proj_id: int = 0) -> void:
 		if stats.has("life"):
 			b.life = float(stats["life"])
 		get_parent().add_child(b)
+		if Net.is_client():
+			Net.bot_bullets_seen += 1
 
 
 @rpc("authority", "call_local", "reliable")
