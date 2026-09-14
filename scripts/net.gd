@@ -30,6 +30,10 @@ var mode: int = Mode.SINGLEPLAYER
 var status := ""
 var chosen_map_index := 0     # host's picked map; clients receive it via net_set_map
 var _map_synced := false      # client-side: true once host has told us the map
+# #99: custom-map broadcast. Host stashes the full JSON so joining peers can
+# rebuild the exact ladder/M2/DOM/etc. layout instead of loading their own
+# same-indexed copy. Empty string = built-in map (fall back to chosen_map_index).
+var custom_map_json := ""
 # Dedicated (headless) server mode — host WITHOUT a local player. main.gd reads
 # this to skip the peer-1 spawn and instead fill the match with bots so a lone
 # joining client has opponents. See #54.
@@ -356,6 +360,11 @@ func host_game(port: int = DEFAULT_PORT, map_index: int = 0) -> bool:
 	multiplayer.multiplayer_peer = peer
 	mode = Mode.HOST
 	chosen_map_index = map_index
+	# #99: preserve custom map JSON if the host launched from a custom map
+	# (main.gd::_ready populates it). host_game() itself only clears when the
+	# host has picked a built-in slot — Settings.custom_map_path guards that.
+	if Settings.custom_map_path == "":
+		custom_map_json = ""
 	_map_synced = true
 	_set_status("Hosting on port %d · you are peer 1" % port)
 	return true
@@ -371,6 +380,7 @@ func join_game(ip: String, port: int = DEFAULT_PORT) -> bool:
 	multiplayer.multiplayer_peer = peer
 	mode = Mode.CLIENT
 	_map_synced = false
+	custom_map_json = ""
 	_set_status("Connecting to %s:%d..." % [ip, port])
 	return true
 
@@ -385,6 +395,7 @@ func leave() -> void:
 		multiplayer.multiplayer_peer = null
 	mode = Mode.SINGLEPLAYER
 	_map_synced = false
+	custom_map_json = ""
 	_set_status("")
 	# Stop the dedicated-mode master heartbeat — no session to advertise.
 	_stop_master_heartbeat()
@@ -424,7 +435,9 @@ func _on_peer_connected(id: int) -> void:
 		# same terrain and run the same game rules (issue #57: without mode sync,
 		# a joining client would run their local Settings.game_mode which defaults
 		# to CTF, spawning flags in a Deathmatch host's world).
-		rpc_id(id, "net_set_map", chosen_map_index, Settings.game_mode)
+		# #99: net_set_map now carries the custom-map JSON (if any). Empty string
+		# preserves the built-in path — chosen_map_index alone is enough.
+		rpc_id(id, "net_set_map", chosen_map_index, Settings.game_mode, custom_map_json)
 
 
 func _on_peer_disconnected(id: int) -> void:
@@ -454,11 +467,14 @@ func _on_server_disconnected() -> void:
 
 
 @rpc("authority", "reliable")
-func net_set_map(idx: int, mode_idx: int = -1) -> void:
+func net_set_map(idx: int, mode_idx: int = -1, custom_json: String = "") -> void:
 	chosen_map_index = idx
 	# Mode is optional (older/hypothetical callers may omit it) — the -1 sentinel
 	# keeps the client on its local Settings.game_mode in that case.
 	if mode_idx >= 0:
 		Settings.game_mode = mode_idx
+	# #99: if the host is running a custom map, the full JSON travels with the
+	# map RPC so the client rebuilds the exact same geometry (ladders/M2/DOM).
+	custom_map_json = custom_json
 	_map_synced = true
 	map_received.emit()

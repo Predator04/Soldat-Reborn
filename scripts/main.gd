@@ -343,9 +343,20 @@ func _ready() -> void:
 		MAPS.append(classic)
 	if Net.is_networked():
 		# Host picks the map (via Net.chosen_map_index). Clients receive it before
-		# reaching this scene, so both peers build the same terrain. Networked
-		# games always use built-in maps — custom maps are singleplayer-only.
-		_map = MAPS[Net.chosen_map_index % MAPS.size()]
+		# reaching this scene, so both peers build the same terrain.
+		# #99: custom maps travel with the map RPC as a JSON blob (Net.custom_map_json)
+		# so hand-edited ladder/M2/DOM positions stay in sync. Built-in maps still
+		# just resolve by index — no blob needed, they're identical assets.
+		_map = {}
+		if Net.is_host() and Settings.custom_map_path != "":
+			_map = MapIO.load_from_file(Settings.custom_map_path)
+			if not _map.is_empty():
+				Net.custom_map_json = MapIO.map_to_json(_map)
+		if _map.is_empty() and Net.custom_map_json != "":
+			_map = MapIO.json_to_map(Net.custom_map_json)
+		if _map.is_empty():
+			_map = MAPS[Net.chosen_map_index % MAPS.size()]
+			Net.custom_map_json = ""
 	else:
 		# Custom map (from the editor / user://maps/) short-circuits the built-in
 		# rotation when Settings.custom_map_path is set (issue #31).
