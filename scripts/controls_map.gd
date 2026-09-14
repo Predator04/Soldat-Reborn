@@ -178,8 +178,13 @@ static func _events_equal(a: InputEvent, b: InputEvent) -> bool:
 	return false
 
 
-# Rebind: erase existing events on `action_id`, add `new_ev`, and remove
+# Rebind: replace the action's PRIMARY (first key/mouse) event with `new_ev`,
+# preserving any secondary bindings the action started with. Also remove
 # `new_ev` from any conflicting action so the same key isn't bound twice.
+# The controls UI only surfaces the primary event, so wiping all bindings
+# used to silently drop hidden defaults (e.g. Jump = W + Space → rebind
+# Jump to K would lose Space forever with no way to restore it besides
+# "Reset to Defaults").
 static func rebind(action_id: String, new_ev: InputEvent) -> void:
 	if not InputMap.has_action(action_id):
 		return
@@ -192,8 +197,22 @@ static func rebind(action_id: String, new_ev: InputEvent) -> void:
 		for ev in InputMap.action_get_events(aid):
 			if _events_equal(ev, new_ev):
 				InputMap.action_erase_event(aid, ev)
+	# Remove the current primary and any event that equals new_ev (dedup), then
+	# prepend new_ev so the primary_label lookup finds it first. Secondary
+	# events survive the rebind.
+	var keep: Array = []
+	var primary_seen: bool = false
+	for ev in InputMap.action_get_events(action_id):
+		if _events_equal(ev, new_ev):
+			continue
+		if not primary_seen and (ev is InputEventKey or ev is InputEventMouseButton):
+			primary_seen = true
+			continue
+		keep.append(ev)
 	InputMap.action_erase_events(action_id)
 	InputMap.action_add_event(action_id, new_ev)
+	for ev in keep:
+		InputMap.action_add_event(action_id, ev)
 
 
 # Load bindings from disk (if any) and apply them over the defaults already

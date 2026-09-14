@@ -39,6 +39,10 @@ var register_url := ""   # master-server URL from --register (dedicated lobby he
 # net_bot_grenade. Used by --smoke-botfire (and the extended --smoke-join print) to
 # confirm that bot fire actually replicates over ENet. See #57.
 var bot_shots_seen: int = 0
+# Master-server heartbeat (dedicated mode). Owned by _start_master_heartbeat /
+# _stop_master_heartbeat so leave() can tear them down instead of leaking.
+var _heartbeat_http: HTTPRequest = null
+var _heartbeat_timer: Timer = null
 
 
 func _ready() -> void:
@@ -153,6 +157,9 @@ func _start_master_heartbeat(port: int) -> void:
 	# captures our public IP from the request source, so NAT'd hosts advertise
 	# their external address automatically. Silence failures — a downed master
 	# must never take the game server with it.
+	# Guard against being called twice in one process (would duplicate the
+	# HTTPRequest + Timer and keep posting stale registrations forever).
+	_stop_master_heartbeat()
 	var http := HTTPRequest.new()
 	http.name = "MasterHeartbeat"
 	# A hung connect used to pin the client status permanently and silently kill
@@ -160,12 +167,29 @@ func _start_master_heartbeat(port: int) -> void:
 	http.timeout = 15
 	http.request_completed.connect(_on_master_heartbeat_completed)
 	add_child(http)
+	_heartbeat_http = http
 	var t := Timer.new()
+	t.name = "MasterHeartbeatTimer"
 	t.wait_time = 30.0
 	t.autostart = true
 	t.timeout.connect(_send_master_heartbeat.bind(http, port))
 	add_child(t)
+	_heartbeat_timer = t
 	_send_master_heartbeat(http, port)
+
+
+func _stop_master_heartbeat() -> void:
+	# Called on leave() and before a second _start_master_heartbeat so the pair
+	# of nodes doesn't leak. Autoloads never free themselves, so without this the
+	# heartbeat would keep posting after a dedicated host tears down its session.
+	if is_instance_valid(_heartbeat_timer):
+		_heartbeat_timer.stop()
+		_heartbeat_timer.queue_free()
+	_heartbeat_timer = null
+	if is_instance_valid(_heartbeat_http):
+		_heartbeat_http.cancel_request()
+		_heartbeat_http.queue_free()
+	_heartbeat_http = null
 
 
 func _send_master_heartbeat(http: HTTPRequest, port: int) -> void:
@@ -362,6 +386,8 @@ func leave() -> void:
 	mode = Mode.SINGLEPLAYER
 	_map_synced = false
 	_set_status("")
+	# Stop the dedicated-mode master heartbeat — no session to advertise.
+	_stop_master_heartbeat()
 
 
 func is_map_synced() -> bool:
