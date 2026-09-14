@@ -977,6 +977,27 @@ func try_pickup_weapon(weapon_name: String) -> bool:
 	return false
 
 
+@rpc("any_peer", "call_local", "reliable")
+func net_remote_pickup(weapon_name: String) -> void:
+	# Host-authoritative pickup contact routed to the body's owning peer (#83).
+	# Only accept from host (peer 1) — pickup contacts run there exclusively.
+	if multiplayer.multiplayer_peer != null:
+		var sender := multiplayer.get_remote_sender_id()
+		if sender != 0 and sender != 1:
+			return
+	try_pickup_weapon(weapon_name)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func net_remote_damage(amount: float, killer: String, weapon: String, killer_team: int) -> void:
+	# Host-authoritative knife-contact damage routed to the victim's owning peer (#83).
+	if multiplayer.multiplayer_peer != null:
+		var sender := multiplayer.get_remote_sender_id()
+		if sender != 0 and sender != 1:
+			return
+	take_damage(amount, killer, weapon, killer_team)
+
+
 func _throw_grenade() -> void:
 	grenades -= 1
 	Sfx.grenade_throw()

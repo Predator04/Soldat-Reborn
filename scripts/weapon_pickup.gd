@@ -65,13 +65,24 @@ func _on_body_entered(body: Node) -> void:
 		_consumed = true
 		if multiplayer.multiplayer_peer == null or body.is_multiplayer_authority():
 			body.take_damage(damage_on_hit, thrower_name, weapon_name, team)
+		elif body.has_method("net_remote_damage"):
+			# Remote-owned victim: host detected the contact, but only the victim's
+			# authority peer may mutate its health. Route the damage over RPC (#83).
+			body.rpc_id(body.get_multiplayer_authority(), "net_remote_damage", damage_on_hit, thrower_name, weapon_name, team)
 		queue_free()
 		return
 	# Pickup path — grant weapon + full magazine.
 	if _grace > 0.0 and str(body.get("display_name")) == thrower_name:
 		return
 	if body.has_method("try_pickup_weapon"):
-		var picked: bool = body.try_pickup_weapon(weapon_name)
+		var picked: bool = false
+		if multiplayer.multiplayer_peer == null or body.is_multiplayer_authority():
+			picked = body.try_pickup_weapon(weapon_name)
+		elif body.has_method("net_remote_pickup"):
+			# Host is authoritative for pickup contacts, but the loadout lives on
+			# the body's owning peer — RPC the grant and consume unconditionally (#83).
+			body.rpc_id(body.get_multiplayer_authority(), "net_remote_pickup", weapon_name)
+			picked = true
 		if picked:
 			_consumed = true
 			Sfx.ui()
