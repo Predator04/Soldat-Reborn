@@ -68,6 +68,9 @@ var q_prev := false     # prev-frame Q — swap on rising edge only, not every p
 var x_prev := false     # prev-frame X — prone toggle on rising edge
 var s_prev := false     # prev-frame S — roll on rising edge with lateral momentum
 var f_prev := false     # prev-frame F — throw current weapon on rising edge
+# #87: weapons the player has thrown (name -> true). Thrown weapons are removed
+# from the active roster until re-picked up (or respawn).
+var _thrown: Dictionary = {}
 var crouching := false
 var prone := false
 # Roll — S pressed while running triggers a short forward burst (Soldat's roll).
@@ -747,6 +750,9 @@ func _switch_weapon(idx: int) -> void:
 	# Advance: block hotkeys pointing to still-locked primaries.
 	if Settings.advance and not _is_primary_unlocked(idx):
 		return
+	# #87: block hotkeys pointing at a weapon we've thrown away.
+	if _is_thrown(str(weapons[idx]["name"])):
+		return
 	# Any primary hotkey while holding secondary swaps us back to a primary AND
 	# picks the requested slot — Soldat's classic behavior.
 	if using_secondary:
@@ -934,6 +940,7 @@ func dismount_m2() -> void:
 func _drop_active_weapon() -> void:
 	var w := _active_weapon()
 	var wname := str(w["name"])
+	_thrown[wname] = true
 	if Net.is_networked():
 		# Route through the host so only one authoritative RigidBody2D exists per drop.
 		# Clients used to spawn their own physics copy that diverged frame to frame.
@@ -943,6 +950,50 @@ func _drop_active_weapon() -> void:
 			rpc_id(1, "net_request_drop", wname, global_position, aim_dir)
 	else:
 		net_drop_weapon(wname, global_position, aim_dir)
+	_switch_after_drop()
+
+
+func _is_thrown(wname: String) -> bool:
+	return _thrown.has(wname)
+
+
+func _first_non_thrown(arr: Array) -> int:
+	for i in arr.size():
+		if not _is_thrown(str(arr[i]["name"])):
+			return i
+	return -1
+
+
+func _switch_after_drop() -> void:
+	# Drop the just-thrown weapon from our hands. Prefer the opposite slot, then
+	# the first non-thrown weapon in the same slot; if everything is thrown we
+	# keep holding the thrown one (it still fires).
+	if using_secondary:
+		var pi := _first_non_thrown(weapons)
+		if pi >= 0:
+			_switch_weapon(pi)
+			return
+		var si := _first_non_thrown(secondary)
+		if si >= 0:
+			secondary_index = si
+			using_secondary = true
+			reloading = false
+			reload_t = 0.0
+			fire_cd = 0.15
+			lmb_prev = true
+	else:
+		var si := _first_non_thrown(secondary)
+		if si >= 0:
+			secondary_index = si
+			using_secondary = true
+			reloading = false
+			reload_t = 0.0
+			fire_cd = 0.15
+			lmb_prev = true
+			return
+		var pi := _first_non_thrown(weapons)
+		if pi >= 0:
+			_switch_weapon(pi)
 
 
 @rpc("any_peer", "reliable")
@@ -958,6 +1009,9 @@ func try_pickup_weapon(weapon_name: String) -> bool:
 	# Only the authority peer mutates the loadout — otherwise net_state loops.
 	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
 		return false
+	# Re-grant a thrown weapon so it becomes selectable again (#87).
+	if _thrown.has(weapon_name):
+		_thrown.erase(weapon_name)
 	for i in weapons.size():
 		if str(weapons[i]["name"]) == weapon_name:
 			ammo[i] = int(weapons[i]["mag"])
@@ -1140,6 +1194,8 @@ func restore_for_round() -> void:
 	roll_cd = 0.0
 	melee_swing_t = 0.0
 	ceasefire_t = CEASEFIRE_SECS
+	# #87: thrown weapons come back on the clean-slate reset.
+	_thrown.clear()
 
 
 # ── RPCs ──────────────────────────────────────────────
