@@ -49,7 +49,9 @@ static func map_to_json(m: Dictionary) -> String:
 		if m.has(key):
 			var v: Vector2 = m[key]
 			out[key] = [v.x, v.y]
-	# Optional terrain polygons — serialize as an array of flat float arrays.
+	# Optional terrain polygons — serialize as an array of flat float arrays,
+	# optionally carrying per-poly color/texture overrides so editor-drawn hills
+	# can have different materials from the map default (#113).
 	if m.has("polys"):
 		var polys_out: Array = []
 		for poly in m["polys"]:
@@ -58,9 +60,53 @@ static func map_to_json(m: Dictionary) -> String:
 			for p in pts:
 				flat.append(p.x)
 				flat.append(p.y)
-			polys_out.append({"points": flat})
+			var entry: Dictionary = {"points": flat}
+			if poly.has("color") and typeof(poly["color"]) == TYPE_COLOR:
+				var c: Color = poly["color"]
+				entry["color"] = [c.r, c.g, c.b, c.a]
+			if poly.has("texture") and typeof(poly["texture"]) == TYPE_STRING:
+				entry["texture"] = String(poly["texture"])
+			polys_out.append(entry)
 		out["polys"] = polys_out
-	for key in ["terrain_color", "terrain_texture", "floor_texture"]:
+	# Editor-placed scenery — array of {tex, pos, scale?, mod?, z?}. Distinct from
+	# _scenery_hints, which is the ported-.pms sprite list keyed by asset stem.
+	if m.has("scenery"):
+		var scn_out: Array = []
+		for s in m["scenery"]:
+			if typeof(s) != TYPE_DICTIONARY:
+				continue
+			var pos: Vector2 = s.get("pos", Vector2.ZERO)
+			var e: Dictionary = {"tex": String(s.get("tex", "")), "pos": [pos.x, pos.y]}
+			if s.has("scale"): e["scale"] = float(s["scale"])
+			if s.has("z"): e["z"] = int(s["z"])
+			if s.has("mod") and typeof(s["mod"]) == TYPE_COLOR:
+				var mc: Color = s["mod"]
+				e["mod"] = [mc.r, mc.g, mc.b, mc.a]
+			scn_out.append(e)
+		out["scenery"] = scn_out
+	# Map-authored weapon pickups (#113): [{pos, weapon}] spawned at match start.
+	# The player/bot walk-over grants the weapon like a thrown drop would.
+	if m.has("weapon_pickups"):
+		var wp_out: Array = []
+		for wp in m["weapon_pickups"]:
+			if typeof(wp) != TYPE_DICTIONARY:
+				continue
+			var pos: Vector2 = wp.get("pos", Vector2.ZERO)
+			wp_out.append({"pos": [pos.x, pos.y], "weapon": String(wp.get("weapon", "AK-74"))})
+		out["weapon_pickups"] = wp_out
+	# Bonus box + point-pickup override lists — arrays of world positions.
+	for pos_list in ["bonus_spawns", "point_spawns"]:
+		if m.has(pos_list):
+			var arr: Array = []
+			for v in m[pos_list]:
+				if v is Vector2:
+					arr.append([v.x, v.y])
+			out[pos_list] = arr
+	# terrain_color is a Color, everything else is a resource path.
+	if m.has("terrain_color") and typeof(m["terrain_color"]) == TYPE_COLOR:
+		var tc: Color = m["terrain_color"]
+		out["terrain_color"] = [tc.r, tc.g, tc.b, tc.a]
+	for key in ["terrain_texture", "floor_texture"]:
 		if m.has(key) and typeof(m[key]) == TYPE_STRING:
 			out[key] = m[key]
 	return JSON.stringify(out, "  ")
@@ -132,8 +178,54 @@ static func json_to_map(text: String) -> Dictionary:
 					uvs.append(Vector2(float(uv_flat[j]), float(uv_flat[j + 1])))
 					j += 2
 				entry["uvs"] = uvs
+			# Editor may set per-poly color / texture overrides (#113).
+			if poly.has("color"):
+				var ca: Array = poly["color"]
+				if ca.size() >= 3:
+					entry["color"] = Color(float(ca[0]), float(ca[1]), float(ca[2]),
+						float(ca[3]) if ca.size() > 3 else 1.0)
+			if poly.has("texture"):
+				entry["texture"] = str(poly["texture"])
 			polys.append(entry)
 		m["polys"] = polys
+	# Editor-placed scenery (#113). Non-collidable Sprite2D decorations.
+	if parsed.has("scenery"):
+		var scn: Array = []
+		for s in parsed["scenery"]:
+			if typeof(s) != TYPE_DICTIONARY:
+				continue
+			var e: Dictionary = {"tex": str(s.get("tex", "")), "pos": _v2(s.get("pos"))}
+			if s.has("scale"): e["scale"] = float(s["scale"])
+			if s.has("z"): e["z"] = int(s["z"])
+			if s.has("mod"):
+				var ma: Array = s["mod"]
+				if ma.size() >= 3:
+					e["mod"] = Color(float(ma[0]), float(ma[1]), float(ma[2]),
+						float(ma[3]) if ma.size() > 3 else 1.0)
+			scn.append(e)
+		m["scenery"] = scn
+	# Map-authored weapon pickups.
+	if parsed.has("weapon_pickups"):
+		var wps: Array = []
+		for wp in parsed["weapon_pickups"]:
+			if typeof(wp) != TYPE_DICTIONARY:
+				continue
+			wps.append({"pos": _v2(wp.get("pos")), "weapon": str(wp.get("weapon", "AK-74"))})
+		m["weapon_pickups"] = wps
+	# Bonus box + point pickup override slots — positions only.
+	for pos_list in ["bonus_spawns", "point_spawns"]:
+		if parsed.has(pos_list):
+			var arr: Array = []
+			for v in parsed[pos_list]:
+				arr.append(_v2(v))
+			m[pos_list] = arr
+	# terrain_color may be either a color-array (editor save) or omitted; the
+	# procedural maps use a Color literal at boot instead of round-tripping.
+	if parsed.has("terrain_color"):
+		var tc = parsed["terrain_color"]
+		if typeof(tc) == TYPE_ARRAY and tc.size() >= 3:
+			m["terrain_color"] = Color(float(tc[0]), float(tc[1]), float(tc[2]),
+				float(tc[3]) if tc.size() > 3 else 1.0)
 	for key in ["terrain_texture", "floor_texture"]:
 		if parsed.has(key):
 			m[key] = str(parsed[key])

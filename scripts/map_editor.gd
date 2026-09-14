@@ -24,10 +24,54 @@ enum Tool {
 	PLAYER_SPAWN, BOT_SPAWN,
 	FLAG_BLUE, FLAG_RED, FLAG_NEUTRAL,
 	DOM_POINT, M2_MOUNT,
+	# #113 additions — full object placement:
+	# TERRAIN_POLY builds free-form hills by clicking vertices (Enter/right-click to close);
+	# SCENERY / WEAPON_PICKUP / BONUS_BOX / POINT_PICKUP place single entities;
+	# RAMBO / INF_FLAG / HTF_FLAG place mode-specific singles distinct from the
+	# neutral-flag tool (which stamps all three at once for convenience).
+	TERRAIN_POLY, SCENERY,
+	WEAPON_PICKUP, BONUS_BOX, POINT_PICKUP, RAMBO,
+	INF_FLAG, HTF_FLAG,
 }
+
+# Weapon names offered by the WEAPON_PICKUP tool. Order mirrors the Gun Game
+# ladder + secondary/rambo. Kept in sync with WeaponPickup / player.gd loadouts.
+const PICKUP_WEAPONS := [
+	"AK-74", "MP5", "Steyr AUG", "Spas-12", "Ruger 77",
+	"M79", "Barrett", "Minimi", "Minigun", "Flamethrower",
+	"LAW", "Deagles", "USSOCOM", "Rambo Bow", "Knife", "Chainsaw",
+]
+# Common scenery sprites (stem → res path). Bundle a handful of legible props
+# rather than exposing the full 400-asset library; users can extend by editing
+# the JSON directly.
+const SCENERY_LIBRARY := [
+	{"label": "Grass",   "path": "res://assets/scenery/bnw_grass.png",    "scale": 0.6},
+	{"label": "Grass 2", "path": "res://assets/scenery/bnw_grass3.png",   "scale": 0.6},
+	{"label": "Bush",    "path": "res://assets/scenery/bush.png",         "scale": 0.5},
+	{"label": "Bush 2",  "path": "res://assets/scenery/bush2.png",        "scale": 0.5},
+	{"label": "Cactus",  "path": "res://assets/scenery/_dcactus1.png",    "scale": 0.5},
+	{"label": "Flower",  "path": "res://assets/scenery/_dflower1.png",    "scale": 0.5},
+	{"label": "Rock",    "path": "res://assets/textures/stone03.png",     "scale": 0.35},
+	{"label": "Wall",    "path": "res://assets/textures/ancientwall.png", "scale": 0.35},
+	{"label": "Moss",    "path": "res://assets/textures/mossgreen.png",   "scale": 0.25},
+]
+# Terrain / floor texture options — kept short so the UI stays legible.
+const TEXTURE_LIBRARY := [
+	{"label": "(none)",   "path": ""},
+	{"label": "Grass",    "path": "res://assets/textures/xt_ap_grasrock_02.png"},
+	{"label": "Earthen",  "path": "res://assets/textures/earthen.png"},
+	{"label": "Riverbed", "path": "res://assets/textures/riverbed.png"},
+	{"label": "Dry mud",  "path": "res://assets/textures/drymud.png"},
+	{"label": "Dry sand", "path": "res://assets/textures/drysand.png"},
+]
 
 var _tool: int = Tool.PLATFORM
 var _map: Dictionary = _fresh_map()
+# In-progress terrain polygon (Tool.TERRAIN_POLY). Cleared on tool switch / commit.
+var _poly_pts: PackedVector2Array = PackedVector2Array()
+# Selected library entries (persist across tool switches).
+var _scenery_idx: int = 0
+var _weapon_idx: int = 0
 
 var _cam: Camera2D = null
 var _dragging: bool = false
@@ -71,7 +115,7 @@ func _ready() -> void:
 	add_child(_cam)
 	_build_ui()
 	_set_tool(Tool.PLATFORM)
-	_set_status("Ready. LMB place/drag · RMB delete · MMB pan · wheel zoom · F5 play-test · ESC exit.")
+	_set_status("Ready. LMB place/drag · RMB delete · MMB pan · wheel zoom · 1–9 tools · F5 play-test · ESC exit.")
 	queue_redraw()
 
 
@@ -80,6 +124,9 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	# Redraw continuously while dragging out a platform/ladder so the preview follows the cursor.
 	if _dragging and (_drag_kind == "platform" or _drag_kind == "ladder"):
+		queue_redraw()
+	# Terrain-poly preview follows the cursor between vertex clicks.
+	elif _tool == Tool.TERRAIN_POLY and _poly_pts.size() > 0:
 		queue_redraw()
 
 
@@ -98,6 +145,28 @@ func _draw() -> void:
 		y += step
 	# Ground reference line (matches main.gd's ground body top edge).
 	draw_line(Vector2(0, GROUND_Y), Vector2(MAP_W, GROUND_Y), Color(0.28, 0.32, 0.4), 2.0)
+	# Terrain polygons — filled outline, distinct color from platforms so hills
+	# read at a glance during editing.
+	for poly in _map.get("polys", []):
+		var pts: PackedVector2Array = poly.get("points", PackedVector2Array())
+		if pts.size() < 3:
+			continue
+		var pc: Color = poly.get("color", Color(0.24, 0.28, 0.34))
+		draw_colored_polygon(pts, Color(pc.r, pc.g, pc.b, 0.55))
+		var edge := PackedVector2Array(pts)
+		edge.append(pts[0])
+		draw_polyline(edge, Color(0.85, 0.7, 0.35), 1.5)
+	# In-progress terrain polygon preview.
+	if _tool == Tool.TERRAIN_POLY and _poly_pts.size() > 0:
+		var mp := get_global_mouse_position()
+		var live := PackedVector2Array(_poly_pts)
+		live.append(mp)
+		if live.size() >= 2:
+			var edge := PackedVector2Array(live)
+			edge.append(live[0])
+			draw_polyline(edge, Color(1.0, 0.9, 0.5), 1.5)
+		for i in _poly_pts.size():
+			draw_circle(_poly_pts[i], 4.0, Color(1.0, 0.9, 0.5))
 	# Platforms.
 	for pl in _map.get("platforms", []):
 		var p: Vector2 = pl["p"]
@@ -109,6 +178,20 @@ func _draw() -> void:
 	for ld in _map.get("ladders", []):
 		var lr := _ladder_rect(ld)
 		_draw_ladder(lr, Color(0.85, 0.65, 0.35), false)
+	# Scenery — draw the sprite at editing scale so users can see what they placed.
+	for sc in _map.get("scenery", []):
+		var pos_sc: Vector2 = sc.get("pos", Vector2.ZERO)
+		var path_sc: String = str(sc.get("tex", ""))
+		if path_sc != "" and ResourceLoader.exists(path_sc):
+			var tex: Texture2D = load(path_sc) as Texture2D
+			if tex != null:
+				var sc_scale: float = float(sc.get("scale", 0.5))
+				var size: Vector2 = tex.get_size() * sc_scale
+				# Centered on pos.
+				draw_texture_rect(tex, Rect2(pos_sc - size * 0.5, size), false,
+					Color(sc.get("mod", Color(1, 1, 1, 1))))
+		# Selection dot so tiny/hidden props are still hit-testable + visible.
+		draw_circle(pos_sc, 3.0, Color(0.9, 0.9, 0.9, 0.85))
 	# Live drag preview for a new platform / ladder.
 	if _dragging and _drag_kind == "platform":
 		var mp := get_global_mouse_position()
@@ -134,12 +217,42 @@ func _draw() -> void:
 		_draw_marker(_map["inf_flag"], Color(1.0, 1.0, 0.4), "IF")
 	if _map.has("htf_flag"):
 		_draw_marker(_map["htf_flag"], Color(1.0, 0.7, 0.3), "HF")
+	if _map.has("rambo_pos"):
+		_draw_marker(_map["rambo_pos"], Color(0.6, 1.0, 0.6), "RM", 24.0)
 	var di := 0
 	for d in _map.get("dom_points", []):
 		_draw_marker(d, Color(1.0, 0.85, 0.25), "D%s" % ["A", "B", "C"][mini(di, 2)], 32.0)
 		di += 1
 	for m in _map.get("m2_mounts", []):
 		_draw_marker(m, Color(0.6, 0.9, 0.9), "M2", 22.0)
+	# Pickups: weapon / bonus / point.
+	for wp in _map.get("weapon_pickups", []):
+		var pos_wp: Vector2 = wp.get("pos", Vector2.ZERO)
+		var wn: String = str(wp.get("weapon", "AK-74"))
+		_draw_marker(pos_wp, Color(0.9, 0.75, 0.4), _short_weapon(wn), 20.0)
+	for bp in _map.get("bonus_spawns", []):
+		_draw_marker(bp, Color(0.7, 0.5, 1.0), "?", 18.0)
+	for pp in _map.get("point_spawns", []):
+		_draw_marker(pp, Color(1.0, 0.9, 0.4), "PT", 16.0)
+
+
+func _short_weapon(name: String) -> String:
+	# Compact label for the map view — abbreviates long weapon names to 3-6 chars
+	# so the marker doesn't sprawl on top of neighbouring props.
+	match name:
+		"AK-74": return "AK"
+		"Steyr AUG": return "AUG"
+		"Spas-12": return "SPAS"
+		"Ruger 77": return "RUG"
+		"Rambo Bow": return "BOW"
+		"Chainsaw": return "SAW"
+		"USSOCOM": return "USS"
+		"Flamethrower": return "FLM"
+		"Deagles": return "DEA"
+		"Minigun": return "MG"
+		"Minimi": return "MM"
+		"Barrett": return "BAR"
+	return name.substr(0, mini(3, name.length()))
 
 
 func _draw_marker(pos: Vector2, col: Color, label: String, size: float = 22.0) -> void:
@@ -243,6 +356,17 @@ func _handle_key(ev: InputEventKey) -> void:
 		KEY_4: _set_tool(Tool.DELETE)
 		KEY_5: _set_tool(Tool.PLAYER_SPAWN)
 		KEY_6: _set_tool(Tool.BOT_SPAWN)
+		KEY_7: _set_tool(Tool.TERRAIN_POLY)
+		KEY_8: _set_tool(Tool.SCENERY)
+		KEY_9: _set_tool(Tool.WEAPON_PICKUP)
+		# Terrain-poly-specific: Enter closes the polygon, Backspace pops last vertex.
+		KEY_ENTER, KEY_KP_ENTER:
+			if _tool == Tool.TERRAIN_POLY:
+				_commit_terrain_poly()
+		KEY_BACKSPACE:
+			if _tool == Tool.TERRAIN_POLY and _poly_pts.size() > 0:
+				_poly_pts.remove_at(_poly_pts.size() - 1)
+				queue_redraw()
 
 
 func _on_lmb_press(mp: Vector2) -> void:
@@ -290,6 +414,39 @@ func _on_lmb_press(mp: Vector2) -> void:
 			var arr: Array = _map.get("m2_mounts", [])
 			arr.append(_snap(mp))
 			_map["m2_mounts"] = arr
+		Tool.TERRAIN_POLY:
+			# Click adds a vertex; Enter commits, right-click deletes existing poly.
+			_poly_pts.append(_snap(mp))
+			_set_status("Terrain polygon: %d vertices (Enter=commit, Backspace=undo, ESC to menu)" % _poly_pts.size())
+		Tool.SCENERY:
+			var lib: Dictionary = SCENERY_LIBRARY[clampi(_scenery_idx, 0, SCENERY_LIBRARY.size() - 1)]
+			var arr: Array = _map.get("scenery", [])
+			arr.append({
+				"tex": String(lib["path"]),
+				"pos": _snap(mp),
+				"scale": float(lib.get("scale", 0.5)),
+				"z": -2,
+			})
+			_map["scenery"] = arr
+		Tool.WEAPON_PICKUP:
+			var arr: Array = _map.get("weapon_pickups", [])
+			arr.append({"pos": _snap(mp),
+				"weapon": String(PICKUP_WEAPONS[clampi(_weapon_idx, 0, PICKUP_WEAPONS.size() - 1)])})
+			_map["weapon_pickups"] = arr
+		Tool.BONUS_BOX:
+			var arr: Array = _map.get("bonus_spawns", [])
+			arr.append(_snap(mp))
+			_map["bonus_spawns"] = arr
+		Tool.POINT_PICKUP:
+			var arr: Array = _map.get("point_spawns", [])
+			arr.append(_snap(mp))
+			_map["point_spawns"] = arr
+		Tool.INF_FLAG:
+			_map["inf_flag"] = _snap(mp)
+		Tool.HTF_FLAG:
+			_map["htf_flag"] = _snap(mp)
+		Tool.RAMBO:
+			_map["rambo_pos"] = _snap(mp)
 	queue_redraw()
 
 
@@ -340,6 +497,23 @@ func _on_lmb_release(mp: Vector2) -> void:
 	queue_redraw()
 
 
+func _commit_terrain_poly() -> void:
+	# Convert the in-progress vertex list into a stored terrain poly. Needs ≥3
+	# points to form a triangle (matches main.gd::_make_polygon_body).
+	if _poly_pts.size() < 3:
+		_set_status("Terrain poly needs at least 3 vertices — %d so far." % _poly_pts.size())
+		return
+	var polys: Array = _map.get("polys", [])
+	var entry: Dictionary = {"points": _poly_pts.duplicate()}
+	# Inherit the map default color; the JSON round-tripper drops the entry if
+	# it exactly equals the map default, so we don't over-serialize.
+	polys.append(entry)
+	_map["polys"] = polys
+	_poly_pts = PackedVector2Array()
+	_set_status("Terrain polygon added.")
+	queue_redraw()
+
+
 func _set_ctf_flag(idx: int, pos: Vector2) -> void:
 	var flags: Array = _map.get("ctf_flags", [])
 	while flags.size() < 2:
@@ -353,7 +527,7 @@ func _snap(v: Vector2) -> Vector2:
 
 
 func _find_at(mp: Vector2) -> Array:
-	# Markers first, platforms last, so overlapping items pick the marker.
+	# Markers first, platforms/polys last, so overlapping items pick the marker.
 	var ps: Vector2 = _map.get("player_spawn", Vector2.ZERO)
 	if mp.distance_to(ps) < HIT_RADIUS:
 		return ["player_spawn", 0]
@@ -377,6 +551,24 @@ func _find_at(mp: Vector2) -> Array:
 	for i in m2.size():
 		if mp.distance_to(m2[i]) < HIT_RADIUS:
 			return ["m2_mounts", i]
+	var wps: Array = _map.get("weapon_pickups", [])
+	for i in wps.size():
+		var pos_wp: Vector2 = wps[i].get("pos", Vector2.ZERO)
+		if mp.distance_to(pos_wp) < HIT_RADIUS:
+			return ["weapon_pickups", i]
+	var bxs: Array = _map.get("bonus_spawns", [])
+	for i in bxs.size():
+		if mp.distance_to(bxs[i]) < HIT_RADIUS:
+			return ["bonus_spawns", i]
+	var pts_pp: Array = _map.get("point_spawns", [])
+	for i in pts_pp.size():
+		if mp.distance_to(pts_pp[i]) < HIT_RADIUS:
+			return ["point_spawns", i]
+	var scn: Array = _map.get("scenery", [])
+	for i in scn.size():
+		var sp: Vector2 = scn[i].get("pos", Vector2.ZERO)
+		if mp.distance_to(sp) < HIT_RADIUS:
+			return ["scenery", i]
 	var pls: Array = _map.get("platforms", [])
 	for i in pls.size():
 		var pl: Dictionary = pls[i]
@@ -390,6 +582,12 @@ func _find_at(mp: Vector2) -> Array:
 		var lr := _ladder_rect(lds[i]).grow(4.0)
 		if lr.has_point(mp):
 			return ["ladders", i]
+	# Terrain polys — point-in-polygon test.
+	var polys: Array = _map.get("polys", [])
+	for i in polys.size():
+		var pp: PackedVector2Array = polys[i].get("points", PackedVector2Array())
+		if pp.size() >= 3 and Geometry2D.is_point_in_polygon(mp, pp):
+			return ["polys", i]
 	return []
 
 
@@ -402,6 +600,17 @@ func _pos_of(key: String, index: int) -> Vector2:
 		# Track drag by the ladder's center so the mouse offset feels natural.
 		return Vector2(float(ld["x"]) + float(ld["w"]) * 0.5,
 			float(ld["y"]) + float(ld["h"]) * 0.5)
+	if key == "weapon_pickups": return _map["weapon_pickups"][index].get("pos", Vector2.ZERO)
+	if key == "scenery": return _map["scenery"][index].get("pos", Vector2.ZERO)
+	if key == "polys":
+		# Represent a polygon by its centroid so dragging feels balanced.
+		var pts: PackedVector2Array = _map["polys"][index].get("points", PackedVector2Array())
+		if pts.is_empty():
+			return Vector2.ZERO
+		var c := Vector2.ZERO
+		for p in pts:
+			c += p
+		return c / float(pts.size())
 	return _map[key][index]
 
 
@@ -416,6 +625,24 @@ func _set_pos_of(key: String, index: int, pos: Vector2) -> void:
 		var ld: Dictionary = _map["ladders"][index]
 		ld["x"] = pos.x - float(ld["w"]) * 0.5
 		ld["y"] = pos.y - float(ld["h"]) * 0.5
+	elif key == "weapon_pickups":
+		_map["weapon_pickups"][index]["pos"] = pos
+	elif key == "scenery":
+		_map["scenery"][index]["pos"] = pos
+	elif key == "polys":
+		# Translate every vertex by the centroid delta so the whole polygon moves.
+		var pts: PackedVector2Array = _map["polys"][index].get("points", PackedVector2Array())
+		if pts.is_empty():
+			return
+		var c := Vector2.ZERO
+		for p in pts:
+			c += p
+		c /= float(pts.size())
+		var delta := pos - c
+		var moved := PackedVector2Array()
+		for p in pts:
+			moved.append(p + delta)
+		_map["polys"][index]["points"] = moved
 	else:
 		_map[key][index] = pos
 
@@ -431,7 +658,7 @@ func _try_delete_at(mp: Vector2) -> void:
 		return
 	if key == "inf_flag" or key == "htf_flag" or key == "rambo_pos":
 		_map.erase(key)
-	elif key == "platforms" or key == "ladders":
+	elif key == "platforms" or key == "ladders" or key == "polys" or key == "scenery" or key == "weapon_pickups":
 		_map[key].remove_at(idx)
 	else:
 		_map[key].remove_at(idx)
@@ -471,16 +698,25 @@ func _build_ui() -> void:
 		["Delete", Tool.DELETE],
 		["Player", Tool.PLAYER_SPAWN],
 		["Bot", Tool.BOT_SPAWN],
-		["Flag Blue", Tool.FLAG_BLUE],
-		["Flag Red", Tool.FLAG_RED],
+		["Flag B", Tool.FLAG_BLUE],
+		["Flag R", Tool.FLAG_RED],
 		["Flag Ctr", Tool.FLAG_NEUTRAL],
 		["Dom Pt", Tool.DOM_POINT],
 		["M2", Tool.M2_MOUNT],
+		# #113 additions.
+		["Poly", Tool.TERRAIN_POLY],
+		["Scenery", Tool.SCENERY],
+		["Weapon", Tool.WEAPON_PICKUP],
+		["Bonus", Tool.BONUS_BOX],
+		["Point", Tool.POINT_PICKUP],
+		["INF", Tool.INF_FLAG],
+		["HTF", Tool.HTF_FLAG],
+		["Rambo", Tool.RAMBO],
 	]
 	for spec in tool_specs:
 		var b := Button.new()
 		b.text = String(spec[0])
-		b.custom_minimum_size = Vector2(84, 32)
+		b.custom_minimum_size = Vector2(72, 30)
 		var tid: int = int(spec[1])
 		b.pressed.connect(func() -> void: _set_tool(tid))
 		top.add_child(b)
@@ -519,6 +755,63 @@ func _build_ui() -> void:
 	_seed_edit.text = "1"
 	_seed_edit.custom_minimum_size = Vector2(70, 32)
 	top.add_child(_seed_edit)
+
+	top.add_child(VSeparator.new())
+
+	# #113: scenery / weapon / texture selectors so the palette drives what the
+	# Scenery / Weapon-pickup tools place, and Terrain / Floor set the map's
+	# per-render textures without editing JSON.
+	var scn_lbl := Label.new()
+	scn_lbl.text = "Scenery:"
+	top.add_child(scn_lbl)
+	var scn_ob := OptionButton.new()
+	scn_ob.custom_minimum_size = Vector2(120, 30)
+	for i in SCENERY_LIBRARY.size():
+		scn_ob.add_item(String(SCENERY_LIBRARY[i]["label"]), i)
+	scn_ob.item_selected.connect(func(idx: int) -> void: _scenery_idx = idx)
+	top.add_child(scn_ob)
+
+	var wpn_lbl := Label.new()
+	wpn_lbl.text = "Weapon:"
+	top.add_child(wpn_lbl)
+	var wpn_ob := OptionButton.new()
+	wpn_ob.custom_minimum_size = Vector2(120, 30)
+	for i in PICKUP_WEAPONS.size():
+		wpn_ob.add_item(String(PICKUP_WEAPONS[i]), i)
+	wpn_ob.item_selected.connect(func(idx: int) -> void: _weapon_idx = idx)
+	top.add_child(wpn_ob)
+
+	var tex_lbl := Label.new()
+	tex_lbl.text = "Terrain:"
+	top.add_child(tex_lbl)
+	var tex_ob := OptionButton.new()
+	tex_ob.custom_minimum_size = Vector2(110, 30)
+	for i in TEXTURE_LIBRARY.size():
+		tex_ob.add_item(String(TEXTURE_LIBRARY[i]["label"]), i)
+	tex_ob.item_selected.connect(func(idx: int) -> void:
+		var path: String = String(TEXTURE_LIBRARY[idx]["path"])
+		if path == "":
+			_map.erase("terrain_texture")
+		else:
+			_map["terrain_texture"] = path
+		_set_status("Terrain texture: %s" % (path if path != "" else "(none)")))
+	top.add_child(tex_ob)
+
+	var floor_lbl := Label.new()
+	floor_lbl.text = "Floor:"
+	top.add_child(floor_lbl)
+	var floor_ob := OptionButton.new()
+	floor_ob.custom_minimum_size = Vector2(110, 30)
+	for i in TEXTURE_LIBRARY.size():
+		floor_ob.add_item(String(TEXTURE_LIBRARY[i]["label"]), i)
+	floor_ob.item_selected.connect(func(idx: int) -> void:
+		var path: String = String(TEXTURE_LIBRARY[idx]["path"])
+		if path == "":
+			_map.erase("floor_texture")
+		else:
+			_map["floor_texture"] = path
+		_set_status("Floor texture: %s" % (path if path != "" else "(none)")))
+	top.add_child(floor_ob)
 
 	# Bottom status bar.
 	var bg_bot := ColorRect.new()
@@ -694,9 +987,14 @@ func _exit_to_menu() -> void:
 
 
 func _set_tool(t: int) -> void:
+	# Switching away from an unfinished terrain poly discards the in-progress
+	# vertex list — otherwise commit would happen on the wrong tool later.
+	if _tool == Tool.TERRAIN_POLY and t != Tool.TERRAIN_POLY and _poly_pts.size() > 0:
+		_poly_pts = PackedVector2Array()
 	_tool = t
 	if _tool_label != null:
 		_tool_label.text = "Tool: %s" % _tool_name(t)
+	queue_redraw()
 
 
 func _tool_name(t: int) -> String:
@@ -712,6 +1010,14 @@ func _tool_name(t: int) -> String:
 		Tool.FLAG_NEUTRAL: return "Neutral Flag (INF/HTF/RM)"
 		Tool.DOM_POINT: return "Dom Point"
 		Tool.M2_MOUNT: return "M2 Mount"
+		Tool.TERRAIN_POLY: return "Terrain Poly (click verts, Enter to close)"
+		Tool.SCENERY: return "Scenery (from palette)"
+		Tool.WEAPON_PICKUP: return "Weapon Pickup (from palette)"
+		Tool.BONUS_BOX: return "Bonus Box"
+		Tool.POINT_PICKUP: return "Point Pickup"
+		Tool.INF_FLAG: return "INF Flag"
+		Tool.HTF_FLAG: return "HTF Flag"
+		Tool.RAMBO: return "Rambo Bow"
 	return "?"
 
 

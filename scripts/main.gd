@@ -632,6 +632,7 @@ func _build_terrain() -> void:
 	_spawn_scenery()
 	_spawn_scenery_hints()
 	_spawn_m2_mounts()
+	_spawn_map_weapon_pickups()
 
 
 func _make_ladder(x: float, y: float, w: float, h: float) -> Area2D:
@@ -767,6 +768,29 @@ func _spawn_m2_mounts() -> void:
 		m2.set("m2_id", idx)
 		idx += 1
 		add_child(m2)
+
+
+func _spawn_map_weapon_pickups() -> void:
+	# #113: map editor can place resting weapon pickups. Only the host spawns
+	# them — clients receive them via the normal pickup state stream.
+	var wps: Array = _map.get("weapon_pickups", [])
+	if wps.is_empty():
+		return
+	if Net.is_networked() and not Net.is_host():
+		return
+	for wp_def in wps:
+		if typeof(wp_def) != TYPE_DICTIONARY:
+			continue
+		var wp := WeaponPickup.new()
+		wp.weapon_name = str(wp_def.get("weapon", "AK-74"))
+		wp.team = -1
+		wp.thrower_name = ""
+		wp.damage_on_hit = 0.0
+		wp.global_position = wp_def.get("pos", Vector2.ZERO)
+		wp.set_meta("map_spawn", true)
+		if Net.is_networked() and Net.is_host():
+			wp.pickup_id = next_pickup_id()
+		add_child(wp)
 
 
 func find_m2(id: int) -> Node2D:
@@ -1244,6 +1268,14 @@ func _spawn_rambo_bow() -> void:
 
 func _spawn_point_pickups() -> void:
 	# PM: scatter respawning point pickups. Each grants +1 to the toucher's team.
+	# #113: honor an explicit "point_spawns" list from the map editor; fall back
+	# to the built-in scan-line pattern so procedural maps still play PM.
+	var explicit: Array = _map.get("point_spawns", [])
+	if not explicit.is_empty():
+		for pos in explicit:
+			if pos is Vector2:
+				_spawn_point_pickup(pos)
+		return
 	var ground_y: float = float(_map.get("ctf_ground_y", 1830.0))
 	var xs: PackedFloat32Array = [ 700.0, 1400.0, 2100.0, 2400.0, 2700.0, 3400.0, 4100.0 ]
 	for x in xs:
@@ -2745,7 +2777,12 @@ func _spawn_bonus_boxes_init() -> void:
 	# Client: waits for host to broadcast net_bonus_spawn. No local slots needed.
 	if Net.is_networked() and not Net.is_host():
 		return
-	var spots: Array = (_map.get("bot_spawns", []) as Array).duplicate()
+	# #113: map editor can supply an explicit "bonus_spawns" list; fall back to
+	# bot spawns when not specified so procedural + legacy maps still spawn bonus
+	# boxes at bot positions.
+	var explicit: Array = _map.get("bonus_spawns", [])
+	var spots: Array = explicit.duplicate() if not explicit.is_empty() \
+		else (_map.get("bot_spawns", []) as Array).duplicate()
 	if spots.is_empty():
 		return
 	spots.shuffle()
