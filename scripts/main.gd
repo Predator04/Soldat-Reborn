@@ -1355,8 +1355,16 @@ func net_spawn_player(peer_id: int, spawn_pos: Vector2, display_name: String, as
 	p.name = "Player_%d" % peer_id
 	p.position = spawn_pos
 	p.display_name = display_name
-	# Backward-compat: pre-#22 callers may send no team → fall back to FFA.
-	var t: int = assigned_team if assigned_team >= 0 else peer_id
+	# Backward-compat: pre-#22 callers may send no team. In FFA the peer_id acts
+	# as a distinct hostile team; in team modes we resolve via the balancer so a
+	# raw peer id (millions-range) never leaks into team/colour checks (#85).
+	var t: int
+	if assigned_team >= 0:
+		t = assigned_team
+	elif Settings.is_team_mode():
+		t = _assign_team_for_peer(peer_id)
+	else:
+		t = peer_id
 	p.team = t
 	if t == TEAM_BLUE:
 		p.color = Color(0.35, 0.55, 1.0)
