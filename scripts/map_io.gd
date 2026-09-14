@@ -91,11 +91,16 @@ static func json_to_map(text: String) -> Dictionary:
 	for ld in parsed.get("ladders", []):
 		if typeof(ld) != TYPE_DICTIONARY:
 			continue
+		# Clamp width/height to sane minimums — a zero-size or negative rect from
+		# a malformed JSON produces an Area2D whose bounds are unusable and would
+		# either never trigger climb overlap or trigger over an unbounded region.
+		var lw: float = maxf(4.0, float(ld.get("w", 20.0)))
+		var lh: float = maxf(20.0, float(ld.get("h", 120.0)))
 		lds.append({
 			"x": float(ld.get("x", 0.0)),
 			"y": float(ld.get("y", 0.0)),
-			"w": float(ld.get("w", 20.0)),
-			"h": float(ld.get("h", 120.0)),
+			"w": lw,
+			"h": lh,
 		})
 	m["ladders"] = lds
 	for list_key in ["m2_mounts", "ctf_flags", "dom_points"]:

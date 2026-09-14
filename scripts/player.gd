@@ -408,7 +408,11 @@ func _physics_process(delta: float) -> void:
 	var new_ladder: Node2D = _find_ladder_overlap()
 	on_ladder = new_ladder != null
 	var climb_down_pressed := Input.is_action_pressed("crouch")
-	if not climbing and on_ladder and (jump_pressed or climb_down_pressed):
+	# Engage on the RISING edge of jump/climb-down, not the level. Held-W while
+	# jetpacking through a ladder rect used to auto-snap you onto it, killing
+	# vertical velocity mid-flight. Grace-time hop-off already uses just_pressed.
+	var engage_pressed: bool = Input.is_action_just_pressed("jump") or Input.is_action_just_pressed("crouch")
+	if not climbing and on_ladder and engage_pressed:
 		climbing = true
 		_active_ladder = new_ladder
 		_climb_engage_t = 0.0
