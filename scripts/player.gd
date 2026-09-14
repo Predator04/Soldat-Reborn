@@ -1166,13 +1166,15 @@ func _first_non_thrown(arr: Array) -> int:
 func _switch_after_drop() -> void:
 	# Drop the just-thrown weapon from our hands. Prefer the opposite slot, then
 	# the first non-thrown weapon in the same slot; if everything is thrown we
-	# keep holding the thrown one (it still fires).
+	# keep holding the thrown one (it still fires). Respect the Advance-mode
+	# unlock gates — dropping the primary was a silent way to jump into a
+	# still-locked secondary otherwise.
 	if using_secondary:
-		var pi := _first_non_thrown(weapons)
+		var pi := _first_non_thrown_unlocked(weapons, false)
 		if pi >= 0:
 			_switch_weapon(pi)
 			return
-		var si := _first_non_thrown(secondary)
+		var si := _first_non_thrown_unlocked(secondary, true)
 		if si >= 0:
 			secondary_index = si
 			using_secondary = true
@@ -1181,7 +1183,7 @@ func _switch_after_drop() -> void:
 			fire_cd = 0.15
 			lmb_prev = true
 	else:
-		var si := _first_non_thrown(secondary)
+		var si := _first_non_thrown_unlocked(secondary, true)
 		if si >= 0:
 			secondary_index = si
 			using_secondary = true
@@ -1190,9 +1192,22 @@ func _switch_after_drop() -> void:
 			fire_cd = 0.15
 			lmb_prev = true
 			return
-		var pi := _first_non_thrown(weapons)
+		var pi := _first_non_thrown_unlocked(weapons, false)
 		if pi >= 0:
 			_switch_weapon(pi)
+
+
+func _first_non_thrown_unlocked(arr: Array, is_secondary: bool) -> int:
+	for i in arr.size():
+		if _is_thrown(str(arr[i]["name"])):
+			continue
+		if Settings.advance:
+			if is_secondary and not _is_secondary_unlocked(i):
+				continue
+			if not is_secondary and not _is_primary_unlocked(i):
+				continue
+		return i
+	return -1
 
 
 @rpc("any_peer", "reliable")
