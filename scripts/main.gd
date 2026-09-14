@@ -29,6 +29,7 @@ const MULTI_KILL_WINDOW := 2.0            # seconds since previous kill still co
 const STREAK_ANNOUNCE_END_MIN := 3        # streak length that earns an "ended X's N-kill streak" line
 var _map: Dictionary = {}
 var _players_by_id: Dictionary = {}  # peer_id -> player node (host only, but also mirrored on clients)
+var _peer_names: Dictionary = {}    # peer_id -> chosen display name (host only; client sends it in net_client_ready)
 var _ready_peers: Dictionary = {}    # peer_id -> true (host only, gate for outbound state RPCs)
 # Peers whose main.tscn is loaded — populated on net_client_ready (before the
 # spawn ack). Gates reliable spawn broadcasts so bots/bonuses spawned between
@@ -266,6 +267,7 @@ var MAPS := [
 		"player_spawn": Vector2(200, 1775),
 		"bot_spawns": [Vector2(3540, 1500), Vector2(4160, 1170), Vector2(2500, 1130), Vector2(4440, 1530)],
 		"m2_mounts": [Vector2(2500, 1380), Vector2(700, 1040), Vector2(4120, 1040)],
+	"ctf_flags": [Vector2(710, 1830), Vector2(4090, 1830)],
 		"scenery": [
 			{"tex": "res://assets/textures/stone03.png",  "pos": Vector2(700, 1020),  "scale": 0.35, "mod": Color(0.85, 0.8, 0.75, 0.7), "z": -3},
 			{"tex": "res://assets/textures/stone03.png",  "pos": Vector2(4120, 1020), "scale": 0.35, "mod": Color(0.85, 0.8, 0.75, 0.7), "z": -3},
@@ -392,7 +394,7 @@ func _ready() -> void:
 				_spawn_networked_player(1)  # host is peer 1
 		else:
 			# Client asks the host to spawn us; host also mirrors any existing players.
-			rpc_id(1, "net_client_ready")
+			rpc_id(1, "net_client_ready", Settings.player_name)
 	else:
 		_spawn_player()
 		_spawn_bots()
@@ -855,9 +857,9 @@ func _spawn_player() -> void:
 	if Settings.is_team_mode():
 		p.team = TEAM_BLUE
 		p.color = Color(0.35, 0.55, 1.0)
-		p.display_name = "Blue"
 	else:
 		p.team = 0
+	p.display_name = Settings.player_name
 	# Advance mode: start with the humble knife.
 	if Settings.advance:
 		p.set("using_secondary", true)
@@ -1241,25 +1243,27 @@ func _make_flag(team: int, base: Vector2) -> Area2D:
 	cs.radius = 18.0
 	col.shape = cs
 	a.add_child(col)
-	# Load the flag sprite (same for both teams — tinted per team).
-	var flag_tex: Texture2D = load("res://assets/interface-gfx/flag.png") as Texture2D
-	if flag_tex != null:
-		var s := Sprite2D.new()
-		s.texture = flag_tex
-		s.scale = Vector2(0.5, 0.5)
-		s.offset = Vector2(0, -18)
-		s.modulate = Color(0.35, 0.55, 1.0) if team == TEAM_BLUE else Color(0.95, 0.35, 0.3)
-		a.add_child(s)
+	# Real flag: vertical staff + waving rectangular banner, tinted per team.
+	# (Previously this was the 63px interface icon scaled to 0.5 — a ~31px
+	# HUD icon, not a flag. Now it reads as an actual flag object.)
+	var team_col: Color
+	if team == TEAM_BLUE:
+		team_col = Color(0.35, 0.55, 1.0)
+	elif team == TEAM_RED:
+		team_col = Color(0.95, 0.35, 0.3)
 	else:
-		# Fallback vector: pole + banner rectangle so flags still read without the PNG.
-		var pole := Polygon2D.new()
-		pole.polygon = PackedVector2Array([Vector2(-1, -32), Vector2(1, -32), Vector2(1, 0), Vector2(-1, 0)])
-		pole.color = Color(0.4, 0.35, 0.3)
-		a.add_child(pole)
-		var banner := Polygon2D.new()
-		banner.polygon = PackedVector2Array([Vector2(1, -32), Vector2(18, -26), Vector2(1, -20)])
-		banner.color = Color(0.35, 0.55, 1.0) if team == TEAM_BLUE else Color(0.95, 0.35, 0.3)
-		a.add_child(banner)
+		team_col = Color(0.9, 0.8, 0.3)  # neutral flag (INF/HTF/RM)
+	var pole := Polygon2D.new()
+	pole.polygon = PackedVector2Array([Vector2(-2, -44), Vector2(2, -44), Vector2(2, 0), Vector2(-2, 0)])
+	pole.color = Color(0.45, 0.4, 0.35)
+	a.add_child(pole)
+	var banner := Polygon2D.new()
+	banner.polygon = PackedVector2Array([
+		Vector2(2, -44), Vector2(16, -40), Vector2(34, -42), Vector2(34, -26),
+		Vector2(16, -24), Vector2(2, -28),
+	])
+	banner.color = team_col
+	a.add_child(banner)
 	add_child(a)
 	return a
 
@@ -1290,7 +1294,7 @@ func _spawn_networked_player(peer_id: int) -> void:
 		if not bs.is_empty():
 			base = bs[randi() % bs.size()]
 	var spawn_pos := base + Vector2(randf_range(-140.0, 140.0), 0.0)
-	var display_name := "Host" if peer_id == 1 else "Player %d" % peer_id
+	var display_name: String = Settings.player_name if peer_id == 1 else str(_peer_names.get(peer_id, "Player %d" % peer_id))
 	rpc("net_spawn_player", peer_id, spawn_pos, display_name, t)
 
 
@@ -1343,10 +1347,15 @@ func ready_peer_ids() -> Array:
 
 
 @rpc("any_peer", "reliable")
-func net_client_ready() -> void:
+func net_client_ready(joiner_name: String = "") -> void:
 	if not Net.is_host():
 		return
 	var sender := multiplayer.get_remote_sender_id()
+	# Remember the joiner's chosen display name (sanitized) so _spawn_networked_player
+	# uses it instead of "Player N". Empty/blank falls back to the peer-id default.
+	var clean_name: String = str(joiner_name).strip_edges()
+	if clean_name != "":
+		_peer_names[sender] = clean_name
 	# Mark the peer as able to receive reliable spawn RPCs BEFORE we mirror — any
 	# host-initiated spawn between now and net_spawn_ack still needs to reach
 	# this peer, otherwise it'd be permanently invisible (#84).

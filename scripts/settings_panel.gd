@@ -190,6 +190,12 @@ func _build_controls_card(box: VBoxContainer) -> void:
 
 
 func _build_game(box: VBoxContainer) -> void:
+	# Player name — used as your in-game display_name (SP + MP). Persisted.
+	box.add_child(_text_field("Player Name", Settings.player_name,
+		func(t: String) -> void:
+			var clean := t.strip_edges()
+			Settings.player_name = clean if clean != "" else "Player"
+			Settings.save()))
 	# Screen shake — now a 0-2 intensity slider. Setting to 0 disables shake
 	# (matches the old bool-off behavior); >0 keeps `screen_shake=true` set so
 	# any legacy code paths still fire, but the intensity scales the amount.
@@ -382,6 +388,27 @@ func _check_button(text: String, val: bool, on_change: Callable) -> CheckButton:
 	UITheme.style_checkbox(cb)
 	cb.toggled.connect(on_change)
 	return cb
+
+
+func _text_field(label_text: String, val: String, on_change: Callable) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	var lbl := Label.new()
+	lbl.text = label_text
+	lbl.custom_minimum_size = Vector2(180, 0)
+	UITheme.style_body(lbl)
+	row.add_child(lbl)
+	var edit := LineEdit.new()
+	edit.text = val
+	edit.placeholder_text = "Player"
+	edit.max_length = 16
+	edit.custom_minimum_size = Vector2(220, 0)
+	edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	UITheme.style_lineedit(edit)
+	row.add_child(edit)
+	edit.text_submitted.connect(func(t: String) -> void: on_change.call(t))
+	edit.focus_exited.connect(func() -> void: on_change.call(edit.text))
+	return row
 
 
 func _option_row(label_text: String, options: Array, current: String, on_change: Callable) -> HBoxContainer:
