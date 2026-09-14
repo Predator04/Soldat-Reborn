@@ -2470,6 +2470,10 @@ func _broadcast_bot_state() -> void:
 			"reloading": bool(b.reloading),
 			"muzzle_t": float(b.muzzle_t),
 			"ceasefire": float(b.ceasefire_t),
+			# #79: mirror secondary state so client replicas render the correct
+			# weapon in-hand + on-back when the host's bot swaps to USSOCOM.
+			"using_secondary": bool(b.using_secondary),
+			"secondary_ammo": int(b.secondary_ammo),
 		})
 	if arr.is_empty():
 		return
@@ -2541,3 +2545,8 @@ func net_bot_state(arr: Array) -> void:
 		b.reloading = bool(entry.get("reloading", false))
 		b.muzzle_t = float(entry.get("muzzle_t", 0.0))
 		b.ceasefire_t = float(entry.get("ceasefire", 0.0))
+		# #79: apply secondary state so the client-side replica draws the same
+		# in-hand weapon as the host (physics-side ammo tracking is irrelevant
+		# on the replica because _physics_process is authority-gated).
+		b.using_secondary = bool(entry.get("using_secondary", b.using_secondary))
+		b.secondary_ammo = int(entry.get("secondary_ammo", b.secondary_ammo))

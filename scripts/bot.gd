@@ -36,9 +36,17 @@ var _stuck_t := 0.0
 var ammo: int = 30
 var reloading: bool = false
 var reload_t: float = 0.0
+# Secondary slot (#79) — bots carry a USSOCOM as fallback so a dry primary
+# doesn't leave them defenseless mid-fight. `using_secondary` is the active-
+# weapon flag; both ammo pools are tracked independently so the bot can swap
+# back once the primary is reloaded. Host-authoritative; mirrored to clients
+# via main.gd::_broadcast_bot_state.
+var using_secondary: bool = false
+var secondary_ammo: int = 0
 const AMMO_STATS := {
-	"AK-74": {"mag": 30, "reload": 2.0},
-	"LAW":   {"mag": 1,  "reload": 3.0},
+	"AK-74":   {"mag": 30, "reload": 2.0},
+	"LAW":     {"mag": 1,  "reload": 3.0},
+	"USSOCOM": {"mag": 14, "reload": 1.0},
 }
 
 # grenades
@@ -120,6 +128,7 @@ func _ready() -> void:
 			"dogtag": randf() < 0.3,
 		}
 	ammo = int(AMMO_STATS.get(loadout, AMMO_STATS["AK-74"])["mag"])
+	secondary_ammo = int(AMMO_STATS["USSOCOM"]["mag"])
 	var shape := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
 	rect.size = Vector2(20, 42)
@@ -281,18 +290,35 @@ func _physics_process(delta: float) -> void:
 	# shoot with lead aim (#36: gated on ammo + reload)
 	fire_cd -= delta
 	muzzle_t = maxf(0.0, muzzle_t - delta * 10.0)
+	var active_ammo: int = secondary_ammo if using_secondary else ammo
 	if reloading:
 		reload_t -= delta
 		if reload_t <= 0.0:
 			reloading = false
-			ammo = int(AMMO_STATS.get(loadout, AMMO_STATS["AK-74"])["mag"])
-	elif ammo <= 0:
-		_start_reload()
+			if using_secondary:
+				secondary_ammo = int(AMMO_STATS["USSOCOM"]["mag"])
+			else:
+				ammo = int(AMMO_STATS.get(loadout, AMMO_STATS["AK-74"])["mag"])
+	elif active_ammo <= 0:
+		# #79: active mag dry. Engaged with a live target + a loaded fallback →
+		# swap to the USSOCOM instead of standing in the open reloading. When
+		# secondary dries too, drop back to the primary and reload it. Idle
+		# bots always reload — no reason to babysit a pistol when nobody's
+		# shooting at us.
+		var engaged: bool = is_instance_valid(target) and _retreat_t <= 0.0
+		if not using_secondary and engaged and secondary_ammo > 0:
+			using_secondary = true
+		elif using_secondary:
+			using_secondary = false
+			_start_reload()
+		else:
+			_start_reload()
 	elif is_instance_valid(target) and fire_cd <= 0.0 and _retreat_t <= 0.0:
 		var to_t: Vector2 = target.global_position - global_position
 		var t_len: float = to_t.length()
-		# LAW bots refuse point-blank shots — rocket blast radius 130 would splash themselves to death.
-		if loadout == "LAW" and t_len < ROCKET_MIN_RANGE:
+		# LAW bots refuse point-blank rocket shots — 130px splash would kill themselves.
+		# When they've swapped to the USSOCOM secondary (#79) the pistol is safe at any range.
+		if loadout == "LAW" and not using_secondary and t_len < ROCKET_MIN_RANGE:
 			pass
 		elif t_len < _skill_engage_range and _has_line_of_sight(target):
 			_shoot(to_t)
@@ -388,20 +414,36 @@ func _start_reload() -> void:
 	if reloading:
 		return
 	reloading = true
-	reload_t = float(AMMO_STATS.get(loadout, AMMO_STATS["AK-74"])["reload"])
-	Sfx.reload(loadout)
+	# Reload the ACTIVE weapon — the secondary has its own mag + reload time (#79).
+	var wname: String = "USSOCOM" if using_secondary else loadout
+	reload_t = float(AMMO_STATS.get(wname, AMMO_STATS["AK-74"])["reload"])
+	Sfx.reload(wname)
 
 
 func _shoot(to_t: Vector2) -> void:
-	if ammo <= 0:
-		_start_reload()
-		return
-	ammo -= 1
+	# Branch on the active weapon (#79): the secondary tracks its own mag so a
+	# dry primary doesn't consume USSOCOM rounds and vice-versa.
+	if using_secondary:
+		if secondary_ammo <= 0:
+			_start_reload()
+			return
+		secondary_ammo -= 1
+	else:
+		if ammo <= 0:
+			_start_reload()
+			return
+		ammo -= 1
 	var aim := to_t.normalized()
 	ceasefire_t = 0.0
 	# lead the target by its velocity (predictive aim) — use the actual bullet
 	# speed for this loadout so lead is calibrated to what we're about to fire.
-	var speed_est: float = ROCKET_SPEED if loadout == "LAW" else BULLET_SPEED
+	var speed_est: float
+	if using_secondary:
+		speed_est = 800.0  # USSOCOM (#79)
+	elif loadout == "LAW":
+		speed_est = ROCKET_SPEED
+	else:
+		speed_est = BULLET_SPEED
 	if is_instance_valid(target) and target is CharacterBody2D:
 		var t_est: float = to_t.length() / speed_est
 		var lead: Vector2 = target.global_position + target.velocity * t_est
@@ -413,20 +455,27 @@ func _shoot(to_t: Vector2) -> void:
 	# widens the cone so shots miss; high skill barely wavers.
 	if _skill_aim_spread > 0.0:
 		aim = aim.rotated(randf_range(-1.0, 1.0) * _skill_aim_spread)
-	var muzzle: Vector2 = global_position + SoldierArt.muzzle_local(self, aim, facing, loadout) + aim * 4.0
+	var active_weapon: String = "USSOCOM" if using_secondary else loadout
+	var muzzle: Vector2 = global_position + SoldierArt.muzzle_local(self, aim, facing, active_weapon) + aim * 4.0
 	# MP: broadcast so clients spawn the tracer/rocket + play sfx (mirrors player.net_shoot).
 	# Damage is gated per-victim in bullet.gd/rocket.gd via is_multiplayer_authority();
 	# rockets additionally sync transform from the host as authority (#61).
 	if Net.is_networked() and multiplayer.has_multiplayer_peer():
 		var pid: int = 0
-		if loadout == "LAW":
+		if loadout == "LAW" and not using_secondary:
 			pid = _next_proj_id
 			_next_proj_id += 1
 		rpc("net_bot_shoot", muzzle, aim, pid)
 	else:
 		net_bot_shoot(muzzle, aim, 0)
-	# Rockets fire slower so LAW bots aren't oppressive.
-	fire_cd = 1.6 if loadout == "LAW" else 0.45
+	# Rockets fire slower so LAW bots aren't oppressive; USSOCOM secondary fires
+	# at its player-side cadence (#79).
+	if using_secondary:
+		fire_cd = 0.167
+	elif loadout == "LAW":
+		fire_cd = 1.6
+	else:
+		fire_cd = 0.45
 
 
 # ── RPCs (issue #57) ──────────────────────────────────
@@ -436,13 +485,15 @@ func _shoot(to_t: Vector2) -> void:
 
 @rpc("authority", "call_local", "reliable")
 func net_bot_shoot(muzzle: Vector2, aim: Vector2, proj_id: int = 0) -> void:
-	Sfx.shoot(loadout)
+	# Active weapon = USSOCOM secondary if the bot has swapped, else primary loadout (#79).
+	var active_weapon: String = "USSOCOM" if using_secondary else loadout
+	Sfx.shoot(active_weapon)
 	muzzle_t = 0.08
 	# Debug counter so --smoke-botfire can confirm the RPC reached the client.
 	if Net.is_client():
 		Net.bot_shots_seen += 1
 	var dmg_mul: float = MatchConfig.mod_damage()
-	if loadout == "LAW":
+	if active_weapon == "LAW":
 		var r := rocket_scene.instantiate()
 		# #69: name by bot_id so two LAW bots can't collide their proj_id counters
 		# and shove a rocket into `@RigidBody2D@nnn`-style auto-name territory.
@@ -462,11 +513,17 @@ func net_bot_shoot(muzzle: Vector2, aim: Vector2, proj_id: int = 0) -> void:
 		var b := bullet_scene.instantiate()
 		b.global_position = muzzle
 		b.direction = aim
-		b.speed = BULLET_SPEED
-		b.damage = 12.0 * dmg_mul
+		if using_secondary:
+			# USSOCOM (player.gd secondary): 27 dmg, 800 speed.
+			b.speed = 800.0
+			b.damage = 27.0 * dmg_mul
+			b.weapon_name = "USSOCOM"
+		else:
+			b.speed = BULLET_SPEED
+			b.damage = 12.0 * dmg_mul
+			b.weapon_name = "AK-74"
 		b.team = team
 		b.killer_name = display_name
-		b.weapon_name = "AK-74"
 		get_parent().add_child(b)
 
 
@@ -502,8 +559,11 @@ func try_pickup_weapon(weapon_name: String) -> bool:
 	# Bots only understand two loadouts today (AK-74 / LAW) — swap if matched.
 	if weapon_name == "LAW" or weapon_name == "AK-74":
 		loadout = weapon_name
-		# Fresh magazine on pickup — mirrors player.try_pickup_weapon.
+		# Fresh magazine on pickup — mirrors player.try_pickup_weapon. Snap the
+		# active weapon back to the primary too so pickups don't leave a bot
+		# clutching its pistol (#79).
 		ammo = int(AMMO_STATS.get(loadout, AMMO_STATS["AK-74"])["mag"])
+		using_secondary = false
 		reloading = false
 		reload_t = 0.0
 		return true
@@ -583,6 +643,8 @@ func restore_for_round() -> void:
 	fuel = 100.0
 	velocity = Vector2.ZERO
 	ammo = int(AMMO_STATS.get(loadout, AMMO_STATS["AK-74"])["mag"])
+	secondary_ammo = int(AMMO_STATS["USSOCOM"]["mag"])
+	using_secondary = false
 	reloading = false
 	reload_t = 0.0
 	fire_cd = 0.5
@@ -647,15 +709,26 @@ func _draw() -> void:
 	var aim: Vector2 = Vector2(facing, 0.0)
 	if is_instance_valid(target):
 		aim = (target.global_position - global_position).normalized()
-	var weapon_col := Color(0.85, 0.55, 0.35) if loadout == "LAW" else Color(0.72, 0.72, 0.78)
-	var weapon_kind := "rocket" if loadout == "LAW" else "bullet"
+	# When the bot has swapped to its USSOCOM secondary (#79), draw the pistol
+	# in its hand and slot the primary on its back so it reads as a real swap.
+	var active_weapon: String = "USSOCOM" if using_secondary else loadout
+	var back_weapon: String = loadout if using_secondary else ""
+	var weapon_col: Color
+	var weapon_kind: String
+	if active_weapon == "LAW":
+		weapon_col = Color(0.85, 0.55, 0.35)
+		weapon_kind = "rocket"
+	elif active_weapon == "USSOCOM":
+		weapon_col = Color(0.85, 0.8, 0.6)
+		weapon_kind = "bullet"
+	else:
+		weapon_col = Color(0.72, 0.72, 0.78)
+		weapon_kind = "bullet"
 	# Non-authority replicas never run move_and_slide, so is_on_floor() is stale.
 	# Approximate from vertical velocity — matches the guard in player.gd::_draw.
 	var on_floor := is_on_floor()
 	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
 		on_floor = absf(velocity.y) < 5.0
-	# #60: bots carry a fixed loadout with no secondary slot, so nothing rides
-	# their back for now. Belt grenade shows when their grenade pool is > 0.
 	SoldierArt.draw_soldier(
 		self,
 		color,
@@ -670,7 +743,7 @@ func _draw() -> void:
 		health,
 		fuel,
 		false,
-		loadout,
+		active_weapon,
 		on_floor,
 		reloading,
 		false,
@@ -680,7 +753,7 @@ func _draw() -> void:
 		false,
 		ceasefire_t > 0.0,
 		cosmetics,
-		"",
+		back_weapon,
 		grenades,
 		false,
 	)
