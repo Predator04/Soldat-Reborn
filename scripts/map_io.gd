@@ -28,6 +28,17 @@ static func map_to_json(m: Dictionary) -> String:
 	for b in m.get("bot_spawns", []):
 		bs.append([b.x, b.y])
 	out["bot_spawns"] = bs
+	# Ladders — vertical rects, dict-per-entry to leave room for future flags.
+	var lds: Array = []
+	for ld in m.get("ladders", []):
+		lds.append({
+			"x": float(ld.get("x", 0.0)),
+			"y": float(ld.get("y", 0.0)),
+			"w": float(ld.get("w", 20.0)),
+			"h": float(ld.get("h", 120.0)),
+		})
+	if lds.size() > 0:
+		out["ladders"] = lds
 	for list_key in ["m2_mounts", "ctf_flags", "dom_points"]:
 		if m.has(list_key):
 			var arr: Array = []
@@ -76,6 +87,17 @@ static func json_to_map(text: String) -> Dictionary:
 	for b in parsed.get("bot_spawns", []):
 		bs.append(_v2(b))
 	m["bot_spawns"] = bs
+	var lds: Array = []
+	for ld in parsed.get("ladders", []):
+		if typeof(ld) != TYPE_DICTIONARY:
+			continue
+		lds.append({
+			"x": float(ld.get("x", 0.0)),
+			"y": float(ld.get("y", 0.0)),
+			"w": float(ld.get("w", 20.0)),
+			"h": float(ld.get("h", 120.0)),
+		})
+	m["ladders"] = lds
 	for list_key in ["m2_mounts", "ctf_flags", "dom_points"]:
 		if parsed.has(list_key):
 			var arr: Array = []

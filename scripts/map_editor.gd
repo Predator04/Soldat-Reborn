@@ -20,7 +20,7 @@ const GRID_STEP := 10.0
 const HIT_RADIUS := 26.0
 
 enum Tool {
-	PLATFORM, MOVE, DELETE,
+	PLATFORM, LADDER, MOVE, DELETE,
 	PLAYER_SPAWN, BOT_SPAWN,
 	FLAG_BLUE, FLAG_RED, FLAG_NEUTRAL,
 	DOM_POINT, M2_MOUNT,
@@ -51,6 +51,7 @@ func _fresh_map() -> Dictionary:
 	return {
 		"name": "Untitled",
 		"platforms": [],
+		"ladders": [],
 		"player_spawn": Vector2(220.0, GROUND_Y - 125.0),
 		"bot_spawns": [],
 	}
@@ -77,8 +78,8 @@ func _ready() -> void:
 # ── Rendering ─────────────────────────────────────────
 
 func _process(_delta: float) -> void:
-	# Redraw continuously while dragging out a platform so the preview follows the cursor.
-	if _dragging and _drag_kind == "platform":
+	# Redraw continuously while dragging out a platform/ladder so the preview follows the cursor.
+	if _dragging and (_drag_kind == "platform" or _drag_kind == "ladder"):
 		queue_redraw()
 
 
@@ -104,12 +105,20 @@ func _draw() -> void:
 		var r := Rect2(p - s * 0.5, s)
 		draw_rect(r, Color(0.28, 0.32, 0.4, 0.9))
 		draw_rect(r, Color(0.55, 0.65, 0.85), false, 1.5)
-	# Live drag preview for a new platform.
+	# Ladders — two vertical rails + horizontal rungs so they read at a glance.
+	for ld in _map.get("ladders", []):
+		var lr := _ladder_rect(ld)
+		_draw_ladder(lr, Color(0.85, 0.65, 0.35), false)
+	# Live drag preview for a new platform / ladder.
 	if _dragging and _drag_kind == "platform":
 		var mp := get_global_mouse_position()
 		var r := _rect_from_drag(_drag_start, mp)
 		draw_rect(r, Color(0.95, 0.82, 0.4, 0.35))
 		draw_rect(r, Color(0.95, 0.82, 0.4), false, 1.5)
+	elif _dragging and _drag_kind == "ladder":
+		var mp := get_global_mouse_position()
+		var r := _rect_from_drag(_drag_start, mp)
+		_draw_ladder(r, Color(1.0, 0.85, 0.45), true)
 	# Markers.
 	var ps: Vector2 = _map.get("player_spawn", Vector2.ZERO)
 	_draw_marker(ps, Color(0.4, 0.7, 1.0), "P")
@@ -153,6 +162,33 @@ func _rect_from_drag(a: Vector2, b: Vector2) -> Rect2:
 	var tl := Vector2(min(a.x, b.x), min(a.y, b.y))
 	var br := Vector2(max(a.x, b.x), max(a.y, b.y))
 	return Rect2(tl, br - tl)
+
+
+func _ladder_rect(ld: Dictionary) -> Rect2:
+	# Ladder entries are stored top-left anchored so the h/w are self-explanatory.
+	return Rect2(Vector2(float(ld.get("x", 0.0)), float(ld.get("y", 0.0))),
+		Vector2(float(ld.get("w", 20.0)), float(ld.get("h", 120.0))))
+
+
+func _draw_ladder(r: Rect2, col: Color, preview: bool) -> void:
+	var fill: Color = col
+	fill.a = 0.20 if preview else 0.14
+	draw_rect(r, fill)
+	# Two vertical rails.
+	var rail_col: Color = col
+	var inset: float = maxf(2.0, minf(6.0, r.size.x * 0.15))
+	var left_x: float = r.position.x + inset
+	var right_x: float = r.position.x + r.size.x - inset
+	var top_y: float = r.position.y
+	var bot_y: float = r.position.y + r.size.y
+	draw_line(Vector2(left_x, top_y), Vector2(left_x, bot_y), rail_col, 2.0)
+	draw_line(Vector2(right_x, top_y), Vector2(right_x, bot_y), rail_col, 2.0)
+	# Rungs every ~20px so short ladders still show ≥1 rung.
+	var step: float = 20.0
+	var y: float = top_y + step * 0.5
+	while y < bot_y:
+		draw_line(Vector2(left_x, y), Vector2(right_x, y), rail_col, 1.5)
+		y += step
 
 
 # ── Input ─────────────────────────────────────────────
@@ -202,10 +238,11 @@ func _handle_key(ev: InputEventKey) -> void:
 		KEY_ESCAPE: _exit_to_menu()
 		KEY_F5: _play_test()
 		KEY_1: _set_tool(Tool.PLATFORM)
-		KEY_2: _set_tool(Tool.MOVE)
-		KEY_3: _set_tool(Tool.DELETE)
-		KEY_4: _set_tool(Tool.PLAYER_SPAWN)
-		KEY_5: _set_tool(Tool.BOT_SPAWN)
+		KEY_2: _set_tool(Tool.LADDER)
+		KEY_3: _set_tool(Tool.MOVE)
+		KEY_4: _set_tool(Tool.DELETE)
+		KEY_5: _set_tool(Tool.PLAYER_SPAWN)
+		KEY_6: _set_tool(Tool.BOT_SPAWN)
 
 
 func _on_lmb_press(mp: Vector2) -> void:
@@ -214,6 +251,10 @@ func _on_lmb_press(mp: Vector2) -> void:
 			_drag_start = mp
 			_dragging = true
 			_drag_kind = "platform"
+		Tool.LADDER:
+			_drag_start = mp
+			_dragging = true
+			_drag_kind = "ladder"
 		Tool.MOVE:
 			var found := _find_at(mp)
 			if found.size() > 0:
@@ -268,6 +309,25 @@ func _on_lmb_release(mp: Vector2) -> void:
 		var arr: Array = _map.get("platforms", [])
 		arr.append({"p": center, "s": size})
 		_map["platforms"] = arr
+	elif _drag_kind == "ladder":
+		var r := _rect_from_drag(_drag_start, mp)
+		# Force a tall/narrow shape: default column if the drag is too small,
+		# and force h > w so climbing input reads unambiguously.
+		var w: float = maxf(GRID_STEP, round(r.size.x / GRID_STEP) * GRID_STEP)
+		var h: float = maxf(GRID_STEP * 4.0, round(r.size.y / GRID_STEP) * GRID_STEP)
+		if r.size.x < 8.0 or r.size.y < 20.0:
+			w = 20.0
+			h = 160.0
+			r.position = _snap(mp) - Vector2(w * 0.5, h)
+		if w > h:
+			# User dragged wider than tall — swap so it's still a vertical ladder.
+			var tmp := w
+			w = h
+			h = tmp
+		var pos := _snap(r.position)
+		var arr: Array = _map.get("ladders", [])
+		arr.append({"x": pos.x, "y": pos.y, "w": w, "h": h})
+		_map["ladders"] = arr
 	_dragging = false
 	_drag_kind = ""
 	_drag_key = ""
@@ -320,6 +380,11 @@ func _find_at(mp: Vector2) -> Array:
 		r = r.grow(4.0)
 		if r.has_point(mp):
 			return ["platforms", i]
+	var lds: Array = _map.get("ladders", [])
+	for i in lds.size():
+		var lr := _ladder_rect(lds[i]).grow(4.0)
+		if lr.has_point(mp):
+			return ["ladders", i]
 	return []
 
 
@@ -327,6 +392,11 @@ func _pos_of(key: String, index: int) -> Vector2:
 	if key == "player_spawn": return _map["player_spawn"]
 	if key == "inf_flag" or key == "htf_flag" or key == "rambo_pos": return _map[key]
 	if key == "platforms": return _map["platforms"][index]["p"]
+	if key == "ladders":
+		var ld: Dictionary = _map["ladders"][index]
+		# Track drag by the ladder's center so the mouse offset feels natural.
+		return Vector2(float(ld["x"]) + float(ld["w"]) * 0.5,
+			float(ld["y"]) + float(ld["h"]) * 0.5)
 	return _map[key][index]
 
 
@@ -337,6 +407,10 @@ func _set_pos_of(key: String, index: int, pos: Vector2) -> void:
 		_map[key] = pos
 	elif key == "platforms":
 		_map["platforms"][index]["p"] = pos
+	elif key == "ladders":
+		var ld: Dictionary = _map["ladders"][index]
+		ld["x"] = pos.x - float(ld["w"]) * 0.5
+		ld["y"] = pos.y - float(ld["h"]) * 0.5
 	else:
 		_map[key][index] = pos
 
@@ -352,8 +426,8 @@ func _try_delete_at(mp: Vector2) -> void:
 		return
 	if key == "inf_flag" or key == "htf_flag" or key == "rambo_pos":
 		_map.erase(key)
-	elif key == "platforms":
-		_map["platforms"].remove_at(idx)
+	elif key == "platforms" or key == "ladders":
+		_map[key].remove_at(idx)
 	else:
 		_map[key].remove_at(idx)
 		if _map[key].is_empty():
@@ -387,6 +461,7 @@ func _build_ui() -> void:
 
 	var tool_specs := [
 		["Platform", Tool.PLATFORM],
+		["Ladder", Tool.LADDER],
 		["Move", Tool.MOVE],
 		["Delete", Tool.DELETE],
 		["Player", Tool.PLAYER_SPAWN],
@@ -622,6 +697,7 @@ func _set_tool(t: int) -> void:
 func _tool_name(t: int) -> String:
 	match t:
 		Tool.PLATFORM: return "Platform (drag)"
+		Tool.LADDER: return "Ladder (drag vertically)"
 		Tool.MOVE: return "Move (drag)"
 		Tool.DELETE: return "Delete"
 		Tool.PLAYER_SPAWN: return "Player Spawn"

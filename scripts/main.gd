@@ -572,9 +572,66 @@ func _build_terrain() -> void:
 		_make_platform(pl["p"], pl["s"], Color(0.28, 0.32, 0.4))
 	_make_platform(Vector2(0, MAP_H / 2.0), Vector2(40, MAP_H * 2.0), Color(0.2, 0.23, 0.28))
 	_make_platform(Vector2(MAP_W, MAP_H / 2.0), Vector2(40, MAP_H * 2.0), Color(0.2, 0.23, 0.28))
+	# Ladders — climbable Area2D regions (see player.gd's climbing state).
+	for ld in _map.get("ladders", []):
+		_make_ladder(float(ld.get("x", 0.0)), float(ld.get("y", 0.0)),
+			float(ld.get("w", 20.0)), float(ld.get("h", 120.0)))
 	_spawn_scenery()
 	_spawn_scenery_hints()
 	_spawn_m2_mounts()
+
+
+func _make_ladder(x: float, y: float, w: float, h: float) -> Area2D:
+	# Ladder = non-collidable Area2D on the "ladder" group. player.gd polls
+	# get_overlapping_areas() each physics frame to detect climb availability.
+	# `center_x` is stashed on the area for the player's x-snap while climbing.
+	var area := Area2D.new()
+	area.add_to_group("ladder")
+	area.position = Vector2(x + w * 0.5, y + h * 0.5)
+	area.set_meta("center_x", area.position.x)
+	area.set_meta("top_y", y)
+	area.set_meta("bottom_y", y + h)
+	area.set_meta("half_w", w * 0.5)
+	area.set_meta("half_h", h * 0.5)
+	# Only detect Area2D overlaps against the player's own ladder-probe Area2D
+	# so soldiers don't drag physics bodies into the area's contact list.
+	area.monitorable = true
+	area.monitoring = false
+	var shape := CollisionShape2D.new()
+	var rect := RectangleShape2D.new()
+	rect.size = Vector2(w, h)
+	shape.shape = rect
+	area.add_child(shape)
+	# Cheap _draw-style visual: two vertical rails + rungs every ~20px.
+	var vis := _LadderVisual.new()
+	vis.width = w
+	vis.height = h
+	area.add_child(vis)
+	add_child(area)
+	return area
+
+
+class _LadderVisual extends Node2D:
+	var width: float = 20.0
+	var height: float = 120.0
+
+	func _draw() -> void:
+		var col := Color(0.72, 0.55, 0.28, 0.95)
+		var inset: float = clampf(width * 0.15, 2.0, 6.0)
+		var lx := -width * 0.5 + inset
+		var rx :=  width * 0.5 - inset
+		var ty := -height * 0.5
+		var by :=  height * 0.5
+		# Faint fill so the ladder reads even against dark terrain.
+		draw_rect(Rect2(Vector2(-width * 0.5, ty), Vector2(width, height)),
+			Color(0.35, 0.24, 0.12, 0.28))
+		draw_line(Vector2(lx, ty), Vector2(lx, by), col, 2.0)
+		draw_line(Vector2(rx, ty), Vector2(rx, by), col, 2.0)
+		var step := 20.0
+		var y := ty + step * 0.5
+		while y < by:
+			draw_line(Vector2(lx, y), Vector2(rx, y), col, 1.5)
+			y += step
 
 
 func _spawn_scenery() -> void:

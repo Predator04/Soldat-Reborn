@@ -180,6 +180,24 @@ const JET_REGEN := 32.0
 const MAX_FALL := 1200.0
 const COYOTE_TIME := 0.09
 const JUMP_BUFFER := 0.10
+# Ladder climb — Soldat-style. W/S drives vertical velocity, gravity off, x
+# snapped toward the ladder center. Slower than run (205) so climbing feels
+# deliberate.
+const CLIMB_SPEED := 150.0
+# Time after engaging a ladder before a fresh jump-press can dismount, so the
+# initial W press that engages doesn't also hop-off in the same frame.
+const CLIMB_ENGAGE_GRACE := 0.20
+# Ladder overlap padding — the player's feet-anchored body sits above the
+# world origin, so this bounds the vertical range we treat as "on the ladder".
+const CLIMB_BODY_PAD_TOP := 24.0
+const CLIMB_BODY_PAD_BOTTOM := 6.0
+
+# Ladder climb state. `on_ladder` is set each physics tick from ladder overlap;
+# `climbing` becomes true when W/S engages a climb and clears on dismount.
+var on_ladder := false
+var climbing := false
+var _active_ladder: Node2D = null
+var _climb_engage_t: float = 0.0
 
 var bullet_scene := preload("res://scenes/bullet.tscn")
 var grenade_scene := preload("res://scenes/grenade.tscn")
@@ -369,15 +387,54 @@ func _physics_process(delta: float) -> void:
 		prone = false
 	var s_now := Input.is_action_pressed("crouch") and not prone
 	# Roll: press S with lateral momentum → brief burst, skokdolobrot anim, no crouch shape.
-	if s_now and not s_prev and is_on_floor() and roll_cd <= 0.0 and absf(velocity.x) > 60.0:
+	# Suppressed while climbing so S = climb-down doesn't fire a roll on step-off.
+	if s_now and not s_prev and is_on_floor() and roll_cd <= 0.0 and absf(velocity.x) > 60.0 and not climbing:
 		roll_t = ROLL_DURATION
 		roll_cd = ROLL_COOLDOWN
 		roll_dir = signf(velocity.x)
 		velocity.x = roll_dir * ROLL_SPEED
 		Sfx.jump()
 	s_prev = s_now
-	crouching = s_now and roll_t <= 0.0
+	crouching = s_now and roll_t <= 0.0 and not climbing
 	_apply_stance_shape()
+
+	# ── Ladder / climbing ──────────────────────────────
+	# Detect overlap, engage on W/S press, disengage on overlap loss or a
+	# fresh jump-tap after the engage grace. Climbing suppresses gravity/jet/
+	# jump/roll/crouch/prone for this tick; other movement/weapon paths run
+	# normally so aim + shoot still work while climbing.
+	var new_ladder: Node2D = _find_ladder_overlap()
+	on_ladder = new_ladder != null
+	var climb_down_pressed := Input.is_action_pressed("crouch")
+	if not climbing and on_ladder and (jump_pressed or climb_down_pressed):
+		climbing = true
+		_active_ladder = new_ladder
+		_climb_engage_t = 0.0
+		prone = false
+		crouching = false
+		roll_t = 0.0
+		if was_jet:
+			Sfx.jet(false)
+			was_jet = false
+		jet_on = false
+		velocity.y = 0.0
+		_apply_stance_shape()
+	if climbing:
+		if not on_ladder:
+			climbing = false
+			_active_ladder = null
+		else:
+			_active_ladder = new_ladder
+			_climb_engage_t += delta
+			# Fresh jump-tap after grace → hop off with a small upward pop.
+			if Input.is_action_just_pressed("jump") and _climb_engage_t > CLIMB_ENGAGE_GRACE:
+				climbing = false
+				_active_ladder = null
+				var mg_off: float = MatchConfig.mod_gravity()
+				velocity.y = JUMP_VEL * 0.55 * mg_off
+				coyote_t = 0.0
+				jump_buffer_t = 0.0
+				Sfx.jump()
 
 	var dir := 0.0
 	if left:
@@ -391,71 +448,88 @@ func _physics_process(delta: float) -> void:
 	coyote_t = COYOTE_TIME if on_floor else maxf(0.0, coyote_t - delta)
 	jump_buffer_t = JUMP_BUFFER if jump_pressed else maxf(0.0, jump_buffer_t - delta)
 
-	# horizontal
-	var speed_mul: float = MatchConfig.mod_speed()
-	# Predator bonus (#78) — +35% speed while active. Berserker also gets a
-	# small nudge so the melee rush feels dangerous. Cluster/Vest are neutral.
-	if bonus_kind == "predator":
-		speed_mul *= 1.35
-	elif bonus_kind == "berserker":
-		speed_mul *= 1.15
-	var accel := (GROUND_ACCEL if on_floor else AIR_ACCEL) * speed_mul
-	var cap := (RUN_SPEED if on_floor else BUNNY_SPEED) * speed_mul
-	# Preserve bunny-hop momentum: if a buffered jump will fire this tick,
-	# skip the RUN_SPEED clamp so airborne speed isn't clipped on the landing frame.
-	if on_floor and jump_buffer_t > 0.0 and coyote_t > 0.0:
-		cap = BUNNY_SPEED * speed_mul
-	# Crouch/prone slow the ground cap; airborne cap is untouched so bunny-hops are preserved.
-	# Roll trumps both — a short window at ROLL_SPEED before ground friction reasserts.
-	if on_floor:
-		if roll_t > 0.0:
-			cap = ROLL_SPEED
-		elif prone:
-			cap *= 0.28
-		elif crouching:
-			cap *= 0.6
-	if roll_t > 0.0:
-		# Roll ignores A/D input + friction — locked speed for the whole window
-		# so it always beats a bunny-hop's lateral cap.
-		velocity.x = roll_dir * ROLL_SPEED
-	elif dir != 0.0:
-		velocity.x += dir * accel * delta
-		velocity.x = clampf(velocity.x, -cap, cap)
-	else:
-		var fr := GROUND_FRICTION if on_floor else AIR_FRICTION
-		velocity.x = move_toward(velocity.x, 0.0, fr * delta)
-		velocity.x = clampf(velocity.x, -cap, cap)
-
-	# jet boots (RMB, matching Soldat's default controls). Realistic mode locks
-	# the boots — Soldat's Realistic ruleset removes fuel entirely.
-	# mod_jet scales thrust/drain/regen consistently; mod_gravity scales thrust
-	# so the boots still lift you in higher-gravity worlds.
-	var jet_pressed := Input.is_action_pressed("jet") and not Settings.realistic
-	var mj: float = MatchConfig.mod_jet()
-	var mg: float = MatchConfig.mod_gravity()
-	jet_on = false
-	if jet_pressed and not on_floor and fuel > 0.0:
-		velocity.y += JET_THRUST * mj * mg * delta
-		fuel = maxf(0.0, fuel - (JET_DRAIN / maxf(0.1, mj)) * delta)
-		jet_on = true
-	# Grounded regen — always fires when on the floor, even if RMB is held.
-	# Prior version used elif, which technically worked (RMB+ground failed
-	# the first branch), but the split makes the intent unambiguous.
-	if on_floor:
-		fuel = minf(100.0, fuel + JET_REGEN * mj * delta)
-
-	# jump / bunny hop (coyote + buffer aware). Jump velocity scales with
-	# mod_gravity so peak height feels the same under heavier gravity.
-	if jump_buffer_t > 0.0 and coyote_t > 0.0:
-		velocity.y = JUMP_VEL * mg
-		velocity.x = clampf(velocity.x * 1.06, -BUNNY_SPEED, BUNNY_SPEED)
-		coyote_t = 0.0
+	if climbing and _active_ladder != null:
+		# Climbing owns velocity this frame. Vertical from W/S; horizontal is a
+		# gentle snap toward the ladder center that A/D input can overpower to
+		# step off (which disengages via overlap loss next frame).
+		var vy_climb := 0.0
+		if jump_pressed:
+			vy_climb -= CLIMB_SPEED
+		if climb_down_pressed:
+			vy_climb += CLIMB_SPEED
+		velocity.y = vy_climb
+		var target_x: float = float(_active_ladder.get_meta("center_x", global_position.x))
+		var to_center: float = target_x - global_position.x
+		velocity.x = clampf(to_center * 9.0 + dir * 160.0, -220.0, 220.0)
+		# Suppress bunny-hop this tick — climbing steers vertical velocity.
 		jump_buffer_t = 0.0
-		Sfx.jump()
+		coyote_t = 0.0
+	else:
+		# horizontal
+		var speed_mul: float = MatchConfig.mod_speed()
+		# Predator bonus (#78) — +35% speed while active. Berserker also gets a
+		# small nudge so the melee rush feels dangerous. Cluster/Vest are neutral.
+		if bonus_kind == "predator":
+			speed_mul *= 1.35
+		elif bonus_kind == "berserker":
+			speed_mul *= 1.15
+		var accel := (GROUND_ACCEL if on_floor else AIR_ACCEL) * speed_mul
+		var cap := (RUN_SPEED if on_floor else BUNNY_SPEED) * speed_mul
+		# Preserve bunny-hop momentum: if a buffered jump will fire this tick,
+		# skip the RUN_SPEED clamp so airborne speed isn't clipped on the landing frame.
+		if on_floor and jump_buffer_t > 0.0 and coyote_t > 0.0:
+			cap = BUNNY_SPEED * speed_mul
+		# Crouch/prone slow the ground cap; airborne cap is untouched so bunny-hops are preserved.
+		# Roll trumps both — a short window at ROLL_SPEED before ground friction reasserts.
+		if on_floor:
+			if roll_t > 0.0:
+				cap = ROLL_SPEED
+			elif prone:
+				cap *= 0.28
+			elif crouching:
+				cap *= 0.6
+		if roll_t > 0.0:
+			# Roll ignores A/D input + friction — locked speed for the whole window
+			# so it always beats a bunny-hop's lateral cap.
+			velocity.x = roll_dir * ROLL_SPEED
+		elif dir != 0.0:
+			velocity.x += dir * accel * delta
+			velocity.x = clampf(velocity.x, -cap, cap)
+		else:
+			var fr := GROUND_FRICTION if on_floor else AIR_FRICTION
+			velocity.x = move_toward(velocity.x, 0.0, fr * delta)
+			velocity.x = clampf(velocity.x, -cap, cap)
 
-	if not on_floor:
-		velocity.y += GRAVITY * mg * delta
-		velocity.y = minf(velocity.y, MAX_FALL)
+		# jet boots (RMB, matching Soldat's default controls). Realistic mode locks
+		# the boots — Soldat's Realistic ruleset removes fuel entirely.
+		# mod_jet scales thrust/drain/regen consistently; mod_gravity scales thrust
+		# so the boots still lift you in higher-gravity worlds.
+		var jet_pressed := Input.is_action_pressed("jet") and not Settings.realistic
+		var mj: float = MatchConfig.mod_jet()
+		var mg: float = MatchConfig.mod_gravity()
+		jet_on = false
+		if jet_pressed and not on_floor and fuel > 0.0:
+			velocity.y += JET_THRUST * mj * mg * delta
+			fuel = maxf(0.0, fuel - (JET_DRAIN / maxf(0.1, mj)) * delta)
+			jet_on = true
+		# Grounded regen — always fires when on the floor, even if RMB is held.
+		# Prior version used elif, which technically worked (RMB+ground failed
+		# the first branch), but the split makes the intent unambiguous.
+		if on_floor:
+			fuel = minf(100.0, fuel + JET_REGEN * mj * delta)
+
+		# jump / bunny hop (coyote + buffer aware). Jump velocity scales with
+		# mod_gravity so peak height feels the same under heavier gravity.
+		if jump_buffer_t > 0.0 and coyote_t > 0.0:
+			velocity.y = JUMP_VEL * mg
+			velocity.x = clampf(velocity.x * 1.06, -BUNNY_SPEED, BUNNY_SPEED)
+			coyote_t = 0.0
+			jump_buffer_t = 0.0
+			Sfx.jump()
+
+		if not on_floor:
+			velocity.y += GRAVITY * mg * delta
+			velocity.y = minf(velocity.y, MAX_FALL)
 
 	# aim
 	var mouse := get_global_mouse_position()
@@ -990,6 +1064,35 @@ func _find_nearby_m2() -> Node2D:
 		if global_position.distance_to(m.global_position) < 32.0:
 			return m
 	return null
+
+
+func _find_ladder_overlap() -> Node2D:
+	# Rect-vs-rect between the soldier body (feet-anchored, ~14×24) and each
+	# ladder Area2D's stored bounds. Picks the ladder whose center-x is closest
+	# so a soldier straddling two ladders latches onto the nearer one.
+	var pcx: float = global_position.x
+	var pfeet: float = global_position.y
+	var phead: float = pfeet - CLIMB_BODY_PAD_TOP
+	var closest: Node2D = null
+	var best_dx: float = 1e9
+	for lad in get_tree().get_nodes_in_group("ladder"):
+		if not is_instance_valid(lad):
+			continue
+		var lx: float = float(lad.get_meta("center_x", lad.global_position.x))
+		var half_w: float = float(lad.get_meta("half_w", 10.0))
+		var top: float = float(lad.get_meta("top_y", lad.global_position.y - 60.0))
+		var bot: float = float(lad.get_meta("bottom_y", lad.global_position.y + 60.0))
+		var dx: float = absf(pcx - lx)
+		# X overlap — body half-width ~8 covers both stand + prone stances.
+		if dx > half_w + 8.0:
+			continue
+		# Y overlap — pad the ladder a hair so climbing off the top is smooth.
+		if pfeet + CLIMB_BODY_PAD_BOTTOM < top - 2.0 or phead > bot + 2.0:
+			continue
+		if dx < best_dx:
+			best_dx = dx
+			closest = lad
+	return closest
 
 
 func mount_m2(m2: Node2D) -> void:
