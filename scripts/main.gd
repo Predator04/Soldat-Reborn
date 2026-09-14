@@ -40,6 +40,7 @@ var _bots_by_id: Dictionary = {}
 var _next_bot_id: int = 1
 var _bot_sync_cd: float = 0.0
 const BOT_SYNC_HZ := 20.0            # host → clients broadcast rate for bot pos/vel/facing/etc.
+const BOT_STATE_CHUNK_MAX := 8       # #102: max bot entries per net_bot_state packet — keeps under ENet MTU (1392 B).
 
 # Team modes: fixed team ids (player joins BLUE, enemy bots on RED).
 const TEAM_BLUE := 1
@@ -2906,33 +2907,44 @@ func net_flag_state(arr: Array) -> void:
 func _broadcast_bot_state() -> void:
 	if _ready_peers.is_empty():
 		return
+	# #102: positional Array-of-Arrays instead of Dictionary-of-strings. Dropping
+	# the 14 key strings per entry shrinks each bot from ~365 B → ~140 B, keeping
+	# the unreliable_ordered packet under the ENet MTU (1392) for the common 4-8
+	# bot case. Field order MUST match net_bot_state below.
+	# Layout: [id, pos, vel, facing, jet, health, dead, loadout, ammo,
+	#         reloading, muzzle_t, ceasefire, using_secondary, secondary_ammo]
 	var arr: Array = []
 	for bid in _bots_by_id.keys():
 		var b: Node = _bots_by_id[bid]
 		if not is_instance_valid(b):
 			continue
-		arr.append({
-			"id": int(bid),
-			"pos": b.position,
-			"vel": b.velocity,
-			"facing": float(b.facing),
-			"jet": bool(b.jet_on),
-			"health": float(b.health),
-			"dead": bool(b.dead),
-			"loadout": str(b.loadout),
-			"ammo": int(b.ammo),
-			"reloading": bool(b.reloading),
-			"muzzle_t": float(b.muzzle_t),
-			"ceasefire": float(b.ceasefire_t),
-			# #79: mirror secondary state so client replicas render the correct
-			# weapon in-hand + on-back when the host's bot swaps to USSOCOM.
-			"using_secondary": bool(b.using_secondary),
-			"secondary_ammo": int(b.secondary_ammo),
-		})
+		arr.append([
+			int(bid),
+			b.position,
+			b.velocity,
+			float(b.facing),
+			bool(b.jet_on),
+			float(b.health),
+			bool(b.dead),
+			str(b.loadout),
+			int(b.ammo),
+			bool(b.reloading),
+			float(b.muzzle_t),
+			float(b.ceasefire_t),
+			bool(b.using_secondary),
+			int(b.secondary_ammo),
+		])
 	if arr.is_empty():
 		return
+	# Split across ticks if bot_count -1 (use every map spawn) yields more than
+	# BOT_STATE_CHUNK_MAX bots — safeguards against a giant map pushing us back
+	# over the MTU. 8/chunk × ~140 B ≈ 1120 B < 1392 B.
 	for pid in _ready_peers.keys():
-		rpc_id(int(pid), "net_bot_state", arr)
+		var i: int = 0
+		while i < arr.size():
+			var end: int = min(i + BOT_STATE_CHUNK_MAX, arr.size())
+			rpc_id(int(pid), "net_bot_state", arr.slice(i, end))
+			i = end
 
 
 @rpc("authority", "reliable")
@@ -2995,50 +3007,51 @@ func net_bot_die(bot_id: int) -> void:
 
 @rpc("authority", "call_remote", "unreliable_ordered")
 func net_bot_state(arr: Array) -> void:
+	# #102: entries are now positional Arrays (see _broadcast_bot_state).
 	# Defend against malformed payloads — a corrupt / crafted packet used to
 	# crash the client on the raw assignments (#86.1). Skip entries that aren't
-	# dictionaries; guard each field so an incorrect type keeps the previous
+	# 14-element arrays; guard each field so an incorrect type keeps the previous
 	# value instead of forcing an invalid assignment.
 	for entry in arr:
-		if typeof(entry) != TYPE_DICTIONARY:
+		if typeof(entry) != TYPE_ARRAY or entry.size() < 14:
 			continue
-		var id: int = int(entry.get("id", 0))
+		var id: int = int(entry[0])
 		if not _bots_by_id.has(id):
 			continue
 		var b: Node = _bots_by_id[id]
 		if not is_instance_valid(b):
 			continue
-		var pos_v: Variant = entry.get("pos", null)
+		var pos_v: Variant = entry[1]
 		if typeof(pos_v) == TYPE_VECTOR2:
 			b.position = pos_v
-		var vel_v: Variant = entry.get("vel", null)
+		var vel_v: Variant = entry[2]
 		if typeof(vel_v) == TYPE_VECTOR2:
 			b.velocity = vel_v
-		var facing_v: Variant = entry.get("facing", null)
+		var facing_v: Variant = entry[3]
 		if typeof(facing_v) == TYPE_FLOAT or typeof(facing_v) == TYPE_INT:
 			b.facing = float(facing_v)
-		b.jet_on = bool(entry.get("jet", false))
-		var health_v: Variant = entry.get("health", null)
+		b.jet_on = bool(entry[4])
+		var health_v: Variant = entry[5]
 		if typeof(health_v) == TYPE_FLOAT or typeof(health_v) == TYPE_INT:
 			b.health = float(health_v)
-		b.dead = bool(entry.get("dead", false))
-		var loadout_v: Variant = entry.get("loadout", null)
+		b.dead = bool(entry[6])
+		var loadout_v: Variant = entry[7]
 		if typeof(loadout_v) == TYPE_STRING or typeof(loadout_v) == TYPE_STRING_NAME:
 			b.loadout = String(loadout_v)
-		var ammo_v: Variant = entry.get("ammo", null)
+		var ammo_v: Variant = entry[8]
 		if typeof(ammo_v) == TYPE_INT or typeof(ammo_v) == TYPE_FLOAT:
 			b.ammo = int(ammo_v)
-		b.reloading = bool(entry.get("reloading", false))
-		var mz_v: Variant = entry.get("muzzle_t", null)
+		b.reloading = bool(entry[9])
+		var mz_v: Variant = entry[10]
 		if typeof(mz_v) == TYPE_FLOAT or typeof(mz_v) == TYPE_INT:
 			b.muzzle_t = float(mz_v)
-		var cf_v: Variant = entry.get("ceasefire", null)
+		var cf_v: Variant = entry[11]
 		if typeof(cf_v) == TYPE_FLOAT or typeof(cf_v) == TYPE_INT:
 			b.ceasefire_t = float(cf_v)
 		# #79: apply secondary state so the client-side replica draws the same
 		# in-hand weapon as the host (physics-side ammo tracking is irrelevant
 		# on the replica because _physics_process is authority-gated).
-		b.using_secondary = bool(entry.get("using_secondary", b.using_secondary))
-		var sa_v: Variant = entry.get("secondary_ammo", null)
+		b.using_secondary = bool(entry[12])
+		var sa_v: Variant = entry[13]
 		if typeof(sa_v) == TYPE_INT or typeof(sa_v) == TYPE_FLOAT:
 			b.secondary_ammo = int(sa_v)
