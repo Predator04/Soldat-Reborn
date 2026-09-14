@@ -81,6 +81,14 @@ const BR_ZONE_DPS := 22.0      # damage/sec applied outside the ring
 # each update out to every peer so client-owned players re-apply the weapon.
 const GG_KNIFE_LEVEL := 15
 const GG_GOLD_KNIFE_LEVEL := 16
+# Ladder weapon names in rung order — mirrors Player.GG_LADDER. Used to
+# validate that a kill was made with the killer's current rung weapon (so
+# grenade / dropped-weapon / bonus-forced kills don't accidentally advance).
+const GG_LADDER_NAMES := [
+	"USSOCOM", "Deagles", "MP5", "Steyr AUG", "AK-74", "Spas-12",
+	"Ruger 77", "Minimi", "M79", "Minigun", "Flamethrower", "Rambo Bow",
+	"LAW", "Barrett", "Chainsaw", "Knife",
+]
 var _gg_levels: Dictionary = {}
 
 # ── Match state (host-authoritative in MP) ─────────────
@@ -1912,23 +1920,27 @@ func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: Str
 		return
 	if not round_active or killer_team < 0:
 		return
-	# Suicide or team-kill: no score change, but still check survival end so
-	# the round can end on the last soldier down even from friendly fire.
-	if killer_name == victim_name or killer_team == victim_team:
-		if Settings.survival:
-			_check_survival_end()
-		return
-	# Gun Game: each kill advances the killer one rung on the ladder; a knife
-	# kill demotes the victim. Reaching (and killing at) the knife rung wins.
-	# No team scoring — race to the knife.
+	# Gun Game runs its own ladder BEFORE the generic team/suicide gate — FFA
+	# bots all share team 99, so the team-kill filter would otherwise discard
+	# every bot-vs-bot kill and stall bot ladder progression. Suicides are
+	# still filtered here so a self-kill can't earn a rung-up.
 	if Settings.game_mode == Settings.MODE_GG:
+		if killer_name == victim_name:
+			if Settings.survival:
+				_check_survival_end()
+			return
 		var k_lvl: int = _gg_get(killer_name)
 		var weapon_key: String = str(_weapon_name).replace(" (headshot)", "")
-		# Only demote when the killer is actually on the knife rung — otherwise a
-		# Berserker-boosted (or bonus-forced) knife kill from a lower rung would
-		# demote victims independently of the killer's ladder position.
+		# Ladder advances only on kills with the killer's CURRENT rung weapon.
+		# Grenade / off-rung / dropped-weapon kills stay on-kill-feed but grant
+		# no progress — otherwise every rung could be skipped with a nade.
+		var rung_weapon: String = ""
+		if k_lvl >= 0 and k_lvl < GG_LADDER_NAMES.size():
+			rung_weapon = str(GG_LADDER_NAMES[k_lvl])
+		var on_rung: bool = weapon_key == rung_weapon
+		# Demote only when the killer is actually on the knife rung.
 		var is_knife_kill: bool = weapon_key == "Knife" and k_lvl >= GG_KNIFE_LEVEL
-		if k_lvl >= GG_GOLD_KNIFE_LEVEL:
+		if on_rung and k_lvl >= GG_GOLD_KNIFE_LEVEL:
 			winner_note = "%s reached the golden knife" % killer_name
 			_end_round(killer_team)
 			if Net.is_networked() and Net.is_host():
@@ -1936,18 +1948,26 @@ func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: Str
 			return
 		# Broadcast the new killer level; every peer applies it to the body
 		# they own (host owns bots + host player; each client owns their player).
-		if Net.is_networked():
-			rpc("net_gg_set_level", killer_name, k_lvl + 1)
-			if is_knife_kill:
+		if on_rung:
+			if Net.is_networked():
+				rpc("net_gg_set_level", killer_name, k_lvl + 1)
+			else:
+				_gg_set(killer_name, k_lvl + 1)
+		if is_knife_kill:
+			if Net.is_networked():
 				rpc("net_gg_set_level", victim_name, _gg_get(victim_name) - 1)
-		else:
-			_gg_set(killer_name, k_lvl + 1)
-			if is_knife_kill:
+			else:
 				_gg_set(victim_name, _gg_get(victim_name) - 1)
 		if Settings.survival:
 			_check_survival_end()
 		if Net.is_networked() and Net.is_host():
 			_broadcast_match_state()
+		return
+	# Suicide or team-kill: no score change, but still check survival end so
+	# the round can end on the last soldier down even from friendly fire.
+	if killer_name == victim_name or killer_team == victim_team:
+		if Settings.survival:
+			_check_survival_end()
 		return
 	# Rambo mode: only the current bow carrier's kills count.
 	if Settings.game_mode == Settings.MODE_RM:

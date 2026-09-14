@@ -590,18 +590,21 @@ func _physics_process(delta: float) -> void:
 
 	# F — mount an M2 if we're standing on one, otherwise throw the current
 	# weapon (issue #11). Mount only when we're not already mounted.
+	# Gun Game: the rung IS the weapon — throwing it would strand you off
+	# the ladder and hand the rung to whoever picks it up. Mount still works.
 	var f_now := Input.is_action_pressed("weapon_throw")
 	if f_now and not f_prev:
 		var m2 := _find_nearby_m2()
 		if m2 != null and mounted_m2 == null:
 			m2.mount(self)
-		else:
+		elif Settings.game_mode != Settings.MODE_GG:
 			_drop_active_weapon()
 	f_prev = f_now
 
-	# grenade
+	# grenade — locked out in Gun Game so grenade kills can't skip the ladder.
 	grenade_cd -= delta
-	if Input.is_action_pressed("grenade") and grenade_cd <= 0.0 and grenades > 0:
+	if Settings.game_mode != Settings.MODE_GG \
+			and Input.is_action_pressed("grenade") and grenade_cd <= 0.0 and grenades > 0:
 		_throw_grenade()
 		grenade_cd = 0.6
 

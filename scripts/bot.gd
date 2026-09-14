@@ -368,11 +368,13 @@ func _physics_process(delta: float) -> void:
 		# swap to the USSOCOM instead of standing in the open reloading. When
 		# secondary dries too, drop back to the primary and reload it. Idle
 		# bots always reload — no reason to babysit a pistol when nobody's
-		# shooting at us.
+		# shooting at us. Gun Game locks the slot to the current rung, so the
+		# fallback is disabled there — reload the rung weapon instead.
 		var engaged: bool = is_instance_valid(target) and _retreat_t <= 0.0
-		if not using_secondary and engaged and secondary_ammo > 0:
+		var gg_lock: bool = Settings.game_mode == Settings.MODE_GG
+		if not gg_lock and not using_secondary and engaged and secondary_ammo > 0:
 			using_secondary = true
-		elif using_secondary:
+		elif not gg_lock and using_secondary:
 			using_secondary = false
 			_start_reload()
 		else:
