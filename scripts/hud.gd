@@ -1,6 +1,8 @@
 extends CanvasLayer
 ## HUD — health, fuel, ammo, weapon, grenades, kill feed, scoreboard, round timer, winner banner.
 
+const UITheme = preload("res://scripts/ui_theme.gd")
+
 var player: Node2D
 var map_name := ""
 var lbl_health: Label
@@ -69,11 +71,33 @@ func _ready() -> void:
 	desat_overlay.visible = false
 	add_child(desat_overlay)
 
-	lbl_health = _make_label(Vector2(14, 10), Color(1.0, 0.35, 0.35))
-	lbl_fuel = _make_label(Vector2(14, 34), Color(0.4, 0.8, 1.0))
-	lbl_ammo = _make_label(Vector2(14, 58), Color(1, 1, 1))
-	lbl_weapon = _make_label(Vector2(14, 82), Color(0.9, 0.85, 0.6))
-	lbl_grenades = _make_label(Vector2(14, 106), Color(0.6, 1.0, 0.6))
+	# Left-cluster backing strip — a dark translucent panel behind
+	# HP/Fuel/Ammo/Weapon/Grenades so the readouts pop over bright sky/terrain.
+	# Placed BEFORE the labels so they render on top.
+	var left_strip := PanelContainer.new()
+	left_strip.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	left_strip.position = Vector2(6, 6)
+	left_strip.custom_minimum_size = Vector2(206, 132)
+	left_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	left_strip.add_theme_stylebox_override("panel", UITheme.hud_strip_style())
+	add_child(left_strip)
+
+	# Top-center strip behind the mode/timer/score cluster.
+	var top_strip := PanelContainer.new()
+	top_strip.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	top_strip.offset_left = -260
+	top_strip.offset_right = 260
+	top_strip.offset_top = 4
+	top_strip.offset_bottom = 116
+	top_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top_strip.add_theme_stylebox_override("panel", UITheme.hud_strip_style())
+	add_child(top_strip)
+
+	lbl_health = _make_label(Vector2(14, 10), UITheme.COL_HUD_HEALTH)
+	lbl_fuel = _make_label(Vector2(14, 34), UITheme.COL_HUD_FUEL)
+	lbl_ammo = _make_label(Vector2(14, 58), UITheme.COL_HUD_AMMO)
+	lbl_weapon = _make_label(Vector2(14, 82), UITheme.COL_HUD_WEAPON)
+	lbl_grenades = _make_label(Vector2(14, 106), UITheme.COL_HUD_GRENADE)
 	feed = VBoxContainer.new()
 	feed.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	feed.position = Vector2(-320, 10)
@@ -86,31 +110,31 @@ func _ready() -> void:
 	lbl_map.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	lbl_map.offset_top = 8
 	lbl_map.offset_bottom = 30
-	lbl_map.add_theme_font_size_override("font_size", 16)
-	lbl_map.add_theme_color_override("font_color", Color(0.75, 0.78, 0.88))
-	lbl_map.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	lbl_map.add_theme_font_size_override("font_size", 15)
+	lbl_map.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)
+	lbl_map.add_theme_color_override("font_outline_color", UITheme.COL_SHADOW)
 	lbl_map.add_theme_constant_override("outline_size", 3)
 	add_child(lbl_map)
 	lbl_status = Label.new()
 	lbl_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl_status.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	lbl_status.offset_top = 30
-	lbl_status.offset_bottom = 52
-	lbl_status.add_theme_font_size_override("font_size", 13)
-	lbl_status.add_theme_color_override("font_color", Color(0.7, 0.9, 1.0))
-	lbl_status.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	lbl_status.offset_top = 28
+	lbl_status.offset_bottom = 48
+	lbl_status.add_theme_font_size_override("font_size", 12)
+	lbl_status.add_theme_color_override("font_color", UITheme.COL_INFO)
+	lbl_status.add_theme_color_override("font_outline_color", UITheme.COL_SHADOW)
 	lbl_status.add_theme_constant_override("outline_size", 3)
 	add_child(lbl_status)
 
 	lbl_timer = Label.new()
 	lbl_timer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl_timer.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	lbl_timer.offset_top = 52
+	lbl_timer.offset_top = 50
 	lbl_timer.offset_bottom = 82
-	lbl_timer.add_theme_font_size_override("font_size", 22)
-	lbl_timer.add_theme_color_override("font_color", Color(1.0, 0.92, 0.55))
-	lbl_timer.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
-	lbl_timer.add_theme_constant_override("outline_size", 4)
+	lbl_timer.add_theme_font_size_override("font_size", 24)
+	lbl_timer.add_theme_color_override("font_color", UITheme.COL_ACCENT)
+	lbl_timer.add_theme_color_override("font_outline_color", UITheme.COL_SHADOW)
+	lbl_timer.add_theme_constant_override("outline_size", 5)
 	add_child(lbl_timer)
 
 	lbl_score = RichTextLabel.new()
@@ -130,8 +154,8 @@ func _ready() -> void:
 	lbl_winner.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lbl_winner.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	lbl_winner.add_theme_font_size_override("font_size", 64)
-	lbl_winner.add_theme_color_override("font_color", Color(1.0, 0.92, 0.5))
-	lbl_winner.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	lbl_winner.add_theme_color_override("font_color", UITheme.COL_ACCENT_HI)
+	lbl_winner.add_theme_color_override("font_outline_color", UITheme.COL_SHADOW)
 	lbl_winner.add_theme_constant_override("outline_size", 12)
 	lbl_winner.visible = false
 	add_child(lbl_winner)
@@ -605,11 +629,13 @@ func _on_command_gui_input(event: InputEvent) -> void:
 
 
 func _make_label(pos: Vector2, col: Color) -> Label:
+	# HUD readouts — position from top-left, tight outline for high contrast
+	# over bright sky/terrain. Font size 17 matches UITheme.style_hud_label.
 	var l := Label.new()
 	l.position = pos
-	l.add_theme_font_size_override("font_size", 18)
+	l.add_theme_font_size_override("font_size", 17)
 	l.add_theme_color_override("font_color", col)
-	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	l.add_theme_color_override("font_outline_color", UITheme.COL_SHADOW)
 	l.add_theme_constant_override("outline_size", 4)
 	add_child(l)
 	return l

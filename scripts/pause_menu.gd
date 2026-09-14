@@ -8,6 +8,7 @@ extends CanvasLayer
 const ControlsMenu = preload("res://scripts/controls_menu.gd")
 const SettingsPanel = preload("res://scripts/settings_panel.gd")
 const HostAdminPanel = preload("res://scripts/host_admin_panel.gd")
+const UITheme = preload("res://scripts/ui_theme.gd")
 
 var _root_panel: Control
 var _menu_box: VBoxContainer
@@ -45,28 +46,37 @@ func _ready() -> void:
 	_build_quit_confirm()
 
 
+var _menu_wrapper: PanelContainer  # framed panel that hosts _menu_box
+
+
 func _build_main_menu() -> void:
+	# Wrap the pause list in a framed panel so it reads as a briefing terminal,
+	# consistent with every other menu surface.
+	_menu_wrapper = PanelContainer.new()
+	_menu_wrapper.add_theme_stylebox_override("panel", UITheme.panel_style())
+	_menu_wrapper.set_anchors_preset(Control.PRESET_CENTER, true)
+	_menu_wrapper.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_menu_wrapper.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_menu_wrapper.process_mode = Node.PROCESS_MODE_ALWAYS
+	_root_panel.add_child(_menu_wrapper)
+
 	_menu_box = VBoxContainer.new()
-	_menu_box.set_anchors_preset(Control.PRESET_CENTER)
-	_menu_box.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_menu_box.grow_vertical = Control.GROW_DIRECTION_BOTH
-	_menu_box.add_theme_constant_override("separation", 14)
+	_menu_box.add_theme_constant_override("separation", 10)
 	_menu_box.custom_minimum_size = Vector2(340, 0)
 	_menu_box.process_mode = Node.PROCESS_MODE_ALWAYS
-	_root_panel.add_child(_menu_box)
+	_menu_wrapper.add_child(_menu_box)
 
-	var title := Label.new()
-	title.text = "PAUSED"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 46)
-	title.add_theme_color_override("font_color", Color(0.95, 0.82, 0.4))
-	title.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
-	title.add_theme_constant_override("outline_size", 8)
+	var title := UITheme.make_screen_title("PAUSED", 44)
 	_menu_box.add_child(title)
 
-	_menu_box.add_child(_pad(8))
+	var rule := ColorRect.new()
+	rule.color = UITheme.COL_ACCENT_DIM
+	rule.custom_minimum_size = Vector2(0, 1)
+	_menu_box.add_child(rule)
 
-	var resume := _make_button("RESUME")
+	_menu_box.add_child(UITheme.spacer(4))
+
+	var resume := _make_button("RESUME", true)
 	resume.pressed.connect(close)
 	_menu_box.add_child(resume)
 
@@ -114,58 +124,59 @@ func _build_host_admin_panel() -> void:
 	_root_panel.add_child(_host_admin_panel)
 
 
+var _quit_confirm_wrapper: PanelContainer
+
+
 func _build_quit_confirm() -> void:
+	# Framed confirm dialog — a smaller cousin of the pause list, styled the same.
+	_quit_confirm_wrapper = PanelContainer.new()
+	_quit_confirm_wrapper.add_theme_stylebox_override("panel", UITheme.panel_style())
+	_quit_confirm_wrapper.set_anchors_preset(Control.PRESET_CENTER, true)
+	_quit_confirm_wrapper.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_quit_confirm_wrapper.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_quit_confirm_wrapper.visible = false
+	_quit_confirm_wrapper.process_mode = Node.PROCESS_MODE_ALWAYS
+	_root_panel.add_child(_quit_confirm_wrapper)
+
 	_quit_confirm = VBoxContainer.new()
-	_quit_confirm.set_anchors_preset(Control.PRESET_CENTER)
-	_quit_confirm.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_quit_confirm.grow_vertical = Control.GROW_DIRECTION_BOTH
-	_quit_confirm.add_theme_constant_override("separation", 12)
-	_quit_confirm.custom_minimum_size = Vector2(360, 0)
-	_quit_confirm.visible = false
+	_quit_confirm.add_theme_constant_override("separation", 10)
+	_quit_confirm.custom_minimum_size = Vector2(340, 0)
 	_quit_confirm.process_mode = Node.PROCESS_MODE_ALWAYS
-	_root_panel.add_child(_quit_confirm)
+	_quit_confirm_wrapper.add_child(_quit_confirm)
 
 	var head := Label.new()
 	head.text = "QUIT GAME?"
 	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	head.add_theme_font_size_override("font_size", 28)
-	head.add_theme_color_override("font_color", Color(0.95, 0.5, 0.35))
-	head.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	head.add_theme_font_size_override("font_size", 26)
+	head.add_theme_color_override("font_color", UITheme.COL_ALERT)
+	head.add_theme_color_override("font_outline_color", UITheme.COL_SHADOW)
 	head.add_theme_constant_override("outline_size", 6)
 	_quit_confirm.add_child(head)
 
-	_quit_confirm.add_child(_pad(4))
+	var rule := ColorRect.new()
+	rule.color = UITheme.COL_ACCENT_DIM
+	rule.custom_minimum_size = Vector2(0, 1)
+	_quit_confirm.add_child(rule)
+
+	_quit_confirm.add_child(UITheme.spacer(4))
 
 	var yes := _make_button("QUIT")
 	yes.pressed.connect(func() -> void: get_tree().quit())
 	_quit_confirm.add_child(yes)
 
-	var no := _make_button("CANCEL")
+	var no := _make_button("CANCEL", true)
 	no.pressed.connect(_close_quit_confirm)
 	_quit_confirm.add_child(no)
 
 
-func _make_button(text: String) -> Button:
-	var b := Button.new()
-	b.text = text
-	b.custom_minimum_size = Vector2(300, 46)
-	b.add_theme_font_size_override("font_size", 22)
+func _make_button(text: String, primary: bool = false) -> Button:
+	var b := UITheme.make_button(text, primary, 300, 44)
 	b.process_mode = Node.PROCESS_MODE_ALWAYS
 	return b
 
 
-func _make_label(text: String) -> Label:
-	var l := Label.new()
-	l.text = text
-	l.add_theme_font_size_override("font_size", 16)
-	l.add_theme_color_override("font_color", Color(0.85, 0.9, 1.0))
-	return l
-
-
 func _pad(px: int) -> Control:
-	var c := Control.new()
-	c.custom_minimum_size = Vector2(0, px)
-	return c
+	return UITheme.spacer(px)
 
 
 func _input(event: InputEvent) -> void:
@@ -197,7 +208,7 @@ func _input(event: InputEvent) -> void:
 					_close_host_admin()
 					get_viewport().set_input_as_handled()
 					return
-				if _quit_confirm.visible:
+				if _quit_confirm_wrapper.visible:
 					_close_quit_confirm()
 					get_viewport().set_input_as_handled()
 					return
@@ -211,11 +222,11 @@ func open() -> void:
 	if _open:
 		return
 	_open = true
-	_menu_box.visible = true
+	_menu_wrapper.visible = true
 	_settings_panel.visible = false
 	_controls_panel.visible = false
 	_host_admin_panel.visible = false
-	_quit_confirm.visible = false
+	_quit_confirm_wrapper.visible = false
 	_root_panel.visible = true
 	# Host admin button only makes sense on host or SP. Clients get nothing.
 	if _host_admin_btn != null:
@@ -234,23 +245,23 @@ func close() -> void:
 
 
 func _open_settings() -> void:
-	_menu_box.visible = false
+	_menu_wrapper.visible = false
 	_settings_panel.visible = true
 
 
 func _close_settings() -> void:
 	_settings_panel.visible = false
-	_menu_box.visible = true
+	_menu_wrapper.visible = true
 
 
 func _open_host_admin() -> void:
-	_menu_box.visible = false
+	_menu_wrapper.visible = false
 	_host_admin_panel.visible = true
 
 
 func _close_host_admin() -> void:
 	_host_admin_panel.visible = false
-	_menu_box.visible = true
+	_menu_wrapper.visible = true
 
 
 func _open_controls() -> void:
@@ -264,13 +275,13 @@ func _close_controls() -> void:
 
 
 func _open_quit_confirm() -> void:
-	_menu_box.visible = false
-	_quit_confirm.visible = true
+	_menu_wrapper.visible = false
+	_quit_confirm_wrapper.visible = true
 
 
 func _close_quit_confirm() -> void:
-	_quit_confirm.visible = false
-	_menu_box.visible = true
+	_quit_confirm_wrapper.visible = false
+	_menu_wrapper.visible = true
 
 
 func _exit_to_menu() -> void:

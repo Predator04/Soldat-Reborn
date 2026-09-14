@@ -16,20 +16,28 @@ extends Control
 # it here would go stale.
 var player: Node = null
 
-const PRIMARY_KEYS := ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
-const ROW_H := 15.0
-const HDR_H := 18.0
-const GAP := 8.0
-const PANEL_W := 240.0
+const UITheme = preload("res://scripts/ui_theme.gd")
 
-const COL_CURRENT := Color(55.0 / 255.0, 165.0 / 255.0, 55.0 / 255.0)
-const COL_HOVER := Color(85.0 / 255.0, 105.0 / 255.0, 55.0 / 255.0)
-const COL_HEADER := Color(0.95, 0.82, 0.4)
-const COL_ROW := Color(0.82, 0.85, 0.9)
-const COL_ROW_KEY := Color(0.6, 0.7, 0.85)
-const COL_OUTLINE := Color(0, 0, 0, 0.85)
-const COL_TIP_BG := Color(0.02, 0.03, 0.06, 0.88)
-const COL_TIP_BORDER := Color(0.35, 0.45, 0.55, 0.7)
+const PRIMARY_KEYS := ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
+const ROW_H := 16.0
+const HDR_H := 20.0
+const GAP := 8.0
+const PANEL_W := 250.0
+const PANEL_PAD := 8.0
+
+# Selection colors stay green (Soldat-classic muscle memory for the equipped
+# row); everything else pulls from the shared UITheme palette so hover/hdr/tip
+# match the rest of the menus.
+const COL_CURRENT := Color(55.0 / 255.0, 175.0 / 255.0, 55.0 / 255.0)
+const COL_HOVER := Color(95.0 / 255.0, 115.0 / 255.0, 60.0 / 255.0)
+const COL_HEADER := UITheme.COL_ACCENT
+const COL_ROW := UITheme.COL_TEXT
+const COL_ROW_KEY := UITheme.COL_TEXT_DIM
+const COL_OUTLINE := UITheme.COL_SHADOW
+const COL_TIP_BG := Color(0.05, 0.06, 0.09, 0.94)
+const COL_TIP_BORDER := UITheme.COL_ACCENT_DIM
+const COL_PANEL_BG := Color(0.03, 0.04, 0.06, 0.60)
+const COL_PANEL_BORDER := Color(0.30, 0.34, 0.40, 0.55)
 
 var _font: Font
 var _font_size := 12
@@ -141,8 +149,17 @@ func _draw() -> void:
 	var si: int = int(player.get("secondary_index"))
 	var using_sec: bool = bool(player.get("using_secondary"))
 
+	# Backing panel — tinted rect + hairline border so the limbo menu reads as
+	# a discrete UI element instead of raw text over gameplay.
+	var total_h: float = HDR_H + PRIMARY_KEYS.size() * ROW_H + GAP + HDR_H + secondary.size() * ROW_H + PANEL_PAD
+	var bg_rect := Rect2(-PANEL_PAD, -PANEL_PAD, PANEL_W + PANEL_PAD * 2, total_h + PANEL_PAD)
+	draw_rect(bg_rect, COL_PANEL_BG, true)
+	draw_rect(bg_rect, COL_PANEL_BORDER, false, 1.0)
+	# Amber left rule so it visually anchors with the HUD's accent color.
+	draw_rect(Rect2(-PANEL_PAD, -PANEL_PAD, 2.0, total_h + PANEL_PAD), UITheme.COL_ACCENT, true)
+
 	var y: float = 0.0
-	_draw_header("Primary Weapon:", y)
+	_draw_header("Primary Weapon", y)
 	y += HDR_H
 	for i in PRIMARY_KEYS.size():
 		if i >= weapons.size():
@@ -153,7 +170,7 @@ func _draw() -> void:
 		_draw_row(String(PRIMARY_KEYS[i]), str(w["name"]), y, is_current, is_hover)
 		y += ROW_H
 	y += GAP
-	_draw_header("Secondary Weapon:", y)
+	_draw_header("Secondary Weapon", y)
 	y += HDR_H
 	for j in secondary.size():
 		var w2: Dictionary = secondary[j]
@@ -176,8 +193,10 @@ func _draw() -> void:
 
 
 func _draw_header(text: String, y: float) -> void:
-	# Outlined text — matches the rest of the HUD's shadow style so it reads over any terrain.
-	_draw_outlined_text(text, Vector2(4, y + _hdr_font_size), _hdr_font_size, COL_HEADER)
+	# Uppercase amber header + a thin underline rule so section boundaries read
+	# cleanly and match the section headers used in every menu.
+	_draw_outlined_text(text.to_upper(), Vector2(4, y + _hdr_font_size), _hdr_font_size, COL_HEADER)
+	draw_rect(Rect2(2, y + _hdr_font_size + 3, PANEL_W - 4, 1), UITheme.COL_ACCENT_DIM, true)
 
 
 func _draw_row(key: String, name: String, y: float, is_current: bool, is_hover: bool) -> void:

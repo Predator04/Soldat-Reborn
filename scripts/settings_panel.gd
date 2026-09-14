@@ -1,16 +1,18 @@
 extends VBoxContainer
-## SettingsPanel — glassmorphism accordion of setting sections.
+## SettingsPanel — retro-military accordion of setting sections.
 ##
 ## Six collapsible cards (Audio, Video, Controls, Game, Mods, Cosmetics) live
 ## inside a scrolling column. Cards are collapsed by default so the panel fits
-## on a 720p screen without immediately drowning the player in sliders. Each
-## card uses a dark semi-transparent StyleBoxFlat with rounded corners for the
-## glass look. Both the main menu and the pause menu instantiate this.
+## on a 720p screen without immediately drowning the player in sliders. Cards
+## use the shared UITheme.card_style() (dark gunmetal + amber chevron) so the
+## look matches every other menu surface. Both the main menu and the pause
+## menu instantiate this.
 
 signal back_pressed
 signal controls_pressed  # menu / pause both hand controls off to their own screen
 
 const ControlsMap = preload("res://scripts/controls_map.gd")
+const UITheme = preload("res://scripts/ui_theme.gd")
 
 # Cards keep their toggle state in a local dict so re-opening the panel
 # preserves whatever the user had expanded. Reset by construction each session.
@@ -22,10 +24,13 @@ var _sp_map_pick: OptionButton = null
 var _sp_map_paths: Array = []
 
 
+var _root_panel: PanelContainer = null
+
+
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	add_theme_constant_override("separation", 10)
-	custom_minimum_size = Vector2(540, 0)
+	custom_minimum_size = Vector2(560, 0)
 	# Center via keep_offsets=true: set_anchors_preset's default "resize" mode
 	# bakes in parent-sized offsets when run inside _ready (in-tree), which pushes
 	# the panel off-screen. keep_offsets leaves offsets at 0 and grow BOTH centers.
@@ -36,27 +41,37 @@ func _ready() -> void:
 
 
 func _build() -> void:
-	var head := Label.new()
-	head.text = "SETTINGS"
-	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	head.add_theme_font_size_override("font_size", 30)
-	head.add_theme_color_override("font_color", Color(0.95, 0.82, 0.4))
-	head.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
-	head.add_theme_constant_override("outline_size", 6)
-	add_child(head)
+	# Framed panel wraps the whole screen so it reads as a briefing terminal
+	# and matches the main menu, host settings, etc.
+	_root_panel = PanelContainer.new()
+	_root_panel.add_theme_stylebox_override("panel", UITheme.panel_style())
+	_root_panel.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(_root_panel)
+
+	var col_root := VBoxContainer.new()
+	col_root.add_theme_constant_override("separation", 10)
+	col_root.process_mode = Node.PROCESS_MODE_ALWAYS
+	_root_panel.add_child(col_root)
+
+	col_root.add_child(UITheme.make_screen_title("SETTINGS"))
+
+	var rule := ColorRect.new()
+	rule.color = UITheme.COL_ACCENT_DIM
+	rule.custom_minimum_size = Vector2(0, 1)
+	col_root.add_child(rule)
 
 	# Scroll region — fixed height so multiple expanded cards don't push the
-	# BACK button off a 720p viewport. 400px comfortably shows a header + a
+	# BACK button off a 720p viewport. 420px comfortably shows a header + a
 	# fully expanded Audio or Game card without cropping.
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(0, 420)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.process_mode = Node.PROCESS_MODE_ALWAYS
-	add_child(scroll)
+	col_root.add_child(scroll)
 
 	var col := VBoxContainer.new()
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	col.add_theme_constant_override("separation", 8)
+	col.add_theme_constant_override("separation", 6)
 	col.process_mode = Node.PROCESS_MODE_ALWAYS
 	scroll.add_child(col)
 
@@ -67,41 +82,21 @@ func _build() -> void:
 	col.add_child(_make_card("Mods", func(box: VBoxContainer) -> void: _build_mods(box)))
 	col.add_child(_make_card("Cosmetics", func(box: VBoxContainer) -> void: _build_cosmetics(box)))
 
+	col_root.add_child(UITheme.spacer(2))
+
 	var back := _make_button("BACK")
 	back.pressed.connect(func() -> void: back_pressed.emit())
-	add_child(back)
+	col_root.add_child(back)
 
 
 # ── Card factory ──────────────────────────────────────────
 
-func _glass_style(border_col: Color = Color(0.55, 0.65, 0.85, 0.4)) -> StyleBoxFlat:
-	# Dark semi-transparent glass with rounded corners + subtle inner border.
-	var s := StyleBoxFlat.new()
-	s.bg_color = Color(0.06, 0.08, 0.14, 0.55)
-	s.corner_radius_top_left = 10
-	s.corner_radius_top_right = 10
-	s.corner_radius_bottom_left = 10
-	s.corner_radius_bottom_right = 10
-	s.content_margin_left = 12
-	s.content_margin_right = 12
-	s.content_margin_top = 8
-	s.content_margin_bottom = 8
-	s.border_width_left = 1
-	s.border_width_right = 1
-	s.border_width_top = 1
-	s.border_width_bottom = 1
-	s.border_color = border_col
-	s.shadow_color = Color(0, 0, 0, 0.35)
-	s.shadow_size = 6
-	s.shadow_offset = Vector2(0, 2)
-	return s
-
-
 func _make_card(title: String, builder: Callable) -> Control:
-	# Wrapper Panel gives us the glass background + margins. Contains a clickable
-	# header row (title + chevron) and a body VBoxContainer hidden by default.
+	# Card = PanelContainer(card_style) → VBox(header button, hidden body).
+	# Chevron collapses/expands the body; the body builder is called lazily so
+	# section widgets only exist when the card is expanded (keeps memory light).
 	var card := PanelContainer.new()
-	card.add_theme_stylebox_override("panel", _glass_style())
+	card.add_theme_stylebox_override("panel", UITheme.card_style())
 	card.process_mode = Node.PROCESS_MODE_ALWAYS
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 6)
@@ -110,17 +105,19 @@ func _make_card(title: String, builder: Callable) -> Control:
 
 	var header := Button.new()
 	header.flat = true
-	header.text = "  ▸  " + title
+	header.text = "  ▸   " + title.to_upper()
 	header.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	header.custom_minimum_size = Vector2(0, 36)
-	header.add_theme_font_size_override("font_size", 20)
-	header.add_theme_color_override("font_color", Color(0.95, 0.82, 0.4))
-	header.add_theme_color_override("font_hover_color", Color(1.0, 0.95, 0.6))
+	header.custom_minimum_size = Vector2(0, 32)
+	header.add_theme_font_size_override("font_size", 17)
+	header.add_theme_color_override("font_color", UITheme.COL_ACCENT)
+	header.add_theme_color_override("font_hover_color", UITheme.COL_ACCENT_HI)
+	header.add_theme_color_override("font_focus_color", UITheme.COL_ACCENT_HI)
+	header.add_theme_color_override("font_pressed_color", UITheme.COL_ACCENT_HI)
 	header.process_mode = Node.PROCESS_MODE_ALWAYS
 	col.add_child(header)
 
 	var body := VBoxContainer.new()
-	body.add_theme_constant_override("separation", 8)
+	body.add_theme_constant_override("separation", 6)
 	body.visible = false
 	body.process_mode = Node.PROCESS_MODE_ALWAYS
 	col.add_child(body)
@@ -133,8 +130,8 @@ func _make_card(title: String, builder: Callable) -> Control:
 		var open: bool = not bool(_card_open.get(title, false))
 		_card_open[title] = open
 		body.visible = open
-		# ▸ collapsed / ▾ expanded — same UTF chevron style as gh's issues list.
-		header.text = ("  ▾  " if open else "  ▸  ") + title
+		# ▸ collapsed / ▾ expanded — chevron style consistent with the rest of the game.
+		header.text = ("  ▾   " if open else "  ▸   ") + title.to_upper()
 		if open and body.get_child_count() == 0:
 			builder.call(body))
 	return card
@@ -265,8 +262,8 @@ func _build_mods(box: VBoxContainer) -> void:
 	box.add_child(bc_row)
 	var bc_lbl := Label.new()
 	bc_lbl.text = "Bots"
-	bc_lbl.custom_minimum_size = Vector2(170, 0)
-	bc_lbl.add_theme_font_size_override("font_size", 14)
+	bc_lbl.custom_minimum_size = Vector2(180, 0)
+	UITheme.style_body(bc_lbl)
 	bc_row.add_child(bc_lbl)
 	var bc_slider := HSlider.new()
 	bc_slider.min_value = -1
@@ -274,11 +271,14 @@ func _build_mods(box: VBoxContainer) -> void:
 	bc_slider.step = 1
 	bc_slider.value = float(Settings.bot_count)
 	bc_slider.custom_minimum_size = Vector2(220, 0)
+	bc_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	UITheme.style_slider(bc_slider)
 	bc_row.add_child(bc_slider)
 	var bc_val := Label.new()
 	bc_val.text = "Auto" if Settings.bot_count < 0 else str(Settings.bot_count)
-	bc_val.custom_minimum_size = Vector2(56, 0)
-	bc_val.add_theme_font_size_override("font_size", 14)
+	bc_val.custom_minimum_size = Vector2(60, 0)
+	bc_val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	UITheme.style_body(bc_val, UITheme.LABEL_FONT, UITheme.COL_ACCENT_HI)
 	bc_row.add_child(bc_val)
 	bc_slider.value_changed.connect(func(v: float) -> void:
 		var n: int = int(round(v))
@@ -348,8 +348,8 @@ func _labelled_slider(label_text: String, mn: float, mx: float, step: float,
 	row.add_theme_constant_override("separation", 12)
 	var lbl := Label.new()
 	lbl.text = label_text
-	lbl.custom_minimum_size = Vector2(170, 0)
-	lbl.add_theme_font_size_override("font_size", 14)
+	lbl.custom_minimum_size = Vector2(180, 0)
+	UITheme.style_body(lbl)
 	row.add_child(lbl)
 	var slider := HSlider.new()
 	slider.min_value = mn
@@ -358,11 +358,13 @@ func _labelled_slider(label_text: String, mn: float, mx: float, step: float,
 	slider.value = val
 	slider.custom_minimum_size = Vector2(220, 0)
 	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	UITheme.style_slider(slider)
 	row.add_child(slider)
 	var vlbl := Label.new()
 	vlbl.text = val_fmt % val
-	vlbl.custom_minimum_size = Vector2(56, 0)
-	vlbl.add_theme_font_size_override("font_size", 14)
+	vlbl.custom_minimum_size = Vector2(60, 0)
+	vlbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	UITheme.style_body(vlbl, UITheme.LABEL_FONT, UITheme.COL_ACCENT_HI)
 	row.add_child(vlbl)
 	slider.value_changed.connect(func(v: float) -> void:
 		vlbl.text = val_fmt % v
@@ -374,6 +376,7 @@ func _check_button(text: String, val: bool, on_change: Callable) -> CheckButton:
 	var cb := CheckButton.new()
 	cb.text = text
 	cb.button_pressed = val
+	UITheme.style_checkbox(cb)
 	cb.toggled.connect(on_change)
 	return cb
 
@@ -384,7 +387,7 @@ func _option_row(label_text: String, options: Array, current: String, on_change:
 	var lbl := Label.new()
 	lbl.text = label_text
 	lbl.custom_minimum_size = Vector2(120, 0)
-	lbl.add_theme_font_size_override("font_size", 14)
+	UITheme.style_body(lbl)
 	row.add_child(lbl)
 	var pick := OptionButton.new()
 	for opt in options:
@@ -392,6 +395,7 @@ func _option_row(label_text: String, options: Array, current: String, on_change:
 	pick.selected = clampi(options.find(current), 0, options.size() - 1)
 	pick.custom_minimum_size = Vector2(240, 32)
 	pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	UITheme.style_option_button(pick)
 	row.add_child(pick)
 	pick.item_selected.connect(func(idx: int) -> void:
 		if idx >= 0 and idx < options.size():
@@ -400,9 +404,6 @@ func _option_row(label_text: String, options: Array, current: String, on_change:
 
 
 func _make_button(text: String) -> Button:
-	var b := Button.new()
-	b.text = text
-	b.custom_minimum_size = Vector2(280, 40)
-	b.add_theme_font_size_override("font_size", 18)
+	var b := UITheme.make_button(text, false, 280, 40)
 	b.process_mode = Node.PROCESS_MODE_ALWAYS
 	return b

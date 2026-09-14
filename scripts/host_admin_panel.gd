@@ -41,15 +41,17 @@ const MODE_NAMES := [
 	"Infiltration", "Hold the Flag", "Rambomatch", "Pointmatch",
 	"Domination", "Battle Royale", "Gun Game",
 ]
+const UITheme = preload("res://scripts/ui_theme.gd")
 
 var _pending_map_idx: int = 0
 var _pending_mode_idx: int = 0
+var _root_panel: PanelContainer = null
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	add_theme_constant_override("separation", 8)
-	custom_minimum_size = Vector2(500, 0)
+	custom_minimum_size = Vector2(540, 0)
 	set_anchors_preset(Control.PRESET_CENTER, true)
 	grow_horizontal = Control.GROW_DIRECTION_BOTH
 	grow_vertical = Control.GROW_DIRECTION_BOTH
@@ -59,28 +61,36 @@ func _ready() -> void:
 
 
 func _build() -> void:
-	var head := Label.new()
-	head.text = "HOST SETTINGS"
-	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	head.add_theme_font_size_override("font_size", 26)
-	head.add_theme_color_override("font_color", Color(0.95, 0.5, 0.35))
-	head.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
-	head.add_theme_constant_override("outline_size", 6)
-	add_child(head)
+	_root_panel = PanelContainer.new()
+	_root_panel.add_theme_stylebox_override("panel", UITheme.panel_style())
+	_root_panel.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(_root_panel)
+
+	var col_root := VBoxContainer.new()
+	col_root.add_theme_constant_override("separation", 8)
+	col_root.process_mode = Node.PROCESS_MODE_ALWAYS
+	_root_panel.add_child(col_root)
+
+	col_root.add_child(UITheme.make_screen_title("HOST SETTINGS", 28))
 
 	var hint := Label.new()
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint.text = "Broadcasts to every client. FFA modes (DM/RM/BR) ignore the FF toggle."
+	hint.text = "Broadcasts to every client. FFA modes (DM/RM/BR/GG) ignore the FF toggle."
 	hint.add_theme_font_size_override("font_size", 12)
-	hint.add_theme_color_override("font_color", Color(0.75, 0.85, 1.0))
-	add_child(hint)
+	hint.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)
+	col_root.add_child(hint)
+
+	var rule := ColorRect.new()
+	rule.color = UITheme.COL_ACCENT_DIM
+	rule.custom_minimum_size = Vector2(0, 1)
+	col_root.add_child(rule)
 
 	# Scroll region so a fully expanded panel + restart buttons still fit on 720p.
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(0, 380)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.process_mode = Node.PROCESS_MODE_ALWAYS
-	add_child(scroll)
+	col_root.add_child(scroll)
 
 	var col := VBoxContainer.new()
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -88,16 +98,21 @@ func _build() -> void:
 	col.process_mode = Node.PROCESS_MODE_ALWAYS
 	scroll.add_child(col)
 
+	col.add_child(UITheme.make_section_header("Ruleset"))
+
 	# Friendly fire — the headline new toggle. Default OFF; in FFA modes the
 	# effective FF is always on regardless of this bool (see MatchConfig).
 	var ff_cb := CheckButton.new()
 	ff_cb.text = "Friendly fire (team modes)"
 	ff_cb.button_pressed = MatchConfig.host_friendly_fire
+	UITheme.style_checkbox(ff_cb)
 	ff_cb.toggled.connect(func(on: bool) -> void:
 		MatchConfig.host_friendly_fire = on
 		MatchConfig.save_host_ff()
 		MatchConfig.host_broadcast())
 	col.add_child(ff_cb)
+
+	col.add_child(UITheme.make_section_header("Modifiers"))
 
 	col.add_child(_labelled_slider("Gravity", 0.5, 2.0, 0.05,
 		float(Settings.mod_gravity),
@@ -128,15 +143,17 @@ func _build() -> void:
 			MatchConfig.host_broadcast(),
 		"%.2fx"))
 
+	col.add_child(UITheme.make_section_header("Bots"))
+
 	# Bot roster (host-side only — clients don't spawn bots so this only
 	# actually matters on the next match restart).
 	var bc_row := HBoxContainer.new()
 	bc_row.add_theme_constant_override("separation", 12)
 	col.add_child(bc_row)
 	var bc_lbl := Label.new()
-	bc_lbl.text = "Bots"
-	bc_lbl.custom_minimum_size = Vector2(170, 0)
-	bc_lbl.add_theme_font_size_override("font_size", 14)
+	bc_lbl.text = "Count"
+	bc_lbl.custom_minimum_size = Vector2(180, 0)
+	UITheme.style_body(bc_lbl)
 	bc_row.add_child(bc_lbl)
 	var bc_slider := HSlider.new()
 	bc_slider.min_value = -1
@@ -145,11 +162,13 @@ func _build() -> void:
 	bc_slider.value = float(Settings.bot_count)
 	bc_slider.custom_minimum_size = Vector2(220, 0)
 	bc_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	UITheme.style_slider(bc_slider)
 	bc_row.add_child(bc_slider)
 	var bc_val := Label.new()
 	bc_val.text = "Auto" if Settings.bot_count < 0 else str(Settings.bot_count)
-	bc_val.custom_minimum_size = Vector2(56, 0)
-	bc_val.add_theme_font_size_override("font_size", 14)
+	bc_val.custom_minimum_size = Vector2(60, 0)
+	bc_val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	UITheme.style_body(bc_val, UITheme.LABEL_FONT, UITheme.COL_ACCENT_HI)
 	bc_row.add_child(bc_val)
 	bc_slider.value_changed.connect(func(v: float) -> void:
 		var n: int = int(round(v))
@@ -170,7 +189,8 @@ func _build() -> void:
 			MatchConfig.host_broadcast(),
 		"%d"))
 
-	col.add_child(_pad(6))
+	col.add_child(UITheme.spacer(4))
+	col.add_child(UITheme.make_section_header("Match Restart"))
 
 	# Mode + Map pickers. Changes here are staged locally — user hits RESTART
 	# MATCH to broadcast the switch, which reloads main.tscn on every peer.
@@ -179,8 +199,8 @@ func _build() -> void:
 	col.add_child(mode_row)
 	var mode_lbl := Label.new()
 	mode_lbl.text = "Mode"
-	mode_lbl.custom_minimum_size = Vector2(170, 0)
-	mode_lbl.add_theme_font_size_override("font_size", 14)
+	mode_lbl.custom_minimum_size = Vector2(180, 0)
+	UITheme.style_body(mode_lbl)
 	mode_row.add_child(mode_lbl)
 	var mode_pick := OptionButton.new()
 	for name in MODE_NAMES:
@@ -188,6 +208,7 @@ func _build() -> void:
 	mode_pick.selected = clampi(_pending_mode_idx, 0, MODE_NAMES.size() - 1)
 	mode_pick.custom_minimum_size = Vector2(300, 32)
 	mode_pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	UITheme.style_option_button(mode_pick)
 	mode_pick.item_selected.connect(func(idx: int) -> void:
 		_pending_mode_idx = idx)
 	mode_row.add_child(mode_pick)
@@ -197,8 +218,8 @@ func _build() -> void:
 	col.add_child(map_row)
 	var map_lbl := Label.new()
 	map_lbl.text = "Map"
-	map_lbl.custom_minimum_size = Vector2(170, 0)
-	map_lbl.add_theme_font_size_override("font_size", 14)
+	map_lbl.custom_minimum_size = Vector2(180, 0)
+	UITheme.style_body(map_lbl)
 	map_row.add_child(map_lbl)
 	var map_pick := OptionButton.new()
 	for name in MAP_NAMES:
@@ -206,19 +227,20 @@ func _build() -> void:
 	map_pick.selected = clampi(_pending_map_idx, 0, MAP_NAMES.size() - 1)
 	map_pick.custom_minimum_size = Vector2(300, 32)
 	map_pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	UITheme.style_option_button(map_pick)
 	map_pick.item_selected.connect(func(idx: int) -> void:
 		_pending_map_idx = idx)
 	map_row.add_child(map_pick)
 
-	col.add_child(_pad(4))
+	col_root.add_child(UITheme.spacer(4))
 
-	var restart := _make_button("RESTART MATCH")
+	var restart := _make_button("RESTART MATCH", true)
 	restart.pressed.connect(_do_restart)
-	col.add_child(restart)
+	col_root.add_child(restart)
 
 	var back := _make_button("BACK")
 	back.pressed.connect(func() -> void: back_pressed.emit())
-	add_child(back)
+	col_root.add_child(back)
 
 
 func _do_restart() -> void:
@@ -249,8 +271,8 @@ func _labelled_slider(label_text: String, mn: float, mx: float, step: float,
 	row.add_theme_constant_override("separation", 12)
 	var lbl := Label.new()
 	lbl.text = label_text
-	lbl.custom_minimum_size = Vector2(170, 0)
-	lbl.add_theme_font_size_override("font_size", 14)
+	lbl.custom_minimum_size = Vector2(180, 0)
+	UITheme.style_body(lbl)
 	row.add_child(lbl)
 	var slider := HSlider.new()
 	slider.min_value = mn
@@ -259,11 +281,13 @@ func _labelled_slider(label_text: String, mn: float, mx: float, step: float,
 	slider.value = val
 	slider.custom_minimum_size = Vector2(220, 0)
 	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	UITheme.style_slider(slider)
 	row.add_child(slider)
 	var vlbl := Label.new()
 	vlbl.text = val_fmt % val
-	vlbl.custom_minimum_size = Vector2(56, 0)
-	vlbl.add_theme_font_size_override("font_size", 14)
+	vlbl.custom_minimum_size = Vector2(60, 0)
+	vlbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	UITheme.style_body(vlbl, UITheme.LABEL_FONT, UITheme.COL_ACCENT_HI)
 	row.add_child(vlbl)
 	slider.value_changed.connect(func(v: float) -> void:
 		vlbl.text = val_fmt % v
@@ -271,16 +295,11 @@ func _labelled_slider(label_text: String, mn: float, mx: float, step: float,
 	return row
 
 
-func _make_button(text: String) -> Button:
-	var b := Button.new()
-	b.text = text
-	b.custom_minimum_size = Vector2(280, 42)
-	b.add_theme_font_size_override("font_size", 18)
+func _make_button(text: String, primary: bool = false) -> Button:
+	var b := UITheme.make_button(text, primary, 280, 42)
 	b.process_mode = Node.PROCESS_MODE_ALWAYS
 	return b
 
 
 func _pad(px: int) -> Control:
-	var c := Control.new()
-	c.custom_minimum_size = Vector2(0, px)
-	return c
+	return UITheme.spacer(px)

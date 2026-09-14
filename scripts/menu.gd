@@ -5,6 +5,7 @@ const MapIO = preload("res://scripts/map_io.gd")
 const MapGen = preload("res://scripts/map_gen.gd")
 const ControlsMenu = preload("res://scripts/controls_menu.gd")
 const SettingsPanel = preload("res://scripts/settings_panel.gd")
+const UITheme = preload("res://scripts/ui_theme.gd")
 
 # Slots 0..2 are the three procedural remakes; slots 3..12 are the classic
 # Soldat maps bundled from res://assets/maps/*.json (see MapIO.BUNDLED_CLASSICS
@@ -39,7 +40,8 @@ const MODE_NAMES := [
 	"Domination", "Battle Royale", "Gun Game",
 ]
 
-var _menu_box: VBoxContainer
+var _menu_box: VBoxContainer   # inner column; visibility is driven via _menu_root
+var _menu_root: PanelContainer # wrapper panel we hide/show
 var _settings_panel: VBoxContainer
 var _controls_panel: VBoxContainer
 var _stats_panel: VBoxContainer
@@ -83,10 +85,7 @@ func _ready() -> void:
 
 
 func _build_backdrop() -> void:
-	var bg := ColorRect.new()
-	bg.color = Color(0.05, 0.06, 0.13)
-	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(bg)
+	UITheme.build_menu_backdrop(self)
 
 
 func _build_title() -> void:
@@ -94,34 +93,34 @@ func _build_title() -> void:
 	title.text = "SOLDAT REBORN"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	title.offset_top = 60
-	title.offset_bottom = 140
-	title.add_theme_font_size_override("font_size", 60)
-	title.add_theme_color_override("font_color", Color(0.95, 0.82, 0.4))
-	title.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
-	title.add_theme_constant_override("outline_size", 8)
+	title.offset_top = 50
+	title.offset_bottom = 130
+	UITheme.style_title(title, 62)
 	add_child(title)
 
+	# Sub-line with the tagline, tight under the wordmark.
+	var sub := Label.new()
+	sub.text = "JET BOOTS · BUNNY HOP · RAGDOLL GIBS · ONLINE"
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	sub.offset_top = 132
+	sub.offset_bottom = 158
+	sub.add_theme_font_size_override("font_size", 14)
+	sub.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)
+	sub.add_theme_color_override("font_outline_color", UITheme.COL_SHADOW)
+	sub.add_theme_constant_override("outline_size", 2)
+	add_child(sub)
+
+	# Version/build sits low and muted, doesn't compete with the title stack.
 	var ver := Label.new()
 	ver.text = "v1.12.1 · build %d" % _build_number()
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ver.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	ver.offset_top = 140
-	ver.offset_bottom = 170
-	ver.add_theme_font_size_override("font_size", 18)
-	ver.add_theme_color_override("font_color", Color(0.65, 0.68, 0.75))
+	ver.offset_top = 172
+	ver.offset_bottom = 194
+	ver.add_theme_font_size_override("font_size", 13)
+	ver.add_theme_color_override("font_color", UITheme.COL_TEXT_MUTED)
 	add_child(ver)
-
-	var sub := Label.new()
-	sub.text = "jet boots · bunny hop · ragdoll gibs · online"
-	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	sub.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	# Sit below the version band (140-170) so the two labels don't overlap.
-	sub.offset_top = 172
-	sub.offset_bottom = 200
-	sub.add_theme_font_size_override("font_size", 16)
-	sub.add_theme_color_override("font_color", Color(0.65, 0.7, 0.82))
-	add_child(sub)
 
 
 func _build_number() -> int:
@@ -137,18 +136,28 @@ func _build_number() -> int:
 
 
 func _build_menu() -> void:
+	# Wrap the main-menu column in a framed panel so it sits as a discrete
+	# briefing-terminal card instead of floating buttons on the backdrop.
+	_menu_root = PanelContainer.new()
+	_menu_root.add_theme_stylebox_override("panel", UITheme.panel_style())
+	_menu_root.set_anchors_preset(Control.PRESET_CENTER, true)
+	_menu_root.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_menu_root.grow_vertical = Control.GROW_DIRECTION_BOTH
+	add_child(_menu_root)
+
 	_menu_box = VBoxContainer.new()
-	_menu_box.set_anchors_preset(Control.PRESET_CENTER)
-	_menu_box.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_menu_box.grow_vertical = Control.GROW_DIRECTION_BOTH
-	_menu_box.add_theme_constant_override("separation", 12)
-	add_child(_menu_box)
+	_menu_box.add_theme_constant_override("separation", 8)
+	_menu_box.custom_minimum_size = Vector2(340, 0)
+	_menu_root.add_child(_menu_box)
+
+	_menu_box.add_child(UITheme.make_section_header("Match"))
 
 	var mode_pick := OptionButton.new()
 	for name in MODE_NAMES:
 		mode_pick.add_item(name)
 	mode_pick.selected = clampi(Settings.game_mode, 0, MODE_NAMES.size() - 1)
-	mode_pick.custom_minimum_size = Vector2(300, 36)
+	mode_pick.custom_minimum_size = Vector2(320, 34)
+	UITheme.style_option_button(mode_pick)
 	mode_pick.item_selected.connect(func(idx: int) -> void:
 		Settings.game_mode = idx
 		Settings.save())
@@ -156,12 +165,13 @@ func _build_menu() -> void:
 
 	# Sub-mode toggles — three quick chips under the main mode picker.
 	var subs := HBoxContainer.new()
-	subs.add_theme_constant_override("separation", 10)
-	subs.custom_minimum_size = Vector2(300, 0)
+	subs.add_theme_constant_override("separation", 8)
+	subs.custom_minimum_size = Vector2(320, 0)
 	_menu_box.add_child(subs)
 	var real_cb := CheckBox.new()
 	real_cb.text = "Realistic"
 	real_cb.button_pressed = Settings.realistic
+	UITheme.style_checkbox(real_cb)
 	real_cb.toggled.connect(func(on: bool) -> void:
 		Settings.realistic = on
 		Settings.save())
@@ -169,6 +179,7 @@ func _build_menu() -> void:
 	var surv_cb := CheckBox.new()
 	surv_cb.text = "Survival"
 	surv_cb.button_pressed = Settings.survival
+	UITheme.style_checkbox(surv_cb)
 	surv_cb.toggled.connect(func(on: bool) -> void:
 		Settings.survival = on
 		Settings.save())
@@ -176,6 +187,7 @@ func _build_menu() -> void:
 	var adv_cb := CheckBox.new()
 	adv_cb.text = "Advance"
 	adv_cb.button_pressed = Settings.advance
+	UITheme.style_checkbox(adv_cb)
 	adv_cb.toggled.connect(func(on: bool) -> void:
 		Settings.advance = on
 		Settings.save())
@@ -183,12 +195,16 @@ func _build_menu() -> void:
 
 	# Map picker (SP): built-in rotation + specific built-in + custom maps.
 	_sp_map_pick = OptionButton.new()
-	_sp_map_pick.custom_minimum_size = Vector2(300, 36)
+	_sp_map_pick.custom_minimum_size = Vector2(320, 34)
+	UITheme.style_option_button(_sp_map_pick)
 	_menu_box.add_child(_sp_map_pick)
 	_refresh_sp_map_pick()
 	_sp_map_pick.item_selected.connect(_on_sp_map_selected)
 
-	var play := _make_button("PLAY vs BOTS")
+	_menu_box.add_child(UITheme.spacer(4))
+	_menu_box.add_child(UITheme.make_section_header("Deploy"))
+
+	var play := _make_button("PLAY vs BOTS", true)
 	play.pressed.connect(func() -> void:
 		Net.set_singleplayer()
 		get_tree().change_scene_to_file("res://scenes/main.tscn"))
@@ -204,29 +220,35 @@ func _build_menu() -> void:
 	gen.pressed.connect(_on_generate_and_play)
 	_menu_box.add_child(gen)
 
+	_menu_box.add_child(UITheme.spacer(4))
+	_menu_box.add_child(UITheme.make_section_header("Network"))
+
 	var host := _make_button("HOST GAME")
 	host.pressed.connect(func() -> void:
-		_menu_box.visible = false
-		_host_panel.visible = true)
+		_menu_root.visible = false
+		_host_root.visible = true)
 	_menu_box.add_child(host)
 
 	var join := _make_button("JOIN GAME")
 	join.pressed.connect(func() -> void:
-		_menu_box.visible = false
-		_join_panel.visible = true)
+		_menu_root.visible = false
+		_join_root.visible = true)
 	_menu_box.add_child(join)
+
+	_menu_box.add_child(UITheme.spacer(4))
+	_menu_box.add_child(UITheme.make_section_header("System"))
 
 	var settings := _make_button("SETTINGS")
 	settings.pressed.connect(func() -> void:
-		_menu_box.visible = false
+		_menu_root.visible = false
 		_settings_panel.visible = true)
 	_menu_box.add_child(settings)
 
 	var stats := _make_button("STATS")
 	stats.pressed.connect(func() -> void:
 		_refresh_stats_labels()
-		_menu_box.visible = false
-		_stats_panel.visible = true)
+		_menu_root.visible = false
+		_stats_root.visible = true)
 	_menu_box.add_child(stats)
 
 	var quit := _make_button("QUIT")
@@ -241,7 +263,7 @@ func _build_settings() -> void:
 	add_child(_settings_panel)
 	_settings_panel.back_pressed.connect(func() -> void:
 		_settings_panel.visible = false
-		_menu_box.visible = true)
+		_menu_root.visible = true)
 	_settings_panel.controls_pressed.connect(func() -> void:
 		_settings_panel.visible = false
 		_controls_panel.visible = true)
@@ -260,43 +282,52 @@ func _build_controls() -> void:
 var _stats_body: RichTextLabel = null
 
 
-func _build_stats() -> void:
-	_stats_panel = VBoxContainer.new()
-	_stats_panel.set_anchors_preset(Control.PRESET_CENTER)
-	_stats_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_stats_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-	_stats_panel.add_theme_constant_override("separation", 12)
-	_stats_panel.custom_minimum_size = Vector2(480, 0)
-	_stats_panel.visible = false
-	add_child(_stats_panel)
+var _stats_root: PanelContainer = null
 
-	var head := Label.new()
-	head.text = "STATS"
-	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	head.add_theme_font_size_override("font_size", 26)
-	head.add_theme_color_override("font_color", Color(0.95, 0.82, 0.4))
-	_stats_panel.add_child(head)
+
+func _build_stats() -> void:
+	_stats_root = PanelContainer.new()
+	_stats_root.add_theme_stylebox_override("panel", UITheme.panel_style())
+	_stats_root.set_anchors_preset(Control.PRESET_CENTER, true)
+	_stats_root.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_stats_root.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_stats_root.visible = false
+	add_child(_stats_root)
+
+	_stats_panel = VBoxContainer.new()
+	_stats_panel.add_theme_constant_override("separation", 10)
+	_stats_panel.custom_minimum_size = Vector2(500, 0)
+	_stats_root.add_child(_stats_panel)
+
+	_stats_panel.add_child(UITheme.make_screen_title("STATS"))
+	_stats_panel.add_child(UITheme.make_section_header("Career"))
 
 	_stats_body = RichTextLabel.new()
 	_stats_body.bbcode_enabled = true
 	_stats_body.fit_content = true
 	_stats_body.scroll_active = false
-	_stats_body.custom_minimum_size = Vector2(0, 240)
+	_stats_body.custom_minimum_size = Vector2(0, 260)
 	_stats_body.add_theme_font_size_override("normal_font_size", 15)
-	_stats_body.add_theme_color_override("default_color", Color(0.9, 0.9, 0.92))
+	_stats_body.add_theme_font_size_override("bold_font_size", 15)
+	_stats_body.add_theme_color_override("default_color", UITheme.COL_TEXT)
 	_stats_panel.add_child(_stats_body)
 
-	var reset := _make_button("RESET STATS")
+	_stats_panel.add_child(UITheme.spacer(4))
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	_stats_panel.add_child(row)
+	var reset := _make_button("RESET STATS", false)
 	reset.pressed.connect(func() -> void:
 		Stats.reset()
 		_refresh_stats_labels())
-	_stats_panel.add_child(reset)
-
-	var back := _make_button("BACK")
+	row.add_child(reset)
+	var back := _make_button("BACK", false)
 	back.pressed.connect(func() -> void:
-		_stats_panel.visible = false
-		_menu_box.visible = true)
-	_stats_panel.add_child(back)
+		_stats_root.visible = false
+		_menu_root.visible = true)
+	row.add_child(back)
 
 
 func _refresh_stats_labels() -> void:
@@ -320,47 +351,56 @@ func _refresh_stats_labels() -> void:
 	_stats_body.text = "\n".join(lines)
 
 
-func _build_host() -> void:
-	_host_panel = VBoxContainer.new()
-	_host_panel.set_anchors_preset(Control.PRESET_CENTER)
-	_host_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_host_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-	_host_panel.add_theme_constant_override("separation", 10)
-	_host_panel.custom_minimum_size = Vector2(400, 0)
-	_host_panel.visible = false
-	add_child(_host_panel)
+var _host_root: PanelContainer = null
 
-	var head := Label.new()
-	head.text = "HOST GAME"
-	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	head.add_theme_font_size_override("font_size", 26)
-	head.add_theme_color_override("font_color", Color(0.95, 0.82, 0.4))
-	_host_panel.add_child(head)
+
+func _build_host() -> void:
+	_host_root = PanelContainer.new()
+	_host_root.add_theme_stylebox_override("panel", UITheme.panel_style())
+	_host_root.set_anchors_preset(Control.PRESET_CENTER, true)
+	_host_root.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_host_root.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_host_root.visible = false
+	add_child(_host_root)
+
+	_host_panel = VBoxContainer.new()
+	_host_panel.add_theme_constant_override("separation", 10)
+	_host_panel.custom_minimum_size = Vector2(420, 0)
+	_host_root.add_child(_host_panel)
+
+	_host_panel.add_child(UITheme.make_screen_title("HOST GAME"))
+	_host_panel.add_child(UITheme.make_section_header("Match"))
 
 	var map_lbl := Label.new()
 	map_lbl.text = "Map"
-	map_lbl.add_theme_font_size_override("font_size", 15)
+	UITheme.style_body(map_lbl)
 	_host_panel.add_child(map_lbl)
 
 	_map_pick = OptionButton.new()
 	for name in MAP_NAMES:
 		_map_pick.add_item(name)
 	_map_pick.selected = clampi(Settings.map_index, 0, MAP_NAMES.size() - 1)
-	_map_pick.custom_minimum_size = Vector2(0, 36)
+	_map_pick.custom_minimum_size = Vector2(0, 34)
+	UITheme.style_option_button(_map_pick)
 	_host_panel.add_child(_map_pick)
+
+	_host_panel.add_child(UITheme.make_section_header("Network"))
 
 	var port_lbl := Label.new()
 	port_lbl.text = "Port"
-	port_lbl.add_theme_font_size_override("font_size", 15)
+	UITheme.style_body(port_lbl)
 	_host_panel.add_child(port_lbl)
 
 	_host_port_edit = LineEdit.new()
 	_host_port_edit.text = str(Net.DEFAULT_PORT)
 	_host_port_edit.placeholder_text = str(Net.DEFAULT_PORT)
-	_host_port_edit.custom_minimum_size = Vector2(0, 36)
+	_host_port_edit.custom_minimum_size = Vector2(0, 34)
+	UITheme.style_lineedit(_host_port_edit)
 	_host_panel.add_child(_host_port_edit)
 
-	var start := _make_button("START HOSTING")
+	_host_panel.add_child(UITheme.spacer(6))
+
+	var start := _make_button("START HOSTING", true)
 	start.pressed.connect(func() -> void:
 		var idx := _map_pick.get_selected_id()
 		if idx < 0:
@@ -380,66 +420,76 @@ func _build_host() -> void:
 
 	var back := _make_button("BACK")
 	back.pressed.connect(func() -> void:
-		_host_panel.visible = false
-		_menu_box.visible = true)
+		_host_root.visible = false
+		_menu_root.visible = true)
 	_host_panel.add_child(back)
 
 
-func _build_join() -> void:
-	_join_panel = VBoxContainer.new()
-	_join_panel.set_anchors_preset(Control.PRESET_CENTER)
-	_join_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_join_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-	_join_panel.add_theme_constant_override("separation", 10)
-	_join_panel.custom_minimum_size = Vector2(400, 0)
-	_join_panel.visible = false
-	add_child(_join_panel)
+var _join_root: PanelContainer = null
 
-	var head := Label.new()
-	head.text = "JOIN GAME"
-	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	head.add_theme_font_size_override("font_size", 26)
-	head.add_theme_color_override("font_color", Color(0.95, 0.82, 0.4))
-	_join_panel.add_child(head)
+
+func _build_join() -> void:
+	_join_root = PanelContainer.new()
+	_join_root.add_theme_stylebox_override("panel", UITheme.panel_style())
+	_join_root.set_anchors_preset(Control.PRESET_CENTER, true)
+	_join_root.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_join_root.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_join_root.visible = false
+	add_child(_join_root)
+
+	_join_panel = VBoxContainer.new()
+	_join_panel.add_theme_constant_override("separation", 10)
+	_join_panel.custom_minimum_size = Vector2(420, 0)
+	_join_root.add_child(_join_panel)
+
+	_join_panel.add_child(UITheme.make_screen_title("JOIN GAME"))
+	_join_panel.add_child(UITheme.make_section_header("Direct Connect"))
 
 	var ip_lbl := Label.new()
 	ip_lbl.text = "Host IP"
-	ip_lbl.add_theme_font_size_override("font_size", 15)
+	UITheme.style_body(ip_lbl)
 	_join_panel.add_child(ip_lbl)
 
 	_ip_edit = LineEdit.new()
 	_ip_edit.text = "127.0.0.1"
 	_ip_edit.placeholder_text = "127.0.0.1"
-	_ip_edit.custom_minimum_size = Vector2(0, 36)
+	_ip_edit.custom_minimum_size = Vector2(0, 34)
+	UITheme.style_lineedit(_ip_edit)
 	_join_panel.add_child(_ip_edit)
 
 	var port_lbl := Label.new()
 	port_lbl.text = "Port"
-	port_lbl.add_theme_font_size_override("font_size", 15)
+	UITheme.style_body(port_lbl)
 	_join_panel.add_child(port_lbl)
 
 	_port_edit = LineEdit.new()
 	_port_edit.text = str(Net.DEFAULT_PORT)
-	_port_edit.custom_minimum_size = Vector2(0, 36)
+	_port_edit.custom_minimum_size = Vector2(0, 34)
+	UITheme.style_lineedit(_port_edit)
 	_join_panel.add_child(_port_edit)
+
+	_join_panel.add_child(UITheme.make_section_header("Master Server"))
 
 	var master_lbl := Label.new()
 	master_lbl.text = "Master Server URL (for Browse)"
-	master_lbl.add_theme_font_size_override("font_size", 15)
+	UITheme.style_body(master_lbl)
 	_join_panel.add_child(master_lbl)
 
 	_master_edit = LineEdit.new()
 	_master_edit.text = Settings.master_url
 	_master_edit.placeholder_text = "http://192.168.1.50:8080"
-	_master_edit.custom_minimum_size = Vector2(0, 36)
+	_master_edit.custom_minimum_size = Vector2(0, 34)
+	UITheme.style_lineedit(_master_edit)
 	_master_edit.text_submitted.connect(func(_t: String) -> void: _on_browse_pressed())
 	_join_panel.add_child(_master_edit)
+
+	_join_panel.add_child(UITheme.spacer(4))
 
 	var browse := _make_button("BROWSE SERVERS")
 	browse.pressed.connect(_on_browse_pressed)
 	_join_panel.add_child(browse)
 
-	_connect_btn = _make_button("CONNECT")
+	_connect_btn = _make_button("CONNECT", true)
 	_connect_btn.pressed.connect(_on_connect_pressed)
 	_join_panel.add_child(_connect_btn)
 
@@ -448,9 +498,12 @@ func _build_join() -> void:
 		Net.leave()
 		_connecting = false
 		_connect_btn.disabled = false
-		_join_panel.visible = false
-		_menu_box.visible = true)
+		_join_root.visible = false
+		_menu_root.visible = true)
 	_join_panel.add_child(back)
+
+
+var _browse_root: PanelContainer = null
 
 
 func _build_browse() -> void:
@@ -458,38 +511,40 @@ func _build_browse() -> void:
 	_browse_http.request_completed.connect(_on_browse_http_done)
 	add_child(_browse_http)
 
-	_browse_panel = VBoxContainer.new()
-	_browse_panel.set_anchors_preset(Control.PRESET_CENTER)
-	_browse_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_browse_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-	_browse_panel.add_theme_constant_override("separation", 10)
-	_browse_panel.custom_minimum_size = Vector2(560, 0)
-	_browse_panel.visible = false
-	add_child(_browse_panel)
+	_browse_root = PanelContainer.new()
+	_browse_root.add_theme_stylebox_override("panel", UITheme.panel_style())
+	_browse_root.set_anchors_preset(Control.PRESET_CENTER, true)
+	_browse_root.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_browse_root.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_browse_root.visible = false
+	add_child(_browse_root)
 
-	var head := Label.new()
-	head.text = "BROWSE SERVERS"
-	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	head.add_theme_font_size_override("font_size", 26)
-	head.add_theme_color_override("font_color", Color(0.95, 0.82, 0.4))
-	_browse_panel.add_child(head)
+	_browse_panel = VBoxContainer.new()
+	_browse_panel.add_theme_constant_override("separation", 8)
+	_browse_panel.custom_minimum_size = Vector2(600, 0)
+	_browse_root.add_child(_browse_panel)
+
+	_browse_panel.add_child(UITheme.make_screen_title("BROWSE SERVERS"))
+	_browse_panel.add_child(UITheme.make_section_header("Available Servers"))
 
 	_browse_list = VBoxContainer.new()
-	_browse_list.add_theme_constant_override("separation", 6)
+	_browse_list.add_theme_constant_override("separation", 4)
 	_browse_panel.add_child(_browse_list)
+
+	_browse_panel.add_child(UITheme.spacer(4))
 
 	var back := _make_button("BACK")
 	back.pressed.connect(func() -> void:
-		_browse_panel.visible = false
-		_join_panel.visible = true)
+		_browse_root.visible = false
+		_join_root.visible = true)
 	_browse_panel.add_child(back)
 
 
 func _on_browse_pressed() -> void:
 	Settings.master_url = _master_edit.text.strip_edges()
 	Settings.save()
-	_join_panel.visible = false
-	_browse_panel.visible = true
+	_join_root.visible = false
+	_browse_root.visible = true
 	_refresh_browse()
 
 
@@ -499,7 +554,8 @@ func _refresh_browse() -> void:
 	var wait := Label.new()
 	wait.text = "Fetching server list..."
 	wait.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	wait.add_theme_color_override("font_color", Color(0.7, 0.9, 1.0))
+	wait.add_theme_font_size_override("font_size", 15)
+	wait.add_theme_color_override("font_color", UITheme.COL_INFO)
 	_browse_list.add_child(wait)
 	var url: String = Settings.master_url
 	if url == "":
@@ -511,7 +567,7 @@ func _refresh_browse() -> void:
 
 
 func _on_browse_http_done(_result: int, _code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
-	if not is_instance_valid(_browse_list) or not _browse_panel.visible:
+	if not is_instance_valid(_browse_list) or not _browse_root.visible:
 		return
 	for c in _browse_list.get_children():
 		c.queue_free()
@@ -520,14 +576,16 @@ func _on_browse_http_done(_result: int, _code: int, _headers: PackedStringArray,
 		var err := Label.new()
 		err.text = "No response from master server."
 		err.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		err.add_theme_color_override("font_color", Color(0.9, 0.4, 0.4))
+		err.add_theme_font_size_override("font_size", 15)
+		err.add_theme_color_override("font_color", UITheme.COL_ALERT)
 		_browse_list.add_child(err)
 		return
 	if not (parsed.get("servers", []) is Array):
 		var err2 := Label.new()
 		err2.text = "Malformed master server response."
 		err2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		err2.add_theme_color_override("font_color", Color(0.9, 0.4, 0.4))
+		err2.add_theme_font_size_override("font_size", 15)
+		err2.add_theme_color_override("font_color", UITheme.COL_ALERT)
 		_browse_list.add_child(err2)
 		return
 	var servers: Array = parsed["servers"]
@@ -535,7 +593,8 @@ func _on_browse_http_done(_result: int, _code: int, _headers: PackedStringArray,
 		var empty := Label.new()
 		empty.text = "No servers online."
 		empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		empty.add_theme_color_override("font_color", Color(0.7, 0.9, 1.0))
+		empty.add_theme_font_size_override("font_size", 15)
+		empty.add_theme_color_override("font_color", UITheme.COL_INFO)
 		_browse_list.add_child(empty)
 		return
 	for s in servers:
@@ -550,10 +609,10 @@ func _on_browse_http_done(_result: int, _code: int, _headers: PackedStringArray,
 		var maxp: int = int(s.get("max", 0))
 		var pwd: bool = bool(s.get("password", false))
 		var btn := Button.new()
-		btn.text = "%s  [%d/%d]  %s / %s%s" % [name, players, maxp, mapn, mname, "  (locked)" if pwd else ""]
-		btn.custom_minimum_size = Vector2(560, 42)
+		btn.text = "  %s   [%d/%d]   %s · %s%s" % [name, players, maxp, mapn, mname, "  (locked)" if pwd else ""]
+		btn.custom_minimum_size = Vector2(580, 40)
 		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		btn.add_theme_font_size_override("font_size", 17)
+		UITheme.style_button(btn, 15, false)
 		btn.pressed.connect(_join_server.bind(ip, port))
 		_browse_list.add_child(btn)
 
@@ -561,20 +620,21 @@ func _on_browse_http_done(_result: int, _code: int, _headers: PackedStringArray,
 func _join_server(ip: String, port: int) -> void:
 	_ip_edit.text = ip
 	_port_edit.text = str(port)
-	_browse_panel.visible = false
-	_join_panel.visible = true
+	_browse_root.visible = false
+	_join_root.visible = true
 	_on_connect_pressed()
 
 
 func _build_status() -> void:
+	# Status line sits just above the footer band — network status / errors.
 	_status_label = Label.new()
 	_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_status_label.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	_status_label.offset_top = -78
-	_status_label.offset_bottom = -58
-	_status_label.add_theme_font_size_override("font_size", 14)
-	_status_label.add_theme_color_override("font_color", Color(0.7, 0.9, 1.0))
-	_status_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	_status_label.offset_top = -88
+	_status_label.offset_bottom = -68
+	_status_label.add_theme_font_size_override("font_size", 13)
+	_status_label.add_theme_color_override("font_color", UITheme.COL_INFO)
+	_status_label.add_theme_color_override("font_outline_color", UITheme.COL_SHADOW)
 	_status_label.add_theme_constant_override("outline_size", 3)
 	add_child(_status_label)
 
@@ -584,19 +644,15 @@ func _build_footer() -> void:
 	foot.text = "WASD · W jump · S crouch/roll · X prone · RMB jet · LMB shoot · 1-0 · Q sec · R reload · E nade · F throw · G nade type · / command · F9 GIF"
 	foot.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	foot.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	foot.offset_top = -40
-	foot.offset_bottom = -12
-	foot.add_theme_font_size_override("font_size", 14)
-	foot.add_theme_color_override("font_color", Color(0.55, 0.6, 0.7))
+	foot.offset_top = -42
+	foot.offset_bottom = -18
+	foot.add_theme_font_size_override("font_size", 12)
+	foot.add_theme_color_override("font_color", UITheme.COL_TEXT_MUTED)
 	add_child(foot)
 
 
-func _make_button(text: String) -> Button:
-	var b := Button.new()
-	b.text = text
-	b.custom_minimum_size = Vector2(300, 48)
-	b.add_theme_font_size_override("font_size", 22)
-	return b
+func _make_button(text: String, primary: bool = false) -> Button:
+	return UITheme.make_button(text, primary)
 
 
 func _on_connect_pressed() -> void:
@@ -661,20 +717,20 @@ func _unhandled_input(event: InputEvent) -> void:
 			_settings_panel.visible = true
 	elif _settings_panel != null and _settings_panel.visible:
 		_settings_panel.visible = false
-		_menu_box.visible = true
-	elif _stats_panel != null and _stats_panel.visible:
-		_stats_panel.visible = false
-		_menu_box.visible = true
-	elif _host_panel != null and _host_panel.visible:
-		_host_panel.visible = false
-		_menu_box.visible = true
-	elif _join_panel != null and _join_panel.visible:
+		_menu_root.visible = true
+	elif _stats_root != null and _stats_root.visible:
+		_stats_root.visible = false
+		_menu_root.visible = true
+	elif _host_root != null and _host_root.visible:
+		_host_root.visible = false
+		_menu_root.visible = true
+	elif _join_root != null and _join_root.visible:
 		Net.leave()
 		_connecting = false
 		if is_instance_valid(_connect_btn):
 			_connect_btn.disabled = false
-		_join_panel.visible = false
-		_menu_box.visible = true
+		_join_root.visible = false
+		_menu_root.visible = true
 	else:
 		get_tree().quit()
 	get_viewport().set_input_as_handled()
