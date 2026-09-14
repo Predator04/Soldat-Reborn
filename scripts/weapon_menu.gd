@@ -1,9 +1,10 @@
 extends Control
-## WeaponMenu — Soldat-style live weapon panel on the HUD.
+## WeaponMenu — Soldat-style limbo weapon panel on the HUD.
 ##
-## Left-side always-on panel mirroring the classic RenderWeaponMenuText / LimboMenu:
+## Appears when the player dies (limbo), mirroring RenderWeaponMenuText / LimboMenu:
 ##   "Primary Weapon:"   → 10 primary rows (keys 1..0)
 ##   "Secondary Weapon:" → 4 secondary rows (Q swaps in / out)
+## Hides once the player picks a weapon, reappears on the next death.
 ##
 ## Currently equipped row is drawn in Soldat's classic green (55,165,55).
 ## Hovering another row highlights it in a lighter green (85,105,55) and pops a
@@ -35,6 +36,14 @@ var _font_size := 12
 var _hdr_font_size := 13
 var _hover_slot := -1  # 0..9 = primary index, 100..103 = secondary index+100, -1 = none
 
+# Death-triggered limbo menu: appears when the player dies, hides once they pick
+# a weapon, reappears on the next death. _was_dead/_picked drive that lifecycle.
+var _was_dead := false
+var _picked := false
+var _base_wi := -1
+var _base_si := -1
+var _base_us := false
+
 
 func _ready() -> void:
 	# Sit below the existing HP/fuel/ammo/weapon/grenades/rec stack (y ends ~155).
@@ -43,16 +52,45 @@ func _ready() -> void:
 	size = Vector2(PANEL_W, 10)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	_font = ThemeDB.fallback_font
+	visible = false
 	set_process(true)
 
 
 func _process(_delta: float) -> void:
-	# Track hover from local coordinates. Redraw every frame so the current-weapon
-	# highlight tracks player.weapon_index / secondary_index / using_secondary live.
 	# Pull the local player pointer off the parent HUD (may swap on respawn).
 	var parent := get_parent()
 	if parent != null and parent.get("player") != null:
 		player = parent.get("player")
+	if player == null or not is_instance_valid(player):
+		visible = false
+		return
+	# Show only while dead; hide once the player picks a weapon (or on respawn).
+	var dead: bool = bool(player.get("dead"))
+	if not dead:
+		visible = false
+		_was_dead = false
+		_picked = false
+	else:
+		if not _was_dead:
+			# Just died — baseline the current loadout so the existing weapon
+			# doesn't read as an instant "pick".
+			_was_dead = true
+			_picked = false
+			_base_wi = int(player.get("weapon_index"))
+			_base_si = int(player.get("secondary_index"))
+			_base_us = bool(player.get("using_secondary"))
+		else:
+			var wi: int = int(player.get("weapon_index"))
+			var si: int = int(player.get("secondary_index"))
+			var us: bool = bool(player.get("using_secondary"))
+			if wi != _base_wi or si != _base_si or us != _base_us:
+				_picked = true
+				_base_wi = wi
+				_base_si = si
+				_base_us = us
+		visible = not _picked
+	# Track hover from local coordinates. Redraw every frame so the current-weapon
+	# highlight tracks player.weapon_index / secondary_index / using_secondary live.
 	var mouse := get_local_mouse_position()
 	var new_slot := _slot_at(mouse)
 	if new_slot != _hover_slot:

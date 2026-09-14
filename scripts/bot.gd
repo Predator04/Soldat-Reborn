@@ -54,6 +54,10 @@ var ceasefire_t := 3.0
 var strafe_dir := 1.0
 var strafe_t := 0.0
 var dodge_cd := 0.0
+# Self-preservation: retreat when critically hurt and back off while reloading,
+# so bots read as thinking rather than walking into death.
+var _retreat_t := 0.0
+var _prev_health := 100.0
 # Idle wander — targetless bots pick a random direction and re-flip periodically
 # so they don't pile up against the map edge (issue #43).
 var wander_dir := 1.0
@@ -61,12 +65,12 @@ var wander_t := 0.0
 var _hop_cd := 0.0
 
 const BASE_GRAVITY := 1700.0
-# Bots used to run at 230, well under the player's 280 — they could never close.
-# 320 slightly beats a player sprint, so a bot can catch a fleeing target.
-const RUN_SPEED := 320.0
-const JUMP_VEL := -430.0
-const JET_THRUST := -2200.0
-const MAX_FALL := 1300.0
+# Bots run slightly faster than the player (205) so they can still close distance,
+# but not the old 320 — that read as unfair speed after the player slowdowns.
+const RUN_SPEED := 235.0
+const JUMP_VEL := -360.0
+const JET_THRUST := -1800.0
+const MAX_FALL := 1200.0
 # Match the actual weapon speeds so bullets read the same coming from bots as
 # from players: AK-74 = 1050, LAW rocket = 720.
 const BULLET_SPEED := 1050.0
@@ -181,6 +185,13 @@ func _physics_process(delta: float) -> void:
 		dx = target.global_position.x - global_position.x
 		dy = target.global_position.y - global_position.y
 
+	# Self-preservation: entering critical HP starts a brief retreat; keep it
+	# refreshing only on the crossing so a low-HP bot still re-engages.
+	_retreat_t = maxf(0.0, _retreat_t - delta)
+	if health < 35.0 and _prev_health >= 35.0:
+		_retreat_t = 1.8
+	_prev_health = health
+
 	# circle-strafe: flip lateral direction periodically while engaged
 	strafe_t -= delta
 	if strafe_t <= 0.0:
@@ -189,7 +200,11 @@ func _physics_process(delta: float) -> void:
 
 	var dir := 0.0
 	if is_instance_valid(target):
-		if absf(dx) > 120.0:
+		if _retreat_t > 0.0 or reloading:
+			# Back off — can't fight effectively while hurt/reloading, so put
+			# distance between us and the target instead of pressing in.
+			dir = -signf(dx) if absf(dx) > 12.0 else -strafe_dir
+		elif absf(dx) > 120.0:
 			dir = signf(dx)
 		else:
 			dir = strafe_dir  # close in → strafe around
@@ -273,7 +288,7 @@ func _physics_process(delta: float) -> void:
 			ammo = int(AMMO_STATS.get(loadout, AMMO_STATS["AK-74"])["mag"])
 	elif ammo <= 0:
 		_start_reload()
-	elif is_instance_valid(target) and fire_cd <= 0.0:
+	elif is_instance_valid(target) and fire_cd <= 0.0 and _retreat_t <= 0.0:
 		var to_t: Vector2 = target.global_position - global_position
 		var t_len: float = to_t.length()
 		# LAW bots refuse point-blank shots — rocket blast radius 130 would splash themselves to death.

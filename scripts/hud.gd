@@ -211,8 +211,8 @@ func _ready() -> void:
 	chat_feed.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(chat_feed)
 
-	# Weapon selection panel (#70) — always-on Soldat-style left-side list showing
-	# every primary/secondary with the currently equipped weapon highlighted green.
+	# Weapon selection panel (#70) — death-triggered limbo menu: shows while the
+	# player is dead, hides once they pick a weapon. See weapon_menu.gd _process.
 	weapon_menu = WeaponMenu.new()
 	add_child(weapon_menu)
 	weapon_menu.player = player
