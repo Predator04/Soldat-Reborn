@@ -466,7 +466,14 @@ func _physics_process(delta: float) -> void:
 		velocity.y = vy_climb
 		var target_x: float = float(_active_ladder.get_meta("center_x", global_position.x))
 		var to_center: float = target_x - global_position.x
-		velocity.x = clampf(to_center * 9.0 + dir * 160.0, -220.0, 220.0)
+		# #96: only auto-center when the player isn't giving lateral input, and
+		# only if we're actually off-center by more than a few pixels. Otherwise
+		# the snap term drags A/D input on wide ladders and step-off fights the
+		# lateral exit.
+		if dir == 0.0 and absf(to_center) > 8.0:
+			velocity.x = clampf(to_center * 9.0, -220.0, 220.0)
+		else:
+			velocity.x = clampf(dir * 160.0, -220.0, 220.0)
 		# Suppress bunny-hop this tick — climbing steers vertical velocity.
 		jump_buffer_t = 0.0
 		coyote_t = 0.0
