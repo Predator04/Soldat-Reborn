@@ -8,3 +8,7 @@ prompt.md
 # original Soldat asset packs to rebuild assets/{scenery,textures}). The
 # shipped scenery + terrain textures are COMMITTED here so a fresh clone
 # renders correctly without running it.
+
+# Local audit / scratch files
+audit_prompt.md
+claude_audit.log
