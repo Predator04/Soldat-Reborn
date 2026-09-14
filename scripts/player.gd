@@ -1365,6 +1365,7 @@ func _draw() -> void:
 		back_wn,
 		grenades,
 		use_cluster,
+		is_multiplayer_authority(),
 	)
 
 

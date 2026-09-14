@@ -80,6 +80,7 @@ static func draw_soldier(
 	back_weapon_name: String = "",
 	grenade_count: int = 0,
 	use_cluster: bool = false,
+	is_local: bool = false,
 ) -> void:
 	if jet_on and not dead:
 		_draw_jet_flame(node, facing)
@@ -134,6 +135,16 @@ static func draw_soldier(
 	if show_fuel:
 		node.draw_rect(Rect2(-6.5, HP_BAR_Y + 2.0, 13.0, 1.5), Color(0.0, 0.0, 0.0, 0.55))
 		node.draw_rect(Rect2(-6.5, HP_BAR_Y + 2.0, 13.0 * clampf(fuel / 100.0, 0.0, 1.0), 1.5), Color(0.3, 0.7, 1.0))
+
+	# "You" indicator arrow above the head — only over the LOCAL player (the one
+	# actually playing), never over remote players or bots.
+	if is_local and not dead:
+		var arrow_col := body_color.lightened(0.25)
+		node.draw_polygon(PackedVector2Array([
+			Vector2(-7.0, -44.0),
+			Vector2(7.0, -44.0),
+			Vector2(0.0, -33.0),
+		]), PackedColorArray([arrow_col, arrow_col, arrow_col]))
 
 	# Ceasefire (spawn protection) — soft pulsing cyan aura ring so it reads
 	# immediately as "invulnerable" to shooters.
