@@ -1422,6 +1422,45 @@ func net_spawn_ack() -> void:
 		var op = m2.get("operator")
 		if is_instance_valid(op):
 			rpc_id(sender, "net_m2_mount", int(m2.get("m2_id")), int(op.get_multiplayer_authority()))
+	# #108: hydrate scoreboard / flag / mode state immediately so a joiner
+	# landing during e.g. the winner-display window or with a flag being
+	# carried doesn't render 0-0-0 / flag-at-home for up to a broadcast tick.
+	rpc_id(sender, "net_match_state", scores, time_left, round_active, winner_team, winner_end_t, winner_note, _gg_levels, _gg_kills)
+	if flags.size() > 0:
+		var flag_arr: Array = []
+		for f in flags:
+			if not is_instance_valid(f):
+				flag_arr.append({"pos": Vector2.ZERO, "carrier": 0})
+				continue
+			var cid := 0
+			var carrier: Variant = f.get_meta("carrier") if f.has_meta("carrier") else null
+			if is_instance_valid(carrier):
+				var nm := String(carrier.name)
+				if nm.begins_with("Player_"):
+					cid = int(nm.substr(7))
+			flag_arr.append({"pos": f.position, "carrier": cid})
+		rpc_id(sender, "net_flag_state", flag_arr)
+	var mode: int = Settings.game_mode
+	if mode == Settings.MODE_DOM or mode == Settings.MODE_PM or mode == Settings.MODE_BR:
+		var mp: Dictionary = {}
+		if mode == Settings.MODE_DOM:
+			var dom: Array = []
+			for a in _dom_points:
+				if not is_instance_valid(a):
+					dom.append([0, 0.0, 0])
+					continue
+				dom.append([int(a.get_meta("owner_team", 0)), float(a.get_meta("progress", 0.0)), int(a.get_meta("cap_team", 0))])
+			mp["dom"] = dom
+		elif mode == Settings.MODE_PM:
+			var pm: Array = []
+			for p in get_tree().get_nodes_in_group("point_pickup"):
+				if is_instance_valid(p):
+					pm.append(p.get_meta("spawn_pos", p.global_position))
+			mp["pm"] = pm
+		elif mode == Settings.MODE_BR:
+			mp["br"] = {"c": _br_zone_center, "r": _br_zone_radius}
+		if not mp.is_empty():
+			rpc_id(sender, "net_mode_state", mp)
 
 
 @rpc("authority", "reliable")
