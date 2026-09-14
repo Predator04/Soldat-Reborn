@@ -714,11 +714,11 @@ func _physics_process(delta: float) -> void:
 			var m := get_parent()
 			if m != null and m.has_method("ready_peer_ids"):
 				for pid in m.ready_peer_ids():
-					rpc_id(pid, "net_state", position, velocity, aim_dir, facing, jet_on, health, fuel, weapon_index, ammo[weapon_index], reloading, grenades, secondary_index, secondary_ammo[secondary_index], using_secondary, crouching, prone)
+					rpc_id(pid, "net_state", position, velocity, aim_dir, facing, jet_on, health, fuel, weapon_index, ammo[weapon_index], reloading, grenades, secondary_index, secondary_ammo[secondary_index], using_secondary, crouching, prone, climbing)
 		else:
 			# Broadcast so the host relays to other clients (Godot's server_relay).
 			# Using rpc_id(1, ...) would freeze non-host peers' views of this body.
-			rpc("net_state", position, velocity, aim_dir, facing, jet_on, health, fuel, weapon_index, ammo[weapon_index], reloading, grenades, secondary_index, secondary_ammo[secondary_index], using_secondary, crouching, prone)
+			rpc("net_state", position, velocity, aim_dir, facing, jet_on, health, fuel, weapon_index, ammo[weapon_index], reloading, grenades, secondary_index, secondary_ammo[secondary_index], using_secondary, crouching, prone, climbing)
 
 
 # ── /command console (gestures) ────────────────────────
@@ -1490,7 +1490,7 @@ func restore_for_round() -> void:
 # ── RPCs ──────────────────────────────────────────────
 
 @rpc("authority", "call_remote", "unreliable_ordered")
-func net_state(pos: Vector2, vel: Vector2, aim: Vector2, face: float, jetting: bool, hp: float, fuel_val: float, wi: int, mag: int, is_reloading: bool, grens: int, sec_i: int, sec_mag: int, use_sec: bool, crouch_f: bool, prone_f: bool) -> void:
+func net_state(pos: Vector2, vel: Vector2, aim: Vector2, face: float, jetting: bool, hp: float, fuel_val: float, wi: int, mag: int, is_reloading: bool, grens: int, sec_i: int, sec_mag: int, use_sec: bool, crouch_f: bool, prone_f: bool, climb_f: bool = false) -> void:
 	position = pos
 	velocity = vel
 	aim_dir = aim
@@ -1509,6 +1509,10 @@ func net_state(pos: Vector2, vel: Vector2, aim: Vector2, face: float, jetting: b
 	using_secondary = use_sec
 	crouching = crouch_f
 	prone = prone_f
+	# #90: sync climb pose so remote peers see the standing/climbing frame
+	# instead of a jumping/falling one (net_state's vel.y goes ±CLIMB_SPEED
+	# during a climb which otherwise picks "spada" / "skok").
+	climbing = climb_f
 	_apply_stance_shape()
 	reloading = is_reloading
 	grenades = maxi(0, grens)
@@ -1726,6 +1730,13 @@ func _draw() -> void:
 	var on_floor := is_on_floor()
 	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
 		on_floor = absf(velocity.y) < 5.0
+	# #90: while climbing, force the standing pose by pretending we're on the
+	# floor with no vertical velocity. Otherwise the ±CLIMB_SPEED vel.y makes
+	# gostek pick a jump/fall frame on remote replicas.
+	var vel_for_pose: Vector2 = velocity
+	if climbing:
+		on_floor = true
+		vel_for_pose = Vector2.ZERO
 	# #60: the currently-inactive weapon slings across the back. When holding
 	# secondary, the primary rides back; otherwise the chosen secondary does.
 	var back_wn: String = str(weapons[weapon_index]["name"]) if using_secondary else str(secondary[secondary_index]["name"])
@@ -1734,7 +1745,7 @@ func _draw() -> void:
 		color,
 		facing,
 		aim_dir,
-		velocity,
+		vel_for_pose,
 		jet_on,
 		dead,
 		w["color"],
