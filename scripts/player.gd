@@ -832,9 +832,9 @@ func _apply_gg_weapon() -> void:
 	# Snap the active weapon to the current gg_level rung. Called on spawn and on
 	# every level change. Fills the target slot's mag so the new rung is usable
 	# immediately (no forced reload) and cancels an in-progress reload.
-	if gg_level < 0 or gg_level >= GG_LADDER.size():
+	if gg_level < 0:
 		return
-	var rung: Dictionary = GG_LADDER[gg_level]
+	var rung: Dictionary = GG_LADDER[mini(gg_level, GG_LADDER.size() - 1)]
 	var idx: int = int(rung["idx"])
 	if bool(rung["sec"]):
 		if idx < 0 or idx >= secondary.size():

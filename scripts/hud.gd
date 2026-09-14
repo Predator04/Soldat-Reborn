@@ -777,10 +777,13 @@ func _process(delta: float) -> void:
 		var lvl: int = int(player.get("gg_level"))
 		var ladder: Array = player.get("GG_LADDER")
 		if ladder != null and ladder.size() > 0:
-			var idx: int = clampi(lvl, 0, ladder.size() - 1)
-			var wname: String = str((ladder[idx] as Dictionary).get("name", ""))
-			var suffix: String = "  · Knife kill to win" if lvl >= ladder.size() - 1 else ""
-			lbl_weapon.text = "Gun Game — %s (%d/%d)%s" % [wname, lvl + 1, ladder.size(), suffix]
+			if lvl > ladder.size() - 1:
+				lbl_weapon.text = "Gun Game — Golden Knife · kill to win"
+			else:
+				var idx: int = clampi(lvl, 0, ladder.size() - 1)
+				var wname: String = str((ladder[idx] as Dictionary).get("name", ""))
+				var suffix: String = "  · Knife kill to win" if lvl >= ladder.size() - 1 else ""
+				lbl_weapon.text = "Gun Game — %s (%d/%d)%s" % [wname, lvl + 1, ladder.size(), suffix]
 	var gtype := "CLUSTER" if bool(player.get("use_cluster")) else "FRAG"
 	lbl_grenades.text = "GRENADES %d  [%s]" % [player.grenades, gtype]
 

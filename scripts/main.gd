@@ -76,6 +76,7 @@ const BR_ZONE_DPS := 22.0      # damage/sec applied outside the ring
 # rung from here in _spawn_*). Host-authoritative in MP; the RPC below fans
 # each update out to every peer so client-owned players re-apply the weapon.
 const GG_KNIFE_LEVEL := 15
+const GG_GOLD_KNIFE_LEVEL := 16
 var _gg_levels: Dictionary = {}
 
 # ── Match state (host-authoritative in MP) ─────────────
@@ -1809,8 +1810,8 @@ func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: Str
 		var k_lvl: int = _gg_get(killer_name)
 		var weapon_key: String = str(_weapon_name).replace(" (headshot)", "")
 		var is_knife_kill: bool = weapon_key == "Knife"
-		if k_lvl >= GG_KNIFE_LEVEL:
-			winner_note = "%s reached the knife" % killer_name
+		if k_lvl >= GG_GOLD_KNIFE_LEVEL:
+			winner_note = "%s reached the golden knife" % killer_name
 			_end_round(killer_team)
 			if Net.is_networked() and Net.is_host():
 				_broadcast_match_state()
@@ -1879,7 +1880,7 @@ func _gg_set(display_name: String, level: int) -> void:
 	# Store the clamped level, then push it into whichever live body carries the
 	# name. Only the peer that owns the body mutates it — non-authority replicas
 	# will pick up the swap through the usual net_state / net_bot_state stream.
-	var clamped: int = clampi(level, 0, GG_KNIFE_LEVEL)
+	var clamped: int = clampi(level, 0, GG_GOLD_KNIFE_LEVEL)
 	_gg_levels[display_name] = clamped
 	for s in get_tree().get_nodes_in_group("soldier"):
 		if not is_instance_valid(s):

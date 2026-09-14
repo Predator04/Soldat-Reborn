@@ -478,9 +478,9 @@ func _apply_gg_weapon() -> void:
 	# Snap loadout to the current Gun Game rung. Bots don't use their secondary
 	# slot for GG — the primary IS the ladder weapon, so `using_secondary` is
 	# force-cleared and the primary mag refills to the new weapon's cap.
-	if gg_level < 0 or gg_level >= GG_LADDER.size():
+	if gg_level < 0:
 		return
-	var wname: String = String(GG_LADDER[gg_level])
+	var wname: String = String(GG_LADDER[mini(gg_level, GG_LADDER.size() - 1)])
 	loadout = wname
 	using_secondary = false
 	ammo = int(AMMO_STATS.get(wname, AMMO_STATS["AK-74"])["mag"])
