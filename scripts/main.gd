@@ -1392,6 +1392,10 @@ func net_spawn_ack() -> void:
 			"vel": wp.linear_velocity,
 			"ang": float(wp.angular_velocity),
 			"rot": float(wp.rotation),
+			# #94: carry damage explicitly so future damage-on-hit weapons
+			# (axe/bayonet/etc.) don't silently lose their damage on clients
+			# because we re-derived by name.
+			"dmg": float(wp.get("damage_on_hit")),
 		})
 	if not arr.is_empty():
 		rpc_id(sender, "net_pickup_state", arr)
@@ -2814,6 +2818,10 @@ func _broadcast_pickup_state() -> void:
 			"vel": wp.linear_velocity,
 			"ang": float(wp.angular_velocity),
 			"rot": float(wp.rotation),
+			# #94: carry damage explicitly so future damage-on-hit weapons
+			# (axe/bayonet/etc.) don't silently lose their damage on clients
+			# because we re-derived by name.
+			"dmg": float(wp.get("damage_on_hit")),
 		})
 	for pid in _ready_peers.keys():
 		rpc_id(int(pid), "net_pickup_state", arr)
@@ -2847,7 +2855,13 @@ func net_pickup_state(arr: Array) -> void:
 			new_wp.weapon_name = str(entry.get("name", "AK-74"))
 			new_wp.team = int(entry.get("team", 0))
 			new_wp.thrower_name = str(entry.get("thrower", ""))
-			new_wp.damage_on_hit = 55.0 if str(entry.get("name", "")) == "Knife" else 0.0
+			# #94: pull damage from the host's payload instead of reconstructing
+			# by weapon name. Fallback to the legacy Knife=55 rule when the host
+			# is running a pre-#94 build with no "dmg" field.
+			if entry.has("dmg"):
+				new_wp.damage_on_hit = float(entry.get("dmg", 0.0))
+			else:
+				new_wp.damage_on_hit = 55.0 if str(entry.get("name", "")) == "Knife" else 0.0
 			new_wp.global_position = entry.get("pos", Vector2.ZERO)
 			add_child(new_wp)
 			wp = new_wp
