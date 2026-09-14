@@ -1298,6 +1298,11 @@ func net_client_ready() -> void:
 		if not is_instance_valid(box):
 			continue
 		rpc_id(sender, "net_bonus_spawn", int(bid), box.position, str(box.get("bonus_kind")))
+	# Gun Game: hand the joining peer the full rung snapshot so its first
+	# net_spawn_player / net_spawn_bot reads the correct level locally instead
+	# of seeding every replica at rung 0 until the next net_gg_set_level fires.
+	if Settings.game_mode == Settings.MODE_GG:
+		rpc_id(sender, "net_gg_state_sync", _gg_levels)
 	# then spawn a body for the new peer on everyone
 	_spawn_networked_player(sender)
 	# NOTE: _ready_peers[sender] is set only when the client acks the spawn (net_spawn_ack).
@@ -1887,7 +1892,10 @@ func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: Str
 	if Settings.game_mode == Settings.MODE_GG:
 		var k_lvl: int = _gg_get(killer_name)
 		var weapon_key: String = str(_weapon_name).replace(" (headshot)", "")
-		var is_knife_kill: bool = weapon_key == "Knife"
+		# Only demote when the killer is actually on the knife rung — otherwise a
+		# Berserker-boosted (or bonus-forced) knife kill from a lower rung would
+		# demote victims independently of the killer's ladder position.
+		var is_knife_kill: bool = weapon_key == "Knife" and k_lvl >= GG_KNIFE_LEVEL
 		if k_lvl >= GG_GOLD_KNIFE_LEVEL:
 			winner_note = "%s reached the golden knife" % killer_name
 			_end_round(killer_team)
@@ -1977,6 +1985,14 @@ func _gg_set(display_name: String, level: int) -> void:
 @rpc("authority", "call_local", "reliable")
 func net_gg_set_level(display_name: String, level: int) -> void:
 	_gg_set(display_name, level)
+
+
+@rpc("authority", "reliable")
+func net_gg_state_sync(levels: Dictionary) -> void:
+	# Replace the entire cache — used both for a joining peer's initial snapshot
+	# (so mid-match spawns read the correct rung locally) and for a round reset
+	# so stale entries don't leak into the next round's first spawn wave.
+	_gg_levels = levels.duplicate(true)
 
 
 func _end_round(team: int) -> void:
@@ -2108,6 +2124,10 @@ func _round_spawn_pos_for_team(t: int) -> Vector2:
 func net_round_reset() -> void:
 	# Host-triggered non-survival round reset (#58). Runs on every client so
 	# each peer restores the state of the soldier it owns.
+	# Gun Game: also drop the client's cached rungs so a stale entry from the
+	# previous round can't seed a fresh net_spawn_player / net_spawn_bot with
+	# the wrong weapon before the next net_gg_set_level fires.
+	_gg_levels.clear()
 	_restore_living_soldiers_local()
 
 

@@ -897,6 +897,14 @@ func _toggle_secondary() -> void:
 			return
 		if not using_secondary and not _is_secondary_unlocked(secondary_index):
 			return
+	# Weapon drop (#87): don't Q into a slot whose active weapon we just threw
+	# away — otherwise Q silently restores a supposedly-discarded weapon.
+	if using_secondary:
+		if _is_thrown(str(weapons[weapon_index]["name"])):
+			return
+	else:
+		if _is_thrown(str(secondary[secondary_index]["name"])):
+			return
 	using_secondary = not using_secondary
 	if reloading:
 		reloading = false
@@ -1108,9 +1116,20 @@ func dismount_m2() -> void:
 
 
 func _drop_active_weapon() -> void:
+	# Gun Game locks the rung to the weapon — dropping would strand the player on
+	# a non-ladder slot until their next kill re-applies _apply_gg_weapon. Also
+	# lets a Knife-rung player free-toss a damaging knife pickup on cooldown.
+	# Disable F throw entirely in GG.
+	if Settings.game_mode == Settings.MODE_GG:
+		return
 	var w := _active_weapon()
 	var wname := str(w["name"])
 	_thrown[wname] = true
+	# Mirror _throw_grenade: throwing a weapon (esp. a Knife pickup that deals
+	# contact damage) is an offensive action — drop spawn protection and break
+	# Predator invisibility so the thrower can't remain invulnerable/hidden.
+	ceasefire_t = 0.0
+	_break_predator_if_active()
 	if Net.is_networked():
 		# Route through the host so only one authoritative RigidBody2D exists per drop.
 		# Clients used to spawn their own physics copy that diverged frame to frame.
@@ -1182,6 +1201,7 @@ func try_pickup_weapon(weapon_name: String) -> bool:
 	# Re-grant a thrown weapon so it becomes selectable again (#87).
 	if _thrown.has(weapon_name):
 		_thrown.erase(weapon_name)
+	var picked: bool = false
 	for i in weapons.size():
 		if str(weapons[i]["name"]) == weapon_name:
 			ammo[i] = int(weapons[i]["mag"])
@@ -1189,16 +1209,23 @@ func try_pickup_weapon(weapon_name: String) -> bool:
 			using_secondary = false
 			reloading = false
 			reload_t = 0.0
-			return true
-	for i in secondary.size():
-		if str(secondary[i]["name"]) == weapon_name:
-			secondary_ammo[i] = int(secondary[i]["mag"])
-			secondary_index = i
-			using_secondary = true
-			reloading = false
-			reload_t = 0.0
-			return true
-	return false
+			picked = true
+			break
+	if not picked:
+		for i in secondary.size():
+			if str(secondary[i]["name"]) == weapon_name:
+				secondary_ammo[i] = int(secondary[i]["mag"])
+				secondary_index = i
+				using_secondary = true
+				reloading = false
+				reload_t = 0.0
+				picked = true
+				break
+	# Gun Game: keep the rung/weapon coupling intact — re-snap to the current
+	# gg_level's weapon so a stray pickup can't force us out of our rung slot.
+	if picked and Settings.game_mode == Settings.MODE_GG:
+		_apply_gg_weapon()
+	return picked
 
 
 @rpc("any_peer", "call_local", "reliable")
