@@ -16,6 +16,10 @@ var map_index := 0             # which map layout the next game loads
 var custom_map_path := ""      # if non-empty, main.gd loads this JSON map (issue #31)
 var lofi := false              # low-end mode: no particles, no gib meshes, no glow
 var mouse_sensitivity := 1.0   # 0.25..3.0 — scales incoming mouse motion via Input.set_custom_mouse_cursor + relative event scale
+# Android on-screen touch layout (issue #116). Default: LEFT half aims + fires,
+# RIGHT half is a movement joystick. When swapped, LEFT moves and RIGHT aims —
+# the layout convention preferred by some players.
+var touch_swap := false
 var show_fps := false          # overlay FPS counter on the HUD
 var blood_intensity := 1.0     # 0.0..1.5 — visual gore multiplier (particles + gib count in gostek/gibs)
 
@@ -120,6 +124,7 @@ func load_settings() -> void:
 	advance = bool(cf.get_value("game", "advance", false))
 	lofi = bool(cf.get_value("video", "lofi", false))
 	mouse_sensitivity = clampf(float(cf.get_value("controls", "mouse_sensitivity", 1.0)), 0.25, 3.0)
+	touch_swap = bool(cf.get_value("controls", "touch_swap", false))
 	show_fps = bool(cf.get_value("video", "show_fps", false))
 	blood_intensity = clampf(float(cf.get_value("game", "blood_intensity", 1.0)), 0.0, 1.5)
 	cos_head = str(cf.get_value("cosmetics", "head", "helm"))
@@ -155,6 +160,7 @@ func save() -> void:
 	cf.set_value("game", "advance", advance)
 	cf.set_value("video", "lofi", lofi)
 	cf.set_value("controls", "mouse_sensitivity", mouse_sensitivity)
+	cf.set_value("controls", "touch_swap", touch_swap)
 	cf.set_value("video", "show_fps", show_fps)
 	cf.set_value("game", "blood_intensity", blood_intensity)
 	cf.set_value("cosmetics", "head", cos_head)

@@ -184,6 +184,14 @@ func _build_controls_card(box: VBoxContainer) -> void:
 			Settings.mouse_sensitivity = v
 			Settings.save(),
 		"%.2fx"))
+	# Android touch layout (#116). Default = aim on the LEFT half, movement on
+	# the RIGHT. Toggling swaps the two so left-handers / players used to the
+	# opposite convention can flip it.
+	box.add_child(_check_button("Swap touch sides (mobile: left = move, right = aim)",
+		Settings.touch_swap,
+		func(on: bool) -> void:
+			Settings.touch_swap = on
+			Settings.save()))
 	var open_btn := _make_button("REBIND KEYS…")
 	open_btn.pressed.connect(func() -> void: controls_pressed.emit())
 	box.add_child(open_btn)

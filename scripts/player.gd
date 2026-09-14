@@ -207,6 +207,7 @@ var rocket_scene := preload("res://scenes/rocket.tscn")
 const SoldierArt = preload("res://scripts/soldier_art.gd")
 const Gostek = preload("res://scripts/gostek.gd")
 const WeaponPickup = preload("res://scripts/weapon_pickup.gd")
+const TouchControls = preload("res://scripts/touch_controls.gd")
 
 
 func _ready() -> void:
@@ -548,16 +549,27 @@ func _physics_process(delta: float) -> void:
 			velocity.y += GRAVITY * mg * delta
 			velocity.y = minf(velocity.y, MAX_FALL)
 
-	# aim — gamepad right stick when deflected past its deadzone, mouse otherwise.
-	# The stick check has to come first: on a system with both connected, a
-	# stationary mouse must not overwrite active stick input, and a resting stick
-	# must not overwrite mouse aim. The 0.2 threshold matches the aim_* action
-	# deadzone set in controls_map.gd and keeps drift/idle jitter from twitching aim.
+	# aim — gamepad right stick when deflected past its deadzone, then the
+	# Android touch overlay (#116) when present, mouse otherwise. Stick has to
+	# come first: on a system with both a controller and a mouse a stationary
+	# mouse must not overwrite active stick input, and a resting stick must not
+	# overwrite mouse aim. The 0.2 threshold matches the aim_* action deadzone
+	# set in controls_map.gd and keeps drift/idle jitter from twitching aim.
 	var stick := Input.get_vector("aim_left", "aim_right", "aim_up", "aim_down", 0.2)
 	if stick.length() > 0.0:
 		aim_dir = stick.normalized()
 		if absf(aim_dir.x) > 0.05:
 			facing = signf(aim_dir.x)
+	elif TouchControls.instance != null:
+		# On Android the touch overlay writes to its own aim_dir on drag; we
+		# copy it every tick so a released finger keeps the last aim (there's
+		# no mouse to fall back on). Facing follows aim.x with the same 0.05
+		# deadband used by the mouse path.
+		var tc_aim: Vector2 = TouchControls.instance.aim_dir
+		if tc_aim.length() > 0.001:
+			aim_dir = tc_aim.normalized()
+			if absf(aim_dir.x) > 0.05:
+				facing = signf(aim_dir.x)
 	else:
 		var mouse := get_global_mouse_position()
 		var to_mouse := mouse - global_position

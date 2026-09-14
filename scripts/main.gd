@@ -12,6 +12,7 @@ const WeaponPickup = preload("res://scripts/weapon_pickup.gd")
 const MapIO = preload("res://scripts/map_io.gd")
 const Spectator = preload("res://scripts/spectator.gd")
 const BonusPickup = preload("res://scripts/bonus_pickup.gd")
+const TouchControls = preload("res://scripts/touch_controls.gd")
 
 signal kill(killer_name: String, victim_name: String, weapon_name: String, killer_team: int, victim_team: int)
 
@@ -379,6 +380,7 @@ func _ready() -> void:
 	_build_weather()
 	_build_hud()
 	_build_pause_menu()
+	_maybe_build_touch_controls()
 	_spawn_mode_entities()
 	_spawn_bonus_boxes_init()
 	kill.connect(_on_kill_scored)
@@ -1206,6 +1208,29 @@ func _build_pause_menu() -> void:
 	pm.name = "PauseMenu"
 	pm.set_script(pause_menu_script)
 	add_child(pm)
+
+
+func _maybe_build_touch_controls() -> void:
+	# Touch overlay (#116) only spawns on touch devices (Android build) so
+	# desktop KB/M + gamepad (#115) never sees the on-screen joystick + buttons.
+	# The dedicated headless path skips it too — no viewport, no player.
+	if Net.is_dedicated:
+		return
+	var touch: bool = OS.has_feature("android") \
+		or OS.has_feature("mobile") \
+		or DisplayServer.is_touchscreen_available()
+	if not touch:
+		return
+	var layer := CanvasLayer.new()
+	layer.name = "TouchControls"
+	# Above the HUD (layer 0) so the joystick + buttons stay visible over the
+	# scoreboard / kill feed. Below the pause menu (which uses its own default
+	# layer) so pausing hides them naturally when the pause overlay covers them.
+	layer.layer = 50
+	add_child(layer)
+	var tc := TouchControls.new()
+	tc.name = "Overlay"
+	layer.add_child(tc)
 
 
 func _spawn_flags() -> void:
