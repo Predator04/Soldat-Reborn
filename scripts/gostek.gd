@@ -24,6 +24,12 @@ const SPRITE_SCALE := 1.0 / 3.0
 # Anims.pas runs its animation counter at physics tick rate (~60 Hz).
 const TICK_RATE := 60.0
 
+# Cross-fade between animation states (run→jump, jump→fall, land→idle) instead
+# of hard-cutting to frame 0 of the new anim. Frozen-fade-out (the old pose is
+# held and lerped toward the animating new one) — over ~0.12s this reads as a
+# smooth transition without the cost of advancing both anims in parallel.
+const BLEND_TIME := 0.12
+
 # Movement speed above which the soldier plays biega/biegatyl instead of stoi.
 const RUN_THRESHOLD := 45.0
 
@@ -327,11 +333,15 @@ static func _tick(node: CanvasItem, gs: Dictionary) -> PackedVector2Array:
 			"last_msec": Time.get_ticks_msec(),
 			"frame": PackedVector2Array(),
 			"facing": 1.0,
+			"blend_t": -1.0,
+			"prev_frame": PackedVector2Array(),
 		}
 		_states[id] = st
 
 	var target := _pick_anim(gs)
 	if target != st["anim"]:
+		st["prev_frame"] = st.get("frame", PackedVector2Array())
+		st["blend_t"] = 0.0
 		st["anim"] = target
 		st["phase"] = 0.0
 
@@ -358,8 +368,23 @@ static func _tick(node: CanvasItem, gs: Dictionary) -> PackedVector2Array:
 		idx = min(idx, frames.size() - 1)
 
 	st["frame"] = frames[idx]
+	# Cross-fade from the previous anim's held pose to the animating new one so
+	# state changes (run→jump, land→run) read smooth instead of snapping.
+	var blend_t: float = float(st.get("blend_t", -1.0))
+	if blend_t >= 0.0 and blend_t < BLEND_TIME:
+		var prev: PackedVector2Array = st.get("prev_frame", PackedVector2Array())
+		if not prev.is_empty():
+			var k: float = clampf(blend_t / BLEND_TIME, 0.0, 1.0)
+			k = k * k * (3.0 - 2.0 * k)  # smoothstep ease-in-out
+			var blended := PackedVector2Array()
+			blended.resize(frames[idx].size())
+			for i in frames[idx].size():
+				var p: Vector2 = prev[i] if i < prev.size() else frames[idx][i]
+				blended[i] = p.lerp(frames[idx][i], k)
+			st["frame"] = blended
+		st["blend_t"] = blend_t + dt
 	st["facing"] = float(gs.get("facing", 1.0))
-	return frames[idx]
+	return st["frame"]
 
 
 static func _pick_anim(gs: Dictionary) -> String:
