@@ -19,6 +19,10 @@ var operator: Node2D = null
 var fire_cd := 0.0
 var aim_dir := Vector2.RIGHT
 var _bullet_scene := preload("res://scenes/bullet.tscn")
+# Preload the barrel + mount sprites — used to be `load()`ed on every _draw,
+# which is a dict hit per frame per M2 turret.
+const _STAT_TEX := preload("res://assets/weapons-gfx/m2-stat.png")
+const _BARREL_TEX := preload("res://assets/weapons-gfx/m2.png")
 # Stable id — Main assigns on spawn so RPCs can address a specific mount.
 var m2_id: int = -1
 
@@ -160,19 +164,17 @@ func _fire() -> void:
 
 
 func _draw() -> void:
-	# Mount + barrel drawn from the two Soldat sprites.
-	var stat_tex: Texture2D = load("res://assets/weapons-gfx/m2-stat.png") as Texture2D
-	var barrel_tex: Texture2D = load("res://assets/weapons-gfx/m2.png") as Texture2D
+	# Mount + barrel drawn from the two Soldat sprites (preloaded above).
 	var s_scale := 1.0 / 3.0
-	if stat_tex != null:
-		var ss := stat_tex.get_size() * s_scale
-		draw_texture_rect(stat_tex, Rect2(Vector2(-ss.x * 0.5, -ss.y + 6.0), ss), false)
-	if barrel_tex != null:
-		var bs := barrel_tex.get_size() * s_scale
+	if _STAT_TEX != null:
+		var ss := _STAT_TEX.get_size() * s_scale
+		draw_texture_rect(_STAT_TEX, Rect2(Vector2(-ss.x * 0.5, -ss.y + 6.0), ss), false)
+	if _BARREL_TEX != null:
+		var bs := _BARREL_TEX.get_size() * s_scale
 		var angle: float = aim_dir.angle()
 		var flip_y: float = -1.0 if aim_dir.x < 0.0 else 1.0
 		draw_set_transform(Vector2(0, -14), angle, Vector2(1.0, flip_y))
-		draw_texture_rect(barrel_tex, Rect2(Vector2(-bs.x * 0.15, -bs.y * 0.5), bs), false)
+		draw_texture_rect(_BARREL_TEX, Rect2(Vector2(-bs.x * 0.15, -bs.y * 0.5), bs), false)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	# Interaction hint — only visible when a soldier is close enough to mount.
 	if operator == null:
