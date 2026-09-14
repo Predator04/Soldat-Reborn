@@ -1248,7 +1248,7 @@ func net_match_restart(map_idx: int, mode_idx: int) -> void:
 	Net.chosen_map_index = clampi(map_idx, 0, MAPS.size() - 1)
 	Settings.map_index = Net.chosen_map_index
 	Settings.custom_map_path = ""  # networked matches always use built-in maps
-	Settings.game_mode = mode_idx
+	Settings.game_mode = clampi(mode_idx, 0, Net.MODE_NAMES.size() - 1)
 	Settings.save()
 	call_deferred("_do_reload_main")
 

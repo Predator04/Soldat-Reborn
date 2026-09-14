@@ -112,6 +112,17 @@ func _build_title() -> void:
 	ver.add_theme_color_override("font_color", Color(0.65, 0.68, 0.75))
 	add_child(ver)
 
+	var sub := Label.new()
+	sub.text = "jet boots · bunny hop · ragdoll gibs · online"
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	# Sit below the version band (140-170) so the two labels don't overlap.
+	sub.offset_top = 172
+	sub.offset_bottom = 200
+	sub.add_theme_font_size_override("font_size", 16)
+	sub.add_theme_color_override("font_color", Color(0.65, 0.7, 0.82))
+	add_child(sub)
+
 
 func _build_number() -> int:
 	# Runtime count instead of a hardcoded literal so every commit ships with the
@@ -123,17 +134,6 @@ func _build_number() -> int:
 	if code == 0 and not out.is_empty():
 		return int(String(out[0]).strip_edges())
 	return 0
-
-	var sub := Label.new()
-	sub.text = "jet boots · bunny hop · ragdoll gibs · online"
-	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	sub.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	# Sit below the version band (140-170) so the two labels don't overlap.
-	sub.offset_top = 172
-	sub.offset_bottom = 200
-	sub.add_theme_font_size_override("font_size", 16)
-	sub.add_theme_color_override("font_color", Color(0.65, 0.7, 0.82))
-	add_child(sub)
 
 
 func _build_menu() -> void:
@@ -522,6 +522,13 @@ func _on_browse_http_done(_result: int, _code: int, _headers: PackedStringArray,
 		err.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		err.add_theme_color_override("font_color", Color(0.9, 0.4, 0.4))
 		_browse_list.add_child(err)
+		return
+	if not (parsed.get("servers", []) is Array):
+		var err2 := Label.new()
+		err2.text = "Malformed master server response."
+		err2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		err2.add_theme_color_override("font_color", Color(0.9, 0.4, 0.4))
+		_browse_list.add_child(err2)
 		return
 	var servers: Array = parsed["servers"]
 	if servers.is_empty():

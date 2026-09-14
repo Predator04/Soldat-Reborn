@@ -249,20 +249,23 @@ func _physics_process(delta: float) -> void:
 		# reach the map edge. Prior code hard-coded `dir = 1.0` which piled
 		# every targetless bot at the right wall.
 		wander_t -= delta
-		if wander_t <= 0.0 or global_position.x < 200.0 or global_position.x > 4600.0:
-			wander_dir = -wander_dir if (global_position.x < 200.0 or global_position.x > 4600.0) \
-				else (1.0 if randf() < 0.5 else -1.0)
+		if global_position.x < 200.0:
+			wander_dir = 1.0
+		elif global_position.x > 4600.0:
+			wander_dir = -1.0
+		elif wander_t <= 0.0:
+			wander_dir = 1.0 if randf() < 0.5 else -1.0
 			wander_t = randf_range(WANDER_FLIP_MIN, WANDER_FLIP_MAX)
 		dir = wander_dir
 
-	velocity.x = move_toward(velocity.x, dir * RUN_SPEED, 1300.0 * delta)
+	velocity.x = move_toward(velocity.x, dir * RUN_SPEED * MatchConfig.mod_speed(), 1300.0 * MatchConfig.mod_speed() * delta)
 	_hop_cd = maxf(0.0, _hop_cd - delta)
 
 	# dodge-jump when an enemy bullet is closing in
 	dodge_cd -= delta
 	if dodge_cd <= 0.0 and _bullet_incoming():
 		if on_floor:
-			velocity.y = JUMP_VEL
+			velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
 			Sfx.jump()
 		dodge_cd = 0.5
 
@@ -274,18 +277,18 @@ func _physics_process(delta: float) -> void:
 		# with a small horizontal boost so bots can actually close the gap.
 		var dist_h: float = absf(dx)
 		if dy < -50.0 and on_floor and jump_cd <= 0.0:
-			velocity.y = JUMP_VEL
+			velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
 			jump_cd = 0.9
 			Sfx.jump()
 		elif on_floor and jump_cd <= 0.0 and dist_h > 260.0 and _hop_cd <= 0.0:
-			velocity.y = JUMP_VEL
-			velocity.x = signf(dx) * maxf(RUN_SPEED, absf(velocity.x) * 1.08)
+			velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
+			velocity.x = signf(dx) * maxf(RUN_SPEED * MatchConfig.mod_speed(), absf(velocity.x) * 1.08)
 			jump_cd = 0.35
 			_hop_cd = HOP_COOLDOWN
 			Sfx.jump()
 		elif dy < -80.0 and not on_floor and fuel > 0.0:
-			velocity.y += JET_THRUST * delta
-			fuel = maxf(0.0, fuel - 40.0 * delta)
+			velocity.y += JET_THRUST * MatchConfig.mod_jet() * MatchConfig.mod_gravity() * delta
+			fuel = maxf(0.0, fuel - (40.0 / maxf(0.1, MatchConfig.mod_jet())) * delta)
 			jet_on = true
 	if jet_on and not was_jet:
 		Sfx.jet(true)

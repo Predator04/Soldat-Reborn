@@ -124,9 +124,19 @@ func _on_body_entered(body: Node) -> void:
 	# Same-team direct impact used to always no-damage-consume the rocket. With FF
 	# on (#74) we let the rocket explode on a teammate too so the blast can splash.
 	if body is CharacterBody2D and body.get("team") == team and not MatchConfig.friendly_fire_on():
+		# Consume silently across peers — otherwise non-authority replicas keep
+		# flying and self-destruct via the _life fallback ~10s later at the wrong
+		# spot (phantom rocket). Only the authority peer decides when to blow.
+		if multiplayer.multiplayer_peer != null and is_multiplayer_authority():
+			rpc("net_consume")
 		queue_free()
 		return
 	_explode()
+
+
+@rpc("authority", "call_remote", "reliable")
+func net_consume() -> void:
+	queue_free()
 
 
 func _explode() -> void:

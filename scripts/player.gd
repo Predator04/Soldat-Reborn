@@ -284,15 +284,22 @@ func _physics_process(delta: float) -> void:
 		# mounts mid-fight still shakes forever.
 		bink_t = maxf(0.0, bink_t - delta * 100.0)
 		ceasefire_t = maxf(0.0, ceasefire_t - delta)
+		# Refresh rising-edge prev states so a key held while mounted doesn't
+		# fire a spurious roll/swap/throw on the frame after dismount.
+		s_prev = Input.is_action_pressed("crouch")
+		q_prev = Input.is_action_pressed("secondary_swap")
+		g_prev = Input.is_action_pressed("grenade_toggle")
+		f_prev = Input.is_action_pressed("weapon_throw")
+		lmb_prev = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
 		queue_redraw()
 		return
 
 	# If the HUD command/chat line is open, freeze inputs: drop x-velocity, apply
 	# gravity so we still fall to ground, and skip all movement/shooting handling.
 	if input_locked:
-		velocity.x = move_toward(velocity.x, 0.0, GROUND_FRICTION * delta)
+		velocity.x = move_toward(velocity.x, 0.0, (GROUND_FRICTION if is_on_floor() else AIR_FRICTION) * delta)
 		if not is_on_floor():
-			velocity.y += GRAVITY * delta
+			velocity.y += GRAVITY * MatchConfig.mod_gravity() * delta
 			velocity.y = minf(velocity.y, MAX_FALL)
 		jet_on = false
 		if was_jet:
@@ -304,6 +311,14 @@ func _physics_process(delta: float) -> void:
 			gesture_t = maxf(0.0, gesture_t - delta)
 			if gesture_t <= 0.0:
 				gesture_anim = ""
+		# Refresh rising-edge prev states so closing chat with a key still held
+		# doesn't trigger a spurious prone/roll/swap/grenade/throw/fire.
+		x_prev = Input.is_action_pressed("prone")
+		s_prev = Input.is_action_pressed("crouch")
+		q_prev = Input.is_action_pressed("secondary_swap")
+		g_prev = Input.is_action_pressed("grenade_toggle")
+		f_prev = Input.is_action_pressed("weapon_throw")
+		lmb_prev = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
 		queue_redraw()
 		return
 
@@ -793,6 +808,8 @@ func _dec_active_mag() -> void:
 
 
 func _bink_for(weapon_name: String) -> float:
+	# Strip the "(headshot)" suffix bullet.gd appends so the lookup still matches.
+	weapon_name = weapon_name.replace(" (headshot)", "")
 	# Linear scan is fine here — <20 entries and this only runs on hit.
 	for w in weapons:
 		if str(w["name"]) == weapon_name:
@@ -1234,9 +1251,9 @@ func net_grenade(g_pos: Vector2, g_vel: Vector2, g_ang: float, cluster: bool = f
 		# comes from the fragment cascade, not the initial pop.
 		g.fuse = 1.4
 		g.damage = 40.0
-	get_parent().add_child(g)
 	if Net.is_networked() and proj_id > 0:
 		g.set_multiplayer_authority(get_multiplayer_authority())
+	get_parent().add_child(g)
 
 
 @rpc("authority", "call_local", "reliable")
