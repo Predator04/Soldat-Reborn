@@ -775,6 +775,13 @@ func _process(delta: float) -> void:
 	lbl_status.text = Net.status if Net.is_networked() else ""
 	_update_match_ui()
 	if not is_instance_valid(player):
+		# Blank the per-player readouts so we don't display last-frame HP/Fuel/Ammo
+		# for a body that no longer exists (spectator, mid-respawn, disconnect).
+		lbl_health.text = ""
+		lbl_fuel.text = ""
+		lbl_weapon.text = ""
+		lbl_ammo.text = ""
+		lbl_grenades.text = ""
 		return
 	# Defensive: bail if weapon_index or the array shape drifted mid-frame.
 	var wi: int = int(player.weapon_index)

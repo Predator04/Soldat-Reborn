@@ -1359,6 +1359,33 @@ func net_spawn_ack() -> void:
 	# the host's mods / friendly-fire / bot roster immediately instead of
 	# running under its own local Settings until the next admin-menu change.
 	rpc_id(sender, "net_match_config_apply", MatchConfig.to_dict())
+	# Send an immediate pickup snapshot + M2 mount ownership so a late-joiner
+	# sees currently-thrown weapons on the ground and knows which turrets are
+	# already occupied, instead of waiting for the next 10Hz broadcast tick.
+	var arr: Array = []
+	for wp in get_tree().get_nodes_in_group("weapon_pickup"):
+		if not is_instance_valid(wp):
+			continue
+		if int(wp.get("pickup_id")) <= 0:
+			continue
+		arr.append({
+			"id": int(wp.get("pickup_id")),
+			"name": str(wp.get("weapon_name")),
+			"team": int(wp.get("team")),
+			"thrower": str(wp.get("thrower_name")),
+			"pos": wp.global_position,
+			"vel": wp.linear_velocity,
+			"ang": float(wp.angular_velocity),
+			"rot": float(wp.rotation),
+		})
+	if not arr.is_empty():
+		rpc_id(sender, "net_pickup_state", arr)
+	for m2 in get_tree().get_nodes_in_group("m2_gun"):
+		if not is_instance_valid(m2):
+			continue
+		var op = m2.get("operator")
+		if is_instance_valid(op):
+			rpc_id(sender, "net_m2_mount", int(m2.get("m2_id")), int(op.get_multiplayer_authority()))
 
 
 @rpc("authority", "reliable")

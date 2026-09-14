@@ -96,8 +96,16 @@ func load_settings() -> void:
 	sfx_volume = float(cf.get_value("audio", "sfx_volume", 1.0))
 	music_volume = clampf(float(cf.get_value("audio", "music_volume", 0.55)), 0.0, 1.0)
 	music_muted = bool(cf.get_value("audio", "music_muted", false))
-	screen_shake = bool(cf.get_value("game", "screen_shake", true))
 	screen_shake_intensity = clampf(float(cf.get_value("game", "screen_shake_intensity", 1.0)), 0.0, 2.0)
+	# Derive the legacy boolean from the intensity slider so callers reading
+	# either see consistent state. A migration path from configs that only wrote
+	# `screen_shake` (pre-intensity) still respects the old value if intensity
+	# was defaulted.
+	if cf.get_value("game", "screen_shake_intensity", null) == null:
+		screen_shake = bool(cf.get_value("game", "screen_shake", true))
+		screen_shake_intensity = 1.0 if screen_shake else 0.0
+	else:
+		screen_shake = screen_shake_intensity > 0.01
 	fullscreen = bool(cf.get_value("video", "fullscreen", false))
 	map_index = int(cf.get_value("game", "map_index", 0))
 	custom_map_path = str(cf.get_value("game", "custom_map_path", ""))
