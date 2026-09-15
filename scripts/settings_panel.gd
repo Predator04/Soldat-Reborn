@@ -13,6 +13,7 @@ signal controls_pressed  # menu / pause both hand controls off to their own scre
 
 const ControlsMap = preload("res://scripts/controls_map.gd")
 const UITheme = preload("res://scripts/ui_theme.gd")
+const TouchControls = preload("res://scripts/touch_controls.gd")
 
 # Cards keep their toggle state in a local dict so re-opening the panel
 # preserves whatever the user had expanded. Reset by construction each session.
@@ -184,14 +185,33 @@ func _build_controls_card(box: VBoxContainer) -> void:
 			Settings.mouse_sensitivity = v
 			Settings.save(),
 		"%.2fx"))
-	# Android touch layout (#116). Default = aim on the LEFT half, movement on
-	# the RIGHT. Toggling swaps the two so left-handers / players used to the
-	# opposite convention can flip it.
-	box.add_child(_check_button("Swap touch sides (mobile: left = move, right = aim)",
+	# Android touch layout (#116 / #117). Default = movement joystick on the
+	# LEFT half, aim + fire on the RIGHT (the conventional dual-stick scheme).
+	# Toggling swap flips to the pre-#117 layout (LEFT aims, RIGHT moves).
+	box.add_child(_check_button("Swap touch sides (mobile: LEFT aims, RIGHT moves)",
 		Settings.touch_swap,
 		func(on: bool) -> void:
 			Settings.touch_swap = on
 			Settings.save()))
+	# Layout editor + reset — only meaningful on touch devices, and only really
+	# usable when the overlay is mounted (i.e. mid-match). We show the buttons
+	# on every touch device but disable them from the main menu where no
+	# TouchControls instance exists yet.
+	var _touch_dev: bool = OS.has_feature("android") \
+		or OS.has_feature("mobile") \
+		or DisplayServer.is_touchscreen_available()
+	if _touch_dev:
+		var edit_btn := _make_button("CUSTOMIZE TOUCH LAYOUT")
+		edit_btn.disabled = TouchControls.instance == null
+		edit_btn.pressed.connect(func() -> void:
+			TouchControls.edit_mode = true
+			back_pressed.emit())
+		box.add_child(edit_btn)
+		var reset_btn := _make_button("RESET TOUCH LAYOUT")
+		reset_btn.pressed.connect(func() -> void:
+			Settings.touch_btn_pos = {}
+			Settings.save())
+		box.add_child(reset_btn)
 	var open_btn := _make_button("REBIND KEYS…")
 	open_btn.pressed.connect(func() -> void: controls_pressed.emit())
 	box.add_child(open_btn)

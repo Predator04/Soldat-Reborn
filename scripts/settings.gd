@@ -16,10 +16,16 @@ var map_index := 0             # which map layout the next game loads
 var custom_map_path := ""      # if non-empty, main.gd loads this JSON map (issue #31)
 var lofi := false              # low-end mode: no particles, no gib meshes, no glow
 var mouse_sensitivity := 1.0   # 0.25..3.0 — scales incoming mouse motion via Input.set_custom_mouse_cursor + relative event scale
-# Android on-screen touch layout (issue #116). Default: LEFT half aims + fires,
-# RIGHT half is a movement joystick. When swapped, LEFT moves and RIGHT aims —
-# the layout convention preferred by some players.
+# Android on-screen touch layout (issue #116 / #117). Default is the standard
+# dual-stick scheme: LEFT half = movement joystick, RIGHT half = aim + fire.
+# Toggling swap flips to LEFT = aim, RIGHT = move (the pre-#117 layout).
 var touch_swap := false
+# Per-button custom positions for the six edge buttons (#117). Keyed by the
+# action name (e.g. "jet", "grenade"); value is the button CENTER position as a
+# Vector2. Empty dict = use built-in default anchor layout. Populated from the
+# in-game "Customize touch layout" editor (touch_controls.gd), reset by the
+# "Reset touch layout" action.
+var touch_btn_pos: Dictionary = {}
 var show_fps := false          # overlay FPS counter on the HUD
 var blood_intensity := 1.0     # 0.0..1.5 — visual gore multiplier (particles + gib count in gostek/gibs)
 
@@ -125,6 +131,18 @@ func load_settings() -> void:
 	lofi = bool(cf.get_value("video", "lofi", false))
 	mouse_sensitivity = clampf(float(cf.get_value("controls", "mouse_sensitivity", 1.0)), 0.25, 3.0)
 	touch_swap = bool(cf.get_value("controls", "touch_swap", false))
+	# touch_btn_pos: legacy configs won't have it; default is an empty dict.
+	# Also normalise entries so an old array-style [x, y] load still resolves to
+	# Vector2 downstream.
+	var raw_pos: Variant = cf.get_value("controls", "touch_btn_pos", {})
+	touch_btn_pos = {}
+	if raw_pos is Dictionary:
+		for k in raw_pos.keys():
+			var v: Variant = raw_pos[k]
+			if v is Vector2:
+				touch_btn_pos[str(k)] = v
+			elif v is Array and v.size() >= 2:
+				touch_btn_pos[str(k)] = Vector2(float(v[0]), float(v[1]))
 	show_fps = bool(cf.get_value("video", "show_fps", false))
 	blood_intensity = clampf(float(cf.get_value("game", "blood_intensity", 1.0)), 0.0, 1.5)
 	cos_head = str(cf.get_value("cosmetics", "head", "helm"))
@@ -161,6 +179,7 @@ func save() -> void:
 	cf.set_value("video", "lofi", lofi)
 	cf.set_value("controls", "mouse_sensitivity", mouse_sensitivity)
 	cf.set_value("controls", "touch_swap", touch_swap)
+	cf.set_value("controls", "touch_btn_pos", touch_btn_pos)
 	cf.set_value("video", "show_fps", show_fps)
 	cf.set_value("game", "blood_intensity", blood_intensity)
 	cf.set_value("cosmetics", "head", cos_head)
