@@ -33,6 +33,7 @@ var _has_target := false
 
 
 func _ready() -> void:
+	_snapshot_net_peers()
 	# Terrain layer 2 = ported "only bullets collide" polys (see main.gd).
 	collision_mask = 1 | 2 | 8  # terrain, bullets-only terrain, soldiers
 	add_to_group("bullet")
@@ -98,7 +99,7 @@ func _physics_process(delta: float) -> void:
 		_broadcast_cd -= delta
 		if _broadcast_cd <= 0.0:
 			_broadcast_cd = 1.0 / BROADCAST_HZ
-			rpc("net_projectile_state", global_position, direction)
+			_net_send("net_projectile_state", [global_position, direction])
 
 
 @rpc("authority", "call_remote", "reliable")
@@ -130,7 +131,7 @@ func _on_body_entered(body: Node) -> void:
 		# flying and self-destruct via the _life fallback ~10s later at the wrong
 		# spot (phantom rocket). Only the authority peer decides when to blow.
 		if multiplayer.multiplayer_peer != null and is_multiplayer_authority():
-			rpc("net_consume")
+			_net_send("net_consume", [])
 		queue_free()
 		return
 	_explode()
@@ -149,7 +150,7 @@ func _explode() -> void:
 	# victim see the impact fireball in the same spot. Local `_exploded` guard
 	# above keeps this idempotent.
 	if multiplayer.multiplayer_peer != null and is_multiplayer_authority():
-		rpc("net_explode", global_position)
+		_net_send("net_explode", [global_position])
 	if weapon_name == "M79":
 		Sfx.m79_thump()
 	else:
@@ -209,3 +210,28 @@ func _draw() -> void:
 	draw_line(back * 6.0 + side * 4.0, back * 12.0 + side * 7.0, Color(0.4, 0.42, 0.5), 2.0)
 	draw_line(back * 6.0 - side * 4.0, back * 12.0 - side * 7.0, Color(0.4, 0.42, 0.5), 2.0)
 	draw_circle(back * 14.0, 3.5, Color(1.0, 0.85, 0.35, 0.9))
+
+
+# Host-authority sends go only to the peers that were ACKED when this
+# projectile spawned (they are the ones that received its spawn RPC); a peer
+# still loading the match would otherwise log "Node not found" for every
+# state packet. Client-authority projectiles still broadcast normally.
+var _net_peers: Array = []
+var _net_peers_set := false
+
+func _snapshot_net_peers() -> void:
+	if multiplayer.multiplayer_peer == null or not multiplayer.is_server():
+		return
+	var m := get_tree().current_scene
+	if m != null and m.has_method("ready_peer_ids"):
+		_net_peers = m.ready_peer_ids()
+		_net_peers_set = true
+
+
+func _net_send(method: StringName, args: Array) -> void:
+	if _net_peers_set:
+		for pid in _net_peers:
+			if multiplayer.get_peers().has(int(pid)):
+				callv("rpc_id", [int(pid), method] + args)
+	else:
+		callv("rpc", [method] + args)

@@ -15,11 +15,10 @@ const MAX_PEERS := 8
 
 # Kept in-sync with menu.gd — used by --map/--mode CLI resolution before the
 # menu ever loads (dedicated mode boots straight into main.tscn).
-const MAP_NAMES := [
-	"Ascent", "Towers", "Pillars",
-	"Nuubia", "Maya", "Aftermath", "Hormone", "Viet",
-	"Scorpion", "Warehouse", "Baire", "Airpirates", "Bunker",
-]
+# Same list the menu / host admin use (all 102 maps) — the old 13-entry copy
+# clamped dedicated `--map 50` to Bunker and couldn't resolve most names.
+const _MenuScript = preload("res://scripts/menu.gd")
+var MAP_NAMES: Array = _MenuScript.MAP_NAMES
 const MODE_NAMES := [
 	"Deathmatch", "Teammatch", "Capture the Flag",
 	"Infiltration", "Hold the Flag", "Rambomatch", "Pointmatch",
@@ -28,6 +27,7 @@ const MODE_NAMES := [
 
 var mode: int = Mode.SINGLEPLAYER
 var status := ""
+var last_disconnect_reason := ""   # shown by the menu after a kick / lost host
 var chosen_map_index := 0     # host's picked map; clients receive it via net_set_map
 var _map_synced := false      # client-side: true once host has told us the map
 # #99: custom-map broadcast. Host stashes the full JSON so joining peers can
@@ -52,6 +52,10 @@ var bot_bullets_seen: int = 0
 # _stop_master_heartbeat so leave() can tear them down instead of leaking.
 var _heartbeat_http: HTTPRequest = null
 var _heartbeat_timer: Timer = null
+# Dedicated-server race fix (#118): a fast client can send net_client_ready before
+# the server's main.tscn has finished loading. Buffer those calls in the autoload
+# (always present) and drain them from Main._ready() after _spawn_bots().
+var _pending_clients: Array = []
 
 
 func _ready() -> void:
@@ -288,7 +292,7 @@ func _smoke_host() -> void:
 func _smoke_join() -> void:
 	map_received.connect(func() -> void:
 		get_tree().change_scene_to_file("res://scenes/main.tscn"))
-	join_game("127.0.0.1", DEFAULT_PORT)
+	join_game("127.0.0.1", _smoke_port())
 	# Larger window so the client has time to complete: connect → map_received →
 	# main.tscn._ready → net_client_ready → host mirrors bots via net_spawn_bot.
 	get_tree().create_timer(6.0).timeout.connect(func() -> void:
@@ -317,7 +321,7 @@ func _smoke_botfire() -> void:
 	# routinely left every bot outside ENGAGE_RANGE for the full 20s window).
 	map_received.connect(func() -> void:
 		get_tree().change_scene_to_file("res://scenes/main.tscn"))
-	join_game("127.0.0.1", DEFAULT_PORT)
+	join_game("127.0.0.1", _smoke_port())
 	# Track the lowest HP the local player was seen at during the smoke — the
 	# player may already have died and respawned (or died and not yet respawned)
 	# by the time we print, so a single snapshot of main.player.health can miss
@@ -383,7 +387,7 @@ func _smoke_botfire() -> void:
 				bots_visible += 1
 		# A tracer/rocket still in-flight from a bot proves the projectile landed
 		# in our world (not just an RPC receipt). Bullets carry the shooter's team;
-		# bots use team 99 (FFA) or TEAM_RED (2) / TEAM_BLUE (1) in team modes.
+		# bots use team 1000+i (FFA) or TEAM_RED (2) / TEAM_BLUE (1) in team modes.
 		for b in get_tree().get_nodes_in_group("bullet"):
 			if not is_instance_valid(b):
 				continue
@@ -393,7 +397,7 @@ func _smoke_botfire() -> void:
 		var local_hp: float = -1.0
 		if main != null and main.get("player") != null and is_instance_valid(main.player):
 			local_hp = float(main.player.health)
-		print("SMOKE-BOTFIRE id=%d mode=%d players=%d bots_visible=%d bot_shots_seen=%d bot_bullets_seen=%d bot_bullets_max=%d bot_bullets_visible=%d local_hp=%.1f min_hp=%.1f deaths=%d" % [local_id(), mode, pcount, bots_visible, bot_shots_seen, bot_bullets_seen, max_bullets_ref[0], bot_bullets_visible, local_hp, min_hp_ref[0], deaths_ref[0]])
+		print("SMOKE-BOTFIRE id=%d mode=%d players=%d bots_visible=%d bot_shots_seen=%d bot_bullets_seen=%d bot_bullets_max=%d bot_bullets_visible=%d local_hp=%.1f min_hp=%.1f deaths=%d status=\"%s\" left=\"%s\"" % [local_id(), mode, pcount, bots_visible, bot_shots_seen, bot_bullets_seen, max_bullets_ref[0], bot_bullets_visible, local_hp, min_hp_ref[0], deaths_ref[0], status, last_disconnect_reason])
 		leave()
 		get_tree().quit())
 
@@ -444,9 +448,38 @@ func leave() -> void:
 	mode = Mode.SINGLEPLAYER
 	_map_synced = false
 	custom_map_json = ""
+	_pending_clients.clear()
 	_set_status("")
 	# Stop the dedicated-mode master heartbeat — no session to advertise.
 	_stop_master_heartbeat()
+
+
+# RPC entry point for joining clients. Hosted on Net (always loaded) rather than
+# Main so calls that arrive before main.tscn finishes loading are buffered here
+# instead of silently dropped. Main drains the buffer in _ready() (#118).
+@rpc("any_peer", "reliable")
+func net_client_ready(joiner_name: String = "", client_version: String = "") -> void:
+	if not is_host():
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	var main := _get_main()
+	if main != null:
+		main._handle_client_ready(sender, joiner_name, client_version)
+	else:
+		_pending_clients.append({id = sender, name = joiner_name, version = client_version})
+
+
+func consume_pending_clients() -> Array:
+	var out := _pending_clients.duplicate()
+	_pending_clients.clear()
+	return out
+
+
+func _get_main() -> Node:
+	var scene := get_tree().current_scene
+	if scene == null or not scene.has_method("_handle_client_ready"):
+		return null
+	return scene
 
 
 func is_map_synced() -> bool:
@@ -526,3 +559,16 @@ func net_set_map(idx: int, mode_idx: int = -1, custom_json: String = "") -> void
 	custom_map_json = custom_json
 	_map_synced = true
 	map_received.emit()
+
+
+# Smoke clients honour --port N / --port=N so the release gate can run several
+# server/client pairs without colliding on the default port.
+func _smoke_port() -> int:
+	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
+	for i in args.size():
+		var a: String = args[i]
+		if a == "--port" and i + 1 < args.size():
+			return int(args[i + 1])
+		if a.begins_with("--port="):
+			return int(a.substr(7))
+	return DEFAULT_PORT

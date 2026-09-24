@@ -20,12 +20,17 @@ jobs:
       - name: Import project
         run: ./Godot_v4.7.2-stable_linux.x86_64 --headless --path . --import
 
-      - name: Verify (must print zero error lines)
-        run: |
-          OUT=$(./Godot_v4.7.2-stable_linux.x86_64 --headless --path . --quit-after 900 2>&1)
-          echo "$OUT"
-          if echo "$OUT" | grep -qiE "error|invalid|nil|failed|attempt"; then
-            echo "::error::Headless verify failed"
-            exit 1
-          fi
-          echo "Verify clean"
+      - name: Python deps for map audit
+        run: pip install numpy scipy pillow shapely
+
+      - name: Release gate (quick — static, boots, MP smokes, all modes)
+        env:
+          GODOT_BIN: ${{ github.workspace }}/Godot_v4.7.2-stable_linux.x86_64
+        run: tools/release_gate.sh --quick --out build/gate
+
+      - name: Upload gate logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-gate-logs
+          path: build/gate/

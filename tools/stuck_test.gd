@@ -33,6 +33,11 @@ func _on_kill(_k: String, victim: String, _w: String, _kt: int, _vt: int) -> voi
 		_kills += 1
 
 
+func _on_objective(kind: String, _team: int, _who: String) -> void:
+	if kind == "capture" or kind == "dom" or kind == "point":
+		_caps += 1
+
+
 func _initialize() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--secs="): _secs = float(a.substr(7))
@@ -66,6 +71,8 @@ func _physics_process(delta: float) -> bool:
 		_count = (m.get("MAPS") as Array).size()
 	if _hooked != m and m.has_signal("kill"):
 		m.connect("kill", _on_kill)
+		if m.has_signal("objective"):
+			m.connect("objective", _on_objective)
 		_hooked = m
 		_caps = 0
 		_kills = 0

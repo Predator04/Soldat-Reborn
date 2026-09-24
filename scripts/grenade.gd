@@ -28,6 +28,7 @@ var _exploded := false
 
 
 func _ready() -> void:
+	_snapshot_net_peers()
 	# Grenades bounce off "only bullets" polys too (terrain layer 2).
 	collision_mask = 1 | 2 | 8  # terrain, bullets-only terrain, soldiers
 	var shape := CollisionShape2D.new()
@@ -83,7 +84,7 @@ func _physics_process(delta: float) -> void:
 		_broadcast_cd -= delta
 		if _broadcast_cd <= 0.0:
 			_broadcast_cd = 1.0 / BROADCAST_HZ
-			rpc("net_projectile_state", global_position, linear_velocity, rotation)
+			_net_send("net_projectile_state", [global_position, linear_velocity, rotation])
 	elif _has_target:
 		# Extrapolate with the last known velocity so a dropped packet doesn't
 		# freeze the grenade in place; snap toward the next authoritative sample
@@ -118,7 +119,7 @@ func _explode() -> void:
 	# #61: authority broadcasts the exact explode position so non-authority peers
 	# blast at the same spot even if their lerped position was slightly behind.
 	if multiplayer.multiplayer_peer != null and is_multiplayer_authority():
-		rpc("net_explode", global_position)
+		_net_send("net_explode", [global_position])
 	if cluster:
 		Sfx.cluster_explode()
 	else:
@@ -185,3 +186,28 @@ func _draw() -> void:
 	else:
 		draw_circle(Vector2.ZERO, 5.0, Color(0.35, 0.42, 0.3))
 		draw_circle(Vector2.ZERO, 2.0, Color(0.5, 0.55, 0.4))
+
+
+# Host-authority sends go only to the peers that were ACKED when this
+# projectile spawned (they are the ones that received its spawn RPC); a peer
+# still loading the match would otherwise log "Node not found" for every
+# state packet. Client-authority projectiles still broadcast normally.
+var _net_peers: Array = []
+var _net_peers_set := false
+
+func _snapshot_net_peers() -> void:
+	if multiplayer.multiplayer_peer == null or not multiplayer.is_server():
+		return
+	var m := get_tree().current_scene
+	if m != null and m.has_method("ready_peer_ids"):
+		_net_peers = m.ready_peer_ids()
+		_net_peers_set = true
+
+
+func _net_send(method: StringName, args: Array) -> void:
+	if _net_peers_set:
+		for pid in _net_peers:
+			if multiplayer.get_peers().has(int(pid)):
+				callv("rpc_id", [int(pid), method] + args)
+	else:
+		callv("rpc", [method] + args)

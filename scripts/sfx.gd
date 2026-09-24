@@ -182,6 +182,24 @@ func bow_fire() -> void:
 
 
 # Fired-once UI/menu blip. Kept as a no-op if no matching sample exists so callers stay simple.
+# Objective cues (Soldat's own CTF/INF samples).
+const OBJECTIVE_SOUNDS := {
+	"grab": ["flag", -4.0, 1.0],
+	"drop": ["flag2", -6.0, 0.85],
+	"return": ["flag2", -4.0, 1.1],
+	"capture": ["capture", -2.0, 1.0],
+	"dom": ["infilt-point", -4.0, 1.0],
+	"point": ["takemedikit", -10.0, 1.2],
+}
+
+
+func objective(kind: String) -> void:
+	var e: Array = OBJECTIVE_SOUNDS.get(kind, [])
+	if e.is_empty():
+		return
+	_play_key(str(e[0]), float(e[1]), float(e[2]))
+
+
 func ui() -> void:
 	_play_key("menuclick", -8.0, 1.0)
 

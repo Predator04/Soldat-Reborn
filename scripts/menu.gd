@@ -84,6 +84,10 @@ func _ready() -> void:
 	_build_browse()
 	_build_status()
 	_build_footer()
+	# Kicked / host lost / version mismatch: say why we're back at the menu.
+	if Net.last_disconnect_reason != "" and _status_label != null:
+		_status_label.text = Net.last_disconnect_reason
+		Net.last_disconnect_reason = ""
 	Net.status_changed.connect(_on_net_status_changed)
 	Net.connected.connect(_on_net_connected)
 	Net.disconnected.connect(_on_net_disconnected)
@@ -122,7 +126,10 @@ func _build_title() -> void:
 
 	# Version/build sits low and muted, doesn't compete with the title stack.
 	var ver := Label.new()
-	ver.text = "v1.12.1 · build %d" % _build_number()
+	var bn := _build_number()
+	ver.text = "v%s" % str(ProjectSettings.get_setting("application/config/version", "?"))
+	if bn > 0:
+		ver.text += " · build %d" % bn
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ver.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	ver.offset_top = 172
@@ -136,6 +143,10 @@ func _build_number() -> int:
 	# Runtime count instead of a hardcoded literal so every commit ships with the
 	# real HEAD count without a manual bump. Falls back to 0 in the editor / when
 	# git isn't reachable, which is fine for local dev builds.
+	# Only dev runs from the editor/source tree shell out to git — exported
+	# builds (Android especially) must not spawn processes at boot.
+	if not OS.has_feature("editor"):
+		return 0
 	var out: Array = []
 	# OS.execute returns the process exit code (0 = success), not a Godot Error.
 	var code := OS.execute("git", ["rev-list", "--count", "HEAD"], out, true)
@@ -721,6 +732,17 @@ func _unhandled_input(event: InputEvent) -> void:
 	var focused := get_viewport().gui_get_focus_owner()
 	if focused != null and focused is LineEdit:
 		return
+	_go_back()
+	get_viewport().set_input_as_handled()
+
+
+# Android back button / gesture behaves like ESC (quit_on_go_back is off).
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST and is_inside_tree():
+		_go_back()
+
+
+func _go_back() -> void:
 	if _controls_panel != null and _controls_panel.visible:
 		# Mid-rebind: let the capture eat ESC so the user doesn't lose the session
 		# on the first press (matches the pause-menu handling).
@@ -747,7 +769,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		_menu_root.visible = true
 	else:
 		get_tree().quit()
-	get_viewport().set_input_as_handled()
 
 
 # ── SP map picker ─────────────────────────────────────

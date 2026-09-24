@@ -6,7 +6,8 @@ config_version=5
 [application]
 
 config/name="Soldat Reborn"
-config/version="1.14.0"
+config/version="1.15.0"
+config/quit_on_go_back=false
 run/main_scene="res://scenes/menu.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 

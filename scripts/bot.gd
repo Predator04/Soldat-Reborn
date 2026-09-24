@@ -4,8 +4,9 @@ extends CharacterBody2D
 signal died
 
 @export var color := Color(0.85, 0.3, 0.25)
-# Dedicated non-peer team id: keeps bots hostile to any human peer including host (peer_id 1).
-var team := 99
+# Team id — main.gd assigns TEAM_BLUE/RED in team modes, or a unique
+# FFA_BOT_TEAM_BASE+i per bot in free-for-all so bots fight each other.
+var team := 1000
 var display_name := "Bot"
 var loadout := "AK-74"  # or "LAW" — set by Main._spawn_bot before add_child
 # Stable id assigned by the host in MP so per-bot state RPCs can address this body.
@@ -117,13 +118,13 @@ const WEAPON_STATS := {
 	"MP5":          {"damage": 13.0,  "rate": 0.10,  "speed": 950.0,  "kind": "bullet"},
 	"AK-74":        {"damage": 22.0,  "rate": 0.45,  "speed": 1050.0, "kind": "bullet"},
 	"Steyr AUG":    {"damage": 18.0,  "rate": 0.15,  "speed": 1150.0, "kind": "bullet"},
-	"Spas-12":      {"damage": 9.0,   "rate": 0.9,   "speed": 850.0,  "kind": "bullet"},
+	"Spas-12":      {"damage": 9.0,   "rate": 0.9,   "speed": 850.0,  "kind": "bullet", "pellets": 8, "spread": 0.26},
 	"Ruger 77":     {"damage": 82.0,  "rate": 1.0,   "speed": 1450.0, "kind": "bullet"},
 	"M79":          {"damage": 90.0,  "rate": 3.0,   "speed": 470.0,  "kind": "bullet"},
 	"Barrett":      {"damage": 245.0, "rate": 2.2,   "speed": 2400.0, "kind": "bullet"},
 	"Minimi":       {"damage": 23.0,  "rate": 0.20,  "speed": 1180.0, "kind": "bullet"},
 	"Minigun":      {"damage": 13.0,  "rate": 0.066, "speed": 1275.0, "kind": "bullet"},
-	"Flamethrower": {"damage": 19.0,  "rate": 0.08,  "speed": 420.0,  "kind": "bullet"},
+	"Flamethrower": {"damage": 19.0,  "rate": 0.08,  "speed": 420.0,  "kind": "bullet", "life": 0.35, "visual": "flame"},
 	"Rambo Bow":    {"damage": 12.0,  "rate": 1.5,   "speed": 900.0,  "kind": "bullet"},
 	"USSOCOM":      {"damage": 27.0,  "rate": 0.167, "speed": 800.0,  "kind": "bullet"},
 	"LAW":          {"damage": 90.0,  "rate": 1.6,   "speed": 720.0,  "kind": "rocket"},
@@ -131,7 +132,7 @@ const WEAPON_STATS := {
 	# a very-short-life bullet — travels ~60px then dies harmlessly. Damage still
 	# routes through take_damage with the correct weapon_name for GG kill scoring.
 	"Knife":        {"damage": 55.0,  "rate": 0.5,   "speed": 600.0,  "kind": "bullet", "life": 0.10},
-	"Chainsaw":     {"damage": 20.0,  "rate": 0.10,  "speed": 600.0,  "kind": "bullet", "life": 0.10},
+	"Chainsaw":     {"damage": 3.0,   "rate": 0.10,  "speed": 600.0,  "kind": "bullet", "life": 0.10},
 }
 
 # grenades
@@ -401,7 +402,6 @@ func _physics_process(delta: float) -> void:
 		climbing = true
 		_active_ladder = new_ladder
 		if was_jet:
-			Sfx.jet(false)
 			was_jet = false
 		jet_on = false
 		velocity.y = 0.0
@@ -458,7 +458,7 @@ func _physics_process(delta: float) -> void:
 				# Back off — can't fight effectively while hurt/reloading, so put
 				# distance between us and the target instead of pressing in.
 				dir = -signf(dx) if absf(dx) > 12.0 else -strafe_dir
-			elif absf(dx) > 120.0:
+			elif absf(dx) > (24.0 if _is_melee() else 120.0):
 				dir = signf(dx)
 			else:
 				dir = strafe_dir  # close in → strafe around
@@ -584,11 +584,13 @@ func _physics_process(delta: float) -> void:
 
 		# dodge-jump when an enemy bullet is closing in
 		dodge_cd -= delta
-		if dodge_cd <= 0.0 and not _refuel_wait and _bullet_incoming():
-			if on_floor:
-				velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
-				Sfx.jump()
-			dodge_cd = 0.5
+		if dodge_cd <= 0.0:
+			dodge_cd = 0.1  # scan bullets at 10 Hz, not every tick
+			if not _refuel_wait and _bullet_incoming():
+				if on_floor:
+					velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
+					Sfx.jump()
+				dodge_cd = 0.5
 
 		# jump / jet toward the target when it's above us
 		jet_on = false
@@ -660,10 +662,8 @@ func _physics_process(delta: float) -> void:
 				velocity.y += JET_THRUST * MatchConfig.mod_jet() * MatchConfig.mod_gravity() * delta
 				fuel = maxf(0.0, fuel - (40.0 / maxf(0.1, MatchConfig.mod_jet())) * delta)
 				jet_on = true
-		if jet_on and not was_jet:
-			Sfx.jet(true)
-		elif not jet_on and was_jet:
-			Sfx.jet(false)
+		# (Sfx.jet is the LOCAL player's single jet loop — bots toggling it made
+		# your jet hum start/stop from across the map.)
 		was_jet = jet_on
 		jet_particles.emitting = jet_on and not Settings.lofi
 		jet_particles.position = Vector2(-facing * 3.3, 1.7)
@@ -682,7 +682,7 @@ func _physics_process(delta: float) -> void:
 
 	# lob a grenade at mid-range
 	grenade_cd -= delta
-	if is_instance_valid(target) and grenade_cd <= 0.0 and grenades > 0:
+	if is_instance_valid(target) and grenade_cd <= 0.0 and grenades > 0 and _target_visible and absf(dx) > 60.0:
 		var dist: float = sqrt(dx * dx + dy * dy)
 		if dist > 300.0 and dist < 560.0:
 			_throw_grenade(dx, dy, dist)
@@ -723,7 +723,9 @@ func _physics_process(delta: float) -> void:
 		# When they've swapped to the USSOCOM secondary (#79) the pistol is safe at any range.
 		if loadout == "LAW" and not using_secondary and t_len < ROCKET_MIN_RANGE:
 			pass
-		elif t_len < _skill_engage_range and _has_line_of_sight(target):
+		elif _is_melee() and t_len > 70.0:
+			pass  # knife/chainsaw only swing when in reach
+		elif t_len < _skill_engage_range and _target_visible:
 			_shoot(to_t)
 
 	queue_redraw()
@@ -793,7 +795,7 @@ func _wall_ahead(dir: float) -> bool:
 	var space := get_world_2d().direct_space_state
 	var from := global_position + Vector2(0, -6)
 	var to := from + Vector2(dir * 24.0, 0)
-	var q := PhysicsRayQueryParameters2D.create(from, to)
+	var q := PhysicsRayQueryParameters2D.create(from, to, 1 | 4)  # terrain soldiers collide with
 	q.exclude = [self]
 	q.collide_with_areas = false
 	q.collide_with_bodies = true
@@ -817,7 +819,7 @@ func _ledge_ahead(dir: float) -> bool:
 	# Sample one step-length ahead + ~40px below current feet — jump-recoverable.
 	var from := global_position + Vector2(dir * 22.0, 0)
 	var to := from + Vector2(0, 46.0)
-	var q := PhysicsRayQueryParameters2D.create(from, to)
+	var q := PhysicsRayQueryParameters2D.create(from, to, 1 | 4)
 	q.exclude = [self]
 	q.collide_with_areas = false
 	q.collide_with_bodies = true
@@ -883,7 +885,7 @@ func _has_line_of_sight(t: Node2D) -> bool:
 	var space := get_world_2d().direct_space_state
 	var from := global_position + Vector2(0, -8)
 	var to := t.global_position + Vector2(0, -8)
-	var q := PhysicsRayQueryParameters2D.create(from, to)
+	var q := PhysicsRayQueryParameters2D.create(from, to, 1 | 2)  # terrain that stops bullets
 	q.exclude = [self, t]
 	q.collide_with_areas = false
 	q.collide_with_bodies = true
@@ -951,10 +953,15 @@ func _find_seek_ladder(dx: float, dy: float) -> Node2D:
 
 
 func _bullet_incoming() -> bool:
+	var me := global_position
 	for b in get_tree().get_nodes_in_group("bullet"):
-		if not is_instance_valid(b) or int(b.get("team")) == team:
+		if not is_instance_valid(b):
 			continue
-		var to_b: Vector2 = b.global_position - global_position
+		var to_b: Vector2 = (b as Node2D).global_position - me
+		if to_b.length_squared() > 62500.0:  # distance cull before property reads
+			continue
+		if int(b.get("team")) == team:
+			continue
 		var d: float = to_b.length()
 		# Widened from 150 → 250: bullets travel ~15px/physics tick, so 150 could skip a dodge frame entirely.
 		if d < 250.0 and d > 1.0:
@@ -976,7 +983,7 @@ func _throw_grenade(dx: float, dy: float, dist: float) -> void:
 	if Net.is_networked() and multiplayer.has_multiplayer_peer():
 		var pid := _next_proj_id
 		_next_proj_id += 1
-		rpc("net_bot_grenade", g_pos, g_vel, g_ang, pid)
+		_bcast("net_bot_grenade", [g_pos, g_vel, g_ang, pid])
 	else:
 		net_bot_grenade(g_pos, g_vel, g_ang, 0)
 
@@ -1045,7 +1052,7 @@ func _shoot(to_t: Vector2) -> void:
 		if String(stats["kind"]) == "rocket":
 			pid = _next_proj_id
 			_next_proj_id += 1
-		rpc("net_bot_shoot", muzzle, aim, pid)
+		_bcast("net_bot_shoot", [muzzle, aim, pid])
 	else:
 		net_bot_shoot(muzzle, aim, 0)
 	# Fire cadence tracks the active weapon's rate (#80) — a Barrett bot no
@@ -1100,21 +1107,30 @@ func net_bot_shoot(muzzle: Vector2, aim: Vector2, proj_id: int = 0) -> void:
 		if Net.is_networked() and proj_id > 0:
 			r.set_multiplayer_authority(get_multiplayer_authority())
 	else:
-		var b := bullet_scene.instantiate()
-		b.global_position = muzzle
-		b.direction = aim
-		b.speed = float(stats["speed"])
-		b.damage = float(stats["damage"]) * dmg_mul
-		b.weapon_name = active_weapon
-		b.team = team
-		b.killer_name = display_name
-		# Gun Game melee rungs (Knife/Chainsaw) set a short "life" so bot bullets
-		# only reach ~60px — approximates melee range for the bot's shoot path.
-		if stats.has("life"):
-			b.life = float(stats["life"])
-		get_parent().add_child(b)
-		if Net.is_client():
-			Net.bot_bullets_seen += 1
+		# Spas-12 fires a pellet fan like the player's (#review: was 1 pellet).
+		# Spread is seeded from the aim so host and clients draw the same fan.
+		var pellets: int = int(stats.get("pellets", 1))
+		var spread: float = float(stats.get("spread", 0.0))
+		for pi in pellets:
+			var dir := aim
+			if pellets > 1:
+				dir = aim.rotated(lerpf(-spread, spread, float(pi) / float(pellets - 1)))
+			var b := bullet_scene.instantiate()
+			b.global_position = muzzle
+			b.direction = dir
+			b.speed = float(stats["speed"])
+			b.damage = float(stats["damage"]) * dmg_mul
+			b.weapon_name = active_weapon
+			b.team = team
+			b.killer_name = display_name
+			# Gun Game melee rungs (Knife/Chainsaw) + flames set a short "life".
+			if stats.has("life"):
+				b.life = float(stats["life"])
+			if stats.has("visual"):
+				b.visual = str(stats["visual"])
+			get_parent().add_child(b)
+			if Net.is_client():
+				Net.bot_bullets_seen += 1
 
 
 @rpc("authority", "call_local", "reliable")
@@ -1146,8 +1162,10 @@ const BINK_BY_WEAPON := {
 
 
 func try_pickup_weapon(weapon_name: String, mag: int = -1) -> bool:
-	# Bots only understand two loadouts today (AK-74 / LAW) — swap if matched.
-	if weapon_name == "LAW" or weapon_name == "AK-74":
+	# Bots understand AK-74 / LAW swaps, and the Rambo Bow in Rambomatch
+	# (without it bots crowded the bow forever and could never score).
+	if weapon_name == "LAW" or weapon_name == "AK-74" \
+			or (weapon_name == "Rambo Bow" and Settings.game_mode == Settings.MODE_RM):
 		loadout = weapon_name
 		# Mirrors player.try_pickup_weapon: preserve the thrown mag if the pickup
 		# was dropped mid-fight; -1 (world pickup / legacy) means full mag.
@@ -1211,7 +1229,16 @@ func _die() -> void:
 		return
 	dead = true
 	Sfx.gib()
-	_emit_kill()
+	# MP host: route the kill through net_kill_feed (call_local) so clients get
+	# the feed line / streak banners too; SP emits locally.
+	if Net.is_networked() and Net.is_host() and last_killer != "" and multiplayer.has_multiplayer_peer():
+		var mm := get_parent()
+		if mm != null and mm.has_method("net_kill_feed"):
+			mm.rpc("net_kill_feed", last_killer, display_name, last_weapon, last_killer_team, team)
+		else:
+			_emit_kill()
+	else:
+		_emit_kill()
 	# MP host: tell every client to play the death visual + free their replica so
 	# the body vanishes in lockstep with the host (issue #55).
 	if Net.is_networked() and Net.is_host() and bot_id > 0:
@@ -1503,7 +1530,7 @@ func _think_hunt() -> void:
 	# close), else where we last saw it, else roam the map.
 	if is_instance_valid(target):
 		var d: float = global_position.distance_to(target.global_position)
-		if not _target_visible or d > _skill_engage_range * 0.75:
+		if not _target_visible or d > _skill_engage_range * 0.75 or (_is_melee() and d > 40.0):
 			_set_goal(target.global_position, "hunt")
 		return
 	if _last_seen_pos != Vector2.INF and global_position.distance_to(_last_seen_pos) > 60.0:
@@ -1659,8 +1686,10 @@ func _think_rambo() -> void:
 			return
 	if loadout == "Rambo Bow":
 		return  # we're Rambo — hunt normally
+	# Hunt whoever carries the bow (players included — main tracks the id).
+	var cid: int = int(_main().get("_rambo_carrier_id")) if _main() != null else 0
 	for s in get_tree().get_nodes_in_group("soldier"):
-		if s != self and is_instance_valid(s) and not bool(s.get("dead")) and str(s.get("loadout")) == "Rambo Bow":
+		if s != self and is_instance_valid(s) and not bool(s.get("dead")) and s.get_instance_id() == cid:
 			_set_goal(s.global_position, "chase")
 			return
 
@@ -1783,3 +1812,19 @@ func _ground_within(dist: float) -> bool:
 		return true
 	var gy: float = m._geom_ground_y(global_position.x, global_position.y)
 	return gy != INF and gy - global_position.y <= dist
+
+
+func _is_melee() -> bool:
+	var w: String = "USSOCOM" if using_secondary else loadout
+	return w == "Knife" or w == "Chainsaw"
+
+
+# Host → self + ACKED peers only. A plain rpc() also reached peers that were
+# still loading the match, spamming "Node not found: Main/Bot_N" on joiners.
+func _bcast(method: StringName, args: Array) -> void:
+	callv(method, args)
+	var m := get_parent()
+	if m == null or not m.has_method("ready_peer_ids"):
+		return
+	for pid in m.ready_peer_ids():
+		callv("rpc_id", [int(pid), method] + args)

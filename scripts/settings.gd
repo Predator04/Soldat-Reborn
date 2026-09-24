@@ -124,7 +124,8 @@ func load_settings() -> void:
 	fullscreen = bool(cf.get_value("video", "fullscreen", false))
 	map_index = int(cf.get_value("game", "map_index", 0))
 	custom_map_path = str(cf.get_value("game", "custom_map_path", ""))
-	game_mode = int(cf.get_value("game", "game_mode", MODE_DM))
+	game_mode = clampi(int(cf.get_value("game", "game_mode", MODE_DM)), MODE_DM, MODE_GG)
+	map_index = maxi(0, map_index)  # upper bound checked by main against the map list
 	realistic = bool(cf.get_value("game", "realistic", false))
 	survival = bool(cf.get_value("game", "survival", false))
 	advance = bool(cf.get_value("game", "advance", false))
@@ -163,7 +164,10 @@ func load_settings() -> void:
 
 
 func save() -> void:
+	# Read-modify-write: keep sections other code owns (controls bindings,
+	# anything a newer build added) instead of truncating the file.
 	var cf := ConfigFile.new()
+	cf.load(PATH)
 	cf.set_value("audio", "sfx_volume", sfx_volume)
 	cf.set_value("audio", "music_volume", music_volume)
 	cf.set_value("audio", "music_muted", music_muted)

@@ -61,6 +61,8 @@ const FEED_MAX := 5
 const FEED_TTL := 4.0
 
 var _feed_entries: Array = []
+const ObjectiveHud = preload("res://scripts/objective_hud.gd")
+var objective_hud: Control = null
 
 
 func _ready() -> void:
@@ -91,7 +93,7 @@ func _ready() -> void:
 	top_strip.offset_left = -260
 	top_strip.offset_right = 260
 	top_strip.offset_top = 4
-	top_strip.offset_bottom = 116
+	top_strip.offset_bottom = 138  # room for the objective status line
 	top_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	top_strip.add_theme_stylebox_override("panel", UITheme.hud_strip_style())
 	add_child(top_strip)
@@ -103,7 +105,11 @@ func _ready() -> void:
 	lbl_grenades = _make_label(Vector2(14, 106), UITheme.COL_HUD_GRENADE)
 	feed = VBoxContainer.new()
 	feed.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	feed.position = Vector2(-320, 10)
+	# Offsets (not position) after the anchor preset: the old position=(-320,10)
+	# landed the feed over the centre score strip.
+	feed.offset_left = -14
+	feed.offset_right = -14
+	feed.offset_top = 24
 	feed.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	feed.alignment = BoxContainer.ALIGNMENT_END
 	feed.add_theme_constant_override("separation", 3)
@@ -293,9 +299,9 @@ func _ready() -> void:
 	lbl_streak.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl_streak.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lbl_streak.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	lbl_streak.offset_top = -260
-	lbl_streak.offset_bottom = -260
-	lbl_streak.add_theme_font_size_override("font_size", 42)
+	lbl_streak.offset_top = -150
+	lbl_streak.offset_bottom = -150
+	lbl_streak.add_theme_font_size_override("font_size", 32)
 	lbl_streak.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
 	lbl_streak.add_theme_constant_override("outline_size", 8)
 	lbl_streak.modulate = Color(1, 1, 1, 0)
@@ -306,7 +312,7 @@ func _ready() -> void:
 	# eat the crosshair. Semi-opaque background so the tally reads over any map.
 	vote_panel = PanelContainer.new()
 	vote_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	vote_panel.offset_top = 140
+	vote_panel.offset_top = 250
 	vote_panel.offset_bottom = 240
 	vote_panel.offset_left = -260
 	vote_panel.offset_right = 260
@@ -364,6 +370,50 @@ func _ready() -> void:
 	lbl_bonus.add_theme_constant_override("outline_size", 6)
 	lbl_bonus.visible = false
 	add_child(lbl_bonus)
+
+	# Objective status line, announcements and off-screen markers.
+	objective_hud = ObjectiveHud.new()
+	objective_hud.main = get_parent()
+	objective_hud.player_ref = func() -> Node2D: return player
+	add_child(objective_hud)
+
+
+func announce_objective(kind: String, team: int, who: String) -> void:
+	if objective_hud != null:
+		objective_hud.announce(kind, team, who)
+	# Feed line too, so there's a record of it.
+	if not is_instance_valid(feed):
+		return
+	var txt := ""
+	match kind:
+		"grab": txt = "%s took the %s flag" % [who, str(_team_display_info(team)["name"]) if team != 0 else "neutral"]
+		"capture": txt = "%s scored for %s" % [who, str(_team_display_info(team)["name"])]
+		"dom": txt = "%s captured point %s" % [str(_team_display_info(team)["name"]), who]
+		"point": txt = "%s +1 point" % who
+		_: return
+	var lbl := Label.new()
+	lbl.text = txt
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	lbl.add_theme_font_size_override("font_size", 14)
+	lbl.add_theme_color_override("font_color", _team_display_info(team).get("color", Color(1, 0.85, 0.35)))
+	lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	lbl.add_theme_constant_override("outline_size", 3)
+	feed.add_child(lbl)
+	feed.move_child(lbl, 0)
+	_feed_entries.push_front(lbl)
+	while _feed_entries.size() > FEED_MAX:
+		var old: Label = _feed_entries.pop_back()
+		if is_instance_valid(old):
+			old.queue_free()
+	var t := Timer.new()
+	t.wait_time = FEED_TTL
+	t.one_shot = true
+	t.autostart = true
+	lbl.add_child(t)
+	t.timeout.connect(func() -> void:
+		_feed_entries.erase(lbl)
+		if is_instance_valid(lbl):
+			lbl.queue_free())
 
 
 func show_streak_banner(killer_name: String, title: String, killer_team: int, count: int) -> void:
@@ -866,6 +916,16 @@ func _update_match_ui() -> void:
 			seen[e] = true
 			ordered.append(e)
 		ordered.sort()
+		if not Settings.is_team_mode():
+			# FFA (bots fight each other too): leaderboard — best first, top 4,
+			# and the local player's line always shown.
+			ordered.sort_custom(func(a, b) -> bool: return int(scores.get(a, 0)) > int(scores.get(b, 0)) \
+					or (int(scores.get(a, 0)) == int(scores.get(b, 0)) and int(a) < int(b)))
+			var mine: int = int(player.team) if is_instance_valid(player) else -999
+			var top: Array = ordered.slice(0, 4)
+			if mine != -999 and ordered.has(mine) and not top.has(mine):
+				top.append(mine)
+			ordered = top
 		var parts: PackedStringArray = PackedStringArray()
 		for team in ordered:
 			var info := _team_display_info(team)
@@ -940,9 +1000,11 @@ func _team_display_info(team_id: int) -> Dictionary:
 				return {"name": "RED", "color": Color(0.95, 0.35, 0.3)}
 		if team_id == 0:
 			return {"name": "YOU", "color": Color(0.35, 0.85, 0.5)}
-		# Distinguish multiple bot teams by id; the common single-team case still reads as "BOTS".
-		var nm := "BOTS" if team_id == 99 else "BOT %d" % team_id
-		return {"name": nm, "color": Color(0.9, 0.35, 0.3)}
+		# FFA bots: each is its own team — label with the bot's name/colour.
+		for s in get_tree().get_nodes_in_group("soldier"):
+			if is_instance_valid(s) and int(s.team) == team_id:
+				return {"name": str(s.display_name).to_upper(), "color": s.color}
+		return {"name": "BOT %d" % (team_id - 999 if team_id >= 1000 else team_id), "color": Color(0.9, 0.35, 0.3)}
 	# MP: reuse the soldier's own color + display_name for their team.
 	for s in get_tree().get_nodes_in_group("soldier"):
 		if not is_instance_valid(s):

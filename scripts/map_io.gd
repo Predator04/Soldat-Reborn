@@ -146,6 +146,12 @@ static func map_to_json(m: Dictionary) -> String:
 	return JSON.stringify(out, "  ")
 
 
+# Malformed / hand-edited JSON: anything that isn't a list iterates as nothing
+# (a number would iterate as a range, a string as characters).
+static func _arr(v: Variant) -> Array:
+	return v if typeof(v) == TYPE_ARRAY else []
+
+
 static func _v2(v: Variant, fallback: Vector2 = Vector2.ZERO) -> Vector2:
 	if typeof(v) != TYPE_ARRAY or v.size() < 2:
 		return fallback
@@ -159,16 +165,18 @@ static func json_to_map(text: String) -> Dictionary:
 	var m := {}
 	m["name"] = str(parsed.get("name", "Custom"))
 	var pls: Array = []
-	for pl in parsed.get("platforms", []):
+	for pl in _arr(parsed.get("platforms")):
+		if typeof(pl) != TYPE_DICTIONARY:
+			continue
 		pls.append({"p": _v2(pl.get("p")), "s": _v2(pl.get("s"))})
 	m["platforms"] = pls
 	m["player_spawn"] = _v2(parsed.get("player_spawn"), Vector2(200, 1775))
 	var bs: Array = []
-	for b in parsed.get("bot_spawns", []):
+	for b in _arr(parsed.get("bot_spawns")):
 		bs.append(_v2(b))
 	m["bot_spawns"] = bs
 	var lds: Array = []
-	for ld in parsed.get("ladders", []):
+	for ld in _arr(parsed.get("ladders")):
 		if typeof(ld) != TYPE_DICTIONARY:
 			continue
 		# Clamp width/height to sane minimums — a zero-size or negative rect from
@@ -186,7 +194,7 @@ static func json_to_map(text: String) -> Dictionary:
 	for list_key in ["m2_mounts", "ctf_flags", "dom_points"]:
 		if parsed.has(list_key):
 			var arr: Array = []
-			for b in parsed[list_key]:
+			for b in _arr(parsed[list_key]):
 				arr.append(_v2(b))
 			m[list_key] = arr
 	for key in ["inf_flag", "htf_flag", "rambo_pos"]:
@@ -194,8 +202,10 @@ static func json_to_map(text: String) -> Dictionary:
 			m[key] = _v2(parsed[key])
 	if parsed.has("polys"):
 		var polys: Array = []
-		for poly in parsed["polys"]:
-			var flat: Array = poly.get("points", [])
+		for poly in _arr(parsed["polys"]):
+			if typeof(poly) != TYPE_DICTIONARY:
+				continue
+			var flat: Array = _arr(poly.get("points"))
 			var pts := PackedVector2Array()
 			var i := 0
 			while i + 1 < flat.size():
@@ -204,7 +214,7 @@ static func json_to_map(text: String) -> Dictionary:
 			var entry := {"points": pts}
 			# Per-vertex UVs (tile-space) — ported .pms maps carry these so the
 			# terrain can be textured with the map's original texture.
-			var uv_flat: Array = poly.get("uvs", [])
+			var uv_flat: Array = _arr(poly.get("uvs"))
 			if uv_flat.size() == flat.size():
 				var uvs := PackedVector2Array()
 				var j := 0
@@ -214,7 +224,7 @@ static func json_to_map(text: String) -> Dictionary:
 				entry["uvs"] = uvs
 			# Editor may set per-poly color / texture overrides (#113).
 			if poly.has("color"):
-				var ca: Array = poly["color"]
+				var ca: Array = _arr(poly["color"])
 				if ca.size() >= 3:
 					entry["color"] = Color(float(ca[0]), float(ca[1]), float(ca[2]),
 						float(ca[3]) if ca.size() > 3 else 1.0)
@@ -225,7 +235,7 @@ static func json_to_map(text: String) -> Dictionary:
 			if poly.has("col"):
 				entry["col"] = int(poly["col"])
 			# Per-vertex colours ("rrggbbaa" hex, one per vertex).
-			var vc_arr: Array = poly.get("vc", [])
+			var vc_arr: Array = _arr(poly.get("vc"))
 			if vc_arr.size() == pts.size():
 				var vcols := PackedColorArray()
 				for h in vc_arr:
@@ -236,14 +246,14 @@ static func json_to_map(text: String) -> Dictionary:
 	# Editor-placed scenery (#113). Non-collidable Sprite2D decorations.
 	if parsed.has("scenery"):
 		var scn: Array = []
-		for s in parsed["scenery"]:
+		for s in _arr(parsed["scenery"]):
 			if typeof(s) != TYPE_DICTIONARY:
 				continue
 			var e: Dictionary = {"tex": str(s.get("tex", "")), "pos": _v2(s.get("pos"))}
 			if s.has("scale"): e["scale"] = float(s["scale"])
 			if s.has("z"): e["z"] = int(s["z"])
 			if s.has("mod"):
-				var ma: Array = s["mod"]
+				var ma: Array = _arr(s["mod"])
 				if ma.size() >= 3:
 					e["mod"] = Color(float(ma[0]), float(ma[1]), float(ma[2]),
 						float(ma[3]) if ma.size() > 3 else 1.0)
@@ -252,7 +262,7 @@ static func json_to_map(text: String) -> Dictionary:
 	# Map-authored weapon pickups.
 	if parsed.has("weapon_pickups"):
 		var wps: Array = []
-		for wp in parsed["weapon_pickups"]:
+		for wp in _arr(parsed["weapon_pickups"]):
 			if typeof(wp) != TYPE_DICTIONARY:
 				continue
 			wps.append({"pos": _v2(wp.get("pos")), "weapon": str(wp.get("weapon", "AK-74"))})
@@ -261,7 +271,7 @@ static func json_to_map(text: String) -> Dictionary:
 	for pos_list in ["bonus_spawns", "point_spawns"]:
 		if parsed.has(pos_list):
 			var arr: Array = []
-			for v in parsed[pos_list]:
+			for v in _arr(parsed[pos_list]):
 				arr.append(_v2(v))
 			m[pos_list] = arr
 	# terrain_color may be either a color-array (editor save) or omitted; the
@@ -284,7 +294,7 @@ static func json_to_map(text: String) -> Dictionary:
 		for c in parsed["collision"]:
 			if typeof(c) != TYPE_DICTIONARY:
 				continue
-			var flat: Array = c.get("points", [])
+			var flat: Array = _arr(c.get("points"))
 			var pts := PackedVector2Array()
 			var i := 0
 			while i + 1 < flat.size():
@@ -298,7 +308,7 @@ static func json_to_map(text: String) -> Dictionary:
 		var ts := {}
 		for k in parsed["team_spawns"]:
 			var arr: Array = []
-			for v in parsed["team_spawns"][k]:
+			for v in _arr(parsed["team_spawns"][k]):
 				arr.append(_v2(v))
 			ts[int(k)] = arr
 		m["team_spawns"] = ts
@@ -332,6 +342,7 @@ static func save_to_file(display_name: String, m: Dictionary) -> String:
 
 static func load_from_file(path: String) -> Dictionary:
 	if not FileAccess.file_exists(path):
+		push_warning("MapIO: map file not found: %s" % path)
 		return {}
 	var f := FileAccess.open(path, FileAccess.READ)
 	if f == null:

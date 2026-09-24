@@ -246,7 +246,7 @@ func open() -> void:
 		_host_admin_btn.visible = not Net.is_client()
 	# Free the OS cursor so mouse buttons work reliably on the pause menu.
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
-	get_tree().paused = true
+	_set_frozen(true)
 	# #93: focus resume so arrow-key nav works before a mouse click.
 	UITheme.safe_grab_focus_deferred(_resume_btn)
 
@@ -256,7 +256,31 @@ func close() -> void:
 		return
 	_open = false
 	_root_panel.visible = false
-	get_tree().paused = false
+	_set_frozen(false)
+
+
+# Single-player freezes the whole tree. In multiplayer the match keeps running
+# for everyone else (pausing the host's tree used to freeze every client; a
+# paused client stopped applying snapshots), so only our own input is locked.
+func _set_frozen(on: bool) -> void:
+	if Net.is_networked():
+		var m := get_parent()
+		var p: Variant = m.get("player") if m != null else null
+		if p != null and is_instance_valid(p):
+			(p as Node).set("input_locked", on)
+		get_tree().paused = false
+	else:
+		get_tree().paused = on
+
+
+# Android back button / gesture: toggle the pause overlay instead of quitting
+# the app (quit_on_go_back is off in project.godot).
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		if _open:
+			close()
+		else:
+			open()
 
 
 func _open_settings() -> void:

@@ -2,6 +2,36 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.15.0] — 2026-09-24
+
+Release-readiness pass: bots fight bots, a five-reviewer "pre-release" audit
+(gameplay, networking, UX, bots, QA/build) with its fixes, and a scripted
+release gate (`tools/release_gate.sh`) run three times clean.
+
+### Gameplay
+- **Bots vs bots**: in DM / Rambo / Gun Game / BR every bot is its own team (1000+), with its own colour, so bots fight each other as well as you. FFA scoreboard shows the top 4 + you.
+- **Objective HUD**: status line (your team, each flag HOME / TAKEN by X / DROPPED / YOU HAVE IT, DOM point chips with capture %, BR "return to the zone"), big banners + sounds for grabs / drops / returns / captures, and off-screen edge arrows with distance to flags, carriers, your base, DOM points and the BR ring.
+- Captures / DOM points / PM points no longer go through the kill feed (they double-scored and counted as kills in Stats).
+- Mode logic pauses between rounds (no captures on the winner screen); flags reset home on round reset; Survival no longer adds a second body after a winner-screen death.
+- Gun Game rung lookup can't run past the ladder; kill-streak banners only for you (2+) or big streaks (5+).
+- Bots: Rambo bots go for the bow and hunt its carrier; melee bots close in instead of swinging at range; bots only shoot / throw grenades at targets they can see; Flamethrower, Chainsaw and Spas-12 stats fixed (Spas fires a real 8-pellet spread); bot jet no longer spams the jet sound.
+- BR ring damage now also hurts clients' own soldiers, and a ring death isn't credited to yourself. Rambo bow regen works for client carriers.
+
+### Multiplayer
+- Version handshake: a client on a different build is refused with a readable reason ("Version mismatch: host 1.15.0, you 1.14.0") and sent back to the menu, which now shows why you left (kicked / host lost / mismatch).
+- Duplicate player names get a suffix; `net_client_ready` can't be replayed for a free respawn; chat author is resolved on the host (no spoofing) and capped at 200 chars.
+- Respawn timing is owned by the host scene (matches the death-screen countdown); the bot-count slider no longer over-spawns while bots are dead.
+- Host RPCs for bot fire, grenades and rockets go only to peers that finished loading — no more "Node not found: Main/Bot_N" spam on joiners.
+- M2 mount/dismount sender check, vote majority counts only eligible voters, dedicated survival reset doesn't spawn a host ghost, custom map blob cleared on restart.
+- Pausing in multiplayer only locks your own input (it used to freeze the host's whole match).
+
+### Platform / build
+- Android back button opens/closes the pause menu in game and acts as "back" in the menu instead of quitting.
+- Version shown in the menu comes from project settings; git is only queried in editor runs.
+- Android version 1.15.0 (code 11500), Windows file/product version 1.15.0.0; Windows export now ships the map JSON.
+- Settings save is read-modify-write (keeps sections it doesn't own); loaded mode index is clamped. Map JSON loader tolerates malformed lists and warns on missing files.
+- `tools/release_gate.sh`: static checks, scene boots, dedicated + listen-server smokes, all 10 modes bots-vs-bots, and a CTF sweep of all 102 maps. CI runs the `--quick` gate.
+
 ## [1.14.0] — 2026-09-24
 
 Smarter bots: real navigation + objective play. Plus more stuck/placement fixes.

@@ -1485,22 +1485,11 @@ func _die() -> void:
 		_spawn_ragdoll.call_deferred()
 	died.emit()
 	if Net.is_networked() and Net.is_host():
-		var peer_id := get_multiplayer_authority()
+		# Main owns the timer: a lambda on this (about to be freed) body could
+		# be dropped, and the delay must match what the death screen shows.
 		var m := get_parent()
-		var mode_at_schedule: int = Net.mode
-		# Survival: don't respawn until the round resets — main.gd::_reset_round
-		# rebuilds bodies for everyone at that point.
-		var survival_gate: bool = Settings.survival
-		get_tree().create_timer(2.0).timeout.connect(func() -> void:
-			# Bail if we've since torn down / rehosted / joined — don't respawn into a stale scene.
-			if Net.mode != mode_at_schedule:
-				return
-			if get_tree().current_scene != m:
-				return
-			if survival_gate and is_instance_valid(m) and bool(m.get("round_active")):
-				return
-			if is_instance_valid(m) and m.has_method("_respawn_peer"):
-				m._respawn_peer(peer_id))
+		if m != null and m.has_method("_schedule_peer_respawn"):
+			m._schedule_peer_respawn(get_multiplayer_authority(), int(team))
 	queue_free()
 
 
@@ -1860,8 +1849,8 @@ func net_bonus_clear() -> void:
 		if sender == 0:
 			if not Net.is_host():
 				return
-		elif sender != 1:
-			return
+		elif sender != 1 and sender != get_multiplayer_authority():
+			return  # the owner may clear its own buff (Predator breaks on fire)
 	_clear_bonus_local()
 
 
@@ -1937,3 +1926,9 @@ func _update_wedge(delta: float) -> void:
 		_wedge_t += delta
 	else:
 		_wedge_t = 0.0
+
+
+func current_weapon_name() -> String:
+	if weapon_index >= 0 and weapon_index < weapons.size():
+		return str(weapons[weapon_index]["name"])
+	return ""
