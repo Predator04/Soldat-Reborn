@@ -32,6 +32,11 @@ release gate (`tools/release_gate.sh`) run three times clean.
 - Settings save is read-modify-write (keeps sections it doesn't own); loaded mode index is clamped. Map JSON loader tolerates malformed lists and warns on missing files.
 - `tools/release_gate.sh`: static checks, scene boots, dedicated + listen-server smokes, all 10 modes bots-vs-bots, and a CTF sweep of all 102 maps. CI runs the `--quick` gate.
 
+### Release gate results
+- Run 1 caught a regression from this release's own speed-up: the terrain column index appended into copies of packed arrays, so spawn/ground checks saw no terrain (CTF sweep: grabs 154 → 115, captures 22 → 2). Fixed. Also hardened the harness (wait for server listen, longer objective rounds).
+- Run 2 caught a deferred gib spawn running after a map switch (script error). Fixed.
+- Run 3: **22/22 checks passed** — CTF sweep of all 102 maps: 202 grabs, 32 captures, 581 kills, 8 falls, 0 anti-stuck frees, 0 script/RPC errors (v1.14: 154 / 22 / 22 falls).
+
 ## [1.14.0] — 2026-09-24
 
 Smarter bots: real navigation + objective play. Plus more stuck/placement fixes.
