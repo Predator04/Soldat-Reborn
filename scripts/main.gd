@@ -855,7 +855,11 @@ func _geo_candidates(x: float) -> PackedInt32Array:
 			var c0 := clampi(int((rr.position.x + 200.0) / GEO_COL_W), 0, n - 1)
 			var c1 := clampi(int((rr.end.x + 200.0) / GEO_COL_W), 0, n - 1)
 			for c in range(c0, c1 + 1):
-				(_geo_cols[c] as PackedInt32Array).append(gi)
+				# Packed arrays are value types: append to a local and store it
+				# back (appending through the cast silently edited a copy).
+				var col: PackedInt32Array = _geo_cols[c]
+				col.append(gi)
+				_geo_cols[c] = col
 	return _geo_cols[clampi(int((x + 200.0) / GEO_COL_W), 0, _geo_cols.size() - 1)]
 
 
