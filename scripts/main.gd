@@ -154,9 +154,28 @@ var _next_pickup_id: int = 1
 var _mode_sync_cd := 0.0
 const MODE_SYNC_HZ := 10.0
 
-const MAP_W := 4800.0
-const MAP_H := 2000.0
-const GROUND_Y := 1900.0
+# World rect. Built-in maps use the classic 4800×2000 arena with the baseline
+# floor's TOP edge at GROUND_Y. Ported .pms maps carry their own "world" dict
+# (w / h / ground_y / kill_y) sized to the map, so every classic plays at the
+# same soldier-to-terrain scale instead of being squeezed into 4800×2000.
+const DEFAULT_MAP_W := 4800.0
+const DEFAULT_MAP_H := 2000.0
+const DEFAULT_GROUND_Y := 1900.0
+var MAP_W := DEFAULT_MAP_W
+var MAP_H := DEFAULT_MAP_H
+var GROUND_Y := DEFAULT_GROUND_Y
+# Soldiers whose feet drop below this line fell off the map (Soldat rule) and
+# die. INF = no kill line (built-in maps have a solid floor everywhere).
+var KILL_Y := INF
+# Anti-stuck watchdog (see _tick_soldier_safety).
+const STUCK_CHECK_HZ := 8.0
+const STUCK_GRACE := 0.35          # seconds embedded before we nudge a soldier out
+var _safety_cd := 0.0
+var _stuck_time: Dictionary = {}   # instance_id -> seconds continuously embedded
+var safety_stats := {"unstuck": 0, "fell": 0}  # read by tools/stuck_test.gd
+# Player-solid terrain as plain geometry ({"r": Rect2 AABB, "pts": polygon}) so
+# spawn/flag placement can test the map without waiting for the physics space.
+var _solid_geo: Array = []
 
 var MAPS := [
 	{
@@ -179,15 +198,19 @@ var MAPS := [
 				Vector2(1240, 1900), Vector2(1360, 1780), Vector2(1500, 1620),
 				Vector2(1620, 1560), Vector2(1720, 1560), Vector2(1740, 1900),
 			])},
+			# Ascent tunnel — dark back wall (decorative, no collision) so the
+			# walk-through tunnel reads as a cave cut into the rock.
+			{"col": 3, "points": PackedVector2Array([
+				Vector2(1767, 1780), Vector2(2693, 1780), Vector2(2693, 1900), Vector2(1767, 1900),
+			]), "vc": PackedColorArray([Color(0.16, 0.14, 0.13), Color(0.16, 0.14, 0.13), Color(0.3, 0.27, 0.24), Color(0.3, 0.27, 0.24)])},
 			# Middle mountain with a horizontal tunnel bored through the base.
-			# Tunnel spans x ∈ [1900, 2380], ceiling y=1780, floor at map ground.
+			# The tunnel runs the full width (ceiling y=1780, floor = map ground
+			# at 1900) so it's a real walk-through, not a sealed notch.
 			{"points": PackedVector2Array([
-				Vector2(1740, 1900), Vector2(1780, 1720), Vector2(1880, 1500),
+				Vector2(1767, 1780), Vector2(1780, 1720), Vector2(1880, 1500),
 				Vector2(2000, 1350), Vector2(2140, 1260), Vector2(2260, 1240),
 				Vector2(2380, 1290), Vector2(2500, 1400), Vector2(2600, 1560),
-				Vector2(2680, 1720), Vector2(2720, 1900),
-				Vector2(2380, 1900), Vector2(2380, 1780),
-				Vector2(1900, 1780), Vector2(1900, 1900),
+				Vector2(2680, 1720), Vector2(2693, 1780),
 			])},
 			# Valley + rising slope.
 			{"points": PackedVector2Array([
@@ -201,7 +224,7 @@ var MAPS := [
 		],
 		"platforms": [
 			# Sky platforms + tunnel-roof top for extended air routes.
-			{"p": Vector2(2140, 1550), "s": Vector2(240, 18)},  # mountain-side ledge
+			{"p": Vector2(2720, 1550), "s": Vector2(240, 18)},  # mountain-side ledge (east face)
 			{"p": Vector2(3220, 1420), "s": Vector2(260, 18)},  # mid-air perch
 			{"p": Vector2(3850, 1180), "s": Vector2(240, 18)},  # near peak
 			{"p": Vector2(4460, 800),  "s": Vector2(260, 18)},  # sky peak
@@ -209,11 +232,8 @@ var MAPS := [
 		],
 		"player_spawn": Vector2(200, 1775),
 		"bot_spawns": [Vector2(2200, 1220), Vector2(3220, 1390), Vector2(3850, 1150), Vector2(4460, 770)],
-		"scenery": [
-			{"tex": "res://assets/textures/ancientwall.png", "pos": Vector2(2260, 1210), "scale": 0.35, "mod": Color(0.7, 0.7, 0.75, 0.7), "z": -3},
-			{"tex": "res://assets/textures/mossgreen.png",   "pos": Vector2(600, 1660),  "scale": 0.25, "mod": Color(0.9, 0.95, 0.9, 0.6), "z": -3},
-			{"tex": "res://assets/textures/mossgreen.png",   "pos": Vector2(3300, 1660), "scale": 0.25, "mod": Color(0.9, 0.95, 0.9, 0.6), "z": -3},
-		],
+		# (Flat texture-square "scenery" decals removed in 1.13 — they read as
+		# floating placeholder boxes over the hills.)
 	},
 	{
 		"name": "Towers",
@@ -224,14 +244,18 @@ var MAPS := [
 		"terrain_texture": "res://assets/textures/earthen.png",
 		"floor_texture": "res://assets/textures/drysand.png",
 		"polys": [
-			# Left mountain, tunnel x ∈ [520, 900], ceiling y=1780.
+			# Left tunnel — dark back wall (decorative, no collision) so the
+			# walk-through tunnel reads as a cave cut into the rock.
+			{"col": 3, "points": PackedVector2Array([
+				Vector2(227, 1780), Vector2(1233, 1780), Vector2(1233, 1900), Vector2(227, 1900),
+			]), "vc": PackedColorArray([Color(0.16, 0.14, 0.13), Color(0.16, 0.14, 0.13), Color(0.3, 0.27, 0.24), Color(0.3, 0.27, 0.24)])},
+			# Left mountain with a walk-through tunnel under it (ceiling y=1780,
+			# floor = map ground) — the BLUE flag sits inside.
 			{"points": PackedVector2Array([
-				Vector2(200, 1900), Vector2(240, 1720), Vector2(320, 1500),
+				Vector2(227, 1780), Vector2(240, 1720), Vector2(320, 1500),
 				Vector2(420, 1300), Vector2(560, 1140), Vector2(700, 1060),
 				Vector2(840, 1120), Vector2(960, 1260), Vector2(1080, 1440),
-				Vector2(1180, 1620), Vector2(1240, 1800), Vector2(1260, 1900),
-				Vector2(900, 1900), Vector2(900, 1780),
-				Vector2(520, 1780), Vector2(520, 1900),
+				Vector2(1180, 1620), Vector2(1233, 1780),
 			])},
 			# Central low mesa (players climb via ramps of platforms).
 			{"points": PackedVector2Array([
@@ -239,40 +263,40 @@ var MAPS := [
 				Vector2(2520, 1700), Vector2(2720, 1720), Vector2(2900, 1780),
 				Vector2(3000, 1900),
 			])},
-			# Right mountain, tunnel x ∈ [3900, 4280], ceiling y=1780.
+			# Right tunnel — dark back wall (decorative, no collision) so the
+			# walk-through tunnel reads as a cave cut into the rock.
+			{"col": 3, "points": PackedVector2Array([
+				Vector2(3567, 1780), Vector2(4573, 1780), Vector2(4573, 1900), Vector2(3567, 1900),
+			]), "vc": PackedColorArray([Color(0.16, 0.14, 0.13), Color(0.16, 0.14, 0.13), Color(0.3, 0.27, 0.24), Color(0.3, 0.27, 0.24)])},
+			# Right mountain, same walk-through tunnel — the RED flag sits inside.
 			{"points": PackedVector2Array([
-				Vector2(3540, 1900), Vector2(3560, 1800), Vector2(3620, 1620),
+				Vector2(3567, 1780), Vector2(3620, 1620),
 				Vector2(3720, 1440), Vector2(3840, 1260), Vector2(3980, 1120),
 				Vector2(4120, 1060), Vector2(4260, 1140), Vector2(4380, 1300),
-				Vector2(4480, 1500), Vector2(4560, 1720), Vector2(4600, 1900),
-				Vector2(4280, 1900), Vector2(4280, 1780),
-				Vector2(3900, 1780), Vector2(3900, 1900),
+				Vector2(4480, 1500), Vector2(4560, 1720), Vector2(4573, 1780),
 			])},
 		],
 		"platforms": [
-			# Left tower ladder up the outside of the mountain.
-			{"p": Vector2(360, 1560),  "s": Vector2(160, 18)},
-			{"p": Vector2(480, 1360),  "s": Vector2(180, 18)},
-			{"p": Vector2(640, 1200),  "s": Vector2(180, 18)},
-			# Right tower ladder.
-			{"p": Vector2(4440, 1560), "s": Vector2(160, 18)},
-			{"p": Vector2(4320, 1360), "s": Vector2(180, 18)},
-			{"p": Vector2(4160, 1200), "s": Vector2(180, 18)},
+			# Left tower staircase up the arena-facing (east) slope. Each step
+			# is anchored INTO the slope — a gap between step and rock is a slot
+			# soldiers fall into and wedge.
+			{"p": Vector2(1222, 1560), "s": Vector2(170, 18)},
+			{"p": Vector2(1112, 1360), "s": Vector2(190, 18)},
+			{"p": Vector2(976, 1180),  "s": Vector2(190, 18)},
+			# Right tower staircase up the arena-facing (west) slope.
+			{"p": Vector2(3578, 1560), "s": Vector2(170, 18)},
+			{"p": Vector2(3688, 1360), "s": Vector2(190, 18)},
+			{"p": Vector2(3835, 1180), "s": Vector2(190, 18)},
 			# Mid-arena high platform (M2 mount lives on top).
 			{"p": Vector2(2500, 1400), "s": Vector2(560, 20)},
 			{"p": Vector2(2500, 1160), "s": Vector2(220, 18)},
-			# Anti-camp ledges above the tunnels.
-			{"p": Vector2(720, 1780),  "s": Vector2(400, 14)},
-			{"p": Vector2(4080, 1780), "s": Vector2(400, 14)},
 		],
 		"player_spawn": Vector2(200, 1775),
-		"bot_spawns": [Vector2(3540, 1500), Vector2(4160, 1170), Vector2(2500, 1130), Vector2(4440, 1530)],
+		"bot_spawns": [Vector2(3688, 1340), Vector2(3835, 1160), Vector2(2500, 1130), Vector2(3578, 1540)],
 		"m2_mounts": [Vector2(2500, 1380), Vector2(700, 1040), Vector2(4120, 1040)],
-	"ctf_flags": [Vector2(710, 1830), Vector2(4090, 1830)],
-		"scenery": [
-			{"tex": "res://assets/textures/stone03.png",  "pos": Vector2(700, 1020),  "scale": 0.35, "mod": Color(0.85, 0.8, 0.75, 0.7), "z": -3},
-			{"tex": "res://assets/textures/stone03.png",  "pos": Vector2(4120, 1020), "scale": 0.35, "mod": Color(0.85, 0.8, 0.75, 0.7), "z": -3},
-		],
+		"ctf_flags": [Vector2(710, 1900), Vector2(4090, 1900)],
+		# (Flat texture-square "scenery" decals removed in 1.13 — they read as
+		# floating placeholder boxes over the hills.)
 	},
 	{
 		"name": "Pillars",
@@ -289,15 +313,18 @@ var MAPS := [
 				Vector2(1120, 1720), Vector2(1280, 1780), Vector2(1440, 1760),
 				Vector2(1600, 1820), Vector2(1740, 1900),
 			])},
-			# Central raised mesa with a wide tunnel underneath.
-			# Tunnel x ∈ [2000, 2800], ceiling y=1780, floor at ground.
+			# Mesa tunnel — dark back wall (decorative, no collision) so the
+			# walk-through tunnel reads as a cave cut into the rock.
+			{"col": 3, "points": PackedVector2Array([
+				Vector2(1800, 1780), Vector2(3123, 1780), Vector2(3123, 1900), Vector2(1800, 1900),
+			]), "vc": PackedColorArray([Color(0.16, 0.14, 0.13), Color(0.16, 0.14, 0.13), Color(0.3, 0.27, 0.24), Color(0.3, 0.27, 0.24)])},
+			# Central raised mesa with a wide walk-through tunnel underneath
+			# (ceiling y=1780, floor = map ground).
 			{"points": PackedVector2Array([
-				Vector2(1740, 1900), Vector2(1800, 1780), Vector2(1900, 1620),
+				Vector2(1800, 1780), Vector2(1900, 1620),
 				Vector2(2040, 1460), Vector2(2260, 1360), Vector2(2540, 1340),
 				Vector2(2800, 1400), Vector2(2980, 1520), Vector2(3080, 1680),
-				Vector2(3140, 1820), Vector2(3160, 1900),
-				Vector2(2800, 1900), Vector2(2800, 1780),
-				Vector2(2000, 1780), Vector2(2000, 1900),
+				Vector2(3123, 1780),
 			])},
 			# Right rugged ground with two spike-like bumps.
 			{"points": PackedVector2Array([
@@ -319,14 +346,12 @@ var MAPS := [
 			{"p": Vector2(4400, 1560), "s": Vector2(90, 18)},
 			# Central roof over the tunnel — jet up to reach the M2.
 			{"p": Vector2(2400, 1140), "s": Vector2(340, 20)},
-			{"p": Vector2(2400, 1360), "s": Vector2(560, 18)},
 		],
 		"player_spawn": Vector2(200, 1775),
 		"bot_spawns": [Vector2(2400, 1110), Vector2(3620, 1530), Vector2(4000, 1390), Vector2(3300, 1210)],
 		"m2_mounts": [Vector2(2400, 1120)],
-		"scenery": [
-			{"tex": "res://assets/textures/ancientwall.png", "pos": Vector2(2400, 1330), "scale": 0.3, "mod": Color(0.75, 0.7, 0.65, 0.6), "z": -3},
-		],
+		# (Flat texture-square "scenery" decals removed in 1.13 — they read as
+		# floating placeholder boxes over the hills.)
 	},
 ]
 
@@ -374,6 +399,7 @@ func _ready() -> void:
 		if _map.is_empty():
 			_map = MAPS[Settings.map_index % MAPS.size()]
 			Settings.map_index = (Settings.map_index + 1) % MAPS.size()
+	_apply_world()
 	_build_sky()
 	_build_parallax()
 	_build_terrain()
@@ -414,10 +440,24 @@ func _spawn_mode_entities() -> void:
 		Settings.MODE_BR:  _reset_br_zone()
 
 
+func _apply_world() -> void:
+	# Pull the per-map world rect (ported maps) or fall back to the built-in arena.
+	var w: Dictionary = _map.get("world", {}) if typeof(_map.get("world", {})) == TYPE_DICTIONARY else {}
+	MAP_W = float(w.get("w", DEFAULT_MAP_W))
+	MAP_H = float(w.get("h", DEFAULT_MAP_H))
+	GROUND_Y = float(w.get("ground_y", DEFAULT_GROUND_Y))
+	KILL_Y = float(w.get("kill_y", INF))
+
+
 func _build_sky() -> void:
 	var sky := Node2D.new()
 	sky.name = "Sky"
 	sky.set_script(sky_script)
+	# Ported maps carry Soldat's own background gradient colours.
+	var sky_cfg: Variant = _map.get("sky", {})
+	if typeof(sky_cfg) == TYPE_DICTIONARY and not (sky_cfg as Dictionary).is_empty():
+		sky.set("map_top", _arr_to_color((sky_cfg as Dictionary).get("top", [])))
+		sky.set("map_bottom", _arr_to_color((sky_cfg as Dictionary).get("bottom", [])))
 	var layer := CanvasLayer.new()
 	layer.layer = -20
 	layer.add_child(sky)
@@ -428,6 +468,11 @@ func _build_parallax() -> void:
 	var par := Node2D.new()
 	par.name = "Parallax"
 	par.set_script(parallax_script)
+	var sky_cfg: Variant = _map.get("sky", {})
+	if typeof(sky_cfg) == TYPE_DICTIONARY and not (sky_cfg as Dictionary).is_empty():
+		var bot := _arr_to_color((sky_cfg as Dictionary).get("bottom", []))
+		if bot.a > 0.0:
+			par.set("tint", bot)
 	var layer := CanvasLayer.new()
 	layer.layer = -15
 	layer.add_child(par)
@@ -503,6 +548,15 @@ func _build_weather() -> void:
 	host.add_child(follower)
 
 
+static func _arr_to_color(a: Variant) -> Color:
+	if typeof(a) == TYPE_COLOR:
+		return a
+	if typeof(a) != TYPE_ARRAY or (a as Array).size() < 3:
+		return Color(0, 0, 0, 0)
+	var arr: Array = a
+	return Color(float(arr[0]), float(arr[1]), float(arr[2]), float(arr[3]) if arr.size() > 3 else 1.0)
+
+
 func _make_platform(pos: Vector2, size: Vector2, col: Color, tex_path: String = "") -> StaticBody2D:
 	var body := StaticBody2D.new()
 	body.position = pos
@@ -537,22 +591,64 @@ func _make_platform(pos: Vector2, size: Vector2, col: Color, tex_path: String = 
 			vis.uv = uvs
 			vis.color = Color(1, 1, 1, 1)
 	body.add_child(vis)
+	# Bevel trim: bright lip on the walkable top edge, dark underside — reads
+	# as a solid ledge instead of a flat coloured box. Skipped on the huge
+	# baseline floor/walls (size > 1000) where it'd just be a hairline.
+	if size.x <= 1000.0 and size.y <= 1000.0 and size.y >= 6.0:
+		var hx := size.x * 0.5
+		var hy := size.y * 0.5
+		var lip := Line2D.new()
+		lip.width = 3.0
+		lip.default_color = Color(1, 1, 1, 0.28)
+		lip.points = PackedVector2Array([Vector2(-hx, -hy + 1.5), Vector2(hx, -hy + 1.5)])
+		body.add_child(lip)
+		var under := Line2D.new()
+		under.width = 3.0
+		under.default_color = Color(0, 0, 0, 0.45)
+		under.points = PackedVector2Array([Vector2(-hx, hy - 1.5), Vector2(hx, hy - 1.5)])
+		body.add_child(under)
+		var sides := Line2D.new()
+		sides.width = 2.0
+		sides.default_color = Color(0, 0, 0, 0.35)
+		sides.closed = true
+		sides.points = poly
+		body.add_child(sides)
 	add_child(body)
 	return body
 
 
+# Collision layers for terrain classes (ported Soldat polygon types):
+#   layer 1 (bit 1) — normal terrain: soldiers, bullets, pickups all collide.
+#   layer 2 (bit 2) — "only bullets" polys: bullets/rockets/grenades mask it,
+#                     soldiers don't, so players walk through.
+#   layer 3 (bit 4) — "only players" polys: soldiers mask it, bullets don't.
+const TERRAIN_LAYER_BULLETS_ONLY := 2
+const TERRAIN_LAYER_PLAYERS_ONLY := 4
+
 func _make_polygon_body(points: PackedVector2Array, col: Color, tex_path: String = "",
-		uvs_norm: PackedVector2Array = PackedVector2Array(), draw_outline: bool = true) -> StaticBody2D:
+		uvs_norm: PackedVector2Array = PackedVector2Array(), draw_outline: bool = true,
+		col_class: int = 0, vcols: PackedColorArray = PackedColorArray()) -> Node2D:
 	# World-space polygon terrain. Enables hills / mountains / tunnel walls
 	# without stacking dozens of small rectangles. `uvs_norm` are tile-space
 	# UVs (from the .pms) that get scaled by texture size for tiled sampling.
+	# col_class: 0 solid, 1 bullets only, 2 players only, 3 decorative (no body).
 	if points.size() < 3:
 		return null
-	var body := StaticBody2D.new()
+	var body: Node2D
+	if col_class == 3:
+		body = Node2D.new()
+	else:
+		var sb := StaticBody2D.new()
+		if col_class == 1:
+			sb.collision_layer = TERRAIN_LAYER_BULLETS_ONLY
+		elif col_class == 2:
+			sb.collision_layer = TERRAIN_LAYER_PLAYERS_ONLY
+		sb.collision_mask = 0
+		var col_poly := CollisionPolygon2D.new()
+		col_poly.polygon = points
+		sb.add_child(col_poly)
+		body = sb
 	body.position = Vector2.ZERO
-	var col_poly := CollisionPolygon2D.new()
-	col_poly.polygon = points
-	body.add_child(col_poly)
 	var vis := Polygon2D.new()
 	vis.polygon = points
 	vis.color = col
@@ -585,6 +681,10 @@ func _make_polygon_body(points: PackedVector2Array, col: Color, tex_path: String
 			# instead of getting washed toward the fallback terrain_color.
 			vis.color = Color(1, 1, 1, 1)
 			textured = true
+	# Soldat's per-vertex colours carry all of a classic map's shading (dark
+	# caves, sunlit ridges, tinted water). Without them every map looked flat.
+	if vcols.size() == points.size():
+		vis.vertex_colors = vcols
 	body.add_child(vis)
 	if draw_outline:
 		# Subtle darkened top-edge outline so hills read against the sky at distance.
@@ -603,8 +703,21 @@ func _make_polygon_body(points: PackedVector2Array, col: Color, tex_path: String
 
 func _build_terrain() -> void:
 	# Baseline floor + side walls always present so maps can rely on them.
+	# The floor slab's TOP edge sits exactly at GROUND_Y (it used to be centred
+	# on it, which put the walkable surface 100 px higher than every map, the
+	# editor and map_gen assumed — sealing the built-in tunnels shut and burying
+	# the bottom rows of every ported map).
 	var floor_tex: String = str(_map.get("floor_texture", ""))
-	_make_platform(Vector2(MAP_W / 2.0, GROUND_Y), Vector2(MAP_W + 200, 200), Color(0.22, 0.26, 0.32), floor_tex)
+	var world_cfg: Dictionary = _map.get("world", {}) if typeof(_map.get("world", {})) == TYPE_DICTIONARY else {}
+	var floor_body := _make_platform(Vector2(MAP_W / 2.0, GROUND_Y + 100.0), Vector2(MAP_W + 200, 200), Color(0.22, 0.26, 0.32), floor_tex)
+	_solid_geo.clear()
+	_register_solid(PackedVector2Array([Vector2(-100, GROUND_Y), Vector2(MAP_W + 100, GROUND_Y),
+		Vector2(MAP_W + 100, GROUND_Y + 200), Vector2(-100, GROUND_Y + 200)]))
+	if not bool(world_cfg.get("floor_visible", true)):
+		# Ported maps: the floor only exists as a safety net below the kill line.
+		for c in floor_body.get_children():
+			if c is CanvasItem:
+				(c as CanvasItem).visible = false
 	# Optional polygon terrain (hills / mountains / tunnel walls). Each entry is
 	# { "points": PackedVector2Array } with optional "color" and "texture".
 	var default_terrain_col: Color = _map.get("terrain_color", Color(0.24, 0.28, 0.34))
@@ -621,12 +734,30 @@ func _build_terrain() -> void:
 		var draw_outline := uvs.size() != pts.size()
 		if not draw_outline:
 			has_uvs = true
-		_make_polygon_body(pts, pc, pt, uvs, draw_outline)
-	# Legacy rectangular platforms remain supported.
+		var vcols: PackedColorArray = poly.get("vc", PackedColorArray())
+		var cc := int(poly.get("col", 0))
+		_make_polygon_body(pts, pc, pt, uvs, draw_outline, cc, vcols)
+		if pts.size() >= 3 and (cc == 0 or cc == 2):
+			_register_solid(pts)
+	# Legacy rectangular platforms: textured with the map's terrain (slightly
+	# darkened so they read as man-made ledges) instead of a flat grey box.
+	var plat_tex: String = str(_map.get("platform_texture", default_terrain_tex))
 	for pl in _map["platforms"]:
-		_make_platform(pl["p"], pl["s"], Color(0.28, 0.32, 0.4))
-	_make_platform(Vector2(0, MAP_H / 2.0), Vector2(40, MAP_H * 2.0), Color(0.2, 0.23, 0.28))
-	_make_platform(Vector2(MAP_W, MAP_H / 2.0), Vector2(40, MAP_H * 2.0), Color(0.2, 0.23, 0.28))
+		var pb := _make_platform(pl["p"], pl["s"], Color(0.28, 0.32, 0.4), plat_tex)
+		var hs: Vector2 = (pl["s"] as Vector2) * 0.5
+		var pc2: Vector2 = pl["p"]
+		_register_solid(PackedVector2Array([pc2 + Vector2(-hs.x, -hs.y), pc2 + Vector2(hs.x, -hs.y),
+			pc2 + Vector2(hs.x, hs.y), pc2 + Vector2(-hs.x, hs.y)]))
+		for c in pb.get_children():
+			if c is Polygon2D and (c as Polygon2D).texture != null:
+				(c as Polygon2D).color = Color(0.82, 0.8, 0.78, 1.0)
+	var wall_l := _make_platform(Vector2(0, MAP_H / 2.0), Vector2(40, MAP_H * 2.0), Color(0.2, 0.23, 0.28))
+	var wall_r := _make_platform(Vector2(MAP_W, MAP_H / 2.0), Vector2(40, MAP_H * 2.0), Color(0.2, 0.23, 0.28))
+	if not bool(world_cfg.get("floor_visible", true)):
+		for wb in [wall_l, wall_r]:
+			for c in wb.get_children():
+				if c is CanvasItem:
+					(c as CanvasItem).visible = false
 	# Ladders — climbable Area2D regions (see player.gd's climbing state).
 	for ld in _map.get("ladders", []):
 		_make_ladder(float(ld.get("x", 0.0)), float(ld.get("y", 0.0)),
@@ -635,6 +766,184 @@ func _build_terrain() -> void:
 	_spawn_scenery_hints()
 	_spawn_m2_mounts()
 	_spawn_map_weapon_pickups()
+
+
+# ── Placement geometry (no physics queries needed) ─────────────────────────
+
+func _register_solid(pts: PackedVector2Array) -> void:
+	var r := Rect2(pts[0], Vector2.ZERO)
+	for p in pts:
+		r = r.expand(p)
+	_solid_geo.append({"r": r, "pts": pts})
+
+
+func _point_in_solid(p: Vector2) -> bool:
+	if p.x <= 20.0 or p.x >= MAP_W - 20.0:
+		return true  # inside a side wall
+	for g in _solid_geo:
+		var r: Rect2 = g["r"]
+		if p.x < r.position.x or p.x > r.end.x or p.y < r.position.y or p.y > r.end.y:
+			continue
+		if Geometry2D.is_point_in_polygon(p, g["pts"]):
+			return true
+	return false
+
+
+func _spot_is_clear(feet: Vector2) -> bool:
+	# Sample a soldier's standing box (14×24, feet-anchored) — edges + middle.
+	for off in [Vector2(-6, -2), Vector2(6, -2), Vector2(0, -12), Vector2(-6, -22), Vector2(6, -22), Vector2(0, -23)]:
+		if _point_in_solid(feet + off):
+			return false
+	return true
+
+
+func _geom_ground_y(x: float, from_y: float) -> float:
+	# Highest solid surface at column x at or below from_y (INF if none).
+	var best := INF
+	for g in _solid_geo:
+		var r: Rect2 = g["r"]
+		if x < r.position.x or x > r.end.x or r.end.y < from_y:
+			continue
+		var pts: PackedVector2Array = g["pts"]
+		var n := pts.size()
+		for i in n:
+			var a: Vector2 = pts[i]
+			var b: Vector2 = pts[(i + 1) % n]
+			if (a.x <= x and b.x >= x) or (b.x <= x and a.x >= x):
+				var y: float
+				if absf(b.x - a.x) < 0.001:
+					y = minf(a.y, b.y)
+				else:
+					y = lerpf(a.y, b.y, (x - a.x) / (b.x - a.x))
+				if y >= from_y and y < best:
+					best = y
+	return best
+
+
+func _settle_on_ground(pos: Vector2) -> Vector2:
+	# Drop a map object (flag base, capture point) straight down onto the first
+	# surface. If it starts buried, first lift it out (up to 400 px).
+	var p := pos
+	var lift := 0.0
+	while _point_in_solid(p + Vector2(0, -2)) and lift < 400.0:
+		p.y -= 4.0
+		lift += 4.0
+	var gy := _geom_ground_y(p.x, p.y - 2.0)
+	if gy == INF or gy > KILL_Y:
+		return pos
+	return Vector2(p.x, gy)
+
+
+func _drop_flag(f: Node2D, at: Vector2) -> void:
+	# Carrier died: the flag falls to the ground under them. If there is no
+	# ground (carrier fell off the map), the flag goes straight home instead
+	# of hanging in the void where nobody can ever reach it.
+	f.set_meta("carrier", null)
+	var gy := _geom_ground_y(at.x, at.y - 4.0)
+	if gy == INF or gy > KILL_Y or at.y > KILL_Y:
+		f.position = f.get_meta("home")
+		return
+	var p := Vector2(at.x, gy)
+	if not _spot_is_clear(p + Vector2(0, -1)):
+		f.position = f.get_meta("home")
+		return
+	f.position = p
+
+
+func _find_free_spot_near(feet: Vector2, max_r: float = 240.0) -> Vector2:
+	# Nearest spot (upward first, then outward rings) where a standing soldier fits.
+	if _spot_is_clear(feet):
+		return feet
+	var step := 6.0
+	var r := step
+	while r <= max_r:
+		for off in [Vector2(0, -r), Vector2(-r, -r * 0.5), Vector2(r, -r * 0.5), Vector2(-r, 0),
+				Vector2(r, 0), Vector2(0, r), Vector2(-r, -r), Vector2(r, -r)]:
+			var c: Vector2 = feet + off
+			if c.x < 30.0 or c.x > MAP_W - 30.0:
+				continue
+			if _spot_is_clear(c):
+				return c
+		r += step
+	return feet
+
+
+func _tick_soldier_safety(delta: float) -> void:
+	# Runs on every peer for the soldiers THIS peer is authoritative over
+	# (own player on clients; everyone incl. bots on host / single-player).
+	# 1) Fell off a ported map (below the kill line) → dies, like Soldat.
+	# 2) Somehow embedded in terrain for > STUCK_GRACE s (explosion shove,
+	#    stance change under a low ceiling, spawning into a moved prop…) →
+	#    nudged to the nearest free spot so nobody is ever trapped.
+	_safety_cd -= delta
+	if _safety_cd > 0.0:
+		return
+	var dt := 1.0 / STUCK_CHECK_HZ
+	_safety_cd = dt
+	var space := get_world_2d().direct_space_state
+	# Dropped weapons / the Rambo bow that fall off a ported map would sit on
+	# the hidden safety floor forever. Host (or SP) cleans them up; the bow
+	# goes back to its spawn so Rambomatch can continue.
+	if KILL_Y != INF and (not Net.is_networked() or Net.is_host()):
+		for wp in get_tree().get_nodes_in_group("weapon_pickup"):
+			if not is_instance_valid(wp) or (wp as Node2D).global_position.y <= KILL_Y:
+				continue
+			if wp.has_meta("rambo_spawn"):
+				var ground_y: float = float(_map.get("ctf_ground_y", GROUND_Y))
+				(wp as Node2D).global_position = _map.get("rambo_pos", Vector2(MAP_W * 0.5, ground_y - 40.0))
+				if wp is RigidBody2D:
+					(wp as RigidBody2D).linear_velocity = Vector2.ZERO
+			else:
+				wp.queue_free()
+	for s in get_tree().get_nodes_in_group("soldier"):
+		if not is_instance_valid(s) or bool(s.get("dead")) or not (s is CharacterBody2D):
+			continue
+		if multiplayer.multiplayer_peer != null and not s.is_multiplayer_authority():
+			continue
+		var body := s as CharacterBody2D
+		if body.global_position.y > KILL_Y:
+			if s.has_method("take_damage"):
+				s.set("ceasefire_t", 0.0)
+				s.take_damage(9999.0, str(s.get("display_name")), "Fell", int(s.get("team")))
+				safety_stats["fell"] = int(safety_stats["fell"]) + 1
+			continue
+		if s.get("mounted_m2") != null or bool(s.get("climbing")):
+			_stuck_time.erase(s.get_instance_id())
+			continue
+		var cs: CollisionShape2D = null
+		for c in body.get_children():
+			if c is CollisionShape2D:
+				cs = c
+				break
+		if cs == null or cs.shape == null:
+			continue
+		var q := PhysicsShapeQueryParameters2D.new()
+		q.shape = cs.shape
+		q.transform = cs.global_transform
+		q.collision_mask = body.collision_mask
+		q.collide_with_bodies = true
+		q.collide_with_areas = false
+		q.exclude = [body.get_rid()]
+		q.margin = -1.5  # ignore resting contact — only real overlap counts
+		var embedded := false
+		for hit in space.intersect_shape(q, 4):
+			if hit.get("collider") is StaticBody2D:
+				embedded = true
+				break
+		var id := s.get_instance_id()
+		if not embedded:
+			_stuck_time.erase(id)
+			continue
+		_stuck_time[id] = float(_stuck_time.get(id, 0.0)) + dt
+		if float(_stuck_time[id]) >= STUCK_GRACE:
+			_stuck_time.erase(id)
+			var to := _find_free_spot_near(body.global_position)
+			if to != body.global_position:
+				if OS.is_debug_build():
+					print("[anti-stuck] freed %s at %s -> %s" % [s.get("display_name"), body.global_position, to])
+				body.global_position = to
+				body.velocity = Vector2.ZERO
+				safety_stats["unstuck"] = int(safety_stats["unstuck"]) + 1
 
 
 func _make_ladder(x: float, y: float, w: float, h: float) -> Area2D:
@@ -742,6 +1051,7 @@ func _spawn_scenery_hints() -> void:
 		var pos_arr = it.get("pos", [0, 0])
 		var pos := Vector2(float(pos_arr[0]), float(pos_arr[1]))
 		var sc := float(it.get("scale", 1.0))
+		var sc_y := float(it.get("scale_y", sc))
 		var rot := float(it.get("rot", 0.0))
 		var alpha := int(it.get("alpha", 255))
 		var level := int(it.get("level", 1))
@@ -749,9 +1059,21 @@ func _spawn_scenery_hints() -> void:
 		s.texture = tex
 		s.centered = false  # Soldat anchors props by top-left corner.
 		s.position = pos
-		s.scale = Vector2.ONE * sc * map_scale
-		s.rotation = rot
-		s.modulate = Color(1, 1, 1, clamp(alpha / 255.0, 0.0, 1.0))
+		# Soldat sizes a prop as its stored Width×Height (original sprite
+		# size) × ScaleX/Y — not by the texture's pixel size. Our PNGs are
+		# frequently HD, so normalise by the texture size when w/h are known.
+		var tsz := tex.get_size()
+		var fit := Vector2.ONE
+		if it.has("w") and it.has("h") and tsz.x > 0.0 and tsz.y > 0.0:
+			fit = Vector2(maxf(1.0, float(it["w"])) / tsz.x, maxf(1.0, float(it["h"])) / tsz.y)
+		s.scale = Vector2(sc, sc_y) * map_scale * fit
+		# Soldat renders props with -Rotation (MapGraphics.pas) in the same
+		# y-down space Godot uses, so the sign flips here.
+		s.rotation = -rot
+		var tint := Color.WHITE
+		if it.has("color"):
+			tint = Color.html(str(it["color"]))
+		s.modulate = Color(tint.r, tint.g, tint.b, clamp(alpha / 255.0, 0.0, 1.0))
 		s.z_index = int(_SCENERY_LEVEL_Z.get(level, 0))
 		add_child(s)
 
@@ -897,7 +1219,7 @@ func net_m2_fire(m2_id: int, muzzle: Vector2, aim_dir: Vector2, shooter_team: in
 
 func _spawn_player() -> void:
 	var p := player_scene.instantiate()
-	p.position = _map["player_spawn"]
+	p.position = _find_free_spot_near(_map["player_spawn"])
 	# In team modes player joins BLUE (team 1); in DM/RM she's team 0 (FFA).
 	if Settings.is_team_mode():
 		p.team = TEAM_BLUE
@@ -1037,10 +1359,19 @@ func _safe_spawn_near(pos: Vector2, team: int) -> Vector2:
 	const MIN_ENEMY_DIST := 280.0
 	const MAX_STEPS := 6
 	const STEP := 220.0
+	# Never hand out a spawn inside terrain (bad map data / editor maps).
+	pos = _find_free_spot_near(pos)
 	var candidate := pos
 	for step in MAX_STEPS:
 		var clear := true
+		# A sideways-shifted slot must still be open air with ground under it
+		# before the kill line — otherwise we'd spawn someone inside a wall or
+		# over a pit on the narrower ported maps.
+		if step > 0 and (not _spot_is_clear(candidate) or _geom_ground_y(candidate.x, candidate.y - 2.0) > minf(KILL_Y, GROUND_Y + 1.0)):
+			clear = false
 		for s in get_tree().get_nodes_in_group("soldier"):
+			if not clear:
+				break
 			if not is_instance_valid(s) or bool(s.get("dead")):
 				continue
 			if int(s.get("team")) == team:
@@ -1053,7 +1384,8 @@ func _safe_spawn_near(pos: Vector2, team: int) -> Vector2:
 		# Alternate left/right around the original slot; clamp to the map interior.
 		var offset := STEP * float(step + 1) * (1.0 if step % 2 == 0 else -1.0)
 		candidate = Vector2(clampf(pos.x + offset, 80.0, MAP_W - 80.0), pos.y)
-	return candidate
+	# Every shifted slot was blocked — the original (verified-free) slot wins.
+	return pos
 
 
 func _spawn_bots() -> void:
@@ -1236,13 +1568,17 @@ func _maybe_build_touch_controls() -> void:
 func _spawn_flags() -> void:
 	# CTF bases: BLUE on the far left, RED on the far right of the map's ground row.
 	# Custom maps (editor) can override the pair via `ctf_flags: [blue, red]`.
-	var ground_y: float = float(_map.get("ctf_ground_y", 1830.0))
+	var ground_y: float = float(_map.get("ctf_ground_y", GROUND_Y))
 	var blue_base := Vector2(300, ground_y)
 	var red_base := Vector2(MAP_W - 300, ground_y)
 	var custom: Array = _map.get("ctf_flags", [])
 	if custom.size() >= 2:
 		blue_base = custom[0]
 		red_base = custom[1]
+	# Flags stand on their pole — settle each base onto the ground beneath it
+	# so none float in mid-air or sit buried in a floor.
+	blue_base = _settle_on_ground(blue_base)
+	red_base = _settle_on_ground(red_base)
 	flags = [
 		_make_flag(TEAM_BLUE, blue_base),
 		_make_flag(TEAM_RED, red_base),
@@ -1253,12 +1589,13 @@ func _spawn_flag_inf() -> void:
 	# INF: single neutral flag near the center. Attackers (RED) deliver to the
 	# defenders' base (BLUE) to score. Defenders return the flag by touching it.
 	# Custom maps override the flag + defender base via `inf_flag` / `ctf_flags[0]`.
-	var ground_y: float = float(_map.get("ctf_ground_y", 1830.0))
-	var center: Vector2 = _map.get("inf_flag", Vector2(MAP_W * 0.5, ground_y))
+	var ground_y: float = float(_map.get("ctf_ground_y", GROUND_Y))
+	var center: Vector2 = _settle_on_ground(_map.get("inf_flag", Vector2(MAP_W * 0.5, ground_y)))
 	var defender_base := Vector2(300, ground_y)
 	var custom_flags: Array = _map.get("ctf_flags", [])
 	if custom_flags.size() >= 1:
 		defender_base = custom_flags[0]
+	defender_base = _settle_on_ground(defender_base)
 	var f := _make_flag(0, center)
 	f.set_meta("capture_point", defender_base)
 	flags = [f]
@@ -1266,8 +1603,8 @@ func _spawn_flag_inf() -> void:
 
 func _spawn_flag_htf() -> void:
 	# HTF: single neutral flag mid-map. The carrying team ticks score per second.
-	var ground_y: float = float(_map.get("ctf_ground_y", 1830.0))
-	var center: Vector2 = _map.get("htf_flag", Vector2(MAP_W * 0.5, ground_y))
+	var ground_y: float = float(_map.get("ctf_ground_y", GROUND_Y))
+	var center: Vector2 = _settle_on_ground(_map.get("htf_flag", Vector2(MAP_W * 0.5, ground_y)))
 	flags = [_make_flag(0, center)]
 
 
@@ -1278,7 +1615,7 @@ func _spawn_rambo_bow() -> void:
 	# it to clients so both peers agree on where the bow is.
 	if Net.is_networked() and not Net.is_host():
 		return
-	var ground_y: float = float(_map.get("ctf_ground_y", 1830.0))
+	var ground_y: float = float(_map.get("ctf_ground_y", GROUND_Y))
 	var wp := WeaponPickup.new()
 	wp.weapon_name = "Rambo Bow"
 	wp.team = -1
@@ -1301,7 +1638,7 @@ func _spawn_point_pickups() -> void:
 			if pos is Vector2:
 				_spawn_point_pickup(pos)
 		return
-	var ground_y: float = float(_map.get("ctf_ground_y", 1830.0))
+	var ground_y: float = float(_map.get("ctf_ground_y", GROUND_Y))
 	var xs: PackedFloat32Array = [ 700.0, 1400.0, 2100.0, 2400.0, 2700.0, 3400.0, 4100.0 ]
 	for x in xs:
 		_spawn_point_pickup(Vector2(x, ground_y - 60.0))
@@ -1319,27 +1656,13 @@ func _make_flag(team: int, base: Vector2) -> Area2D:
 	cs.radius = 18.0
 	col.shape = cs
 	a.add_child(col)
-	# Real flag: vertical staff + waving rectangular banner, tinted per team.
-	# (Previously this was the 63px interface icon scaled to 0.5 — a ~31px
-	# HUD icon, not a flag. Now it reads as an actual flag object.)
-	var team_col: Color
-	if team == TEAM_BLUE:
-		team_col = Color(0.35, 0.55, 1.0)
-	elif team == TEAM_RED:
-		team_col = Color(0.95, 0.35, 0.3)
-	else:
-		team_col = Color(0.9, 0.8, 0.3)  # neutral flag (INF/HTF/RM)
-	var pole := Polygon2D.new()
-	pole.polygon = PackedVector2Array([Vector2(-2, -44), Vector2(2, -44), Vector2(2, 0), Vector2(-2, 0)])
-	pole.color = Color(0.45, 0.4, 0.35)
-	a.add_child(pole)
-	var banner := Polygon2D.new()
-	banner.polygon = PackedVector2Array([
-		Vector2(2, -44), Vector2(16, -40), Vector2(34, -42), Vector2(34, -26),
-		Vector2(16, -24), Vector2(2, -28),
-	])
-	banner.color = team_col
-	a.add_child(banner)
+	# Animated flag (scripts/flag_visual.gd): waving shaded cloth on a pole with
+	# a stone base + team glow at home, strapped to the carrier's back while
+	# carried, and planted with a blinking beacon when dropped.
+	var vis := Node2D.new()
+	vis.name = "FlagVisual"
+	vis.set_script(preload("res://scripts/flag_visual.gd"))
+	a.add_child(vis)
 	add_child(a)
 	return a
 
@@ -1349,6 +1672,9 @@ func _bind_local_camera(p: Node) -> void:
 		return
 	p.cam.limit_left = 0
 	p.cam.limit_right = int(MAP_W)
+	if spectator != null and is_instance_valid(spectator) and spectator.get("cam") != null:
+		spectator.cam.limit_right = int(MAP_W)
+		spectator.cam.limit_bottom = int(MAP_H)
 	# Clamp to the actual map rect so the camera can't drift into void above or past the ground body.
 	p.cam.limit_top = 0
 	p.cam.limit_bottom = int(MAP_H)
@@ -1369,7 +1695,7 @@ func _spawn_networked_player(peer_id: int) -> void:
 		var bs: Array = _map.get("bot_spawns", [])
 		if not bs.is_empty():
 			base = bs[randi() % bs.size()]
-	var spawn_pos := base + Vector2(randf_range(-140.0, 140.0), 0.0)
+	var spawn_pos := _jitter_spawn(base)
 	var display_name: String = Settings.player_name if peer_id == 1 else str(_peer_names.get(peer_id, "Player %d" % peer_id))
 	rpc("net_spawn_player", peer_id, spawn_pos, display_name, t)
 
@@ -1672,6 +1998,8 @@ func _process(delta: float) -> void:
 	# Vote timer + cooldown ticks — before the client early-return so the vote
 	# countdown reads smoothly on every peer between host state broadcasts (#77).
 	_tick_vote(delta)
+	# Kill line + anti-stuck watchdog — per peer, for locally-owned soldiers.
+	_tick_soldier_safety(delta)
 	# Client: state is driven entirely by host's net_match_state RPCs.
 	if Net.is_networked() and not Net.is_host():
 		return
@@ -1744,11 +2072,15 @@ func _tick_ctf() -> void:
 		var flag_team: int = int(f.get_meta("team"))
 		var home: Vector2 = f.get_meta("home")
 		var carrier: Variant = f.get_meta("carrier") if f.has_meta("carrier") else null
+		if typeof(carrier) == TYPE_OBJECT and not is_instance_valid(carrier):
+			# Carrier body was freed (killed bot / disconnect) before we saw it
+			# die — drop the flag where it was instead of leaving it hovering.
+			_drop_flag(f, f.position + Vector2(0, 30))
+			continue
 		if is_instance_valid(carrier):
 			if bool(carrier.get("dead")):
-				# Carrier died — drop flag at their last position.
-				f.position = carrier.global_position
-				f.set_meta("carrier", null)
+				# Carrier died — drop flag where they fell (settled onto the ground).
+				_drop_flag(f, carrier.global_position)
 				continue
 			f.position = carrier.global_position + Vector2(0, -30)
 			# Did the carrier reach their own base (their home flag)? Score + reset both.
@@ -1791,10 +2123,12 @@ func _tick_inf() -> void:
 	var home: Vector2 = f.get_meta("home")
 	var capture: Vector2 = f.get_meta("capture_point")
 	var carrier: Variant = f.get_meta("carrier") if f.has_meta("carrier") else null
+	if typeof(carrier) == TYPE_OBJECT and not is_instance_valid(carrier):
+		_drop_flag(f, f.position + Vector2(0, 30))
+		return
 	if is_instance_valid(carrier):
 		if bool(carrier.get("dead")):
-			f.position = carrier.global_position
-			f.set_meta("carrier", null)
+			_drop_flag(f, carrier.global_position)
 			return
 		f.position = carrier.global_position + Vector2(0, -30)
 		if int(carrier.get("team")) == TEAM_RED \
@@ -1834,10 +2168,12 @@ func _tick_htf(delta: float) -> void:
 		return
 	var home: Vector2 = f.get_meta("home")
 	var carrier: Variant = f.get_meta("carrier") if f.has_meta("carrier") else null
+	if typeof(carrier) == TYPE_OBJECT and not is_instance_valid(carrier):
+		_drop_flag(f, f.position + Vector2(0, 30))
+		return
 	if is_instance_valid(carrier):
 		if bool(carrier.get("dead")):
-			f.position = carrier.global_position
-			f.set_meta("carrier", null)
+			_drop_flag(f, carrier.global_position)
 			return
 		f.position = carrier.global_position + Vector2(0, -30)
 		var ct: int = int(carrier.get("team"))
@@ -1908,11 +2244,11 @@ func _tick_rambo() -> void:
 func _spawn_dom_points() -> void:
 	# Three capture points along the map — left, center, right — on the ground row.
 	# Custom maps override the trio via `dom_points: [Vector2, Vector2, Vector2]`.
-	var ground_y: float = float(_map.get("ctf_ground_y", 1830.0))
+	var ground_y: float = float(_map.get("ctf_ground_y", GROUND_Y))
 	var default_slots := [
-		{"pos": Vector2(MAP_W * 0.20, ground_y - 30.0), "name": "A"},
-		{"pos": Vector2(MAP_W * 0.50, ground_y - 30.0), "name": "B"},
-		{"pos": Vector2(MAP_W * 0.80, ground_y - 30.0), "name": "C"},
+		{"pos": _settle_on_ground(Vector2(MAP_W * 0.20, ground_y - 30.0)) + Vector2(0, -30.0), "name": "A"},
+		{"pos": _settle_on_ground(Vector2(MAP_W * 0.50, ground_y - 30.0)) + Vector2(0, -30.0), "name": "B"},
+		{"pos": _settle_on_ground(Vector2(MAP_W * 0.80, ground_y - 30.0)) + Vector2(0, -30.0), "name": "C"},
 	]
 	var slots: Array = default_slots
 	var custom: Array = _map.get("dom_points", [])
@@ -2015,6 +2351,8 @@ func dom_points() -> Array:
 func _reset_br_zone() -> void:
 	_br_zone_radius = 2200.0
 	_br_zone_center = Vector2(MAP_W * 0.5, MAP_H * 0.6)
+	# Big ported maps: start the ring wide enough to cover the whole world.
+	_br_zone_radius = maxf(2200.0, Vector2(MAP_W, MAP_H).length() * 0.5)
 	# Attach the zone visual once — it reads center/radius from us on each redraw.
 	if not has_node("BrZoneVisual"):
 		var vis := Node2D.new()
@@ -2422,7 +2760,23 @@ func _round_spawn_pos_for_team(t: int) -> Vector2:
 		var bs: Array = _map.get("bot_spawns", [])
 		if not bs.is_empty():
 			base = bs[randi() % bs.size()]
-	return base + Vector2(randf_range(-140.0, 140.0), 0.0)
+	return _jitter_spawn(base)
+
+
+func _jitter_spawn(base: Vector2) -> Vector2:
+	# Small random sideways offset so respawns don't stack — but only onto open
+	# air with real ground below (a blind ±140 px shift used to drop players
+	# inside walls or over pits on the tighter ported maps).
+	var safe_base := _find_free_spot_near(base)
+	for _i in 6:
+		var c := safe_base + Vector2(randf_range(-140.0, 140.0), 0.0)
+		if c.x < 60.0 or c.x > MAP_W - 60.0 or not _spot_is_clear(c):
+			continue
+		var gy := _geom_ground_y(c.x, c.y - 2.0)
+		if gy == INF or gy > minf(KILL_Y, GROUND_Y + 1.0) or gy - c.y > 600.0:
+			continue
+		return c
+	return safe_base
 
 
 @rpc("authority", "call_remote", "reliable")
@@ -2951,6 +3305,10 @@ func _broadcast_flag_state() -> void:
 			var nm := String(carrier.name)
 			if nm.begins_with("Player_"):
 				cid = int(nm.substr(7))
+			elif int(carrier.get("bot_id")) > 0:
+				# Bots ride as negative ids so clients can attach the flag to the
+				# bot replica (smooth carried visual) instead of an 8 Hz dot.
+				cid = -int(carrier.get("bot_id"))
 		arr.append({"pos": f.position, "carrier": cid})
 	for pid in _ready_peers.keys():
 		rpc_id(int(pid), "net_flag_state", arr)
@@ -3055,6 +3413,8 @@ func net_flag_state(arr: Array) -> void:
 				f.set_meta("carrier", p)
 			else:
 				f.set_meta("carrier", null)
+		elif cid < 0 and _bots_by_id.has(-cid) and is_instance_valid(_bots_by_id[-cid]):
+			f.set_meta("carrier", _bots_by_id[-cid])
 		else:
 			f.set_meta("carrier", null)
 

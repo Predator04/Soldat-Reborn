@@ -30,6 +30,19 @@ var muzzle_t := 0.0
 var target: Node2D = null
 var _target_refresh_cd := 0.0
 var _stuck_t := 0.0
+var _wedge_t := 0.0  # seconds resting wedged without floor contact
+# Progress watchdog: if the bot hasn't moved 60 px in PROGRESS_WINDOW seconds
+# while it has somewhere to go, it's wedged against terrain (no pathfinding) —
+# run an escape manoeuvre: reverse direction and jet up for a moment.
+var _progress_anchor := Vector2.ZERO
+var _progress_t := 0.0
+var _escape_t := 0.0
+var _escape_dir := 1.0
+var _escape_len := 0.0      # length of the current escape (grows on repeats)
+var _escape_streak := 0     # consecutive escapes without leaving the area
+var _since_escape := 99.0
+const PROGRESS_WINDOW := 2.5
+const ESCAPE_TIME := 1.6
 
 # Ammo state (#36) — bots run dry and reload like players.
 # `_mag_size` + `_reload_time` are stat lookups per loadout.
@@ -207,6 +220,8 @@ var jet_particles: CPUParticles2D
 
 
 func _ready() -> void:
+	# Terrain layer 3 (bit 4) = ported "only players collide" polys.
+	collision_mask = 1 | 4
 	add_to_group("soldier")
 	tree_exited.connect(func() -> void: Gostek.forget(self))
 	_apply_skill()
@@ -229,10 +244,15 @@ func _ready() -> void:
 	# Gun Game: force loadout to the current rung so every bot starts on level 0.
 	if Settings.game_mode == Settings.MODE_GG:
 		_apply_gg_weapon()
+	# Same feet-anchored 14×24 box as the player (#72). The old centred 20×42
+	# box put the physics floor ~21 px below the sprite's feet — bots hovered
+	# above the ground — and needed 42 px of headroom, so bots wedged in
+	# tunnels and ledges that players walk through.
 	var shape := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
-	rect.size = Vector2(20, 42)
+	rect.size = Vector2(14, 24)
 	shape.shape = rect
+	shape.position = Vector2(0, -rect.size.y * 0.5)
 	add_child(shape)
 	jet_particles = CPUParticles2D.new()
 	jet_particles.amount = 18
@@ -290,7 +310,7 @@ func _physics_process(delta: float) -> void:
 	_refresh_target(delta)
 	_scan_pickup(delta)
 
-	var on_floor := is_on_floor()
+	var on_floor := is_on_floor() or _wedge_t > 0.2  # see _update_wedge
 	var dx := 0.0
 	var dy := 0.0
 	if is_instance_valid(target):
@@ -406,14 +426,46 @@ func _physics_process(delta: float) -> void:
 			# reach the map edge. Prior code hard-coded `dir = 1.0` which piled
 			# every targetless bot at the right wall.
 			wander_t -= delta
+			# Map edges come from the per-map world rect (ported maps are wider
+			# or narrower than the 4800 px built-in arena).
+			var world_w: float = 4800.0
+			var m := get_parent()
+			if m != null and m.get("MAP_W") != null:
+				world_w = float(m.get("MAP_W"))
 			if global_position.x < 200.0:
 				wander_dir = 1.0
-			elif global_position.x > 4600.0:
+			elif global_position.x > world_w - 200.0:
 				wander_dir = -1.0
 			elif wander_t <= 0.0:
 				wander_dir = 1.0 if randf() < 0.5 else -1.0
 				wander_t = randf_range(WANDER_FLIP_MIN, WANDER_FLIP_MAX)
 			dir = wander_dir
+
+		# Escape manoeuvre (see _progress_anchor). Only when the bot actually
+		# wants to travel — close-range strafing legitimately stays in place.
+		var wants_travel: bool = not is_instance_valid(target) or absf(dx) > 160.0 \
+				or not _has_line_of_sight(target)
+		if global_position.distance_to(_progress_anchor) > 60.0 or not wants_travel:
+			_progress_anchor = global_position
+			_progress_t = 0.0
+		else:
+			_progress_t += delta
+			if _progress_t > PROGRESS_WINDOW and _escape_t <= 0.0:
+				# Repeated escapes from the same dead end run longer each time
+				# so the bot actually commits to leaving the pocket.
+				_escape_streak = _escape_streak + 1 if _since_escape < 8.0 else 0
+				_escape_len = ESCAPE_TIME * float(mini(1 + _escape_streak, 4))
+				_since_escape = 0.0
+				_escape_t = _escape_len
+				_escape_dir = -dir if dir != 0.0 else (1.0 if randf() < 0.5 else -1.0)
+				wander_dir = _escape_dir
+				wander_t = randf_range(WANDER_FLIP_MIN, WANDER_FLIP_MAX)
+				_progress_t = 0.0
+				_progress_anchor = global_position
+		_since_escape += delta
+		if _escape_t > 0.0:
+			_escape_t -= delta
+			dir = _escape_dir
 
 		velocity.x = move_toward(velocity.x, dir * RUN_SPEED * MatchConfig.mod_speed(), 1300.0 * MatchConfig.mod_speed() * delta)
 		_hop_cd = maxf(0.0, _hop_cd - delta)
@@ -460,6 +512,16 @@ func _physics_process(delta: float) -> void:
 				velocity.y += JET_THRUST * MatchConfig.mod_jet() * MatchConfig.mod_gravity() * delta
 				fuel = maxf(0.0, fuel - (40.0 / maxf(0.1, MatchConfig.mod_jet())) * delta)
 				jet_on = true
+		# Escape jet: first part of the escape manoeuvre lifts the bot off
+		# whatever lip/pocket it was grinding against.
+		if _escape_t > _escape_len - ESCAPE_TIME * 0.55 and fuel > 5.0:
+			if on_floor and jump_cd <= 0.0:
+				velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
+				jump_cd = 0.4
+			elif not on_floor:
+				velocity.y += JET_THRUST * MatchConfig.mod_jet() * MatchConfig.mod_gravity() * delta
+				fuel = maxf(0.0, fuel - (40.0 / maxf(0.1, MatchConfig.mod_jet())) * delta)
+				jet_on = true
 		if jet_on and not was_jet:
 			Sfx.jet(true)
 		elif not jet_on and was_jet:
@@ -478,6 +540,7 @@ func _physics_process(delta: float) -> void:
 			facing = dir
 
 		move_and_slide()
+		_update_wedge(delta)
 
 	# lob a grenade at mid-range
 	grenade_cd -= delta
@@ -679,7 +742,7 @@ func _has_line_of_sight(t: Node2D) -> bool:
 
 func _find_ladder_overlap() -> Node2D:
 	# Mirrors player.gd::_find_ladder_overlap — rect-vs-rect against each
-	# ladder Area2D's stored bounds. Body half-width ~10 (bot shape 20×42).
+	# ladder Area2D's stored bounds. Body half-width ~7 (bot shape 14×24, feet-anchored).
 	var pcx: float = global_position.x
 	var pfeet: float = global_position.y
 	var phead: float = pfeet - CLIMB_BODY_PAD_TOP
@@ -1166,3 +1229,16 @@ func _draw() -> void:
 		grenades,
 		false,
 	)
+
+
+# Wedge detection: a rectangular body can come to rest between two steep
+# surfaces (a V-crevice, or a ledge edge against a slope) without any of them
+# counting as "floor". Then is_on_floor() is false forever → no jump, no fuel
+# regen → permanently stuck once the tank is empty. If we're pressed against
+# terrain, falling, but not actually moving, treat it as standing.
+func _update_wedge(delta: float) -> void:
+	if not is_on_floor() and not is_on_ceiling() and get_slide_collision_count() > 0 \
+			and velocity.y >= 0.0 and get_real_velocity().length() < 6.0:
+		_wedge_t += delta
+	else:
+		_wedge_t = 0.0

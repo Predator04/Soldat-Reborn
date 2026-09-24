@@ -21,6 +21,8 @@ var _sprite_size := Vector2.ZERO
 
 
 func _ready() -> void:
+	# Terrain layer 2 = ported "only bullets collide" polys (see main.gd).
+	collision_mask = 1 | 2
 	add_to_group("bullet")
 	_load_sprite()
 	body_entered.connect(_on_body_entered)

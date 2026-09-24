@@ -11,8 +11,16 @@ var _free_cam := false
 var _active := false
 
 const PAN_SPEED := 900.0
-const MAP_W := 4800.0
+const MAP_W := 4800.0   # fallback only — real bounds come from main (per-map world)
 const MAP_H := 2000.0
+
+
+func _world_w() -> float:
+	return float(main.get("MAP_W")) if main != null and main.get("MAP_W") != null else MAP_W
+
+
+func _world_h() -> float:
+	return float(main.get("MAP_H")) if main != null and main.get("MAP_H") != null else MAP_H
 
 
 func _ready() -> void:
@@ -22,8 +30,8 @@ func _ready() -> void:
 	cam.zoom = Vector2(1.0, 1.0)
 	cam.limit_left = 0
 	cam.limit_top = 0
-	cam.limit_right = int(MAP_W)
-	cam.limit_bottom = int(MAP_H)
+	cam.limit_right = int(_world_w())
+	cam.limit_bottom = int(_world_h())
 	cam.enabled = false
 	add_child(cam)
 	set_process(false)
@@ -78,8 +86,8 @@ func _process(delta: float) -> void:
 			dir.y += 1.0
 		if dir != Vector2.ZERO:
 			var next := global_position + dir * PAN_SPEED * delta
-			next.x = clampf(next.x, 0.0, MAP_W)
-			next.y = clampf(next.y, 0.0, MAP_H)
+			next.x = clampf(next.x, 0.0, _world_w())
+			next.y = clampf(next.y, 0.0, _world_h())
 			global_position = next
 		return
 	if not is_instance_valid(_target) or bool(_target.get("dead")):

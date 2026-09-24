@@ -2,6 +2,29 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.13.0] — 2026-09-23
+
+Map integrity pass (nobody gets stuck), classic-map re-port, flag + map graphics.
+
+### Fixed — getting stuck / map placement
+- **Baseline floor was 100 px too high.** Its top edge now sits at `GROUND_Y` (1900) like every map, the editor and map_gen assume. This had sealed the built-in tunnels shut (20 px gap) and buried the bottom rows of every ported map.
+- **Built-in maps:** Ascent / Towers / Pillars tunnels are real walk-throughs now (they were sealed notches — the Towers CTF flags sat in unreachable pockets). Towers stair platforms moved out of the mountain and anchored to the slope (no wedge gap); buried platforms on Ascent/Pillars moved/removed; Towers bot spawns that were inside rock moved onto the stairs.
+- **All 99 classic maps re-ported** from `opensoldat/base` at one uniform scale (1.5) with a per-map world rect, instead of being squeezed into 4800×2000 (Messner was at 0.39× — corridors shorter than a soldier). Correct Soldat polygon types: background / flag-only / team-only polys no longer act as walls; "only bullets" and "only players" polys collide with the right things (terrain layers 2/3).
+- Every spawn, flag, M2 and pickup is validated by `tools/map_audit.py` (embedded in rock, isolated pocket, over a pit) and auto-moved when bad; `python3 tools/map_audit.py` reports 0 problems across all 102 maps.
+- **Fell off a ported map** (below its lowest geometry) = death, like Soldat — no more wandering the empty void around the map.
+- **Anti-stuck watchdog** frees any soldier embedded in terrain for >0.35 s. **Wedge fix:** a body resting between two steep surfaces now counts as grounded (can jump, fuel regenerates) instead of being trapped with an empty tank.
+- **Stance headroom:** you can't stand up (or leave prone) into a low ceiling any more — you stay crouched until there's room.
+- **Bots** use the same feet-anchored 14×24 box as players (they hovered ~20 px above the ground and wedged where players fit) and run an escape manoeuvre when they stop making progress against terrain. Wander edges follow the map width.
+- Spawn jitter / enemy-avoid shifts never place a soldier inside a wall or over a pit; dropped flags fall to the ground (or return home if dropped off the map); flags whose carrier was freed no longer hang in the air; lost weapons below the kill line are cleaned up (Rambo bow respawns).
+
+### Graphics
+- **New animated flags**: waving shaded cloth with emblem, stone base + pulsing team glow at home, strapped to the carrier's back while carried (bots too, on clients), planted with a bobbing marker when dropped.
+- Classic maps now render Soldat's **per-vertex colours** (all the map shading), **background polygons**, correct **prop size / tint / rotation**, and the map's own **sky gradient** with matching parallax.
+- Platforms are textured with the map terrain and get a bevel trim; tunnels get a dark back wall.
+
+### Tools
+- `tools/map_audit.py` (static stuck audit), `tools/stuck_test.gd` (headless bot soak test), `tools/shot.gd` (screenshot helper), `tools/pms_to_map.py --regen <opensoldat-base>`.
+
 ## [1.11.0] — 2026-09-13
 
 Vote system + bonus pickups.

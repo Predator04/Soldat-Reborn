@@ -66,6 +66,14 @@ static func map_to_json(m: Dictionary) -> String:
 				entry["color"] = [c.r, c.g, c.b, c.a]
 			if poly.has("texture") and typeof(poly["texture"]) == TYPE_STRING:
 				entry["texture"] = String(poly["texture"])
+			if int(poly.get("col", 0)) != 0:
+				entry["col"] = int(poly["col"])
+			var vc = poly.get("vc", PackedColorArray())
+			if typeof(vc) == TYPE_PACKED_COLOR_ARRAY and (vc as PackedColorArray).size() == pts.size():
+				var hex: Array = []
+				for c in vc:
+					hex.append((c as Color).to_html(true))
+				entry["vc"] = hex
 			polys_out.append(entry)
 		out["polys"] = polys_out
 	# Editor-placed scenery — array of {tex, pos, scale?, mod?, z?}. Distinct from
@@ -106,9 +114,15 @@ static func map_to_json(m: Dictionary) -> String:
 	if m.has("terrain_color") and typeof(m["terrain_color"]) == TYPE_COLOR:
 		var tc: Color = m["terrain_color"]
 		out["terrain_color"] = [tc.r, tc.g, tc.b, tc.a]
-	for key in ["terrain_texture", "floor_texture"]:
+	for key in ["terrain_texture", "floor_texture", "platform_texture"]:
 		if m.has(key) and typeof(m[key]) == TYPE_STRING:
 			out[key] = m[key]
+	# Per-map world rect + sky gradient (ported maps) — plain dicts/arrays.
+	for key in ["world", "sky"]:
+		if m.has(key) and typeof(m[key]) == TYPE_DICTIONARY:
+			out[key] = m[key]
+	if m.has("ctf_ground_y"):
+		out["ctf_ground_y"] = float(m["ctf_ground_y"])
 	return JSON.stringify(out, "  ")
 
 
@@ -186,6 +200,17 @@ static func json_to_map(text: String) -> Dictionary:
 						float(ca[3]) if ca.size() > 3 else 1.0)
 			if poly.has("texture"):
 				entry["texture"] = str(poly["texture"])
+			# Collision class (ported Soldat poly types): 0 solid, 1 bullets
+			# only, 2 players only, 3 decorative. Missing = solid.
+			if poly.has("col"):
+				entry["col"] = int(poly["col"])
+			# Per-vertex colours ("rrggbbaa" hex, one per vertex).
+			var vc_arr: Array = poly.get("vc", [])
+			if vc_arr.size() == pts.size():
+				var vcols := PackedColorArray()
+				for h in vc_arr:
+					vcols.append(Color.html(str(h)))
+				entry["vc"] = vcols
 			polys.append(entry)
 		m["polys"] = polys
 	# Editor-placed scenery (#113). Non-collidable Sprite2D decorations.
@@ -226,9 +251,13 @@ static func json_to_map(text: String) -> Dictionary:
 		if typeof(tc) == TYPE_ARRAY and tc.size() >= 3:
 			m["terrain_color"] = Color(float(tc[0]), float(tc[1]), float(tc[2]),
 				float(tc[3]) if tc.size() > 3 else 1.0)
-	for key in ["terrain_texture", "floor_texture"]:
+	for key in ["terrain_texture", "floor_texture", "platform_texture"]:
 		if parsed.has(key):
 			m[key] = str(parsed[key])
+	# World rect (w / h / ground_y / kill_y / floor_visible) + sky gradient.
+	for key in ["world", "sky"]:
+		if parsed.has(key) and typeof(parsed[key]) == TYPE_DICTIONARY:
+			m[key] = parsed[key]
 	if parsed.has("weather"):
 		m["weather"] = str(parsed["weather"])
 	if parsed.has("ctf_ground_y"):

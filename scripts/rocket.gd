@@ -33,6 +33,8 @@ var _has_target := false
 
 
 func _ready() -> void:
+	# Terrain layer 2 = ported "only bullets collide" polys (see main.gd).
+	collision_mask = 1 | 2
 	add_to_group("bullet")
 	body_entered.connect(_on_body_entered)
 	_velocity = direction * speed

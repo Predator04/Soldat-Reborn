@@ -48,6 +48,13 @@ This directory (`game/`) is the git repo root — note the space in the parent p
 - `--smoke-dedicated` — dedicated (headless) host smoke.
 - Dedicated server: `--dedicated --port N --map <name|index> --mode <name|index> [--register <master-url>]`.
 
+## Maps & anti-stuck (v1.13)
+- World rect is per map: `main.gd` vars `MAP_W / MAP_H / GROUND_Y / KILL_Y` come from `_map["world"]` (ported maps) or the 4800×2000 defaults. Never hard-code 4800/2000/1900.
+- Baseline floor's TOP edge = `GROUND_Y`. Ported maps hide it and kill soldiers below `KILL_Y`.
+- Poly `"col"`: 0 solid, 1 bullets-only (layer 2), 2 players-only (layer 3/bit 4), 3 decorative. `"vc"` = per-vertex colours.
+- After touching any map data run `python3 tools/map_audit.py` (must print `0 / N maps have problems`). Soak test: `godot --headless --fixed-fps 60 -s tools/stuck_test.gd -- --secs=40 --from=0 --to=26`.
+- Re-port classics: `python3 tools/pms_to_map.py --regen <opensoldat/base checkout>` (keeps names + weather).
+
 ## In-repo references
 - `references/weapons-stats.md` — weapon damage / balance figures.
 - `references/poa-format.md` — classic Soldat `.pms` map format.

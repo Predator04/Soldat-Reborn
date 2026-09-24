@@ -28,6 +28,8 @@ var _exploded := false
 
 
 func _ready() -> void:
+	# Grenades bounce off "only bullets" polys too (terrain layer 2).
+	collision_mask = 1 | 2
 	var shape := CollisionShape2D.new()
 	var cs := CircleShape2D.new()
 	cs.radius = 5.0

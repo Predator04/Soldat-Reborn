@@ -16,6 +16,11 @@ const PERIOD := 1600.0
 const SEGMENTS := 72
 
 var _peaks: Array = []
+# Optional tint (set by main.gd from a ported map's sky colours). Alpha 0 =
+# unset → the default dusk-blue ridges. When set, ridges and the horizon glow
+# are derived from the map's own sky so a green jungle or a white arctic map
+# no longer gets blue night mountains pasted behind it.
+var tint := Color(0, 0, 0, 0)
 
 
 func _ready() -> void:
@@ -55,7 +60,12 @@ func _draw() -> void:
 			pts.append(Vector2(sx, view.y - max_h * (0.30 + 0.65 * ridge + detail)))
 		pts.append(Vector2(view.x, view.y))
 		pts.append(Vector2(0.0, view.y))
-		draw_colored_polygon(pts, l["col"])
+		var lc: Color = l["col"]
+		if tint.a > 0.0:
+			# Farther layers fade toward the sky, nearer ones darken.
+			lc = tint.darkened(0.12 + 0.1 * float(i))
+			lc.a = 0.55 + 0.1 * float(i)
+		draw_colored_polygon(pts, lc)
 
 
 func _draw_horizon_glow(view: Vector2) -> void:
@@ -66,6 +76,9 @@ func _draw_horizon_glow(view: Vector2) -> void:
 	var steps := 16
 	var top := Color(0.10, 0.12, 0.20, 0.0)
 	var bottom := Color(0.62, 0.42, 0.34, 0.45)
+	if tint.a > 0.0:
+		top = Color(tint, 0.0)
+		bottom = Color(tint.lightened(0.25), 0.3)
 	for i in steps:
 		var t := float(i) / float(steps)
 		var y := lerpf(band_top, band_bot, t)

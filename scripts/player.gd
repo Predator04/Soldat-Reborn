@@ -164,6 +164,7 @@ var jet_particles: CPUParticles2D
 # leaking or freeing while physics is still using the current shape.
 var col_shape: CollisionShape2D
 var shape_stand: RectangleShape2D
+var _wedge_t := 0.0  # seconds resting wedged without floor contact
 var shape_crouch: RectangleShape2D
 var shape_prone: RectangleShape2D
 
@@ -211,6 +212,8 @@ const TouchControls = preload("res://scripts/touch_controls.gd")
 
 
 func _ready() -> void:
+	# Terrain layer 3 (bit 4) = ported "only players collide" polys.
+	collision_mask = 1 | 4
 	add_to_group("soldier")
 	ceasefire_t = CEASEFIRE_SECS
 	if cosmetics.is_empty():
@@ -449,7 +452,7 @@ func _physics_process(delta: float) -> void:
 	if right:
 		dir += 1.0
 
-	var on_floor := is_on_floor()
+	var on_floor := is_on_floor() or _wedge_t > 0.2  # see _update_wedge
 
 	# coyote time + jump buffering
 	coyote_t = COYOTE_TIME if on_floor else maxf(0.0, coyote_t - delta)
@@ -580,6 +583,7 @@ func _physics_process(delta: float) -> void:
 				facing = signf(aim_dir.x)
 
 	move_and_slide()
+	_update_wedge(delta)
 
 	# primary weapon switching (keys 1..9,0). Numbers map to Soldat's classic slot order.
 	if Input.is_action_pressed("weapon_1"):
@@ -1021,12 +1025,42 @@ func _apply_stance_shape() -> void:
 		want = shape_prone
 	elif crouching:
 		want = shape_crouch
+	# Headroom guard: growing taller (prone→crouch/stand, crouch→stand) under a
+	# low ceiling used to shove the box into the terrain and wedge the soldier.
+	# If the taller box doesn't fit, stay in the tallest stance that does.
+	var cur: RectangleShape2D = col_shape.shape as RectangleShape2D
+	if cur != null and want.size.y > cur.size.y and not _stance_fits(want):
+		if want == shape_stand and _stance_fits(shape_crouch):
+			want = shape_crouch
+			crouching = true
+			prone = false
+		else:
+			want = cur
+			prone = cur == shape_prone
+			crouching = cur == shape_crouch
 	if col_shape.shape != want:
 		# Feet-anchored swap (#72): the box bottom stays at the body origin, so
 		# changing height only moves the top — no body nudge needed, and the
 		# soldier neither micro-falls on crouch nor pops out of the floor on stand.
 		col_shape.set_deferred("shape", want)
 		col_shape.set_deferred("position", Vector2(0, -want.size.y * 0.5))
+
+
+func _stance_fits(shape: RectangleShape2D) -> bool:
+	# Would this (feet-anchored) stance box overlap static terrain right now?
+	if not is_inside_tree():
+		return true
+	var q := PhysicsShapeQueryParameters2D.new()
+	q.shape = shape
+	q.transform = Transform2D(0.0, global_position + Vector2(0, -shape.size.y * 0.5 - 0.5))
+	q.collision_mask = collision_mask
+	q.collide_with_areas = false
+	q.exclude = [get_rid()]
+	q.margin = -0.5
+	for hit in get_world_2d().direct_space_state.intersect_shape(q, 4):
+		if hit.get("collider") is StaticBody2D:
+			return false
+	return true
 
 
 func _start_reload() -> void:
@@ -1885,3 +1919,16 @@ func _break_predator_if_active() -> void:
 	if Net.is_networked() and is_multiplayer_authority():
 		rpc("net_bonus_clear")
 	_clear_bonus_local()
+
+
+# Wedge detection: a rectangular body can come to rest between two steep
+# surfaces (a V-crevice, or a ledge edge against a slope) without any of them
+# counting as "floor". Then is_on_floor() is false forever → no jump, no fuel
+# regen → permanently stuck once the tank is empty. If we're pressed against
+# terrain, falling, but not actually moving, treat it as standing.
+func _update_wedge(delta: float) -> void:
+	if not is_on_floor() and not is_on_ceiling() and get_slide_collision_count() > 0 \
+			and velocity.y >= 0.0 and get_real_velocity().length() < 6.0:
+		_wedge_t += delta
+	else:
+		_wedge_t = 0.0

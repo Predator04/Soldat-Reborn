@@ -12,3 +12,6 @@ prompt.md
 # Local audit / scratch files
 *_prompt.md
 claude_*.log
+
+# Python bytecode from tools/*.py
+__pycache__/

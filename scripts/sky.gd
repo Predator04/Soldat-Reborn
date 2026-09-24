@@ -5,6 +5,10 @@ extends Node2D
 ## cloud layer sits between the stars and the parallax mountains for depth.
 
 var _time := 0.0
+# Optional per-map gradient (ported Soldat maps ship their own BgColorTop/Btm).
+# Alpha 0 = unset → keep the default dusk sky.
+var map_top := Color(0, 0, 0, 0)
+var map_bottom := Color(0, 0, 0, 0)
 
 
 func _process(delta: float) -> void:
@@ -19,6 +23,11 @@ func _draw() -> void:
 	var top := Color(0.03, 0.04, 0.11)
 	var mid := Color(0.10, 0.14, 0.26)
 	var bottom := Color(0.34, 0.24, 0.28)
+	var has_map_sky := map_top.a > 0.0 and map_bottom.a > 0.0
+	if has_map_sky:
+		top = Color(map_top, 1.0)
+		bottom = Color(map_bottom, 1.0)
+		mid = top.lerp(bottom, 0.5)
 	for i in steps:
 		var t := float(i) / float(steps)
 		var c := top.lerp(mid, minf(1.0, t * 2.0)) if t < 0.5 else mid.lerp(bottom, (t - 0.5) * 2.0)
@@ -26,7 +35,11 @@ func _draw() -> void:
 	# Stars — pinned to a seeded RNG so they don't twinkle-shift every frame.
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 1337
-	for _i in 90:
+	# Stars only read on dark skies — skip them over a daylight map gradient.
+	var star_count := 90
+	if has_map_sky and top.get_luminance() > 0.3:
+		star_count = 0
+	for _i in star_count:
 		var x := rng.randf_range(0.0, view.x)
 		var y := rng.randf_range(0.0, view.y * 0.55)
 		var r := rng.randf_range(0.6, 1.7)
@@ -45,7 +58,10 @@ func _draw() -> void:
 		var h := cloud_rng.randf_range(22.0, 42.0)
 		var alpha := cloud_rng.randf_range(0.08, 0.16)
 		var x := fposmod(base_x + _time * speed, view.x + w) - w * 0.5
-		_draw_cloud(Vector2(x, y), w, h, Color(0.85, 0.88, 0.96, alpha))
+		var cc := Color(0.85, 0.88, 0.96, alpha)
+		if has_map_sky:
+			cc = Color(top.lerp(Color.WHITE, 0.45), alpha * 0.8)
+		_draw_cloud(Vector2(x, y), w, h, cc)
 
 
 func _draw_cloud(center: Vector2, w: float, h: float, col: Color) -> void:
