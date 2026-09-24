@@ -2,6 +2,25 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.14.0] — 2026-09-24
+
+Smarter bots: real navigation + objective play. Plus more stuck/placement fixes.
+
+### Bots
+- **Navigation graph** baked for every map (`tools/build_nav.py` → `assets/nav/*.json`, loaded by `scripts/nav_graph.gd`). Bots run A* over walkable surfaces and follow the path: hop at low lips, jump-then-jet up climbs, drop down ledges, jet across gaps with a full tank. Bottomless stretches and steep slopes aren't used as routes.
+- **Objective brain** (re-thinks ~3x/sec): CTF attackers grab the enemy flag and run it home, defenders patrol the base, everyone chases a carrier who has our flag (and hunts it down in a flag standoff), dropped flags get returned, teammates escort carriers. INF attack/defend, HTF carriers keep moving away from enemies, DOM bots capture the nearest unowned point, PM bots collect points, Rambo bots go for the bow, BR bots stay in the ring. DM/TDM bots hunt the enemy's position (or last-seen spot) instead of pushing into walls.
+- **Target choice**: visible enemies beat ones behind walls, enemy flag carriers get priority, wounded enemies a little too.
+- **Fuel sense**: bots wait on the ground to refuel before a climb or gap they can't make, and don't bunny-hop away their regen.
+- **Pit guard**: bots won't strafe/wander off an edge into a bottomless drop.
+- Fixed a v1.13 bug that made bots burn jet fuel constantly (escape jet fired whenever airborne); bots no longer chase bonus crates they can't collect; blocked-on-a-seam hop.
+- Soak test over all 102 maps (CTF, 30 s each): flag grabs 98 → 154, captures 7 → 22, falls 22 → 8; DM engagements up ~50%.
+
+### Maps / stuck fixes
+- **Seam-free collision** for ported maps: triangles are merged into clean convex outlines (`collision` key) so bodies stop snagging on the joins between Soldat's triangles. Triangles stay for rendering.
+- **Soldiers no longer collide with each other** (as in Soldat) — they used to shove each other into walls and plug tunnels.
+- **Every objective is placed explicitly and validated**: CTF flags, INF/HTF flag, DOM points, PM points and Rambo bow for all 102 maps (the old 4800-arena defaults put them inside rock or over pits on most classic maps — e.g. Ascent's RED flag was buried in the hill).
+- **Team spawns**: each side spawns at its own base in team modes (they used a shared list, so BLUE bots often spawned in RED's base). Soldat Alpha/Bravo now map to RED/BLUE correctly, so flags stand on their own team-coloured bases.
+
 ## [1.13.0] — 2026-09-23
 
 Map integrity pass (nobody gets stuck), classic-map re-port, flag + map graphics.

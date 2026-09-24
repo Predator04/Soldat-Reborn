@@ -10,6 +10,7 @@ var _at := Vector2.INF
 var _n := 0
 var _moved := false
 var _flagdemo := false
+var _flagdrop := false
 
 
 func _initialize() -> void:
@@ -20,6 +21,8 @@ func _initialize() -> void:
 			_out = a.substr(6)
 		elif a == "--flagdemo":
 			_flagdemo = true
+		elif a == "--flagdrop":
+			_flagdrop = true
 		elif a.begins_with("--at="):
 			var xy := a.substr(5).split(",")
 			_at = Vector2(float(xy[0]), float(xy[1]))
@@ -36,13 +39,13 @@ func _process(_delta: float) -> bool:
 			if cam != null:
 				cam.reset_smoothing()
 			_moved = true
-			if _flagdemo:
-				# Put the RED flag on the player's back and drop the BLUE one
-				# next to them so all three flag looks are in one frame.
-				var fl: Array = current_scene.get("flags")
-				if fl.size() >= 2:
-					fl[1].set_meta("carrier", p)
-					fl[0].position = _at + Vector2(-90, 0)
+			var fl: Array = current_scene.get("flags")
+			if _flagdemo and fl.size() >= 2:
+				# RED flag on the player's back (BLUE stays at its home).
+				fl[1].set_meta("carrier", p)
+			if _flagdrop and fl.size() >= 2:
+				# RED flag lying in the field next to the player.
+				fl[1].position = current_scene._settle_on_ground(_at + Vector2(90, -20))
 	if _n == _frames:
 		var img := root.get_texture().get_image()
 		img.save_png(_out)

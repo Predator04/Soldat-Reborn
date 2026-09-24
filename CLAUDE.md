@@ -53,7 +53,10 @@ This directory (`game/`) is the git repo root — note the space in the parent p
 - Baseline floor's TOP edge = `GROUND_Y`. Ported maps hide it and kill soldiers below `KILL_Y`.
 - Poly `"col"`: 0 solid, 1 bullets-only (layer 2), 2 players-only (layer 3/bit 4), 3 decorative. `"vc"` = per-vertex colours.
 - After touching any map data run `python3 tools/map_audit.py` (must print `0 / N maps have problems`). Soak test: `godot --headless --fixed-fps 60 -s tools/stuck_test.gd -- --secs=40 --from=0 --to=26`.
-- Re-port classics: `python3 tools/pms_to_map.py --regen <opensoldat/base checkout>` (keeps names + weather).
+- Re-port classics: `python3 tools/pms_to_map.py --regen <opensoldat/base checkout>` (keeps names + weather; needs numpy/pillow/scipy/shapely).
+- Bot nav: after ANY map geometry change run `python3 tools/build_nav.py` (graphs are rejected at runtime if poly/collision counts changed). Bot brain = `bot.gd::_think*` (goal) + `_nav_step` (path following).
+- Soldiers are on physics layer bit 8 and don't collide with each other; anything that must hit soldiers masks bit 8.
+- Soak test flags: `--mode=N`, `--trace=<goal label>`, `--trace-name=Blue_Bot_2`, `--log-falls`.
 
 ## In-repo references
 - `references/weapons-stats.md` — weapon damage / balance figures.

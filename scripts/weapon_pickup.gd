@@ -21,6 +21,8 @@ var pickup_id: int = 0
 
 
 func _ready() -> void:
+	# Detect soldiers (layer bit 8) as well as resting on terrain (bit 1).
+	collision_mask = 1 | 8
 	add_to_group("weapon_pickup")
 	var shape := CollisionShape2D.new()
 	var cs := CircleShape2D.new()

@@ -182,6 +182,158 @@ def _col_for_type(t):
     return 0
 
 
+def build_collision(polys):
+    """Merge the map's collision triangles into clean outlines.
+
+    Soldat maps are thousands of loose triangles. Used directly as physics
+    shapes, the seams between them (T-junctions, sub-pixel overlaps, 1-2 px
+    bumps) snag a sliding rectangle body — soldiers stop dead "on nothing"
+    or need to hop. Here each collision class is unioned into polygons,
+    micro-bumps are simplified away (<= 1 px), and polygons with holes are
+    split along vertical cuts (CollisionPolygon2D can't have holes). The
+    triangles stay for rendering only.
+    """
+    try:
+        from shapely.geometry import Polygon, LineString
+        from shapely.ops import unary_union, split
+    except ImportError:
+        print("  (shapely not installed — keeping per-triangle collision)")
+        return None
+    out = []
+    for col in (0, 1, 2):
+        tris = []
+        for p in polys:
+            if int(p.get("col", 0)) != col:
+                continue
+            pts = p["points"]
+            poly = Polygon([(pts[i], pts[i + 1]) for i in range(0, len(pts) - 1, 2)])
+            if poly.area > 0.25:
+                tris.append(poly.buffer(0))
+        if not tris:
+            continue
+        u = unary_union(tris).buffer(0).simplify(1.0, preserve_topology=True)
+        queue = list(getattr(u, "geoms", [u]))
+        guard = 0
+        while queue and guard < 20000:
+            guard += 1
+            g = queue.pop()
+            if g.geom_type != "Polygon" or g.area < 4.0:
+                continue
+            # Convex pieces with exactly shared edges: Godot's own concave
+            # decomposition fails on some of these outlines ("Convex
+            # decomposing failed!" = a missing wall), so do it here.
+            for piece in _convex_pieces(g):
+                for flat in _strict_convex(piece):
+                    entry = {"points": flat}
+                    if col:
+                        entry["col"] = col
+                    out.append(entry)
+    return out
+
+
+def _clean_ring(coords):
+    """Round to 0.01 px, drop duplicates and (near-)collinear vertices."""
+    pts = []
+    for (x, y) in coords:
+        q = (round(x, 2), round(y, 2))
+        if not pts or q != pts[-1]:
+            pts.append(q)
+    if len(pts) > 1 and pts[0] == pts[-1]:
+        pts.pop()
+    changed = True
+    while changed and len(pts) > 3:
+        changed = False
+        for i in range(len(pts)):
+            a, b, c = pts[i - 1], pts[i], pts[(i + 1) % len(pts)]
+            cr = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0])
+            ln = max(1e-6, ((c[0] - a[0]) ** 2 + (c[1] - a[1]) ** 2) ** 0.5)
+            if abs(cr) / ln < 0.05:
+                pts.pop(i)
+                changed = True
+                break
+    return pts
+
+
+def _is_convex(pts):
+    sign = 0
+    for i in range(len(pts)):
+        a, b, c = pts[i - 1], pts[i], pts[(i + 1) % len(pts)]
+        cr = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0])
+        if cr == 0:
+            continue
+        s_ = 1 if cr > 0 else -1
+        if sign == 0:
+            sign = s_
+        elif s_ != sign:
+            return False
+    return True
+
+
+def _strict_convex(piece):
+    """Flat point lists for pieces Godot can take as-is (convex, non-degenerate).
+    Anything else is emitted as its triangles."""
+    import shapely
+    from shapely.geometry import Polygon
+    pts = _clean_ring(piece.exterior.coords)
+    if len(pts) >= 3 and _is_convex(pts) and abs(Polygon(pts).area) >= 2.0:
+        return [[c for p in pts for c in p]]
+    out = []
+    for t in shapely.constrained_delaunay_triangles(piece).geoms:
+        tp = _clean_ring(t.exterior.coords)
+        if len(tp) == 3 and abs(Polygon(tp).area) >= 0.5:
+            out.append([c for p in tp for c in p])
+    return out
+
+
+def _convex_pieces(poly):
+    """Constrained Delaunay triangulation + Hertel-Mehlhorn style greedy merge
+    of neighbouring pieces while the result stays convex."""
+    import shapely
+    from shapely.geometry import Polygon
+    tris = [t for t in shapely.constrained_delaunay_triangles(poly).geoms if t.area > 1e-3]
+    pieces = [Polygon(t.exterior.coords) for t in tris]
+
+    def ekey(a, b):
+        a = (round(a[0], 3), round(a[1], 3))
+        b = (round(b[0], 3), round(b[1], 3))
+        return (a, b) if a < b else (b, a)
+
+    changed = True
+    while changed:
+        changed = False
+        edge_owner = {}
+        for i, pc in enumerate(pieces):
+            cs = list(pc.exterior.coords)
+            for k in range(len(cs) - 1):
+                edge_owner.setdefault(ekey(cs[k], cs[k + 1]), []).append(i)
+        used = set()
+        merged = []
+        for i, pc in enumerate(pieces):
+            if i in used:
+                continue
+            cs = list(pc.exterior.coords)
+            done = False
+            for k in range(len(cs) - 1):
+                for j in edge_owner.get(ekey(cs[k], cs[k + 1]), []):
+                    if j == i or j in used:
+                        continue
+                    u = pc.union(pieces[j])
+                    if u.geom_type == "Polygon" and u.convex_hull.area - u.area < 0.01:
+                        merged.append(Polygon(u.exterior.coords).simplify(0.0))
+                        used.add(i)
+                        used.add(j)
+                        done = True
+                        changed = True
+                        break
+                if done:
+                    break
+            if not done:
+                merged.append(pc)
+                used.add(i)
+        pieces = merged
+    return pieces
+
+
 def to_reborn_map(pms, display_name=None, scale=DEFAULT_SCALE):
     minx, maxx, miny, maxy = _bounds(pms["polys"])
     s = scale
@@ -231,11 +383,15 @@ def to_reborn_map(pms, display_name=None, scale=DEFAULT_SCALE):
 
     def r2(p): return [round(p[0], 2), round(p[1], 2)]
 
+    # Soldat's Alpha team is RED and Bravo is BLUE (maps paint their bases
+    # accordingly), so Bravo -> Reborn BLUE (team 1, ctf_flags[0]) and
+    # Alpha -> Reborn RED (team 2). Earlier ports had this backwards, putting
+    # the BLUE flag on the red-painted base.
     ctf_flags = []
-    if by_team.get(5):
-        ctf_flags.append(r2(by_team[5][0]))
     if by_team.get(6):
         ctf_flags.append(r2(by_team[6][0]))
+    if by_team.get(5):
+        ctf_flags.append(r2(by_team[5][0]))
 
     inf_flag = htf_flag = rambo_pos = None
     if by_team.get(14):
@@ -245,8 +401,8 @@ def to_reborn_map(pms, display_name=None, scale=DEFAULT_SCALE):
         rambo_pos = r2(by_team[15][0])
     m2_mounts = [r2(p) for p in by_team.get(16, [])]
 
-    alpha = by_team.get(1, [])
-    bravo = by_team.get(2, [])
+    alpha = by_team.get(2, [])   # Soldat Bravo -> Reborn BLUE (player side)
+    bravo = by_team.get(1, [])   # Soldat Alpha -> Reborn RED
     general = by_team.get(0, [])
     if alpha:
         player_spawn = list(alpha[0])
@@ -342,6 +498,11 @@ def to_reborn_map(pms, display_name=None, scale=DEFAULT_SCALE):
         m["rambo_pos"] = rambo_pos
     if m2_mounts:
         m["m2_mounts"] = m2_mounts
+    # Per-team spawn lists so each side respawns at its own base in team
+    # modes. (`alpha`/`bravo` here are already swapped to Reborn BLUE/RED —
+    # see the ctf_flags comment above.)
+    if alpha and bravo:
+        m["team_spawns"] = {"1": [r2(p) for p in alpha[:8]], "2": [r2(p) for p in bravo[:8]]}
     if scenery:
         m["_scenery_hints"] = scenery
     if terrain_texture:
@@ -352,6 +513,9 @@ def to_reborn_map(pms, display_name=None, scale=DEFAULT_SCALE):
         "scale": round(s, 4),
         "pms_bounds": [round(minx, 1), round(miny, 1), round(maxx, 1), round(maxy, 1)],
     }
+    coll = build_collision(out_polys)
+    if coll:
+        m["collision"] = coll
     fixes = fix_entities(m)
     if fixes:
         m["_source"]["placement_fixes"] = fixes
@@ -370,6 +534,77 @@ def fix_entities(m):
         import map_audit as MA
     sp = MA.Space(m)
     notes = []
+    # Every objective the runtime needs gets an explicit, reachable spot —
+    # otherwise main.gd falls back to 4800x2000-arena defaults (x=300 /
+    # MAP_W-300 / fixed thirds on ctf_ground_y), which on ported maps land in
+    # pits or inside rock. Soldat maps only ship flags for their own mode.
+    xs = [v for p in m["polys"] if int(p.get("col", 0)) in MA.PLAYER_SOLID_COLS for v in p["points"][0::2]]
+    ys = [v for p in m["polys"] if int(p.get("col", 0)) in MA.PLAYER_SOLID_COLS for v in p["points"][1::2]]
+    cx, cy = (min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0
+    span = max(xs) - min(xs)
+
+    def ground_near(x, y, r=4000.0):
+        g = sp.nearest_good((x, y), max_r=r, flat=True) or sp.nearest_good((x, y), max_r=r)
+        return None if g is None else [round(g[0], 2), round(g[1], 2)]
+
+    if not m.get("ctf_flags"):
+        ts = m.get("team_spawns") or {}
+        a_sp, b_sp = ts.get("1"), ts.get("2")
+        if a_sp and b_sp:
+            ax = sum(p[0] for p in a_sp) / len(a_sp); ay = sum(p[1] for p in a_sp) / len(a_sp)
+            bx = sum(p[0] for p in b_sp) / len(b_sp); by = sum(p[1] for p in b_sp) / len(b_sp)
+            fa, fb = ground_near(ax, ay), ground_near(bx, by)
+        else:
+            fa, fb = ground_near(min(xs) + span * 0.12, cy), ground_near(max(xs) - span * 0.12, cy)
+        if not (fa and fb) or abs(fa[0] - fb[0]) < span * 0.35:
+            # Team spawns overlap (DM-style layout) — put the bases at the two
+            # most widely separated reachable spawn landings instead.
+            lands = []
+            for p in [m["player_spawn"]] + m.get("bot_spawns", []):
+                _, l = sp.check("spawn", p)
+                if l is not None:
+                    lands.append([round(l[0], 2), round(l[1], 2)])
+            if len(lands) >= 2:
+                lands.sort(key=lambda q: q[0])
+                fa, fb = lands[0], lands[-1]
+            if not (fa and fb) or abs(fa[0] - fb[0]) < span * 0.35:
+                # Leftmost / rightmost flat, reachable ground.
+                import numpy as _np
+                fy, fx = _np.nonzero(sp.flat_ground())
+                if fx.size:
+                    lo, hi = _np.percentile(fx, 3), _np.percentile(fx, 97)
+                    il = int(_np.argmin(_np.abs(fx - lo)))
+                    ih = int(_np.argmin(_np.abs(fx - hi)))
+                    fa = [float(fx[il] * MA.R), float(fy[il] * MA.R)]
+                    fb = [float(fx[ih] * MA.R), float(fy[ih] * MA.R)]
+        if fa and fb:
+            m["ctf_flags"] = [fa, fb]
+            notes.append("ctf_flags generated -> %s %s" % (fa, fb))
+    if m.get("inf_flag") is None:
+        c = ground_near(cx, cy)
+        if c:
+            m["inf_flag"] = c
+            m["htf_flag"] = list(c)
+    if m.get("rambo_pos") is None:
+        c = m.get("inf_flag")
+        if c:
+            m["rambo_pos"] = [c[0], c[1] - 40.0]
+    if not m.get("dom_points"):
+        pts = []
+        for f in (0.2, 0.5, 0.8):
+            g = ground_near(min(xs) + span * f, cy)
+            if g:
+                pts.append([g[0], round(g[1] - 30.0, 2)])  # DOM points hover 30 px up
+        if len(pts) == 3:
+            m["dom_points"] = pts
+    if not m.get("point_spawns"):
+        pts = []
+        for f in (0.1, 0.25, 0.4, 0.5, 0.6, 0.75, 0.9):
+            g = ground_near(min(xs) + span * f, cy)
+            if g and all(abs(g[0] - q[0]) + abs(g[1] - q[1]) > 80 for q in pts):
+                pts.append([g[0], round(g[1] - 30.0, 2)])
+        if pts:
+            m["point_spawns"] = pts
 
     def fix(kind, p, settle):
         prob, landing = sp.check(kind, p)
@@ -382,13 +617,16 @@ def fix_entities(m):
             good = sp.nearest_good(p, max_r=4000.0)
         if good is None:
             return p, "%s: %s (no safe spot found)" % (kind, prob)
-        if "falls" in prob and "pocket" not in prob and not settle:
-            return p, None  # a long drop isn't a trap — keep Soldat's airborne spawns
         return [round(good[0], 2), round(good[1], 2)], "%s (%d,%d): %s -> (%d,%d)" % (kind, p[0], p[1], prob, good[0], good[1])
 
     for key, settle in (("player_spawn", False), ("inf_flag", True), ("htf_flag", True), ("rambo_pos", False)):
         if m.get(key) is not None:
             m[key], n = fix(key, m[key], settle)
+            if n:
+                notes.append(n)
+    for t, arr in (m.get("team_spawns") or {}).items():
+        for i, p in enumerate(arr):
+            arr[i], n = fix("team_spawns[%s]" % t, p, False)
             if n:
                 notes.append(n)
     for key, settle in (("bot_spawns", False), ("ctf_flags", True), ("m2_mounts", False)):

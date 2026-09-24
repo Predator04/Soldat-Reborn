@@ -13,6 +13,7 @@ const MapIO = preload("res://scripts/map_io.gd")
 const Spectator = preload("res://scripts/spectator.gd")
 const BonusPickup = preload("res://scripts/bonus_pickup.gd")
 const TouchControls = preload("res://scripts/touch_controls.gd")
+const NavGraph = preload("res://scripts/nav_graph.gd")
 
 signal kill(killer_name: String, victim_name: String, weapon_name: String, killer_team: int, victim_team: int)
 
@@ -176,6 +177,9 @@ var safety_stats := {"unstuck": 0, "fell": 0}  # read by tools/stuck_test.gd
 # Player-solid terrain as plain geometry ({"r": Rect2 AABB, "pts": polygon}) so
 # spawn/flag placement can test the map without waiting for the physics space.
 var _solid_geo: Array = []
+# Baked bot navigation graph for this map (empty for editor maps). Bots path
+# over it with A* — see scripts/nav_graph.gd / tools/build_nav.py.
+var nav: RefCounted = null
 
 var MAPS := [
 	{
@@ -232,6 +236,11 @@ var MAPS := [
 		],
 		"player_spawn": Vector2(200, 1775),
 		"bot_spawns": [Vector2(2200, 1220), Vector2(3220, 1390), Vector2(3850, 1150), Vector2(4460, 770)],
+		# Explicit objectives (the 4800-arena defaults put the RED flag and two
+		# DOM points inside the hills). BLUE holds the valley, RED the peak.
+		"ctf_flags": [Vector2(110, 1900), Vector2(4480, 1020)],
+		"inf_flag": Vector2(2230, 1900), "htf_flag": Vector2(2230, 1900),
+		"dom_points": [Vector2(720, 1640), Vector2(2260, 1210), Vector2(3850, 1141)],
 		# (Flat texture-square "scenery" decals removed in 1.13 — they read as
 		# floating placeholder boxes over the hills.)
 	},
@@ -295,6 +304,8 @@ var MAPS := [
 		"bot_spawns": [Vector2(3688, 1340), Vector2(3835, 1160), Vector2(2500, 1130), Vector2(3578, 1540)],
 		"m2_mounts": [Vector2(2500, 1380), Vector2(700, 1040), Vector2(4120, 1040)],
 		"ctf_flags": [Vector2(710, 1900), Vector2(4090, 1900)],
+		"inf_flag": Vector2(2400, 1710), "htf_flag": Vector2(2400, 1710),
+		"dom_points": [Vector2(700, 1870), Vector2(2500, 1360), Vector2(4100, 1870)],
 		# (Flat texture-square "scenery" decals removed in 1.13 — they read as
 		# floating placeholder boxes over the hills.)
 	},
@@ -349,6 +360,9 @@ var MAPS := [
 		],
 		"player_spawn": Vector2(200, 1775),
 		"bot_spawns": [Vector2(2400, 1110), Vector2(3620, 1530), Vector2(4000, 1390), Vector2(3300, 1210)],
+		"ctf_flags": [Vector2(110, 1900), Vector2(4700, 1900)],
+		"inf_flag": Vector2(2400, 1900), "htf_flag": Vector2(2400, 1900),
+		"dom_points": [Vector2(500, 1750), Vector2(2400, 1100), Vector2(4280, 1770)],
 		"m2_mounts": [Vector2(2400, 1120)],
 		# (Flat texture-square "scenery" decals removed in 1.13 — they read as
 		# floating placeholder boxes over the hills.)
@@ -403,6 +417,7 @@ func _ready() -> void:
 	_build_sky()
 	_build_parallax()
 	_build_terrain()
+	nav = NavGraph.load_for(_map)
 	_build_weather()
 	_build_hud()
 	_build_pause_menu()
@@ -726,6 +741,8 @@ func _build_terrain() -> void:
 	# (which was there to give flat-color hills contrast) and let the tiled
 	# texture carry the visual weight.
 	var has_uvs := false
+	var has_coll: bool = _map.has("collision") and typeof(_map["collision"]) == TYPE_ARRAY \
+			and not (_map["collision"] as Array).is_empty()
 	for poly in _map.get("polys", []):
 		var pts: PackedVector2Array = poly.get("points", PackedVector2Array())
 		var pc: Color = poly.get("color", default_terrain_col)
@@ -736,9 +753,28 @@ func _build_terrain() -> void:
 			has_uvs = true
 		var vcols: PackedColorArray = poly.get("vc", PackedColorArray())
 		var cc := int(poly.get("col", 0))
-		_make_polygon_body(pts, pc, pt, uvs, draw_outline, cc, vcols)
-		if pts.size() >= 3 and (cc == 0 or cc == 2):
+		# With merged collision outlines the triangles are drawn only.
+		_make_polygon_body(pts, pc, pt, uvs, draw_outline, 3 if has_coll else cc, vcols)
+		if not has_coll and pts.size() >= 3 and (cc == 0 or cc == 2):
 			_register_solid(pts)
+	# Ported maps: physics from merged, seam-free outlines (tools/pms_to_map.py
+	# build_collision) so soldiers don't snag on the joins between triangles.
+	if has_coll:
+		for c in _map["collision"]:
+			var cpts: PackedVector2Array = c["points"]
+			var ccl := int(c.get("col", 0))
+			var sb := StaticBody2D.new()
+			if ccl == 1:
+				sb.collision_layer = TERRAIN_LAYER_BULLETS_ONLY
+			elif ccl == 2:
+				sb.collision_layer = TERRAIN_LAYER_PLAYERS_ONLY
+			sb.collision_mask = 0
+			var cp := CollisionPolygon2D.new()
+			cp.polygon = cpts
+			sb.add_child(cp)
+			add_child(sb)
+			if ccl == 0 or ccl == 2:
+				_register_solid(cpts)
 	# Legacy rectangular platforms: textured with the map's terrain (slightly
 	# darkened so they read as man-made ledges) instead of a flat grey box.
 	var plat_tex: String = str(_map.get("platform_texture", default_terrain_tex))
@@ -825,7 +861,7 @@ func _settle_on_ground(pos: Vector2) -> Vector2:
 	# surface. If it starts buried, first lift it out (up to 400 px).
 	var p := pos
 	var lift := 0.0
-	while _point_in_solid(p + Vector2(0, -2)) and lift < 400.0:
+	while _point_in_solid(p + Vector2(0, -2)) and lift < 1200.0:
 		p.y -= 4.0
 		lift += 4.0
 	var gy := _geom_ground_y(p.x, p.y - 2.0)
@@ -906,6 +942,8 @@ func _tick_soldier_safety(delta: float) -> void:
 				s.set("ceasefire_t", 0.0)
 				s.take_damage(9999.0, str(s.get("display_name")), "Fell", int(s.get("team")))
 				safety_stats["fell"] = int(safety_stats["fell"]) + 1
+				if OS.get_cmdline_user_args().has("--log-falls"):
+					print("[fell] %s from x=%d goal=%s" % [s.get("display_name"), int(body.global_position.x), str(s.get("_goal_label"))])
 			continue
 		if s.get("mounted_m2") != null or bool(s.get("climbing")):
 			_stuck_time.erase(s.get_instance_id())
@@ -1399,6 +1437,37 @@ func _spawn_bots() -> void:
 		_spawn_bot_at(i, desired)
 
 
+func _team_base(t: int) -> Vector2:
+	# Where a team "lives": its CTF flag home, else BLUE = player_spawn and
+	# RED = the spawn farthest from it.
+	for f in flags:
+		if is_instance_valid(f) and int(f.get_meta("team")) == t and f.has_meta("home"):
+			return f.get_meta("home")
+	var ps: Vector2 = _map["player_spawn"]
+	if t == TEAM_BLUE:
+		return ps
+	var far := ps
+	for v in _map.get("bot_spawns", []):
+		if (v as Vector2).distance_to(ps) > far.distance_to(ps):
+			far = v
+	return far
+
+
+func _team_spawn_list(t: int) -> Array:
+	# Team modes spawn each side at its own base (Soldat alpha/bravo spawns for
+	# ported maps; otherwise the half of all spawn points nearest the base).
+	# Previously every bot used the shared list, so BLUE bots often spawned
+	# inside RED's base and vice versa.
+	var ts: Variant = _map.get("team_spawns", {})
+	if typeof(ts) == TYPE_DICTIONARY and (ts as Dictionary).has(t) and not ((ts as Dictionary)[t] as Array).is_empty():
+		return (ts as Dictionary)[t]
+	var all: Array = (_map.get("bot_spawns", []) as Array).duplicate()
+	all.append(_map["player_spawn"])
+	var base := _team_base(t)
+	all.sort_custom(func(a, b) -> bool: return (a as Vector2).distance_to(base) < (b as Vector2).distance_to(base))
+	return all.slice(0, maxi(1, int(ceil(all.size() / 2.0))))
+
+
 func _spawn_bot_at(i: int, desired: int) -> void:
 	var spots: Array = _map["bot_spawns"]
 	var slot: Vector2 = spots[i % spots.size()]
@@ -1407,13 +1476,15 @@ func _spawn_bot_at(i: int, desired: int) -> void:
 	if Settings.is_team_mode():
 		if mode == Settings.MODE_INF:
 			# INF: bots are attackers (RED). Player defends solo on BLUE.
-			_spawn_bot(slot, TEAM_RED, "Red Bot %d" % (i + 1), loadout)
+			var rl := _team_spawn_list(TEAM_RED)
+			_spawn_bot(rl[i % rl.size()], TEAM_RED, "Red Bot %d" % (i + 1), loadout)
 		else:
-			# TDM/CTF/HTF/PM: split bots BLUE/RED evenly.
+			# TDM/CTF/HTF/PM: split bots BLUE/RED evenly, each at its own base.
 			var on_blue: bool = i < desired / 2
 			var t: int = TEAM_BLUE if on_blue else TEAM_RED
 			var nm := "Blue Bot %d" % (i + 1) if on_blue else "Red Bot %d" % (i + 1)
-			_spawn_bot(slot, t, nm, loadout)
+			var tl := _team_spawn_list(t)
+			_spawn_bot(tl[i % tl.size()], t, nm, loadout)
 	else:
 		# DM/RM: bot team 99 is a dedicated non-peer id → hostile to any human peer.
 		_spawn_bot(slot, 99, "Bot %d" % (i + 1), loadout)
@@ -1638,10 +1709,12 @@ func _spawn_point_pickups() -> void:
 			if pos is Vector2:
 				_spawn_point_pickup(pos)
 		return
+	# Default pattern scales with the map width and sits 30 px above the
+	# actual ground (the old fixed 4800-arena row floated or sank into hills).
 	var ground_y: float = float(_map.get("ctf_ground_y", GROUND_Y))
-	var xs: PackedFloat32Array = [ 700.0, 1400.0, 2100.0, 2400.0, 2700.0, 3400.0, 4100.0 ]
-	for x in xs:
-		_spawn_point_pickup(Vector2(x, ground_y - 60.0))
+	var fracs: PackedFloat32Array = [0.15, 0.29, 0.44, 0.5, 0.56, 0.71, 0.85]
+	for f in fracs:
+		_spawn_point_pickup(_settle_on_ground(Vector2(MAP_W * f, ground_y - 2.0)) + Vector2(0, -30.0))
 
 
 func _make_flag(team: int, base: Vector2) -> Area2D:
@@ -1691,6 +1764,9 @@ func _spawn_networked_player(peer_id: int) -> void:
 	# team sides stay coherent. (#57)
 	var t: int = _assign_team_for_peer(peer_id)
 	var base: Vector2 = _map["player_spawn"]
+	if Settings.is_team_mode() and t == TEAM_RED:
+		var rl := _team_spawn_list(TEAM_RED)
+		base = rl[randi() % rl.size()]
 	if Net.is_networked() and not Settings.is_team_mode():
 		var bs: Array = _map.get("bot_spawns", [])
 		if not bs.is_empty():
@@ -2756,6 +2832,9 @@ func _round_spawn_pos_for_team(t: int) -> Vector2:
 	# player_spawn; FFA picks a random bot_spawns entry so respawning peers land
 	# in the action instead of a corner. Small jitter avoids stacking on top.
 	var base: Vector2 = _map["player_spawn"]
+	if Settings.is_team_mode() and t == TEAM_RED:
+		var rl := _team_spawn_list(TEAM_RED)
+		base = rl[randi() % rl.size()]
 	if not Settings.is_team_mode():
 		var bs: Array = _map.get("bot_spawns", [])
 		if not bs.is_empty():

@@ -123,6 +123,26 @@ static func map_to_json(m: Dictionary) -> String:
 			out[key] = m[key]
 	if m.has("ctf_ground_y"):
 		out["ctf_ground_y"] = float(m["ctf_ground_y"])
+	if m.has("collision") and typeof(m["collision"]) == TYPE_ARRAY:
+		var coll_out: Array = []
+		for c in m["collision"]:
+			var flat: Array = []
+			for p in (c["points"] as PackedVector2Array):
+				flat.append(p.x)
+				flat.append(p.y)
+			var e := {"points": flat}
+			if int(c.get("col", 0)) != 0:
+				e["col"] = int(c["col"])
+			coll_out.append(e)
+		out["collision"] = coll_out
+	if m.has("team_spawns") and typeof(m["team_spawns"]) == TYPE_DICTIONARY:
+		var ts_out := {}
+		for k in m["team_spawns"]:
+			var arr: Array = []
+			for v in m["team_spawns"][k]:
+				arr.append([v.x, v.y])
+			ts_out[str(k)] = arr
+		out["team_spawns"] = ts_out
 	return JSON.stringify(out, "  ")
 
 
@@ -258,6 +278,30 @@ static func json_to_map(text: String) -> Dictionary:
 	for key in ["world", "sky"]:
 		if parsed.has(key) and typeof(parsed[key]) == TYPE_DICTIONARY:
 			m[key] = parsed[key]
+	# Merged collision outlines (ported maps): [{points: flat, col?}].
+	if parsed.has("collision") and typeof(parsed["collision"]) == TYPE_ARRAY:
+		var coll: Array = []
+		for c in parsed["collision"]:
+			if typeof(c) != TYPE_DICTIONARY:
+				continue
+			var flat: Array = c.get("points", [])
+			var pts := PackedVector2Array()
+			var i := 0
+			while i + 1 < flat.size():
+				pts.append(Vector2(float(flat[i]), float(flat[i + 1])))
+				i += 2
+			if pts.size() >= 3:
+				coll.append({"points": pts, "col": int(c.get("col", 0))})
+		m["collision"] = coll
+	# Per-team spawn lists {"1": [[x,y]...], "2": [...]} → {1: [Vector2], 2: [...]}.
+	if parsed.has("team_spawns") and typeof(parsed["team_spawns"]) == TYPE_DICTIONARY:
+		var ts := {}
+		for k in parsed["team_spawns"]:
+			var arr: Array = []
+			for v in parsed["team_spawns"][k]:
+				arr.append(_v2(v))
+			ts[int(k)] = arr
+		m["team_spawns"] = ts
 	if parsed.has("weather"):
 		m["weather"] = str(parsed["weather"])
 	if parsed.has("ctf_ground_y"):

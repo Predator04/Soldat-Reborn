@@ -44,6 +44,31 @@ var _since_escape := 99.0
 const PROGRESS_WINDOW := 2.5
 const ESCAPE_TIME := 1.6
 
+# ── Brain (v1.14) ─────────────────────────────────────────────────────────
+# Every THINK_INTERVAL the bot picks a GOAL (a world position) from the game
+# mode — grab / return / deliver flags, capture DOM points, collect PM points,
+# grab the Rambo bow, stay in the BR ring, hunt enemies — then follows an A*
+# path over the map's baked nav graph (scripts/nav_graph.gd) to reach it.
+# Combat (aim/fire) runs independently, so bots shoot while travelling.
+const THINK_INTERVAL := 0.35
+var _think_cd := 0.0
+var _goal := Vector2.INF
+var _goal_label := ""          # debug / tests: "flag", "home", "hunt", ...
+var _role := ""                # team objective modes: "attack" | "defend"
+var _patrol_pos := Vector2.INF
+var _patrol_t := 0.0
+var _dom_choice: Node2D = null
+var _path: PackedVector2Array = PackedVector2Array()
+var _path_i := 0
+var _path_goal := Vector2.INF
+var _repath_t := 0.0
+var _target_visible := false
+var _visible_check_t := 0.0
+var _last_seen_pos := Vector2.INF   # where the current target was last seen
+var _refuel_wait := false           # standing still to refill jets before a climb
+var _blocked_t := 0.0               # pushing into something without moving
+var _gap_ahead := false             # next path link crosses a bottomless gap
+
 # Ammo state (#36) — bots run dry and reload like players.
 # `_mag_size` + `_reload_time` are stat lookups per loadout.
 var ammo: int = 30
@@ -156,6 +181,7 @@ var _burst_shots: int = 0
 var _burst_cool: float = 0.0
 var _pickup_target: Node2D = null
 var _pickup_scan_cd: float = 0.0
+var _pickup_t: float = 0.0  # seconds spent chasing the current pickup
 # Per-weapon burst caps: how many consecutive shots before we pause. Semi-auto
 # guns already have generous fire_cd (Barrett 2.2s, Ruger 1.0s) — no cap needed.
 # Auto guns get short bursts so the aim jitter (bink) has time to settle and
@@ -221,6 +247,11 @@ var jet_particles: CPUParticles2D
 
 func _ready() -> void:
 	# Terrain layer 3 (bit 4) = ported "only players collide" polys.
+	# Soldiers live on their own layer 4 (bit 8) and don't collide with each
+	# other (as in Soldat) — bodies shoving one another used to push soldiers
+	# into walls and block narrow tunnels. Bullets/rockets/grenades/pickups
+	# mask bit 8 to keep hitting them.
+	collision_layer = 8
 	collision_mask = 1 | 4
 	add_to_group("soldier")
 	tree_exited.connect(func() -> void: Gostek.forget(self))
@@ -309,6 +340,16 @@ func _physics_process(delta: float) -> void:
 	_burst_cool = maxf(0.0, _burst_cool - delta)
 	_refresh_target(delta)
 	_scan_pickup(delta)
+	_visible_check_t -= delta
+	if _visible_check_t <= 0.0:
+		_visible_check_t = 0.2
+		_target_visible = is_instance_valid(target) and _has_line_of_sight(target)
+		if _target_visible:
+			_last_seen_pos = target.global_position
+	_think_cd -= delta
+	if _think_cd <= 0.0:
+		_think_cd = THINK_INTERVAL * randf_range(0.8, 1.2)
+		_think()
 
 	var on_floor := is_on_floor() or _wedge_t > 0.2  # see _update_wedge
 	var dx := 0.0
@@ -334,7 +375,7 @@ func _physics_process(delta: float) -> void:
 	# Self-preservation: entering critical HP starts a brief retreat; keep it
 	# refreshing only on the crossing so a low-HP bot still re-engages.
 	_retreat_t = maxf(0.0, _retreat_t - delta)
-	if health < 35.0 and _prev_health >= 35.0:
+	if health < 35.0 and _prev_health >= 35.0 and not _carrying_flag():
 		_retreat_t = 1.8
 	_prev_health = health
 	# #114: low HP + engaged + not already reloading → reload during the retreat
@@ -441,10 +482,69 @@ func _physics_process(delta: float) -> void:
 				wander_t = randf_range(WANDER_FLIP_MIN, WANDER_FLIP_MAX)
 			dir = wander_dir
 
+		# ── Navigation: follow the A* path toward the brain's goal. Skipped
+		# while in a close, visible fight (strafing reads better) unless we're
+		# carrying a flag, and while retreating hurt / backing off to reload.
+		var nav_up := false
+		var navigating := false
+		var close_fight: bool = is_instance_valid(target) and _target_visible \
+				and absf(dx) < 280.0 and absf(dy) < 180.0
+		var busy_retreat: bool = (_retreat_t > 0.0 or reloading) and is_instance_valid(target) and not _carrying_flag()
+		# Objective goals (grab / return / deliver / capture) keep the bot moving
+		# even mid-fight — it shoots on the way. Hunting/patrol goals yield to
+		# close-range strafing.
+		var objective: bool = _goal_label in ["flag", "return", "capture", "zone"]
+		if _goal != Vector2.INF and seek_lad == null and (not busy_retreat or objective) \
+				and (not close_fight or objective or _carrying_flag()):
+			var step := _nav_step(_goal, delta)
+			if step.z > 0.5:
+				dir = step.x
+				nav_up = step.y > 0.5
+				navigating = true
+				# Fuel management: jets are weak (thrust barely beats gravity), a
+				# tank lifts ~600 px. If the next climb needs more fuel than we
+				# have, stand on the ground and let the tank refill first instead
+				# of hopping at the wall with an empty tank forever.
+				var rise: float = global_position.y - _path[_path_i].y
+				var need: float = clampf(rise / 5.0 + 12.0, 15.0, 100.0)
+				if _gap_ahead:
+					# Never start across a bottomless gap on a low tank.
+					need = maxf(need, 70.0)
+					rise = maxf(rise, 46.0)
+				if rise > 45.0 and fuel < need and not jet_on and not _carrying_flag_under_fire():
+					_refuel_wait = true
+				if _refuel_wait:
+					# Stop pushing at the wall, drop to the ground (or rest wedged
+					# on the slope, which also regenerates) and refill.
+					if fuel >= minf(100.0, need + 35.0) or rise <= 45.0 or _carrying_flag_under_fire():
+						_refuel_wait = false
+					else:
+						dir = 0.0
+						nav_up = false
+			elif _goal_label != "hunt" and (_nav() == null or _nav().is_empty()):
+				# No graph (editor map) — walk straight at the objective.
+				# (With a graph, "no path" means unreachable from here: walking
+				# straight at it just marches the bot off a ledge.)
+				var gdx: float = _goal.x - global_position.x
+				dir = 0.0 if absf(gdx) < 8.0 else signf(gdx)
+				nav_up = _goal.y < global_position.y - 40.0
+				navigating = true
+
+		# Pit guard: never run off an edge into a bottomless drop (below the
+		# map's kill line) — unless the path is deliberately jetting across a
+		# gap with a full tank. Strafing / retreating / wandering turn around.
+		if dir != 0.0 and on_floor and not (navigating and _gap_ahead and fuel >= 70.0) and _pit_ahead(dir):
+			if navigating:
+				dir = 0.0
+			else:
+				dir = -dir
+				strafe_dir = dir
+				wander_dir = dir
+
 		# Escape manoeuvre (see _progress_anchor). Only when the bot actually
 		# wants to travel — close-range strafing legitimately stays in place.
-		var wants_travel: bool = not is_instance_valid(target) or absf(dx) > 160.0 \
-				or not _has_line_of_sight(target)
+		var wants_travel: bool = navigating or not is_instance_valid(target) or absf(dx) > 160.0 \
+				or not _target_visible
 		if global_position.distance_to(_progress_anchor) > 60.0 or not wants_travel:
 			_progress_anchor = global_position
 			_progress_t = 0.0
@@ -462,6 +562,7 @@ func _physics_process(delta: float) -> void:
 				wander_t = randf_range(WANDER_FLIP_MIN, WANDER_FLIP_MAX)
 				_progress_t = 0.0
 				_progress_anchor = global_position
+				_repath_t = 0.0  # the path we had led into a dead end — replan
 		_since_escape += delta
 		if _escape_t > 0.0:
 			_escape_t -= delta
@@ -483,7 +584,7 @@ func _physics_process(delta: float) -> void:
 
 		# dodge-jump when an enemy bullet is closing in
 		dodge_cd -= delta
-		if dodge_cd <= 0.0 and _bullet_incoming():
+		if dodge_cd <= 0.0 and not _refuel_wait and _bullet_incoming():
 			if on_floor:
 				velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
 				Sfx.jump()
@@ -494,7 +595,44 @@ func _physics_process(delta: float) -> void:
 		jump_cd -= delta
 		# When seeking a ladder we suppress jet/jump — the goal is to walk over
 		# to the ladder base, not jet-boot the wall next to it.
-		if is_instance_valid(target) and seek_lad == null:
+		# Pushing into a small lip/step (too low for the chest-height wall ray)
+		# without moving → hop over it.
+		if navigating and dir != 0.0 and on_floor and absf(get_real_velocity().x) < 15.0:
+			_blocked_t += delta
+			if _blocked_t > 0.2 and jump_cd <= 0.0:
+				velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
+				velocity.x = dir * RUN_SPEED * MatchConfig.mod_speed()
+				jump_cd = 0.4
+				_blocked_t = 0.0
+		else:
+			_blocked_t = 0.0
+		if navigating and _escape_t <= 0.0:
+			# Path says "up": hop, then jet while the waypoint is above us.
+			# Keep a little fuel in reserve unless the climb is the objective.
+			if nav_up:
+				# Jets barely out-pull gravity: a climb must START with a jump
+				# off the ground. If we arrive falling with ground just below,
+				# land first instead of burning the tank sinking (that sank bots
+				# into Triumph's pits). Over a void, jet regardless.
+				var falling_to_land: bool = not on_floor and velocity.y > 40.0 \
+						and not _void_below() and _ground_within(90.0)
+				if on_floor and jump_cd <= 0.0:
+					velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
+					jump_cd = 0.3
+					Sfx.jump()
+				elif not on_floor and not falling_to_land and fuel > 0.0 and velocity.y > -330.0:
+					velocity.y += JET_THRUST * MatchConfig.mod_jet() * MatchConfig.mod_gravity() * delta
+					fuel = maxf(0.0, fuel - (40.0 / maxf(0.1, MatchConfig.mod_jet())) * delta)
+					jet_on = true
+			elif on_floor and jump_cd <= 0.0 and _hop_cd <= 0.0 and dir != 0.0 and fuel > 90.0 \
+					and _path_i < _path.size() and absf(_path[_path_i].x - global_position.x) > 200.0:
+				# Long flat stretch: bunny-hop for speed like players do.
+				velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
+				velocity.x = dir * maxf(RUN_SPEED * MatchConfig.mod_speed(), absf(velocity.x) * 1.08)
+				jump_cd = 0.35
+				_hop_cd = HOP_COOLDOWN
+				Sfx.jump()
+		elif is_instance_valid(target) and seek_lad == null:
 			# Bunny-hop toward a distant target: on floor, target > 260 away, hop
 			# with a small horizontal boost so bots can actually close the gap.
 			var dist_h: float = absf(dx)
@@ -514,7 +652,7 @@ func _physics_process(delta: float) -> void:
 				jet_on = true
 		# Escape jet: first part of the escape manoeuvre lifts the bot off
 		# whatever lip/pocket it was grinding against.
-		if _escape_t > _escape_len - ESCAPE_TIME * 0.55 and fuel > 5.0:
+		if _escape_t > 0.0 and _escape_t > _escape_len - ESCAPE_TIME * 0.55 and fuel > 5.0:
 			if on_floor and jump_cd <= 0.0:
 				velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
 				jump_cd = 0.4
@@ -603,7 +741,10 @@ func _refresh_target(delta: float = 0.0) -> void:
 				stuck = true
 				# Jump to try climbing over the wall/ledge that's holding us —
 				# a fresh target alone doesn't get us over collision.
-				if is_on_floor() and jump_cd <= 0.0:
+				# (Skipped while following a nav path / refuelling — the path
+				# follower handles climbs, and this hop burned the landing frames
+				# bots need to regenerate jet fuel.)
+				if is_on_floor() and jump_cd <= 0.0 and _goal == Vector2.INF and not _refuel_wait:
 					velocity.y = JUMP_VEL
 					velocity.x = signf(wants_dx) * RUN_SPEED
 					jump_cd = 0.5
@@ -615,12 +756,23 @@ func _refresh_target(delta: float = 0.0) -> void:
 		return
 	_target_refresh_cd = _skill_target_cd
 	_stuck_t = 0.0
+	# v1.14 target scoring: distance, but enemies we can actually SEE count
+	# as 3x closer, enemy flag carriers (running off with our flag) 4x, and
+	# weakened enemies a bit closer — so bots stop fixating on someone behind
+	# a wall while another enemy shoots them.
 	var best: Node2D = null
 	var best_d2: float = INF
+	var my_flag_carrier := _enemy_carrying_our_flag()
 	for s in get_tree().get_nodes_in_group("soldier"):
 		if s == self or s.get("team") == team or s.get("dead"):
 			continue
 		var d2: float = (s.global_position - global_position).length_squared()
+		if d2 < 900.0 * 900.0 and _has_line_of_sight(s):
+			d2 /= 9.0
+		if s == my_flag_carrier:
+			d2 /= 16.0
+		var hp: float = float(s.get("health")) if s.get("health") != null else 100.0
+		d2 *= lerpf(0.7, 1.0, clampf(hp / 100.0, 0.0, 1.0))
 		if d2 < best_d2:
 			best_d2 = d2
 			best = s
@@ -683,7 +835,11 @@ func _scan_pickup(delta: float) -> void:
 	# invalidated (freed, consumed).
 	_pickup_scan_cd -= delta
 	if is_instance_valid(_pickup_target) and _pickup_target.get_parent() != null:
-		return
+		# Give up on a pickup we can't reach within a few seconds.
+		_pickup_t += delta
+		if _pickup_t < 4.0:
+			return
+		_pickup_scan_cd = 3.0
 	_pickup_target = null
 	if _pickup_scan_cd > 0.0:
 		return
@@ -712,15 +868,10 @@ func _scan_pickup(delta: float) -> void:
 		if d2 < best_d2:
 			best_d2 = d2
 			best = wp
-	for bx in get_tree().get_nodes_in_group("bonus_pickup"):
-		if not is_instance_valid(bx):
-			continue
-		var d2: float = (bx.global_position - global_position).length_squared()
-		# Bonus boxes are more valuable, so widen their pursuit range slightly.
-		if d2 < 300.0 * 300.0 and d2 < best_d2:
-			best_d2 = d2
-			best = bx
+	# (Bonus crates are a player-only perk — main.gd::_on_bonus_touched ignores
+	# bots — so chasing them just made bots circle a box they can never take.)
 	_pickup_target = best
+	_pickup_t = 0.0
 
 
 func _has_line_of_sight(t: Node2D) -> bool:
@@ -1242,3 +1393,393 @@ func _update_wedge(delta: float) -> void:
 		_wedge_t += delta
 	else:
 		_wedge_t = 0.0
+
+
+# ── Brain (v1.14) ─────────────────────────────────────────────────────────
+
+func _main() -> Node:
+	return get_parent()
+
+
+func _nav() -> RefCounted:
+	var m := _main()
+	if m == null:
+		return null
+	return m.get("nav")
+
+
+func _flags() -> Array:
+	var m := _main()
+	if m == null or m.get("flags") == null:
+		return []
+	return m.get("flags")
+
+
+func _flag_carrier(f: Node) -> Node:
+	if f == null or not is_instance_valid(f) or not f.has_meta("carrier"):
+		return null
+	var c: Variant = f.get_meta("carrier")
+	if c == null or not is_instance_valid(c) or bool((c as Node).get("dead")):
+		return null
+	return c
+
+
+func _carrying_flag() -> bool:
+	for f in _flags():
+		if _flag_carrier(f) == self:
+			return true
+	return false
+
+
+func _enemy_carrying_our_flag() -> Node:
+	for f in _flags():
+		if not is_instance_valid(f):
+			continue
+		var c := _flag_carrier(f)
+		if c == null or int(c.get("team")) == team:
+			continue
+		# CTF: our own flag; INF/HTF: the single neutral flag.
+		var ft: int = int(f.get_meta("team")) if f.has_meta("team") else 0
+		if ft == team or ft == 0:
+			return c
+	return null
+
+
+func _pick_role() -> void:
+	if _role != "":
+		return
+	# ~60% attackers / 40% defenders, stable per bot.
+	var h: int = absi(hash(display_name))
+	_role = "defend" if h % 5 < 2 else "attack"
+
+
+func _patrol(center: Vector2, radius: float) -> Vector2:
+	_patrol_t -= THINK_INTERVAL
+	var nav := _nav()
+	if _patrol_pos == Vector2.INF or _patrol_t <= 0.0 or _patrol_pos.distance_to(center) > radius * 1.5 \
+			or global_position.distance_to(_patrol_pos) < 30.0:
+		_patrol_t = randf_range(3.0, 6.0)
+		if nav != null and not nav.is_empty():
+			_patrol_pos = nav.random_point_near(center, radius)
+		else:
+			_patrol_pos = center + Vector2(randf_range(-radius, radius), 0)
+	return _patrol_pos
+
+
+func _set_goal(pos: Vector2, label: String) -> void:
+	_goal = pos
+	_goal_label = label
+
+
+func _think() -> void:
+	_goal = Vector2.INF
+	_goal_label = ""
+	var mode: int = Settings.game_mode
+	var flags := _flags()
+	# Grabbing a close, useful pickup beats everything except flag duty.
+	if is_instance_valid(_pickup_target) and not _carrying_flag():
+		_set_goal(_pickup_target.global_position, "pickup")
+		return
+	if mode == Settings.MODE_CTF and flags.size() == 2:
+		_think_ctf(flags)
+	elif mode == Settings.MODE_INF and flags.size() == 1:
+		_think_inf(flags[0])
+	elif mode == Settings.MODE_HTF and flags.size() == 1:
+		_think_htf(flags[0])
+	elif mode == Settings.MODE_DOM:
+		_think_dom()
+	elif mode == Settings.MODE_PM:
+		_think_pm()
+	elif mode == Settings.MODE_RM:
+		_think_rambo()
+	elif mode == Settings.MODE_BR:
+		_think_br()
+	if _goal == Vector2.INF:
+		_think_hunt()
+
+
+func _think_hunt() -> void:
+	# Go where the enemy is: current target (if we can't already see it up
+	# close), else where we last saw it, else roam the map.
+	if is_instance_valid(target):
+		var d: float = global_position.distance_to(target.global_position)
+		if not _target_visible or d > _skill_engage_range * 0.75:
+			_set_goal(target.global_position, "hunt")
+		return
+	if _last_seen_pos != Vector2.INF and global_position.distance_to(_last_seen_pos) > 60.0:
+		_set_goal(_last_seen_pos, "hunt")
+		return
+	_last_seen_pos = Vector2.INF
+	var nav := _nav()
+	if nav != null and not nav.is_empty():
+		if _patrol_pos == Vector2.INF or global_position.distance_to(_patrol_pos) < 40.0:
+			_patrol_pos = nav.random_point()
+		_set_goal(_patrol_pos, "roam")
+
+
+func _think_ctf(flags: Array) -> void:
+	_pick_role()
+	var own: Node2D = null
+	var enemy: Node2D = null
+	for f in flags:
+		if not is_instance_valid(f):
+			continue
+		if int(f.get_meta("team")) == team:
+			own = f
+		else:
+			enemy = f
+	if own == null or enemy == null:
+		return
+	var own_home: Vector2 = own.get_meta("home")
+	var own_carrier := _flag_carrier(own)
+	var enemy_carrier := _flag_carrier(enemy)
+	# 1) We have their flag → run it home.
+	if enemy_carrier == self:
+		_set_goal(own_home, "capture")
+		return
+	# 2) Our flag was taken → defenders (and anyone close) chase the carrier.
+	#    If a teammate is already holding THEIR flag, nobody can score until
+	#    ours comes back — then everyone hunts our carrier.
+	if own_carrier != null and int(own_carrier.get("team")) != team:
+		var standoff: bool = enemy_carrier != null and int(enemy_carrier.get("team")) == team
+		if standoff or _role == "defend" or global_position.distance_to(own_carrier.global_position) < 700.0:
+			_set_goal(own_carrier.global_position, "chase")
+			return
+	# 3) Our flag is lying in the field → nearest bots go touch it to return it.
+	if own_carrier == null and own.position.distance_to(own_home) > 12.0:
+		if _role == "defend" or global_position.distance_to(own.position) < 600.0:
+			_set_goal(own.position, "return")
+			return
+	if _role == "attack":
+		if enemy_carrier != null and int(enemy_carrier.get("team")) == team:
+			# A teammate has it — escort them home.
+			_set_goal(enemy_carrier.global_position, "escort")
+		else:
+			_set_goal(enemy.position, "flag")
+	else:
+		# Defend: patrol around our base, but fight anyone who shows up.
+		if is_instance_valid(target) and _target_visible \
+				and target.global_position.distance_to(own_home) < 700.0:
+			return
+		_set_goal(_patrol(own_home, 260.0), "defend")
+
+
+func _think_inf(f: Node2D) -> void:
+	var carrier := _flag_carrier(f)
+	var home: Vector2 = f.get_meta("home")
+	var capture: Vector2 = f.get_meta("capture_point") if f.has_meta("capture_point") else home
+	if team == 2:  # RED = attackers
+		if carrier == self:
+			_set_goal(capture, "capture")
+		elif carrier != null and int(carrier.get("team")) == team:
+			_set_goal(carrier.global_position, "escort")
+		else:
+			_set_goal(f.position, "flag")
+	else:          # BLUE = defenders
+		if carrier != null and int(carrier.get("team")) != team:
+			_set_goal(carrier.global_position, "chase")
+		elif f.position.distance_to(home) > 12.0:
+			_set_goal(f.position, "return")
+		else:
+			_set_goal(_patrol(capture, 300.0), "defend")
+
+
+func _think_htf(f: Node2D) -> void:
+	var carrier := _flag_carrier(f)
+	if carrier == self:
+		# Keep moving, away from the nearest enemy.
+		var nav := _nav()
+		var threat: Vector2 = target.global_position if is_instance_valid(target) else global_position
+		if _patrol_pos == Vector2.INF or global_position.distance_to(_patrol_pos) < 60.0 \
+				or _patrol_pos.distance_to(threat) < 300.0:
+			var best := global_position
+			var best_d := -1.0
+			for _i in 6:
+				var c: Vector2 = nav.random_point_near(global_position, 700.0) if nav != null and not nav.is_empty() \
+						else global_position + Vector2(randf_range(-500, 500), 0)
+				var dd := c.distance_to(threat)
+				if dd > best_d:
+					best_d = dd
+					best = c
+			_patrol_pos = best
+		_set_goal(_patrol_pos, "capture")
+	elif carrier != null and int(carrier.get("team")) == team:
+		_set_goal(carrier.global_position, "escort")
+	elif carrier != null:
+		_set_goal(carrier.global_position, "chase")
+	else:
+		_set_goal(f.position, "flag")
+
+
+func _think_dom() -> void:
+	var m := _main()
+	if m == null or not m.has_method("dom_points"):
+		return
+	var pts: Array = m.dom_points()
+	if pts.is_empty():
+		return
+	# Stick with a chosen point until it's ours, then pick the nearest point
+	# that isn't (or defend a random owned one if we hold them all).
+	if is_instance_valid(_dom_choice) and int(_dom_choice.get_meta("owner_team")) != team:
+		_set_goal(_dom_choice.global_position + Vector2(0, 30), "capture")
+		return
+	var best: Node2D = null
+	var best_d := INF
+	for a in pts:
+		if not is_instance_valid(a) or int(a.get_meta("owner_team")) == team:
+			continue
+		var d: float = global_position.distance_to(a.global_position) * randf_range(0.8, 1.2)
+		if d < best_d:
+			best_d = d
+			best = a
+	if best == null:
+		best = pts[randi() % pts.size()]
+	_dom_choice = best
+	_set_goal(best.global_position + Vector2(0, 30), "capture")
+
+
+func _think_pm() -> void:
+	var best: Node2D = null
+	var best_d := INF
+	for p in get_tree().get_nodes_in_group("point_pickup"):
+		if not is_instance_valid(p) or not (p as CanvasItem).visible:
+			continue
+		var d: float = global_position.distance_to(p.global_position)
+		if d < best_d:
+			best_d = d
+			best = p
+	if best != null and (not is_instance_valid(target) or not _target_visible or best_d < 500.0):
+		_set_goal(best.global_position, "capture")
+
+
+func _think_rambo() -> void:
+	for wp in get_tree().get_nodes_in_group("weapon_pickup"):
+		if is_instance_valid(wp) and wp.has_meta("rambo_spawn"):
+			_set_goal(wp.global_position, "flag")
+			return
+	if loadout == "Rambo Bow":
+		return  # we're Rambo — hunt normally
+	for s in get_tree().get_nodes_in_group("soldier"):
+		if s != self and is_instance_valid(s) and not bool(s.get("dead")) and str(s.get("loadout")) == "Rambo Bow":
+			_set_goal(s.global_position, "chase")
+			return
+
+
+func _think_br() -> void:
+	var m := _main()
+	if m == null or not m.has_method("br_zone"):
+		return
+	var z: Dictionary = m.br_zone()
+	var c: Vector2 = z.get("center", global_position)
+	var r: float = float(z.get("radius", 99999.0))
+	if global_position.distance_to(c) > r * 0.8:
+		_set_goal(c, "zone")
+
+
+func _nav_step(goal: Vector2, delta: float) -> Vector3:
+	# Returns (dir_x, want_up, valid). Replans when the goal moves, every
+	# ~1.2 s, or after an escape.
+	var nav := _nav()
+	if nav == null or nav.is_empty():
+		return Vector3.ZERO
+	_repath_t -= delta
+	# Only replan with feet on something: a mid-jet replan snaps to the node
+	# BELOW us (nearest-node is biased to the surface we'd land on) and the
+	# bot abandons the climb halfway up.
+	var grounded: bool = is_on_floor() or _wedge_t > 0.2
+	if _path.is_empty() or (grounded and (_repath_t <= 0.0 or _path_goal.distance_to(goal) > 96.0)):
+		_path = nav.path(global_position, goal)
+		if _path.is_empty():
+			# Goal unreachable from the node we're nearest to (e.g. we fell
+			# into a one-way pocket): at least get back onto the graph by
+			# heading for the closest node, then replan from there.
+			var n: int = nav.nearest(global_position, 900.0)
+			if n >= 0:
+				_path = PackedVector2Array([nav.point(n)])
+		_path_i = 0
+		_repath_t = randf_range(1.0, 1.4)
+		_path_goal = goal
+	if _path.is_empty():
+		return Vector3.ZERO
+	# Advance past waypoints we've reached. A later waypoint that's already
+	# level with us and close counts too (we overshot on a hop).
+	while _path_i < _path.size() - 1:
+		var w: Vector2 = _path[_path_i]
+		var ddy: float = w.y - global_position.y
+		if absf(w.x - global_position.x) < 20.0 and ddy > -30.0 and ddy < 44.0:
+			_path_i += 1
+		else:
+			break
+	var wp: Vector2 = _path[_path_i]
+	var dx: float = wp.x - global_position.x
+	var dy: float = wp.y - global_position.y
+	var d := 0.0 if absf(dx) < 6.0 else signf(dx)
+	var up := 1.0 if dy < -18.0 else 0.0
+	# Near-vertical climb: go straight up; a sideways drift off a lip is how
+	# bots slid into pits.
+	if up > 0.5 and absf(dx) < 24.0 and absf(dy) > 60.0:
+		d = 0.0
+	# Gap crossing (nothing under the midpoint before the kill line, e.g.
+	# between Airpirates' ships): hold altitude with jets instead of arcing
+	# down into the void.
+	_gap_ahead = _is_gap(global_position, wp)
+	if _gap_ahead and global_position.y > wp.y - 120.0:
+		up = 1.0  # jump at the lip and jet the whole way (jets barely beat gravity)
+	return Vector3(d, up, 1.0)
+
+
+func _is_gap(a: Vector2, b: Vector2) -> bool:
+	if absf(b.x - a.x) < 40.0:
+		return false
+	var m := _main()
+	if m == null or not m.has_method("_geom_ground_y"):
+		return false
+	var kill_y: float = float(m.get("KILL_Y"))
+	if kill_y == INF:
+		return false
+	# A gap = no ground under the middle of the hop, or ground so far below
+	# both ends (a deep pit) that dropping in means dying or a long climb.
+	var mid := (a + b) * 0.5
+	var gy: float = m._geom_ground_y(mid.x, mid.y)
+	return gy == INF or gy > kill_y or gy > maxf(a.y, b.y) + 160.0
+
+
+func _carrying_flag_under_fire() -> bool:
+	# A flag carrier with an enemy on its tail doesn't stop to refuel.
+	return _carrying_flag() and is_instance_valid(target) and _target_visible \
+			and global_position.distance_to(target.global_position) < 400.0
+
+
+func _pit_ahead(dir: float) -> bool:
+	# Ground under the next ~30 px of travel ends below the kill line?
+	var m := _main()
+	if m == null or not m.has_method("_geom_ground_y"):
+		return false
+	var kill_y: float = float(m.get("KILL_Y"))
+	if kill_y == INF:
+		return false
+	for off in [14.0, 30.0]:
+		var x: float = global_position.x + dir * off
+		var gy: float = m._geom_ground_y(x, global_position.y - 6.0)
+		if gy == INF or gy > kill_y:
+			return true
+	return false
+
+
+func _void_below() -> bool:
+	var m := _main()
+	if m == null or not m.has_method("_geom_ground_y"):
+		return false
+	var kill_y: float = float(m.get("KILL_Y"))
+	if kill_y == INF:
+		return false
+	var gy: float = m._geom_ground_y(global_position.x, global_position.y)
+	return gy == INF or gy > kill_y
+
+
+func _ground_within(dist: float) -> bool:
+	var m := _main()
+	if m == null or not m.has_method("_geom_ground_y"):
+		return true
+	var gy: float = m._geom_ground_y(global_position.x, global_position.y)
+	return gy != INF and gy - global_position.y <= dist

@@ -213,6 +213,11 @@ const TouchControls = preload("res://scripts/touch_controls.gd")
 
 func _ready() -> void:
 	# Terrain layer 3 (bit 4) = ported "only players collide" polys.
+	# Soldiers live on their own layer 4 (bit 8) and don't collide with each
+	# other (as in Soldat) — bodies shoving one another used to push soldiers
+	# into walls and block narrow tunnels. Bullets/rockets/grenades/pickups
+	# mask bit 8 to keep hitting them.
+	collision_layer = 8
 	collision_mask = 1 | 4
 	add_to_group("soldier")
 	ceasefire_t = CEASEFIRE_SECS

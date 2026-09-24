@@ -56,7 +56,7 @@ def raster(m):
     nx, ny = int(W / R) + 1, int(H / R) + 1
     img = Image.new("1", (nx, ny), 0)
     dr = ImageDraw.Draw(img)
-    for p in m.get("polys", []):
+    for p in m.get("collision", m.get("polys", [])):
         if int(p.get("col", 0)) not in PLAYER_SOLID_COLS:
             continue
         pts = p["points"]
@@ -102,10 +102,27 @@ def entities(m):
         out.append(("bot_spawns", i, b))
     for k in ("ctf_flags", "m2_mounts", "dom_points", "bonus_spawns", "point_spawns"):
         for i, v in enumerate(m.get(k, [])):
+            if k in ("dom_points", "point_spawns"):
+                v = [v[0], v[1] + 28.0]  # drawn 30 px above the ground they sit on
             out.append((k, i, v))
+    for t, arr in (m.get("team_spawns") or {}).items():
+        for i, v in enumerate(arr):
+            out.append(("team_spawns_" + str(t), i, v))
     for k in ("inf_flag", "htf_flag", "rambo_pos"):
         if m.get(k) is not None:
             out.append((k, None, m[k]))
+    # Runtime defaults main.gd falls back to when a map doesn't specify them
+    # (flags are settled onto the ground at runtime, so test them the same way).
+    W, _, G, _ = world_of(m)
+    gy = float(m.get("ctf_ground_y", G))
+    if not m.get("ctf_flags"):
+        out.append(("default_ctf_flag_blue", None, [300.0, gy - 2]))
+        out.append(("default_ctf_flag_red", None, [W - 300.0, gy - 2]))
+    if m.get("inf_flag") is None:
+        out.append(("default_inf_flag", None, [W * 0.5, gy - 2]))
+    if not m.get("dom_points"):
+        for i, f in enumerate((0.2, 0.5, 0.8)):
+            out.append(("default_dom_point", i, [W * f, gy - 32]))
     return out
 
 
@@ -176,7 +193,25 @@ class Space:
             return "lands in an isolated pocket at (%d, %d)" % wp, wp
         return None, wp
 
-    def nearest_good(self, p, max_r=600.0, want_ground=True):
+    def flat_ground(self):
+        """Main-component ground a soldier can stand around on: roomy and with
+        ground within +-4 px height 8 px to either side (not a steep wall)."""
+        if getattr(self, "_flat", None) is not None:
+            return self._flat
+        g = self.ground & (self.lab[0] == self.main)
+        gv = ndimage.binary_dilation(g, structure=np.ones((5, 1), dtype=bool))
+        k = 4
+        left = np.zeros_like(g)
+        right = np.zeros_like(g)
+        left[:, k:] = gv[:, :-k]
+        right[:, :-k] = gv[:, k:]
+        kk = int(16 / R)
+        roomy = np.zeros_like(self.stand)
+        roomy[kk:, :] = self.stand[:-kk, :]
+        self._flat = g & left & right & roomy
+        return self._flat
+
+    def nearest_good(self, p, max_r=600.0, want_ground=True, flat=False):
         """Nearest main-component ground cell to p (world coords), searching outward."""
         if self.main is None:
             return None
@@ -184,6 +219,14 @@ class Space:
         mask = (self.lab[0] == self.main)
         if want_ground:
             mask = mask & self.ground
+        if flat:
+            mask = mask & self.flat_ground()
+        # Prefer spots with real headroom (not a 24 px crawl slot): a standing
+        # soldier must also fit 16 px higher.
+        k = int(16 / R)
+        roomy = np.zeros_like(self.stand)
+        roomy[k:, :] = self.stand[:-k, :]
+        mask = mask & roomy
         rc = int(max_r / R)
         y0, y1 = max(0, cy - rc), min(self.ny, cy + rc)
         x0, x1 = max(0, cx - rc), min(self.nx, cx + rc)
@@ -235,7 +278,7 @@ def poly_mask(m):
     W, H, _, _ = world_of(m)
     img = Image.new("1", (int(W / R) + 1, int(H / R) + 1), 0)
     dr = ImageDraw.Draw(img)
-    for p in m.get("polys", []):
+    for p in m.get("collision", m.get("polys", [])):
         if int(p.get("col", 0)) not in PLAYER_SOLID_COLS:
             continue
         pts = p["points"]

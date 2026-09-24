@@ -15,6 +15,8 @@ var _pulse_t: float = 0.0
 
 
 func _ready() -> void:
+	# Soldiers live on physics layer bit 8.
+	collision_mask = 1 | 8
 	add_to_group("bonus_pickup")
 	var col := CollisionShape2D.new()
 	var cs := CircleShape2D.new()
