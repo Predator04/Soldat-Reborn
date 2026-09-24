@@ -1303,6 +1303,9 @@ func restore_for_round() -> void:
 
 
 func _spawn_gibs() -> void:
+	# Deferred from _die: the scene may be changing (round/map switch) by now.
+	if not is_inside_tree() or get_parent() == null:
+		return
 	var p := CPUParticles2D.new()
 	p.amount = 46
 	p.lifetime = 0.7
@@ -1323,6 +1326,9 @@ func _spawn_gibs() -> void:
 
 
 func _spawn_ragdoll() -> void:
+	# Deferred from _die: the scene may be changing (round/map switch) by now.
+	if not is_inside_tree() or get_parent() == null:
+		return
 	# physics gib chunks: rigid bodies that fly out and settle on terrain
 	var count := 7
 	for _i in count:

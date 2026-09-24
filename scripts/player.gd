@@ -1711,6 +1711,9 @@ func net_die(killer: String, weapon: String, killer_team: int) -> void:
 
 
 func _spawn_gibs() -> void:
+	# Deferred from _die: the scene may be changing (round/map switch) by now.
+	if not is_inside_tree() or get_parent() == null:
+		return
 	# Blood/gore visual density is user-tunable (#73). 0 = skip entirely
 	# (lo-fi already gates this, but tie the slider to a hard skip too).
 	var density: float = clampf(float(Settings.blood_intensity), 0.0, 1.5)
@@ -1736,6 +1739,9 @@ func _spawn_gibs() -> void:
 
 
 func _spawn_ragdoll() -> void:
+	# Deferred from _die: the scene may be changing (round/map switch) by now.
+	if not is_inside_tree() or get_parent() == null:
+		return
 	# Scale ragdoll piece count with blood_intensity (#73) so lo-gore players
 	# get a cleaner corpse. Rounds up to at least 1 piece so the death still reads.
 	var density: float = clampf(float(Settings.blood_intensity), 0.0, 1.5)
