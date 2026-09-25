@@ -308,6 +308,13 @@ static func load_and_apply() -> void:
 		var list: Array = raw as Array
 		if list.is_empty():
 			continue
+		# Keep the pad defaults when this file predates gamepad support (it
+		# never saved joy events, so "none saved" doesn't mean "removed").
+		var keep_joy: Array = []
+		if int(cf.get_value("meta", "joy_saved", 0)) == 0:
+			for ev0 in InputMap.action_get_events(aid):
+				if ev0 is InputEventJoypadButton or ev0 is InputEventJoypadMotion:
+					keep_joy.append(ev0)
 		# Replace all events for this action with the saved set.
 		InputMap.action_erase_events(aid)
 		for entry in list:
@@ -315,6 +322,14 @@ static func load_and_apply() -> void:
 			var ev: InputEvent = event_from_dict(d)
 			if ev != null:
 				InputMap.action_add_event(aid, ev)
+		for ev1 in keep_joy:
+			var dupe := false
+			for existing in InputMap.action_get_events(aid):
+				if _events_equal(existing, ev1):
+					dupe = true
+					break
+			if not dupe:
+				InputMap.action_add_event(aid, ev1)
 
 
 # #115: install gamepad defaults programmatically so a fresh install works
@@ -323,8 +338,8 @@ static func load_and_apply() -> void:
 #
 # Idempotent: only ADDS events that aren't already present, so a KB/M rebind
 # through the Controls menu doesn't get overwritten on the next boot. Runs
-# AFTER load_and_apply() so a user config that dropped a joy default (e.g. from
-# an older ConfigFile written before this shipped) still gets it back.
+# BEFORE load_and_apply(), which then replaces each saved action's events
+# (keeping pad defaults only for configs written before pads were saved).
 static func install_defaults() -> void:
 	for row in ACTIONS:
 		var aid := String(row[0])
@@ -373,6 +388,7 @@ static func save() -> void:
 			if not d.is_empty():
 				out.append(d)
 		cf.set_value("bindings", aid, out)
+	cf.set_value("meta", "joy_saved", 1)
 	cf.save(PATH)
 
 
