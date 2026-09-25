@@ -512,6 +512,13 @@ func _set_status(s: String) -> void:
 func _on_peer_connected(id: int) -> void:
 	if is_host():
 		_set_status("Peer %d joined · hosting" % id)
+		# #119: extend the ENet timeout on the host → client peer so the host
+		# doesn't drop clients that go silent while their main.tscn is loading.
+		var peer := multiplayer.multiplayer_peer as ENetMultiplayerPeer
+		if peer != null:
+			var enet_peer := peer.get_peer(id)
+			if enet_peer != null:
+				enet_peer.set_timeout(32, 15000, 60000)
 		# Push chosen map AND mode to the new peer immediately so they build the
 		# same terrain and run the same game rules (issue #57: without mode sync,
 		# a joining client would run their local Settings.game_mode which defaults
@@ -528,6 +535,17 @@ func _on_peer_disconnected(id: int) -> void:
 
 func _on_connected() -> void:
 	_set_status("Connected as peer %d" % multiplayer.get_unique_id())
+	# #119: extend the ENet timeout on the client → server peer so the client
+	# doesn't drop the connection while its own main.tscn is still loading (bot
+	# textures + nav graph can burn 4-5 s of CPU on cold-cache boots, which
+	# was long enough to hit the default 5 s ENet minimum timeout and disconnect
+	# right after `net_set_map` arrives, before `net_client_ready` could be sent).
+	# Values in ms: threshold=32, min=15 s, max=60 s.
+	var peer := multiplayer.multiplayer_peer as ENetMultiplayerPeer
+	if peer != null:
+		var enet_peer := peer.get_peer(1)
+		if enet_peer != null:
+			enet_peer.set_timeout(32, 15000, 60000)
 	connected.emit()
 
 
