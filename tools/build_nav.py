@@ -231,6 +231,17 @@ def build(m):
                 break
     pts = np.array(pts_l, dtype=np.float64)
     n = len(pts)
+
+    # Raster bridges. Straight-line links miss routes that bend — out of a
+    # spawn tower's side door, around a slab, through a floor gap. For every
+    # objective leg (team spawn -> enemy flag, enemy flag -> own flag) that
+    # the link graph can't do, search the standing-body free space itself
+    # for the shortest route from what we CAN reach to what reaches the
+    # target, and lay waypoints along it.
+    pts_l, edges, nb = _raster_bridges(m, sp, stand, pts_l, edges, void_span)
+    if nb:
+        pts = np.array(pts_l, dtype=np.float64)
+        n = len(pts)
     # Keep the largest strongly-useful component (undirected view).
     if not edges:
         return None
@@ -274,6 +285,195 @@ def build(m):
     return {"nodes": out_nodes, "edges": out_edges, "poly_count": len(m.get("polys", [])), "coll_count": len(m.get("collision", [])),
             "_dropped": n - len(best)}
 
+
+
+BRIDGE_MAX_RISE = 700.0   # longest unbroken climb a bridge may ask of a full tank
+
+
+def _max_climb(chain):
+    best = run = 0.0
+    for k in range(len(chain) - 1):
+        dy = chain[k][1] - chain[k + 1][1]   # >0 = going up
+        if dy > 0:
+            run += dy
+            best = max(best, run)
+        elif dy < -24.0:
+            run = 0.0
+    return best
+
+
+def _dbg(*a):
+    if os.environ.get("NAV_DEBUG"):
+        print("   bridge:", *a)   # cumulative climb a bridge may ask of a full tank
+BRIDGE_STEP = 12          # coarse cells (4 px) between bridge waypoints
+
+
+def _raster_bridges(m, sp, stand, pts_l, edges, void_span):
+    import collections
+    F = 2
+    H2, W2 = stand.shape[0] // F, stand.shape[1] // F
+    coarse = stand[:H2 * F, :W2 * F].reshape(H2, F, W2, F).all(axis=(1, 3))
+    # Only through air that has ground somewhere below it (before the kill
+    # line) — a route over a bottomless pit is a death trap for a bot.
+    g = sp.ground.copy()
+    if sp.K is not None:
+        g[int(sp.K / R):, :] = False
+    below = np.flip(np.logical_or.accumulate(np.flip(g, 0), axis=0), 0)
+    below_c = below[:H2 * F, :W2 * F].reshape(H2, F, W2, F).any(axis=(1, 3))
+    safe = below_c
+    CR = R * F
+
+    def cell_of(p):
+        cx, cy = int(p[0] / CR), int((p[1] - 8.0) / CR)
+        for d in range(0, 8):
+            yy = cy - d
+            if 0 <= yy < H2 and 0 <= cx < W2 and coarse[yy, cx]:
+                return (yy, cx)
+        return None
+
+    def graph():
+        out = collections.defaultdict(list)
+        inn = collections.defaultdict(list)
+        for a, b in edges:
+            out[a].append(b)
+            inn[b].append(a)
+        return out, inn
+
+    def reach(s, g):
+        seen = {s}
+        st = [s]
+        while st:
+            u = st.pop()
+            for v in g[u]:
+                if v not in seen:
+                    seen.add(v)
+                    st.append(v)
+        return seen
+
+    def nearest(p):
+        best, bd = None, 1e18
+        for i, q in enumerate(pts_l):
+            d = (q[0] - p[0]) ** 2 + (q[1] - p[1]) ** 2
+            if d < bd:
+                bd, best = d, i
+        return best if bd < 400.0 ** 2 else None
+
+    def landed(p):
+        c = sp.land(p)
+        if c is None:
+            return p
+        return (c[1] * R, c[0] * R)
+
+    ts = m.get("team_spawns") or {}
+    fl = m.get("ctf_flags") or []
+    legs = []
+    if len(fl) >= 2:
+        f = {1: landed(fl[0]), 2: landed(fl[1])}
+        for t, e in ((1, 2), (2, 1)):
+            for sp_pt in list(ts.get(str(t), ts.get(t, [])))[:2]:
+                legs.append((landed(sp_pt), f[e]))
+            legs.append((f[e], f[t]))
+    added = 0
+    for a_pt, b_pt in legs:
+        for _attempt in range(3):
+            a, b = nearest(a_pt), nearest(b_pt)
+            if a is None or b is None:
+                break
+            out, inn = graph()
+            ra = reach(a, out)
+            if b in ra:
+                break
+            rb = reach(b, inn)
+            src = {}
+            for i in ra:
+                c = cell_of(pts_l[i])
+                if c is not None:
+                    src[c] = i
+            dst = {}
+            for i in rb:
+                c = cell_of(pts_l[i])
+                if c is not None:
+                    dst[c] = i
+            if not src or not dst:
+                break
+            # 0-1 BFS: stepping into air over a bottomless pit costs 1, all
+            # else 0 — the route that crosses the least void wins.
+            parent = {}
+            dist = {}
+            q = collections.deque()
+            for c in src:
+                parent[c] = None
+                dist[c] = 0
+                q.append(c)
+            hit = None
+            budget = 4000000
+            while q and budget > 0:
+                budget -= 1
+                c = q.popleft()
+                if c in dst:
+                    hit = c
+                    break
+                y, x = c
+                dc = dist[c]
+                for yy, xx in ((y - 1, x), (y + 1, x), (y, x - 1), (y, x + 1)):
+                    if 0 <= yy < H2 and 0 <= xx < W2 and coarse[yy, xx]:
+                        w = 0 if safe[yy, xx] else 1
+                        nd = dc + w
+                        if nd < dist.get((yy, xx), 1 << 30):
+                            dist[(yy, xx)] = nd
+                            parent[(yy, xx)] = c
+                            if w:
+                                q.append((yy, xx))
+                            else:
+                                q.appendleft((yy, xx))
+            if hit is None:
+                _dbg("no raster route", a_pt, b_pt, len(src), len(dst))
+                break
+            path = []
+            c = hit
+            while c is not None:
+                path.append(c)
+                c = parent[c]
+            path.reverse()   # src -> dst
+            # Void stretches must be jet-able: short and roughly level.
+            bad = False
+            run = []
+            for c in path + [None]:
+                if c is not None and not safe[c]:
+                    run.append(c)
+                    continue
+                if run:
+                    xs = [r[1] for r in run]
+                    ys = [r[0] for r in run]
+                    if (max(xs) - min(xs)) * CR > 240.0 or (run[-1][0] - run[0][0]) * CR > 40.0:
+                        bad = True
+                        break
+                    run = []
+            if bad:
+                _dbg("void too wide/steep", a_pt, b_pt, "run x", min(xs) * CR, max(xs) * CR, "y", run[0][0] * CR, run[-1][0] * CR, len(run))
+                break
+            wp = [(cx * CR, cy * CR + 8.0) for (cy, cx) in path[BRIDGE_STEP:-BRIDGE_STEP:BRIDGE_STEP]]
+            si, di = src[path[0]], dst[path[-1]]
+            chain = [pts_l[si]] + wp + [pts_l[di]]
+            # Never route over a bottomless drop (bots fell through Dusk's
+            # pit following an early bridge).
+            # Longest unbroken climb (a descent lets the bot land and refuel).
+            rise_fwd = _max_climb(chain)
+            if rise_fwd > BRIDGE_MAX_RISE:
+                _dbg("too much climb", a_pt, b_pt, rise_fwd)
+                break
+            rise_back = _max_climb(chain[::-1])
+            ids = [si]
+            for w in wp:
+                ids.append(len(pts_l))
+                pts_l.append(w)
+            ids.append(di)
+            for k in range(len(ids) - 1):
+                edges.append((ids[k], ids[k + 1]))
+                if rise_back <= BRIDGE_MAX_RISE:
+                    edges.append((ids[k + 1], ids[k]))
+            added += 1
+    return pts_l, edges, added
 
 def main(argv):
     only = argv[1] if len(argv) > 1 else None

@@ -8,6 +8,8 @@
 #              zero RPC/node errors on either side
 #   D modes    every game mode (DM..GG) on 3 maps with bots-vs-bots: kills,
 #              objective scoring where the mode has one, no script errors
+#   N nav      every map in CTF: each team can path spawn -> enemy flag -> home
+#              (known exceptions allowed: NAV_KNOWN_BROKEN)
 #   E sweep    every map in CTF: grabs / captures / falls / anti-stuck frees
 # --quick skips E (CI-sized). Logs + summary land in build/gate/ (or --out).
 # Piecewise runs (each piece fits a short shell budget; summary accumulates):
@@ -18,7 +20,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 G="${GODOT_BIN:-$HOME/godot/Godot_v4.7.2-stable_linux.x86_64}"
-QUICK=0; OUT="build/gate"; ONLY="A B C D E"; MODESEL="0 1 2 3 4 5 6 7 8 9"
+QUICK=0; OUT="build/gate"; ONLY="A B N C D E"; MODESEL="0 1 2 3 4 5 6 7 8 9"
 NETSEL="ctf dm host"; SWEEP=""; KEEP=0; FINAL=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -66,6 +68,15 @@ has B && for sc in main menu map_editor; do
   n=$(errs "$OUT/boot_$sc.log")
   if [ "$n" = "0" ]; then pass "B boot $sc.tscn"; else fail "B boot $sc.tscn: $n error lines"; fi
 done
+
+# ── N nav reachability ──────────────────────────────────────────────────────
+NAV_KNOWN_BROKEN="Dusk Nuclear Triumph"   # need a map fix, not a bake fix
+if has N; then
+  timeout 175 "$G" --headless -s tools/nav_check.gd > "$OUT/navcheck.log" 2>&1
+  line=$(grep -m1 NAVCHECK "$OUT/navcheck.log")
+  unknown=$(grep '^map' "$OUT/navcheck.log" | awk '{print $3}' | grep -vwE "$(echo $NAV_KNOWN_BROKEN | tr ' ' '|')" | tr '\n' ' ')
+  if [ -n "$line" ] && [ -z "$unknown" ] && [ "$(errs "$OUT/navcheck.log")" = "0" ]; then pass "N nav routes: $line (known: $NAV_KNOWN_BROKEN)"; else fail "N nav routes: ${line:-no result} new broken: $unknown"; fi
+fi
 
 # ── C net ───────────────────────────────────────────────────────────────────
 netcase() { # label map mode
