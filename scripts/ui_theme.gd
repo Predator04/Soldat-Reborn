@@ -363,6 +363,41 @@ static func style_checkbox(cb: BaseButton) -> void:
 	cb.add_theme_color_override("font_hover_color", COL_ACCENT_HI)
 	cb.add_theme_color_override("font_pressed_color", COL_ACCENT_HI)
 	cb.add_theme_color_override("font_focus_color", COL_ACCENT_HI)
+	# The engine's default tick box is near-invisible on our dark panels, so
+	# the Realistic/Survival/Advance toggles didn't read as toggles at all.
+	if cb is CheckBox:
+		cb.add_theme_icon_override("unchecked", _box_icon(false))
+		cb.add_theme_icon_override("checked", _box_icon(true))
+		cb.add_theme_icon_override("unchecked_disabled", _box_icon(false))
+		cb.add_theme_icon_override("checked_disabled", _box_icon(true))
+
+
+static func _box_icon(on: bool) -> Texture2D:
+	var n := 18
+	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var edge := COL_ACCENT if on else COL_TEXT_DIM
+	for i in n:
+		for j in n:
+			var border := i < 2 or j < 2 or i >= n - 2 or j >= n - 2
+			if border:
+				img.set_pixel(i, j, edge)
+			elif on:
+				img.set_pixel(i, j, Color(COL_ACCENT, 0.9))
+			else:
+				img.set_pixel(i, j, Color(0, 0, 0, 0.35))
+	if on:
+		# Dark check mark.
+		var ink := Color(0.08, 0.08, 0.1)
+		for t in 5:
+			for w in 2:
+				img.set_pixel(4 + t, 8 + t - w, ink)
+				img.set_pixel(4 + t, 9 + t - w, ink)
+		for t in 6:
+			for w in 2:
+				img.set_pixel(8 + t, 12 - t - w, ink)
+				img.set_pixel(8 + t, 13 - t - w, ink)
+	return ImageTexture.create_from_image(img)
 
 
 static func style_slider(_s: HSlider) -> void:

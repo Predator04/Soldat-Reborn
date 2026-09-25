@@ -29,9 +29,12 @@ R = MA.R
 NODE_STEP = 40.0        # px between nodes along a surface
 LINK_DX = 230.0         # max horizontal span of a link
 LINK_UP = 420.0         # max rise of a link (jet)
-LINK_DOWN = 900.0       # max drop of a link
+LINK_DOWN = 1300.0      # max drop of a link (no fall damage; long drops are fine)
 LINK_DX_JET = 440.0     # longer, roughly level jet hops (gaps between ships)
 LINK_DY_JET = 220.0
+LINK_UP_V = 560.0       # near-vertical climbs (dx <= 120): a full tank rises ~800 px
+DETOUR_MAX = 240.0
+MIN_COMP = 12           # smaller disconnected islands are dropped      # how far beside a ledge we look for a clear climb column
 LIFT = 6.0              # check paths with feet lifted a few px (slopes)
 
 
@@ -162,6 +165,7 @@ def build(m):
     for i, (x, y) in enumerate(pts):
         bucket.setdefault(int(x // LINK_DX_JET), []).append(i)
     edges = []
+    climb_cands = []
     for i, (x, y) in enumerate(pts):
         bx = int(x // LINK_DX_JET)
         for b in (bx - 1, bx, bx + 1):
@@ -171,7 +175,9 @@ def build(m):
                 x2, y2 = pts[j]
                 dx = abs(x2 - x)
                 dy = y2 - y  # >0 = target lower
-                if dy < -LINK_UP or dy > LINK_DOWN:
+                if dy > LINK_DOWN:
+                    continue
+                if dy < -LINK_UP and (dy < -LINK_UP_V or dx > 120.0):
                     continue
                 if dx > LINK_DX and (dx > LINK_DX_JET or abs(dy) > LINK_DY_JET):
                     continue
@@ -183,6 +189,48 @@ def build(m):
                     continue
                 if clear((x, y), (x2, y2)) and void_span((x, y), (x2, y2)) <= 56.0:
                     edges.append((i, j))
+                elif dy < -40.0 and dx <= LINK_DX:
+                    climb_cands.append((i, j))
+    # Ledge detours: a platform right above us can't be reached in a straight
+    # line (its own slab is in the way) — the real move is to step out past
+    # its edge, jet up beside it and step on. Add an air waypoint beside the
+    # lip for those, which is what joined one-way maps like Moonshine,
+    # Triumph and Crackedboot (bases you could leave but never return to).
+    have_edge = set(edges)
+    air = {}
+    pts_l = [tuple(p) for p in pts]
+    per_src = {}
+    for i, j in climb_cands:
+        if (i, j) in have_edge or per_src.get(i, 0) >= 2:
+            continue
+        (x, y), (x2, y2) = pts_l[i], pts_l[j]
+        done = False
+        for k in range(40, int(DETOUR_MAX) + 1, 20):
+            for sgn in (-1.0, 1.0):
+                xe = x2 + sgn * k
+                if abs(xe - x) > LINK_DX:
+                    continue
+                a = (xe, y)
+                b = (xe, y2 - 24.0)
+                if not (clear((x, y), a) and clear(a, b) and clear(b, (x2, y2))):
+                    continue
+                if void_span((x, y), a) > 56.0 or void_span(b, (x2, y2)) > 56.0:
+                    continue
+                key = (int(b[0] // 16), int(b[1] // 16))
+                bi = air.get(key)
+                if bi is None:
+                    bi = len(pts_l)
+                    pts_l.append(b)
+                    air[key] = bi
+                edges.append((i, bi))
+                edges.append((bi, j))
+                per_src[i] = per_src.get(i, 0) + 1
+                done = True
+                break
+            if done:
+                break
+    pts = np.array(pts_l, dtype=np.float64)
+    n = len(pts)
     # Keep the largest strongly-useful component (undirected view).
     if not edges:
         return None
@@ -193,6 +241,7 @@ def build(m):
         adj[b].add(a)
     seen = [-1] * n
     best = None
+    keep_nodes = []
     for s in range(n):
         if seen[s] != -1 or s not in adj:
             continue
@@ -208,6 +257,12 @@ def build(m):
                     q.append(v)
         if best is None or len(comp) > len(best):
             best = comp
+        if len(comp) >= MIN_COMP:
+            keep_nodes.extend(comp)
+    # Keep every sizeable island, not just the largest: a base on a pillar
+    # (Outpost) used to vanish from the graph, so defenders patrolled the
+    # floor 600 px below and nobody could path around their own flag.
+    best = sorted(set(best) | set(keep_nodes))
     idx = {old: new for new, old in enumerate(sorted(best))}
     out_nodes = []
     for old in sorted(best):

@@ -1546,7 +1546,7 @@ func _think_hunt() -> void:
 	var nav := _nav()
 	if nav != null and not nav.is_empty():
 		if _patrol_pos == Vector2.INF or global_position.distance_to(_patrol_pos) < 40.0:
-			_patrol_pos = nav.random_point()
+			_patrol_pos = nav.random_point(global_position)
 		_set_goal(_patrol_pos, "roam")
 
 

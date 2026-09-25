@@ -13,6 +13,7 @@ const CELL := 160.0
 var astar := AStar2D.new()
 var _pts: PackedVector2Array = PackedVector2Array()
 var _grid: Dictionary = {}   # Vector2i cell -> Array[int]
+var _comp: PackedInt32Array = PackedInt32Array()   # island id per node (undirected)
 
 
 static func key_for(map_name: String) -> String:
@@ -71,6 +72,23 @@ func _build(nodes: Array, edges: Array) -> void:
 		if a >= 0 and a < n and b >= 0 and b < n and not astar.are_points_connected(a, b, false):
 			astar.connect_points(a, b, false)
 		e += 2
+	# Islands: the bake keeps every sizeable surface group (a base on a
+	# pillar), so roam targets must come from the bot's own island.
+	_comp.resize(n)
+	_comp.fill(-1)
+	var cid := 0
+	for s in n:
+		if _comp[s] != -1:
+			continue
+		_comp[s] = cid
+		var stack: Array = [s]
+		while not stack.is_empty():
+			var u: int = stack.pop_back()
+			for v in astar.get_point_connections(u):
+				if _comp[v] == -1:
+					_comp[v] = cid
+					stack.append(v)
+		cid += 1
 
 
 func is_empty() -> bool:
@@ -136,7 +154,15 @@ func random_point_near(pos: Vector2, radius: float) -> Vector2:
 	return _pts[cands[randi() % cands.size()]]
 
 
-func random_point() -> Vector2:
+func random_point(from: Vector2 = Vector2.INF) -> Vector2:
 	if _pts.is_empty():
 		return Vector2.ZERO
+	if from != Vector2.INF and _comp.size() == _pts.size():
+		var home := nearest(from, 900.0)
+		if home >= 0:
+			for _i in 24:
+				var id := randi() % _pts.size()
+				if _comp[id] == _comp[home]:
+					return _pts[id]
+			return _pts[home]
 	return _pts[randi() % _pts.size()]

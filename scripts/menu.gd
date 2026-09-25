@@ -40,7 +40,18 @@ const MODE_NAMES := [
 	"Domination", "Battle Royale", "Gun Game",
 ]
 
-var _menu_box: VBoxContainer   # inner column; visibility is driven via _menu_root
+var _menu_box: VBoxContainer   # left column; visibility is driven via _menu_root
+var _menu_box2: VBoxContainer  # right column (Network + System)
+var _title_nodes: Array = []    # wordmark / tagline / version — main list only
+
+
+# Taller sub-panels (Host, Join, Settings, Stats) sit over the wordmark; show
+# the title stack only while the main list is up.
+func _process(_delta: float) -> void:
+	var show_title: bool = _menu_root != null and _menu_root.visible
+	for n in _title_nodes:
+		if is_instance_valid(n) and n.visible != show_title:
+			n.visible = show_title
 var _menu_root: PanelContainer # wrapper panel we hide/show
 var _settings_panel: VBoxContainer
 var _controls_panel: VBoxContainer
@@ -110,6 +121,7 @@ func _build_title() -> void:
 	title.offset_bottom = 130
 	UITheme.style_title(title, 62)
 	add_child(title)
+	_title_nodes.append(title)
 
 	# Sub-line with the tagline, tight under the wordmark.
 	var sub := Label.new()
@@ -123,6 +135,7 @@ func _build_title() -> void:
 	sub.add_theme_color_override("font_outline_color", UITheme.COL_SHADOW)
 	sub.add_theme_constant_override("outline_size", 2)
 	add_child(sub)
+	_title_nodes.append(sub)
 
 	# Version/build sits low and muted, doesn't compete with the title stack.
 	var ver := Label.new()
@@ -137,6 +150,7 @@ func _build_title() -> void:
 	ver.add_theme_font_size_override("font_size", 13)
 	ver.add_theme_color_override("font_color", UITheme.COL_TEXT_MUTED)
 	add_child(ver)
+	_title_nodes.append(ver)
 
 
 func _build_number() -> int:
@@ -160,15 +174,35 @@ func _build_menu() -> void:
 	# briefing-terminal card instead of floating buttons on the backdrop.
 	_menu_root = PanelContainer.new()
 	_menu_root.add_theme_stylebox_override("panel", UITheme.panel_style())
-	_menu_root.set_anchors_preset(Control.PRESET_CENTER, true)
-	_menu_root.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_menu_root.grow_vertical = Control.GROW_DIRECTION_BOTH
+	# Two columns (Match + Deploy | Network + System) between the title stack
+	# and the footer. The single tall column ran off both edges at 720p (QUIT
+	# sat under the footer). A scroll container keeps short screens usable.
+	_menu_root.anchor_left = 0.5
+	_menu_root.anchor_right = 0.5
+	_menu_root.anchor_top = 0.0
+	_menu_root.anchor_bottom = 0.0
+	_menu_root.offset_left = -372
+	_menu_root.offset_right = 372
+	_menu_root.offset_top = 204
+	_menu_root.offset_bottom = 596  # base height is 720 (stretch "expand")
 	add_child(_menu_root)
+
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_menu_root.add_child(scroll)
+	var cols := HBoxContainer.new()
+	cols.add_theme_constant_override("separation", 24)
+	cols.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(cols)
 
 	_menu_box = VBoxContainer.new()
 	_menu_box.add_theme_constant_override("separation", 8)
 	_menu_box.custom_minimum_size = Vector2(340, 0)
-	_menu_root.add_child(_menu_box)
+	cols.add_child(_menu_box)
+	_menu_box2 = VBoxContainer.new()
+	_menu_box2.add_theme_constant_override("separation", 8)
+	_menu_box2.custom_minimum_size = Vector2(340, 0)
+	cols.add_child(_menu_box2)
 
 	_menu_box.add_child(UITheme.make_section_header("Match"))
 
@@ -241,42 +275,41 @@ func _build_menu() -> void:
 	gen.pressed.connect(_on_generate_and_play)
 	_menu_box.add_child(gen)
 
-	_menu_box.add_child(UITheme.spacer(4))
-	_menu_box.add_child(UITheme.make_section_header("Network"))
+	_menu_box2.add_child(UITheme.make_section_header("Network"))
 
 	var host := _make_button("HOST GAME")
 	host.pressed.connect(func() -> void:
 		_menu_root.visible = false
 		_host_root.visible = true
 		UITheme.safe_grab_focus_deferred(_host_first_focus))
-	_menu_box.add_child(host)
+	_menu_box2.add_child(host)
 
 	var join := _make_button("JOIN GAME")
 	join.pressed.connect(func() -> void:
 		_menu_root.visible = false
 		_join_root.visible = true
 		UITheme.safe_grab_focus_deferred(_join_first_focus))
-	_menu_box.add_child(join)
+	_menu_box2.add_child(join)
 
-	_menu_box.add_child(UITheme.spacer(4))
-	_menu_box.add_child(UITheme.make_section_header("System"))
+	_menu_box2.add_child(UITheme.spacer(4))
+	_menu_box2.add_child(UITheme.make_section_header("System"))
 
 	var settings := _make_button("SETTINGS")
 	settings.pressed.connect(func() -> void:
 		_menu_root.visible = false
 		_settings_panel.visible = true)
-	_menu_box.add_child(settings)
+	_menu_box2.add_child(settings)
 
 	var stats := _make_button("STATS")
 	stats.pressed.connect(func() -> void:
 		_refresh_stats_labels()
 		_menu_root.visible = false
 		_stats_root.visible = true)
-	_menu_box.add_child(stats)
+	_menu_box2.add_child(stats)
 
 	var quit := _make_button("QUIT")
 	quit.pressed.connect(func() -> void: get_tree().quit())
-	_menu_box.add_child(quit)
+	_menu_box2.add_child(quit)
 
 
 func _build_settings() -> void:

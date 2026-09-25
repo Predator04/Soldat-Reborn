@@ -36,6 +36,11 @@ release gate (`tools/release_gate.sh`) run three times clean.
 - Run 1 caught a regression from this release's own speed-up: the terrain column index appended into copies of packed arrays, so spawn/ground checks saw no terrain (CTF sweep: grabs 154 → 115, captures 22 → 2). Fixed. Also hardened the harness (wait for server listen, longer objective rounds).
 - Run 2 caught a deferred gib spawn running after a map switch (script error). Fixed.
 - Run 3: **22/22 checks passed** — CTF sweep of all 102 maps: 202 grabs, 32 captures, 581 kills, 8 falls, 0 anti-stuck frees, 0 script/RPC errors (v1.14: 154 / 22 / 22 falls).
+- Run 4 (after the polish below): **22/22 passed** — 206 grabs, 33 captures, 594 kills, 5 falls, 0 errors.
+
+### Polish after the gate
+- Main menu is a two-column card that fits 720p (the single column ran off the top and put QUIT under the footer); the wordmark hides behind the Host / Join / Settings / Stats panels instead of showing through them; Realistic / Survival / Advance now have visible tick boxes.
+- Nav bake: climbs to a platform right above you now route out past its edge and up beside it (new air waypoints), near-vertical climbs up to 560 px are allowed, long safe drops up to 1300 px count, and sizeable islands are kept instead of only the biggest one (Outpost's blue base was missing from the graph). Roam targets stay on the bot's own island. Moonshine went from 0 captures and 2 falls to 1–2 captures and no falls in a 150 s test.
 
 ## [1.14.0] — 2026-09-24
 
