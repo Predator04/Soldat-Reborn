@@ -440,7 +440,8 @@ func host_game(port: int = DEFAULT_PORT, map_index: int = 0) -> bool:
 	if Settings.custom_map_path == "":
 		custom_map_json = ""
 	_map_synced = true
-	_set_status("Hosting on port %d · you are peer 1" % port)
+	var ips := lan_ips()
+	_set_status(("Hosting on %s:%d" % [ips[0], port]) if not ips.is_empty() else ("Hosting on port %d" % port))
 	_lan_advertise_start(port)
 	return true
 
@@ -815,3 +816,15 @@ func _smoke_lan() -> void:
 	print("SMOKE-LAN bound=%s found=%d %s" % [str(ok), found.size(), str(names)])
 	lan_listen_stop()
 	get_tree().quit()
+
+
+## This machine's private IPv4 addresses (what LAN players type to join).
+func lan_ips() -> Array:
+	var out: Array = []
+	for a in IP.get_local_addresses():
+		var ip := str(a)
+		if ip.begins_with("192.168.") or ip.begins_with("10.") \
+				or (ip.begins_with("172.") and ip.split(".").size() == 4 and int(ip.split(".")[1]) >= 16 and int(ip.split(".")[1]) <= 31):
+			out.append(ip)
+	out.sort()
+	return out

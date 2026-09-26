@@ -66,6 +66,12 @@ func _process(_delta: float) -> void:
 		_lan_listening = false
 
 
+func _open_host() -> void:
+	_menu_root.visible = false
+	_host_root.visible = true
+	UITheme.safe_grab_focus_deferred(_host_first_focus)
+
+
 var _lan_list: VBoxContainer
 var _lan_t := 0.0
 var _lan_listening := false
@@ -114,6 +120,8 @@ var _status_label: Label
 var _ip_edit: LineEdit
 var _port_edit: LineEdit
 var _host_port_edit: LineEdit
+var _mode_pick: OptionButton
+var _host_mode_pick: OptionButton
 var _connect_btn: Button
 var _map_pick: OptionButton
 var _sp_map_pick: OptionButton     # main-menu map selector (built-in + custom)
@@ -259,6 +267,7 @@ func _build_menu() -> void:
 	_menu_box.add_child(UITheme.make_section_header("Match"))
 
 	var mode_pick := OptionButton.new()
+	_mode_pick = mode_pick
 	for name in MODE_NAMES:
 		mode_pick.add_item(name)
 	mode_pick.selected = clampi(Settings.game_mode, 0, MODE_NAMES.size() - 1)
@@ -266,7 +275,9 @@ func _build_menu() -> void:
 	UITheme.style_option_button(mode_pick)
 	mode_pick.item_selected.connect(func(idx: int) -> void:
 		Settings.game_mode = idx
-		Settings.save())
+		Settings.save()
+		if _host_mode_pick != null:
+			_host_mode_pick.selected = idx)
 	_menu_box.add_child(mode_pick)
 
 	# Sub-mode toggles — three quick chips under the main mode picker.
@@ -330,10 +341,7 @@ func _build_menu() -> void:
 	_menu_box2.add_child(UITheme.make_section_header("Network"))
 
 	var host := _make_button("HOST GAME")
-	host.pressed.connect(func() -> void:
-		_menu_root.visible = false
-		_host_root.visible = true
-		UITheme.safe_grab_focus_deferred(_host_first_focus))
+	host.pressed.connect(_open_host)
 	_menu_box2.add_child(host)
 
 	var join := _make_button("JOIN GAME")
@@ -498,9 +506,27 @@ func _build_host() -> void:
 	_host_panel.add_child(UITheme.make_section_header("Match"))
 
 	var map_lbl := Label.new()
-	map_lbl.text = "Map"
+	map_lbl.text = "Mode  ·  Map"
 	UITheme.style_body(map_lbl)
 	_host_panel.add_child(map_lbl)
+
+	# Mode and map side by side; the mode mirrors the main menu's picker.
+	var pick_row := HBoxContainer.new()
+	pick_row.add_theme_constant_override("separation", 8)
+	_host_panel.add_child(pick_row)
+	_host_mode_pick = OptionButton.new()
+	for mname in MODE_NAMES:
+		_host_mode_pick.add_item(mname)
+	_host_mode_pick.selected = clampi(Settings.game_mode, 0, MODE_NAMES.size() - 1)
+	_host_mode_pick.custom_minimum_size = Vector2(0, 34)
+	_host_mode_pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	UITheme.style_option_button(_host_mode_pick)
+	_host_mode_pick.item_selected.connect(func(idx: int) -> void:
+		Settings.game_mode = idx
+		Settings.save()
+		if _mode_pick != null:
+			_mode_pick.selected = idx)
+	pick_row.add_child(_host_mode_pick)
 
 	_map_pick = OptionButton.new()
 	for name in MAP_NAMES:
@@ -508,7 +534,8 @@ func _build_host() -> void:
 	_map_pick.selected = clampi(Settings.map_index, 0, MAP_NAMES.size() - 1)
 	_map_pick.custom_minimum_size = Vector2(0, 34)
 	UITheme.style_option_button(_map_pick)
-	_host_panel.add_child(_map_pick)
+	_map_pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pick_row.add_child(_map_pick)
 	_host_thumb = TextureRect.new()
 	_host_thumb.custom_minimum_size = Vector2(272, 102)
 	_host_thumb.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -535,6 +562,14 @@ func _build_host() -> void:
 	_host_port_edit.custom_minimum_size = Vector2(0, 34)
 	UITheme.style_lineedit(_host_port_edit)
 	_host_panel.add_child(_host_port_edit)
+	var ips: Array = Net.lan_ips()
+	var ip_note := Label.new()
+	ip_note.text = ("LAN players see your game under Join → Find Games, or connect to %s" % " / ".join(ips)) if not ips.is_empty() \
+			else "LAN players see your game under Join → Find Games."
+	ip_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	ip_note.add_theme_font_size_override("font_size", 13)
+	ip_note.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)
+	_host_panel.add_child(ip_note)
 
 	_host_panel.add_child(UITheme.spacer(6))
 
