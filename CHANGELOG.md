@@ -80,6 +80,7 @@ release gate (`tools/release_gate.sh`) run three times clean.
 - Multiplayer: bot shots carry the weapon they were fired with. A replica whose loadout / secondary flag lagged the host (they sync unreliably at state rate) fired a bullet where the host fired a LAW, so the host's rocket updates hit a node the client never made ("Node not found: BotRocket").
 - The single-player map picker no longer shows "Rotation" while PLAY would load the editor's last play-test map.
 - QA: `--smoke-auto` drives a network smoke client with random input; `--net "m0 … m9"` runs a dedicated server + autopiloted client per mode (all 10 modes: zero errors on either side, and the client runs the server's mode). The gate now starts every Godot run from default settings and restores this machine's files afterwards; the feature test checks the limbo pick.
+- Gate run 14: 35/35 passed (stage C now includes INF / DOM / Gun Game with an autopiloted client; CTF sweep 222 grabs, 34 captures, 648 kills, 6 falls).
 
 ## [1.14.0] — 2026-09-24
 
