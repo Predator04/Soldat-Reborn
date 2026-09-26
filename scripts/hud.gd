@@ -300,7 +300,10 @@ func _ready() -> void:
 	lbl_spectate_hint.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	lbl_spectate_hint.offset_top = -150
 	lbl_spectate_hint.offset_bottom = -150
-	lbl_spectate_hint.text = "← / →  next target    ·    C  toggle free-cam"
+	var touch_ui: bool = OS.has_feature("android") or OS.has_feature("mobile") \
+			or DisplayServer.is_touchscreen_available() or "--force-touch" in OS.get_cmdline_user_args()
+	lbl_spectate_hint.text = "Tap left / right to switch view" if touch_ui \
+			else "← / →  or  LB / RB  next target    ·    C  toggle free-cam"
 	lbl_spectate_hint.add_theme_font_size_override("font_size", 14)
 	lbl_spectate_hint.add_theme_color_override("font_color", Color(0.75, 0.78, 0.85))
 	lbl_spectate_hint.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))

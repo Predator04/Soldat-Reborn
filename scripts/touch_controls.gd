@@ -256,6 +256,14 @@ func _on_touch(ev: InputEventScreenTouch) -> void:
 		for c in get_tree().get_nodes_in_group("touch_passthrough"):
 			if c is Control and (c as Control).is_visible_in_tree() and (c as Control).get_global_rect().has_point(pos):
 				return
+		# Dead: a tap switches the spectator's follow target instead.
+		var mn := get_tree().current_scene
+		if mn != null and mn.get("spectator") != null and is_instance_valid(mn.get("spectator")) \
+				and bool(mn.spectator.get("_active")) \
+				and (mn.get("player") == null or not is_instance_valid(mn.get("player"))):
+			mn.spectator.tap_cycle(pos.x, get_viewport().get_visible_rect().size.x)
+			get_viewport().set_input_as_handled()
+			return
 		# Priority: buttons > zones. Buttons are small so this rarely conflicts.
 		var bi: int = _button_at(pos)
 		if bi >= 0 and _btn_touch[bi] < 0:

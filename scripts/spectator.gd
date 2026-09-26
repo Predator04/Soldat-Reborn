@@ -100,6 +100,16 @@ func _process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not _active:
 		return
+	# Gamepad: shoulders / D-pad cycle the follow target.
+	if event is InputEventJoypadButton and event.pressed and not _free_cam:
+		var jb: int = (event as InputEventJoypadButton).button_index
+		if jb == JOY_BUTTON_LEFT_SHOULDER or jb == JOY_BUTTON_DPAD_LEFT:
+			_cycle_target(-1)
+			get_viewport().set_input_as_handled()
+		elif jb == JOY_BUTTON_RIGHT_SHOULDER or jb == JOY_BUTTON_DPAD_RIGHT:
+			_cycle_target(1)
+			get_viewport().set_input_as_handled()
+		return
 	if not (event is InputEventKey) or not event.pressed or event.echo:
 		return
 	var kc: int = (event as InputEventKey).keycode
@@ -136,6 +146,12 @@ func _pick_nearest_target(origin: Vector2) -> Node2D:
 			best_d = d
 			best = s
 	return best
+
+
+## Touch: a tap on the left / right half while dead (see touch_controls).
+func tap_cycle(screen_x: float, screen_w: float) -> void:
+	if _active and not _free_cam:
+		_cycle_target(1 if screen_x >= screen_w * 0.5 else -1)
 
 
 func _cycle_target(step: int) -> void:
