@@ -418,10 +418,39 @@ static func build_menu_backdrop(root: Control) -> void:
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(bg)
 
+	# A real in-game view (baked screenshots, assets/menu_bg) drifting slowly
+	# behind a dark veil, so the menu opens on the game rather than a void.
+	var pics := []
+	for i in range(1, 9):
+		var pth := "res://assets/menu_bg/bg%d.jpg" % i
+		if ResourceLoader.exists(pth):
+			pics.append(pth)
+	if not pics.is_empty():
+		var pic := TextureRect.new()
+		pic.texture = load(pics[randi() % pics.size()])
+		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		pic.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		pic.offset_left = -60
+		pic.offset_right = 60
+		pic.offset_top = -34
+		pic.offset_bottom = 34
+		pic.modulate = Color(0.72, 0.72, 0.78)
+		pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		root.add_child(pic)
+		var tw := pic.create_tween().set_loops()
+		tw.tween_property(pic, "position:x", pic.position.x + 50.0, 22.0).set_trans(Tween.TRANS_SINE)
+		tw.tween_property(pic, "position:x", pic.position.x - 50.0, 22.0).set_trans(Tween.TRANS_SINE)
+		var veil := ColorRect.new()
+		veil.color = Color(0.02, 0.03, 0.05, 0.35)
+		veil.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		veil.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		root.add_child(veil)
+
 	# Horizontal darkening band at the very top so the title reads on any
 	# accidental bright content behind it, plus an amber pin-stripe.
 	var top_band := ColorRect.new()
-	top_band.color = Color(0.02, 0.03, 0.05, 0.85)
+	top_band.color = Color(0.02, 0.03, 0.05, 0.72)
 	top_band.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	top_band.offset_bottom = 220
 	top_band.mouse_filter = Control.MOUSE_FILTER_IGNORE

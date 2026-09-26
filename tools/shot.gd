@@ -13,6 +13,7 @@ var _flagdemo := false
 var _flagdrop := false
 var _scene := "res://scenes/main.tscn"
 var _sb := false
+var _nohud := false
 var _menu_map := ""
 var _vis := ""   # --show=NodeVar: make current_scene.<var> visible, hide _menu_root
 
@@ -31,6 +32,8 @@ func _initialize() -> void:
 			_scene = a.substr(8)
 		elif a.begins_with("--menu-map="):
 			_menu_map = a.substr(11)
+		elif a == "--nohud":
+			_nohud = true
 		elif a == "--scoreboard":
 			_sb = true
 		elif a.begins_with("--show="):
@@ -75,6 +78,13 @@ func _process(_delta: float) -> bool:
 		var sbn = current_scene.hud.get("scoreboard")
 		if sbn != null:
 			sbn.peek(5.0)
+	if _nohud and current_scene != null:
+		var h = current_scene.get("hud")
+		if h != null and is_instance_valid(h):
+			h.visible = false
+		var pl = current_scene.get("player")
+		if pl != null and is_instance_valid(pl):
+			pl.set("visible", true)
 	if _n == _frames:
 		var img := root.get_texture().get_image()
 		img.save_png(_out)
