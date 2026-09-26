@@ -76,6 +76,8 @@ var _redo: Array = []
 var _snap_map: Dictionary = {}
 var _snap_sig: int = 0
 var _tool_btns: Dictionary = {}
+var _touches: Dictionary = {}   # finger index -> screen position
+var _pinch_d := 0.0
 var _bg_top: ColorRect
 var _top_bar: HFlowContainer   # Tool id -> Button (highlight the active one)
 # In-progress terrain polygon (Tool.TERRAIN_POLY). Cleared on tool switch / commit.
@@ -319,6 +321,25 @@ func _draw_ladder(r: Rect2, col: Color, preview: bool) -> void:
 # ── Input ─────────────────────────────────────────────
 
 func _unhandled_input(event: InputEvent) -> void:
+	# Touch: two fingers pan + pinch-zoom (no middle mouse / wheel on phones).
+	if event is InputEventScreenTouch:
+		if event.pressed:
+			_touches[event.index] = event.position
+		else:
+			_touches.erase(event.index)
+		_pinch_d = _touch_spread()
+		return
+	if event is InputEventScreenDrag:
+		_touches[event.index] = event.position
+		if _touches.size() >= 2:
+			_dragging = false   # a second finger cancels a one-finger drag
+			_cam.position -= event.relative / _cam.zoom / float(_touches.size())
+			var d := _touch_spread()
+			if _pinch_d > 1.0 and d > 1.0:
+				_cam.zoom = (_cam.zoom * (d / _pinch_d)).clamp(Vector2(0.15, 0.15), Vector2(2.5, 2.5))
+			_pinch_d = d
+			queue_redraw()
+		return
 	if event is InputEventMouseButton:
 		_handle_mouse_button(event)
 		_checkpoint()
@@ -335,6 +356,13 @@ func _unhandled_input(event: InputEvent) -> void:
 				return
 		_handle_key(event)
 		_checkpoint()
+
+
+func _touch_spread() -> float:
+	if _touches.size() < 2:
+		return 0.0
+	var pts: Array = _touches.values()
+	return (pts[0] as Vector2).distance_to(pts[1] as Vector2)
 
 
 ## Record the map if it changed since the last snapshot.
