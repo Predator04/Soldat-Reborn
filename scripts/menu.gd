@@ -55,6 +55,55 @@ func _process(_delta: float) -> void:
 	for n in _title_nodes:
 		if is_instance_valid(n) and n.visible != show_title:
 			n.visible = show_title
+	# LAN games refresh live while the Browse screen is open.
+	if _browse_root != null and _browse_root.visible:
+		_lan_t -= _delta
+		if _lan_t <= 0.0:
+			_lan_t = 0.5
+			_refresh_lan()
+	elif _lan_listening:
+		Net.lan_listen_stop()
+		_lan_listening = false
+
+
+var _lan_list: VBoxContainer
+var _lan_t := 0.0
+var _lan_listening := false
+var _lan_sig := ""
+
+
+func _refresh_lan() -> void:
+	if _lan_list == null:
+		return
+	if not _lan_listening:
+		_lan_listening = Net.lan_listen_start()
+	var found: Array = Net.lan_poll() if _lan_listening else []
+	var sig := str(found.map(func(d): return [d.get("ip"), d.get("port"), d.get("players"), d.get("map"), d.get("mode")]))
+	if sig == _lan_sig and _lan_list.get_child_count() > 0:
+		return
+	_lan_sig = sig
+	for c in _lan_list.get_children():
+		c.queue_free()
+	if found.is_empty():
+		var l := Label.new()
+		l.text = "Looking for games on your network..." if _lan_listening else "Can't listen for LAN games (port %d busy)." % Net.LAN_PORT
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		l.add_theme_font_size_override("font_size", 14)
+		l.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)
+		_lan_list.add_child(l)
+		return
+	var mine := str(ProjectSettings.get_setting("application/config/version", ""))
+	for d in found:
+		var btn := Button.new()
+		var ver := str(d.get("v", ""))
+		btn.text = "  %s   [%d/%d]   %s · %s%s" % [str(d.get("name", "?")), int(d.get("players", 0)), int(d.get("max", 0)),
+				str(d.get("map", "?")), str(d.get("mode", "?")), "" if ver == mine else "   (v%s)" % ver]
+		btn.custom_minimum_size = Vector2(580, 40)
+		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		UITheme.style_button(btn, 15, false)
+		btn.disabled = ver != mine   # the host would refuse a different build
+		btn.pressed.connect(_join_server.bind(str(d.get("ip")), int(d.get("port"))))
+		_lan_list.add_child(btn)
 var _menu_root: PanelContainer # wrapper panel we hide/show
 var _settings_panel: VBoxContainer
 var _controls_panel: VBoxContainer
@@ -578,7 +627,7 @@ func _build_join() -> void:
 
 	_join_panel.add_child(UITheme.spacer(4))
 
-	var browse := _make_button("BROWSE SERVERS")
+	var browse := _make_button("FIND GAMES  (LAN / ONLINE)")
 	browse.pressed.connect(_on_browse_pressed)
 	_join_panel.add_child(browse)
 
@@ -619,7 +668,11 @@ func _build_browse() -> void:
 	_browse_root.add_child(_browse_panel)
 
 	_browse_panel.add_child(UITheme.make_screen_title("BROWSE SERVERS"))
-	_browse_panel.add_child(UITheme.make_section_header("Available Servers"))
+	_browse_panel.add_child(UITheme.make_section_header("Local Network"))
+	_lan_list = VBoxContainer.new()
+	_lan_list.add_theme_constant_override("separation", 4)
+	_browse_panel.add_child(_lan_list)
+	_browse_panel.add_child(UITheme.make_section_header("Master Server"))
 
 	_browse_list = VBoxContainer.new()
 	_browse_list.add_theme_constant_override("separation", 4)
@@ -652,8 +705,11 @@ func _refresh_browse() -> void:
 	wait.add_theme_color_override("font_color", UITheme.COL_INFO)
 	_browse_list.add_child(wait)
 	var url: String = Settings.master_url
+	_lan_t = 0.0
+	_lan_sig = ""
 	if url == "":
-		wait.text = "Set a master server URL first."
+		wait.text = "No master server set (Join screen) — LAN games show above."
+		wait.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)
 		return
 	if _browse_http.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
 		_browse_http.cancel_request()
@@ -735,7 +791,7 @@ func _build_status() -> void:
 
 func _build_footer() -> void:
 	var foot := Label.new()
-	foot.text = "WASD · W jump · S crouch/roll · X prone · RMB jet · LMB shoot · 1-0 · Q sec · R reload · E nade · F throw · G nade type · / command · F9 GIF"
+	foot.text = "WASD · W jump · S crouch/roll · X prone · RMB jet · LMB shoot · 1-0 · Q sec · R reload · E nade · F throw · G nade type · Tab scores · H help · F9 GIF"
 	foot.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	foot.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	foot.offset_top = -42

@@ -94,6 +94,8 @@ func _maybe_run_smoke_test() -> void:
 		call_deferred("_smoke_botfire")
 	elif "--smoke-join" in args:
 		call_deferred("_smoke_join")
+	elif "--smoke-lan" in args:
+		call_deferred("_smoke_lan")
 
 
 func _maybe_run_dedicated() -> void:
@@ -439,6 +441,7 @@ func host_game(port: int = DEFAULT_PORT, map_index: int = 0) -> bool:
 		custom_map_json = ""
 	_map_synced = true
 	_set_status("Hosting on port %d · you are peer 1" % port)
+	_lan_advertise_start(port)
 	return true
 
 
@@ -476,6 +479,7 @@ func leave() -> void:
 	_set_status("")
 	# Stop the dedicated-mode master heartbeat — no session to advertise.
 	_stop_master_heartbeat()
+	_lan_advertise_stop()
 
 
 # RPC entry point for joining clients. Hosted on Net (always loaded) rather than
@@ -690,3 +694,124 @@ func _smoke_auto_tick(delta: float) -> void:
 		if InputMap.has_action(tap):
 			Input.action_press(tap)
 			_smoke_held.append(tap)
+
+
+# ── LAN discovery ─────────────────────────────────────────────────────────
+# A host (listen or dedicated) broadcasts a small JSON beacon once a second on
+# LAN_PORT; the Browse screen listens and lists what it hears, so players on
+# the same network can join without typing an IP.
+const LAN_PORT := 23074
+const LAN_TAG := "soldat-reborn"
+var lan_servers: Dictionary = {}    # "ip:port" -> {ip, port, name, map, mode, players, max, v, seen}
+var _lan_tx: PacketPeerUDP = null
+var _lan_rx: PacketPeerUDP = null
+var _lan_timer: Timer = null
+var _lan_port := DEFAULT_PORT
+
+
+func _lan_advertise_start(port: int) -> void:
+	_lan_advertise_stop()
+	_lan_port = port
+	_lan_tx = PacketPeerUDP.new()
+	_lan_tx.set_broadcast_enabled(true)
+	_lan_timer = Timer.new()
+	_lan_timer.wait_time = 1.0
+	_lan_timer.autostart = true
+	add_child(_lan_timer)
+	_lan_timer.timeout.connect(_lan_beacon)
+	_lan_beacon()
+
+
+func _lan_advertise_stop() -> void:
+	if _lan_timer != null and is_instance_valid(_lan_timer):
+		_lan_timer.queue_free()
+	_lan_timer = null
+	if _lan_tx != null:
+		_lan_tx.close()
+	_lan_tx = null
+
+
+func _lan_beacon() -> void:
+	if _lan_tx == null or mode != Mode.HOST:
+		return
+	var mi: int = chosen_map_index
+	var map_name: String = "Custom" if custom_map_json != "" or Settings.custom_map_path != "" \
+			else (str(MAP_NAMES[mi]) if mi >= 0 and mi < MAP_NAMES.size() else "?")
+	var gm: int = Settings.game_mode
+	var info := {
+		"g": LAN_TAG,
+		"v": str(ProjectSettings.get_setting("application/config/version", "")),
+		"name": Settings.server_name if is_dedicated else "%s's game" % Settings.player_name,
+		"port": _lan_port,
+		"map": map_name,
+		"mode": str(MODE_NAMES[gm]) if gm >= 0 and gm < MODE_NAMES.size() else "?",
+		"players": multiplayer.get_peers().size() + (0 if is_dedicated else 1),
+		"max": MAX_PEERS + (0 if is_dedicated else 1),
+	}
+	var pkt := JSON.stringify(info).to_utf8_buffer()
+	# Broadcast for the LAN, loopback for a second copy on this machine.
+	for dest in ["255.255.255.255", "127.0.0.1"]:
+		if _lan_tx.set_dest_address(dest, LAN_PORT) == OK:
+			_lan_tx.put_packet(pkt)
+
+
+## Start / stop listening for LAN beacons (the Browse screen calls these).
+func lan_listen_start() -> bool:
+	if _lan_rx != null:
+		return true
+	_lan_rx = PacketPeerUDP.new()
+	if _lan_rx.bind(LAN_PORT, "*") != OK:
+		_lan_rx = null
+		return false
+	lan_servers.clear()
+	return true
+
+
+func lan_listen_stop() -> void:
+	if _lan_rx != null:
+		_lan_rx.close()
+	_lan_rx = null
+
+
+## Drain pending beacons; drops servers not heard from for 4 s. Returns the
+## current list sorted by name.
+func lan_poll() -> Array:
+	var now := Time.get_ticks_msec()
+	while _lan_rx != null and _lan_rx.get_available_packet_count() > 0:
+		var raw := _lan_rx.get_packet()
+		var ip := _lan_rx.get_packet_ip()
+		var d = JSON.parse_string(raw.get_string_from_utf8())
+		if not (d is Dictionary) or str(d.get("g", "")) != LAN_TAG:
+			continue
+		var port := int(d.get("port", DEFAULT_PORT))
+		if ip == "" or port <= 0 or port > 65535:
+			continue
+		var key := "%s:%d" % [ip, port]
+		# One host heard via both loopback and the LAN address: keep one row.
+		if ip == "127.0.0.1":
+			for k in lan_servers.keys():
+				if int(lan_servers[k]["port"]) == port and str(lan_servers[k]["name"]) == str(d.get("name", "")):
+					key = k
+		d["ip"] = ip if not lan_servers.has(key) else str(lan_servers[key]["ip"])
+		d["port"] = port
+		d["seen"] = now
+		lan_servers[key] = d
+	for k in lan_servers.keys():
+		if now - int(lan_servers[k]["seen"]) > 4000:
+			lan_servers.erase(k)
+	var out: Array = lan_servers.values()
+	out.sort_custom(func(a, b) -> bool: return str(a.get("name", "")) < str(b.get("name", "")))
+	return out
+
+
+func _smoke_lan() -> void:
+	# Listen for 5 s and print what we heard (release gate stage C).
+	var ok := lan_listen_start()
+	await get_tree().create_timer(5.0).timeout
+	var found := lan_poll()
+	var names: Array = []
+	for d in found:
+		names.append("%s@%s:%d %s/%s %d/%d" % [d.get("name"), d.get("ip"), int(d.get("port")), d.get("map"), d.get("mode"), int(d.get("players", 0)), int(d.get("max", 0))])
+	print("SMOKE-LAN bound=%s found=%d %s" % [str(ok), found.size(), str(names)])
+	lan_listen_stop()
+	get_tree().quit()

@@ -27,7 +27,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 G="${GODOT_BIN:-$HOME/godot/Godot_v4.7.2-stable_linux.x86_64}"
 QUICK=0; OUT="build/gate"; ONLY="A B N C D R F E"; MODESEL="0 1 2 3 4 5 6 7 8 9"
-NETSEL="ctf dm two respawn host m3 m7 m9"; SWEEP=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
+NETSEL="ctf dm two respawn host lan m3 m7 m9"; SWEEP=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --quick) QUICK=1;; --out) OUT="$2"; shift;; --only) ONLY="$2"; shift;;
@@ -164,6 +164,18 @@ case " $NETSEL " in *" respawn "*)
 case " $NETSEL " in *" host "*)
 timeout 60 "$G" --headless -- --smoke-host > "$OUT/net_host.log" 2>&1
 if grep -q "SMOKE-HOST" "$OUT/net_host.log" && [ "$(errs "$OUT/net_host.log")" = "0" ]; then pass "C net listen host: $(grep -m1 SMOKE-HOST "$OUT/net_host.log")"; else fail "C net listen host ($(errs "$OUT/net_host.log") errors)"; fi
+;; esac
+case " $NETSEL " in *" lan "*)
+  # LAN discovery: a dedicated host's beacon must show up in a listener.
+  port=$((7700 + RANDOM % 200))
+  timeout 30 "$G" --headless -- --dedicated --port $port --map 12 --mode 7 > "$OUT/net_lan_server.log" 2>&1 &
+  spid=$!
+  for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_lan_server.log" 2>/dev/null && break; sleep 0.5; done
+  sleep 4   # the host is still loading the match right after it starts listening
+  timeout 20 "$G" --headless -- --smoke-lan > "$OUT/net_lan_client.log" 2>&1
+  kill $spid 2>/dev/null; wait $spid 2>/dev/null
+  line=$(grep -m1 SMOKE-LAN "$OUT/net_lan_client.log")
+  if echo "$line" | grep -q ":$port " && [ "$(errs "$OUT/net_lan_client.log")" = "0" ]; then pass "C net LAN discovery: $line"; else fail "C net LAN discovery: '${line:-no SMOKE-LAN}'"; fi
 ;; esac
 fi
 
