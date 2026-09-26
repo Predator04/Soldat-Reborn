@@ -49,7 +49,7 @@ release gate (`tools/release_gate.sh`) run three times clean.
 - **Cluster grenades in MP**: fragments use a fan seeded from the synced blast point (same on every screen) and actually fly on clients (they used to hang frozen in the air for 8 s).
 - **Run cycle** stride follows ground speed, so feet don't skate at bunny-hop speed or shuffle when slow.
 - Release gate run 7: 23/23 passed — CTF 234 grabs / 28 captures / 3 falls, 0 broken nav routes.
-- App icon (jet-pack soldier) for the window, Windows and Android launcher. `tools/build_release.sh` exports the Windows .exe and a signed Android .apk.
+- App icon (jet-pack soldier) for the window, the Windows .exe (embedded, with version info) and the Android launcher. `tools/build_release.sh` exports the Windows .exe and a signed Android .apk.
 - Visuals: Domination points are now a floor ring + light column + pole with an owner pennant and a letter badge whose ring fills with the capture progress (was a flat disc); sky clouds are soft layered puffs instead of rows of hard circles.
 - HUD: health, jet fuel and magazine bars beside the readouts (health shifts green → red and pulses when low; the ammo bar flashes while reloading).
 - **Scoreboard**: hold Tab (pad: Back/Select, rebindable; touch: tap the score strip) for per-player kills / deaths / captures, grouped by team or ranked in FFA; it also shows under the winner banner at round end. Suicides cost a kill, as in Soldat. Counted on every peer from the replicated feed; joiners get a snapshot.
