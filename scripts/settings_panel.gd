@@ -192,6 +192,10 @@ func _build_controls_card(box: VBoxContainer) -> void:
 	# Android touch layout (#116 / #117). Default = movement joystick on the
 	# LEFT half, aim + fire on the RIGHT (the conventional dual-stick scheme).
 	# Toggling swap flips to the pre-#117 layout (LEFT aims, RIGHT moves).
+	box.add_child(_check_button("Camera look-ahead (view follows your aim)", Settings.camera_lead,
+		func(on: bool) -> void:
+			Settings.camera_lead = on
+			Settings.save()))
 	box.add_child(_check_button("Swap touch sides (mobile: LEFT aims, RIGHT moves)",
 		Settings.touch_swap,
 		func(on: bool) -> void:

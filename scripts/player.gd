@@ -587,6 +587,7 @@ func _physics_process(delta: float) -> void:
 			# Small deadband around vertical so facing doesn't pop as the mouse crosses through x=0.
 			if absf(aim_dir.x) > 0.05:
 				facing = signf(aim_dir.x)
+	_update_camera_lead(stick, delta)
 
 	move_and_slide()
 	_update_wedge(delta)
@@ -1969,3 +1970,26 @@ func _net_smooth(delta: float) -> void:
 	_net_age += delta
 	var tgt: Vector2 = _net_pos + _net_vel * minf(_net_age, 0.1)
 	position = position.lerp(tgt, clampf(delta * 18.0, 0.0, 1.0))
+
+
+
+# Soldat-style look-ahead: the view slides toward where you aim (mouse: by the
+# cursor's distance from screen centre; stick / touch: along the aim), so you
+# see threats in front of your gun instead of behind you.
+const CAM_LEAD_MAX := 260.0
+
+func _update_camera_lead(stick: Vector2, delta: float) -> void:
+	if cam == null or not cam.enabled:
+		return
+	var lead := Vector2.ZERO
+	if Settings.camera_lead and not dead:
+		if stick.length() > 0.0:
+			lead = aim_dir * 170.0
+		elif TouchControls.instance != null:
+			lead = aim_dir * 120.0
+		else:
+			var vp := get_viewport()
+			var c := vp.get_visible_rect().size * 0.5
+			lead = (vp.get_mouse_position() - c) * 0.45 / maxf(0.1, cam.zoom.x)
+		lead = lead.limit_length(CAM_LEAD_MAX)
+	cam.position = cam.position.lerp(lead, clampf(delta * 6.0, 0.0, 1.0))

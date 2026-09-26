@@ -56,6 +56,7 @@ release gate (`tools/release_gate.sh`) run three times clean.
 - **Hit feedback**: your hits pop a damage number and a small impact X (Settings > Video > Damage numbers).
 - **Map previews** in the main menu: pick a map and a thumbnail (sky, terrain, both flag bases) shows under the System row. Baked for all 99 classic maps by `tools/make_thumbs.py`. Settings / Stats / Quit now share one row.
 - **Bot chatter**: bots now and then taunt the player they killed or grumble when you get them (mostly when a human is involved, 12 s per-bot cooldown). Toggle in Settings > Game.
+- **Camera look-ahead** (Soldat style): the view slides toward where you aim — by the cursor's distance from screen centre with a mouse, along the aim with a stick or touch (max 260 px, smoothed). Toggle in Settings > Controls.
 - Controls: gamepad defaults are installed before saved rebinds are applied, so saved binds for aim / pause stick and a removed pad default stays removed (configs from before pads were saved keep their pad defaults).
 - Release gate gained stage N (nav routes). Run 5: 23/23 passed — CTF sweep 211 grabs, 28 captures, 586 kills, 4 falls.
 
