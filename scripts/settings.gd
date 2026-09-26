@@ -14,6 +14,7 @@ var screen_shake_intensity := 1.0
 var fullscreen := false
 var map_index := 0             # which map layout the next game loads
 var custom_map_path := ""      # if non-empty, main.gd loads this JSON map (issue #31)
+var lofi_auto_done := false    # the low-FPS guard already switched Lo-fi on once
 var lofi := false              # low-end mode: no particles, no gib meshes, no glow
 var mouse_sensitivity := 1.0   # 0.25..3.0 — scales incoming mouse motion via Input.set_custom_mouse_cursor + relative event scale
 # Android on-screen touch layout (issue #116 / #117). Default is the standard
@@ -137,6 +138,7 @@ func load_settings() -> void:
 	survival = bool(cf.get_value("game", "survival", false))
 	advance = bool(cf.get_value("game", "advance", false))
 	lofi = bool(cf.get_value("video", "lofi", false))
+	lofi_auto_done = bool(cf.get_value("video", "lofi_auto_done", false))
 	mouse_sensitivity = clampf(float(cf.get_value("controls", "mouse_sensitivity", 1.0)), 0.25, 3.0)
 	touch_swap = bool(cf.get_value("controls", "touch_swap", false))
 	# touch_btn_pos: legacy configs won't have it; default is an empty dict.
@@ -196,6 +198,7 @@ func save() -> void:
 	cf.set_value("game", "survival", survival)
 	cf.set_value("game", "advance", advance)
 	cf.set_value("video", "lofi", lofi)
+	cf.set_value("video", "lofi_auto_done", lofi_auto_done)
 	cf.set_value("controls", "mouse_sensitivity", mouse_sensitivity)
 	cf.set_value("controls", "touch_swap", touch_swap)
 	cf.set_value("controls", "touch_btn_pos", touch_btn_pos)

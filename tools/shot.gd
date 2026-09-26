@@ -52,6 +52,10 @@ func _initialize() -> void:
 
 func _process(_delta: float) -> bool:
 	_n += 1
+	if _n == 1 and root.get_node_or_null("Settings") != null:
+		# Software-rendered captures run slowly; keep the low-FPS guard from
+		# flipping Lo-fi on in this machine's settings.
+		root.get_node("Settings").set("lofi_auto_done", true)
 	if _at != Vector2.INF and not _moved and _n > 5 and current_scene != null:
 		var p = current_scene.get("player")
 		if p != null and is_instance_valid(p):

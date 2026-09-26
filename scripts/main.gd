@@ -2381,12 +2381,43 @@ func net_chat(author: String, msg: String, scope: String, sender_team: int) -> v
 
 # ── Match / score / round ─────────────────────────────
 
+# Low-FPS guard: if a match settles under ~35 fps for 8 s (after a 6 s
+# warm-up), switch Lo-fi on once and say so. Never on headless / dedicated,
+# and only the first time (Settings.lofi_auto_done).
+var _perf_t := 0.0
+var _perf_frames := 0
+var _perf_done := false
+
+
+func _tick_perf_watch(delta: float) -> void:
+	if _perf_done or Settings.lofi or Settings.lofi_auto_done or Net.is_dedicated \
+			or DisplayServer.get_name() == "headless" or get_tree().paused:
+		return
+	_perf_t += delta
+	if _perf_t < 6.0:
+		_perf_frames = 0
+		return
+	_perf_frames += 1
+	if _perf_t < 14.0:
+		return
+	_perf_done = true
+	var fps: float = float(_perf_frames) / (_perf_t - 6.0)
+	if fps >= 35.0:
+		return
+	Settings.lofi = true
+	Settings.lofi_auto_done = true
+	Settings.save()
+	if hud:
+		hud.post_chat("SYSTEM", "Low frame rate (%d fps): Lo-fi mode is on now. Settings → Video to turn it off." % int(fps), false)
+
+
 func _process(delta: float) -> void:
 	# Vote timer + cooldown ticks — before the client early-return so the vote
 	# countdown reads smoothly on every peer between host state broadcasts (#77).
 	_tick_vote(delta)
 	# Kill line + anti-stuck watchdog — per peer, for locally-owned soldiers.
 	_tick_soldier_safety(delta)
+	_tick_perf_watch(delta)
 	# New round (on every peer, from the synced round_active flag): fresh board.
 	if round_active and not _stats_round_active:
 		player_stats.clear()
