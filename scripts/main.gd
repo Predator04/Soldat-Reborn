@@ -2309,7 +2309,16 @@ func net_despawn_player(peer_id: int) -> void:
 	if _players_by_id.has(peer_id):
 		var p = _players_by_id[peer_id]
 		if is_instance_valid(p):
-			p.queue_free()
+			# Same inert husk as a death: packets the leaver sent just before
+			# going still address this node on the other peers.
+			if Net.is_networked() and p.has_method("_become_husk"):
+				p.dead = true
+				p._become_husk()
+				get_tree().create_timer(1.5).timeout.connect(func() -> void:
+					if is_instance_valid(p):
+						p.queue_free())
+			else:
+				p.queue_free()
 		_players_by_id.erase(peer_id)
 	if peer_id == Net.local_id():
 		player = null
