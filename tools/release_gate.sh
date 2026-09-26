@@ -115,7 +115,9 @@ has D && for m in $MODESEL; do
   f="$OUT/mode_$m.log"
   # Objective modes get longer rounds: a CTF run home takes 30-60 s.
   secs=60; case $m in 2|3|4|6|7) secs=120;; esac
-  timeout 170 "$G" --headless --fixed-fps 60 -s tools/stuck_test.gd -- --secs=$secs --from=19 --to=21 --mode=$m > "$f" 2>&1
+  # --autopilot: the human player is driven with random input so player.gd
+  # (jet, weapons, nades, stances, throwing) runs in every mode too.
+  timeout 170 "$G" --headless --fixed-fps 60 -s tools/stuck_test.gd -- --secs=$secs --from=19 --to=21 --mode=$m --autopilot > "$f" 2>&1
   n=$(errs "$f"); maps=$(grep -c '^map' "$f")
   kills=$(grep '^map' "$f" | sed -n 's/.*kills=\([0-9]*\).*/\1/p' | paste -sd+ | bc)
   caps=$(grep '^map' "$f" | sed -n 's/.*caps=\([0-9]*\).*/\1/p' | paste -sd+ | bc)

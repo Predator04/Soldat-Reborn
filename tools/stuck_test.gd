@@ -24,6 +24,15 @@ var _trace_label := "flag"
 var _trace_name := ""
 var _trace_t := 0.0
 var _last_carrier: Dictionary = {}
+# --autopilot: drive the human player with random-but-plausible input so the
+# player.gd code paths (move / jump / jet / aim / fire / reload / nades /
+# weapon switch / crouch / prone / throw) get exercised on every map.
+var _auto := false
+var _auto_t := 0.0
+var _auto_held: Array = []
+var _auto_deaths := 0
+var _auto_shots := 0
+var _auto_last_player: Object = null
 
 
 func _on_kill(_k: String, victim: String, _w: String, _kt: int, _vt: int) -> void:
@@ -44,6 +53,7 @@ func _initialize() -> void:
 		elif a.begins_with("--from="): _from = int(a.substr(7))
 		elif a.begins_with("--to="): _to = int(a.substr(5))
 		elif a.begins_with("--mode="): _mode = int(a.substr(7))
+		elif a == "--autopilot": _auto = true
 		elif a == "--trace": _trace = true
 		elif a.begins_with("--trace-name="): _trace = true; _trace_name = a.substr(13).replace("_", " ")
 		elif a.begins_with("--trace="): _trace = true; _trace_label = a.substr(8)
@@ -79,6 +89,8 @@ func _physics_process(delta: float) -> bool:
 		_grabs = 0
 		_last_carrier.clear()
 	_t += delta
+	if _auto:
+		_autopilot(m, delta)
 	var fl = m.get("flags")
 	if fl is Array:
 		for i in (fl as Array).size():
@@ -123,6 +135,11 @@ func _physics_process(delta: float) -> bool:
 				var g := str(b.get("_goal_label"))
 				goals[g] = int(goals.get(g, 0)) + 1
 		var line := "map %3d %-14s grabs=%d caps=%d kills=%d unstuck=%d fell=%d score=%s goals=%s idle_spots=%s" % [_idx, name, _grabs, _caps, _kills, int(st["unstuck"]), int(st["fell"]), str(m.get("scores")), str(goals), str(_wedged)]
+		if _auto:
+			line += " auto_deaths=%d auto_shots=%d" % [_auto_deaths, _auto_shots]
+			_auto_release()
+			_auto_deaths = 0
+			_auto_shots = 0
 		print(line)
 		_idx += 1
 		if _idx >= mini(_count, _to + 1):
@@ -130,3 +147,66 @@ func _physics_process(delta: float) -> bool:
 			return true
 		_loaded = false
 	return false
+
+
+
+const AUTO_HOLD := ["move_left", "move_right", "jump", "jet", "fire", "crouch"]
+const AUTO_TAP := ["reload", "grenade", "grenade_toggle", "secondary_swap", "prone",
+	"weapon_1", "weapon_2", "weapon_3", "weapon_4", "weapon_5", "weapon_6",
+	"weapon_7", "weapon_8", "weapon_9", "weapon_10", "weapon_throw"]
+
+
+func _auto_release() -> void:
+	for a in _auto_held:
+		if InputMap.has_action(a):
+			Input.action_release(a)
+	_auto_held.clear()
+	for a in ["aim_left", "aim_right", "aim_up", "aim_down"]:
+		if InputMap.has_action(a):
+			Input.action_release(a)
+
+
+func _autopilot(m: Node, delta: float) -> void:
+	var p = m.get("player")
+	if p == null or not is_instance_valid(p):
+		return
+	if p != _auto_last_player:
+		if _auto_last_player != null:
+			_auto_deaths += 1
+		_auto_last_player = p
+	# Aim at the nearest other soldier through the right stick actions.
+	var best: Node2D = null
+	var bd := INF
+	for s in get_nodes_in_group("soldier"):
+		if s == p or not is_instance_valid(s) or bool(s.get("dead")):
+			continue
+		var d: float = (s as Node2D).global_position.distance_to(p.global_position)
+		if d < bd:
+			bd = d
+			best = s
+	if best != null:
+		var v: Vector2 = (best.global_position - p.global_position).normalized()
+		for pair in [["aim_right", maxf(0.0, v.x)], ["aim_left", maxf(0.0, -v.x)], ["aim_down", maxf(0.0, v.y)], ["aim_up", maxf(0.0, -v.y)]]:
+			if InputMap.has_action(pair[0]):
+				if float(pair[1]) > 0.05:
+					Input.action_press(pair[0], clampf(float(pair[1]), 0.3, 1.0))
+				else:
+					Input.action_release(pair[0])
+	_auto_t -= delta
+	if _auto_t > 0.0:
+		return
+	_auto_t = randf_range(0.25, 1.2)
+	_auto_release()
+	for a in AUTO_HOLD:
+		if randf() < (0.55 if a == "fire" else 0.3) and InputMap.has_action(a):
+			if a == "move_left" and _auto_held.has("move_right"):
+				continue
+			Input.action_press(a)
+			_auto_held.append(a)
+			if a == "fire":
+				_auto_shots += 1
+	if randf() < 0.35:
+		var t: String = AUTO_TAP[randi() % AUTO_TAP.size()]
+		if InputMap.has_action(t):
+			Input.action_press(t)
+			_auto_held.append(t)
