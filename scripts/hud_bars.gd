@@ -46,6 +46,13 @@ func _draw() -> void:
 			if wi >= 0 and wi < p.weapons.size() and wi < p.ammo.size():
 				w = p.weapons[wi]
 				mag = int(p.ammo[wi])
+		# Current gun icon beside its name (same icons as the kill feed).
+		if not w.is_empty() and hud.has_method("_kill_icon") and Settings.game_mode != Settings.MODE_GG:
+			var tex: Texture2D = hud._kill_icon(str(w.get("name", "")))
+			if tex != null:
+				var th := 20.0
+				var tw := minf(W, th * float(tex.get_width()) / maxf(1.0, float(tex.get_height())))
+				draw_texture_rect(tex, Rect2(Vector2(X0 + W - tw, 84), Vector2(tw, th)), false)
 		if not w.is_empty() and int(w.get("mag", 0)) > 0:
 			var frac := clampf(float(mag) / float(w["mag"]), 0.0, 1.0)
 			var acol := Color(0.95, 0.85, 0.45)
