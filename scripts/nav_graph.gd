@@ -14,6 +14,7 @@ var astar := AStar2D.new()
 var _pts: PackedVector2Array = PackedVector2Array()
 var _grid: Dictionary = {}   # Vector2i cell -> Array[int]
 var _comp: PackedInt32Array = PackedInt32Array()   # island id per node (undirected)
+var _air: Dictionary = {}    # node id -> true for mid-air waypoints (never a patrol/roam spot)
 
 
 static func key_for(map_name: String) -> String:
@@ -51,6 +52,8 @@ static func load_for(m: Dictionary) -> RefCounted:
 		push_warning("nav graph for %s is stale — re-run tools/build_nav.py" % m.get("name", "?"))
 		return g
 	g._build(data.get("nodes", []), data.get("edges", []))
+	for a in data.get("air", []):
+		g._air[int(a)] = true
 	return g
 
 
@@ -147,7 +150,7 @@ func random_point_near(pos: Vector2, radius: float) -> Vector2:
 			if ids == null:
 				continue
 			for id in ids:
-				if _pts[id].distance_to(pos) <= radius:
+				if _pts[id].distance_to(pos) <= radius and not _air.has(id):
 					cands.append(id)
 	if cands.is_empty():
 		return pos
@@ -162,7 +165,7 @@ func random_point(from: Vector2 = Vector2.INF) -> Vector2:
 		if home >= 0:
 			for _i in 24:
 				var id := randi() % _pts.size()
-				if _comp[id] == _comp[home]:
+				if _comp[id] == _comp[home] and not _air.has(id):
 					return _pts[id]
 			return _pts[home]
 	return _pts[randi() % _pts.size()]

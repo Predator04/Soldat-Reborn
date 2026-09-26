@@ -282,14 +282,30 @@ def build(m):
     for a, b in edges:
         if a in idx and b in idx:
             out_edges += [idx[a], idx[b]]
-    return {"nodes": out_nodes, "edges": out_edges, "poly_count": len(m.get("polys", [])), "coll_count": len(m.get("collision", [])),
+    # Air waypoints (ledge detours / bridge points not on a floor): fine to fly
+    # through, never a place to stand guard or roam to.
+    air = []
+    gy_n, gx_n = sp.ground.shape
+    for new_i, old in enumerate(sorted(best)):
+        cx = int(round(pts[old][0] / R))
+        cy = int(round(pts[old][1] / R))
+        on = False
+        for dy in range(-3, 7):
+            yy = cy + dy
+            if 0 <= yy < gy_n and 0 <= cx < gx_n and sp.ground[yy, cx]:
+                on = True
+                break
+        if not on:
+            air.append(new_i)
+    return {"nodes": out_nodes, "edges": out_edges, "air": air, "poly_count": len(m.get("polys", [])), "coll_count": len(m.get("collision", [])),
             "_dropped": n - len(best)}
 
 
 
-# Triumph: its only home route crosses the central pit; bridged, bots spent the
-# match falling in (15 falls / 150 s vs 6) without scoring more. Humans jet it.
-NO_BRIDGE = {"triumph"}
+# Maps to leave unbridged (a bridge that only feeds bots into a pit). Triumph
+# was here until bots learned to jet early on downhill gaps and stopped
+# patrolling mid-air waypoints.
+NO_BRIDGE = set()
 BRIDGE_MAX_RISE = 740.0   # longest unbroken climb a bridge may ask of a full tank
 
 

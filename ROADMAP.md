@@ -1,6 +1,6 @@
 # Soldat Reborn — Roadmap (overnight build queue)
 
-> **Current status: v1.11.0** — see CHANGELOG.md for the full history. Feature-complete vs original Soldat's core loop: 99 classic maps, 16 weapons, bots (count + skill 1–5), weather, music, spectator mode, kill-streak banners, vote system, bonus pickups (Predator/Berserker/Vest/Cluster), host-authoritative admin menu, rebindable controls, glass settings UI. **Remaining (deferred):** server browser / lobby / ranked matchmaking (#33) — needs a lobby server; vote kick+map and host admin are in, but there is no public server list.
+> **Current status: v1.15.0** — see CHANGELOG.md for the full history. Feature-complete vs original Soldat's core loop: 99 classic maps, 16 weapons, bots (count + skill 1–5), weather, music, spectator mode, kill-streak banners, vote system, bonus pickups (Predator/Berserker/Vest/Cluster), host-authoritative admin menu, rebindable controls, glass settings UI. **Remaining (deferred):** server browser / lobby / ranked matchmaking (#33) — needs a lobby server; vote kick+map and host admin are in, but there is no public server list.
 
 **Project:** /mnt/c/Users/Admin/Desktop/soldat reborn/game
 **Godot (headless verify):** `~/godot/Godot_v4.7.2-stable_linux.x86_64`
@@ -61,13 +61,11 @@ A 2026-quality port of Soldat's *feel* in Godot 4 (run-and-gun, jet boots, bunny
 5. Update this file: check off what you did, add bugs you find to "Known bugs".
 
 ## Known bugs
-- Multiplayer uses per-frame full-state RPCs (position/velocity/aim/etc.) at physics rate — fine for 2 players on LAN, will not scale; swap for MultiplayerSynchronizer if peer counts grow.
-- Kill feed on clients only reflects networked kills — bots (SP-only) still fire the local `kill` signal.
-- Run-cycle phase is time-driven, not tied to horizontal displacement — at very high or very low speeds the stride can look slightly out of sync with actual movement.
-- Cluster grenade fragments still spawn independently on every peer (each fragment runs on its own peer's RNG); trajectory drift is contained by the fact that the parent grenade now detonates at a shared spot (#61), but per-fragment sync is a follow-up.
-- Custom user maps (`user://maps/*.json`) are single-player only; networked play still uses the built-in rotation because the map JSON isn't broadcast on join.
+- Multiplayer state is still per-body RPCs (players 30 Hz, bots 20 Hz, smoothed on receipt) rather than MultiplayerSynchronizer — fine for LAN/small lobbies; revisit for large public servers.
+- Outpost (10k px wide) rarely sees a flag grab from bots inside a 2-minute window — map scale, not a routing bug.
 
 ## Recently resolved
+- v1.15.0: run cycle stride now follows ground speed; cluster-grenade fragments seeded from the synced blast point and simulated on every peer (they used to hang frozen on clients); remote players/bots smoothed between packets (player stream 60 → 30 Hz); bot kill feed reaches clients; custom maps travel to joiners as JSON (#99).
 - Round reset now restores HP/ammo/spawn slot for every living soldier in non-survival modes (#58, v1.7.0).
 - Gostek front-arm chain rotates toward aim_dir with a clamped ±16° overlay so the gun no longer looks detached at steep angles (#59, v1.7.0).
 - Remaining gostek detail overlays (dreadlocks, dogtag, blood/damage, grenade-on-belt, secondary-on-back) now render from the assets that were already on disk (#60, v1.7.0).

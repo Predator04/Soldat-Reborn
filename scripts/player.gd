@@ -297,6 +297,7 @@ func _physics_process(delta: float) -> void:
 
 	# Non-authority replica: state is set by net_state RPCs; just visual bookkeeping.
 	if has_peer and not is_multiplayer_authority():
+		_net_smooth(delta)
 		muzzle_t = maxf(0.0, muzzle_t - delta * 10.0)
 		if gesture_t > 0.0:
 			gesture_t = maxf(0.0, gesture_t - delta)
@@ -740,7 +741,11 @@ func _physics_process(delta: float) -> void:
 	# Broadcast authoritative state to peers who have finished handshake (spawned us).
 	# On host: parent Main tracks ready peers. On client: peer 1 (host) is always ready
 	# because we only spawn locally after receiving spawn RPCs from host.
-	if Net.is_networked() and multiplayer.has_multiplayer_peer():
+	# 30 Hz state stream (was every physics frame): remote peers smooth between
+	# packets (see _net_smooth), so this halves bandwidth without visible chop.
+	_state_send_acc += delta
+	if Net.is_networked() and multiplayer.has_multiplayer_peer() and _state_send_acc >= 1.0 / STATE_SEND_HZ:
+		_state_send_acc = 0.0
 		if Net.is_host():
 			var m := get_parent()
 			if m != null and m.has_method("ready_peer_ids"):
@@ -1541,7 +1546,7 @@ func restore_for_round() -> void:
 
 @rpc("authority", "call_remote", "unreliable_ordered")
 func net_state(pos: Vector2, vel: Vector2, aim: Vector2, face: float, jetting: bool, hp: float, fuel_val: float, wi: int, mag: int, is_reloading: bool, grens: int, sec_i: int, sec_mag: int, use_sec: bool, crouch_f: bool, prone_f: bool, climb_f: bool = false) -> void:
-	position = pos
+	net_apply_pos(pos, vel)
 	velocity = vel
 	aim_dir = aim
 	facing = face
@@ -1938,3 +1943,29 @@ func current_weapon_name() -> String:
 	if weapon_index >= 0 and weapon_index < weapons.size():
 		return str(weapons[weapon_index]["name"])
 	return ""
+
+# Replica smoothing: remote bodies ease toward the latest authoritative
+# position (extrapolated by its velocity for up to 0.1 s) instead of snapping
+# to every packet — reads smooth over real-world latency / jitter.
+var _net_pos := Vector2.INF
+var _net_vel := Vector2.ZERO
+var _net_age := 0.0
+const NET_SNAP_DIST := 160.0
+const STATE_SEND_HZ := 30.0
+var _state_send_acc := 0.0
+
+
+func net_apply_pos(pos: Vector2, vel: Vector2) -> void:
+	if _net_pos == Vector2.INF or position.distance_to(pos) > NET_SNAP_DIST:
+		position = pos
+	_net_pos = pos
+	_net_vel = vel
+	_net_age = 0.0
+
+
+func _net_smooth(delta: float) -> void:
+	if _net_pos == Vector2.INF:
+		return
+	_net_age += delta
+	var tgt: Vector2 = _net_pos + _net_vel * minf(_net_age, 0.1)
+	position = position.lerp(tgt, clampf(delta * 18.0, 0.0, 1.0))

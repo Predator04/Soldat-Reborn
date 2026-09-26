@@ -57,7 +57,10 @@ func _ready() -> void:
 	# by the authority's reliable net_explode RPC (#69) so the client never queue_frees
 	# ahead of trailing state RPCs. A very long fallback timer catches the case where
 	# net_explode is somehow lost, keeping stale grenades from lingering forever.
-	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
+	# Cluster fragments are spawned locally on every peer (same seeded fan) and
+	# never get state RPCs, so they simulate everywhere — frozen, a client saw
+	# them hang in the air for 8 s before popping.
+	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority() and not is_fragment:
 		freeze_mode = RigidBody2D.FREEZE_MODE_KINEMATIC
 		freeze = true
 		get_tree().create_timer(fuse + 8.0).timeout.connect(_explode)
@@ -118,7 +121,7 @@ func _explode() -> void:
 	_exploded = true
 	# #61: authority broadcasts the exact explode position so non-authority peers
 	# blast at the same spot even if their lerped position was slightly behind.
-	if multiplayer.multiplayer_peer != null and is_multiplayer_authority():
+	if multiplayer.multiplayer_peer != null and is_multiplayer_authority() and not is_fragment:
 		_net_send("net_explode", [global_position])
 	if cluster:
 		Sfx.cluster_explode()
@@ -160,19 +163,23 @@ func _explode() -> void:
 		var parent := get_parent()
 		var frag_scene: PackedScene = load("res://scenes/grenade.tscn") as PackedScene
 		if frag_scene != null and parent != null:
+			# Seed from the (network-synced) blast point so every peer throws the
+			# same fan of fragments instead of each rolling its own.
+			var rng := RandomNumberGenerator.new()
+			rng.seed = hash(Vector2i(global_position.round()))
 			for i in 5:
 				var frag := frag_scene.instantiate()
-				frag.global_position = global_position + Vector2(randf_range(-6.0, 6.0), -8.0)
+				frag.global_position = global_position + Vector2(rng.randf_range(-6.0, 6.0), -8.0)
 				frag.team = team
 				frag.killer_name = killer_name
 				frag.is_fragment = true
-				frag.fuse = randf_range(0.4, 0.9)
+				frag.fuse = rng.randf_range(0.4, 0.9)
 				frag.damage = 45.0
 				frag.blast_radius = 90.0
-				var ang: float = randf_range(-PI, 0.0)
-				var spd: float = randf_range(180.0, 320.0)
+				var ang: float = rng.randf_range(-PI, 0.0)
+				var spd: float = rng.randf_range(180.0, 320.0)
 				frag.linear_velocity = Vector2(cos(ang), sin(ang)) * spd
-				frag.angular_velocity = randf_range(-10.0, 10.0)
+				frag.angular_velocity = rng.randf_range(-10.0, 10.0)
 				parent.add_child(frag)
 	queue_free()
 

@@ -328,6 +328,7 @@ func _physics_process(delta: float) -> void:
 	# Clients receive pos/vel/facing/health/etc. via main.gd::net_bot_state and just
 	# tick the visual bookkeeping so muzzle flashes decay and jet particles animate.
 	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
+		_net_smooth(delta)
 		muzzle_t = maxf(0.0, muzzle_t - delta * 10.0)
 		if jet_particles != null:
 			jet_particles.emitting = jet_on and not Settings.lofi
@@ -1758,8 +1759,12 @@ func _nav_step(goal: Vector2, delta: float) -> Vector3:
 	# between Airpirates' ships): hold altitude with jets instead of arcing
 	# down into the void.
 	_gap_ahead = _is_gap(global_position, wp)
-	if _gap_ahead and global_position.y > wp.y - 120.0:
-		up = 1.0  # jump at the lip and jet the whole way (jets barely beat gravity)
+	if _gap_ahead and (global_position.y > wp.y - 200.0 or velocity.y > 120.0):
+		# Jump at the lip and jet the whole way (jets barely beat gravity).
+		# Also on a downhill gap once we start dropping: jets can't arrest a
+		# fall that's already fast, so they must catch it early (Triumph's
+		# lower hall ate bots that walked off the lip and jetted too late).
+		up = 1.0
 	return Vector3(d, up, 1.0)
 
 
@@ -1834,3 +1839,27 @@ func _bcast(method: StringName, args: Array) -> void:
 		return
 	for pid in m.ready_peer_ids():
 		callv("rpc_id", [int(pid), method] + args)
+
+# Replica smoothing: remote bodies ease toward the latest authoritative
+# position (extrapolated by its velocity for up to 0.1 s) instead of snapping
+# to every packet — reads smooth over real-world latency / jitter.
+var _net_pos := Vector2.INF
+var _net_vel := Vector2.ZERO
+var _net_age := 0.0
+const NET_SNAP_DIST := 160.0
+
+
+func net_apply_pos(pos: Vector2, vel: Vector2) -> void:
+	if _net_pos == Vector2.INF or position.distance_to(pos) > NET_SNAP_DIST:
+		position = pos
+	_net_pos = pos
+	_net_vel = vel
+	_net_age = 0.0
+
+
+func _net_smooth(delta: float) -> void:
+	if _net_pos == Vector2.INF:
+		return
+	_net_age += delta
+	var tgt: Vector2 = _net_pos + _net_vel * minf(_net_age, 0.1)
+	position = position.lerp(tgt, clampf(delta * 18.0, 0.0, 1.0))

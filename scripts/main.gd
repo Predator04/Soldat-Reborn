@@ -3852,11 +3852,11 @@ func net_bot_state(arr: Array) -> void:
 		if not is_instance_valid(b):
 			continue
 		var pos_v: Variant = entry[1]
-		if typeof(pos_v) == TYPE_VECTOR2:
-			b.position = pos_v
 		var vel_v: Variant = entry[2]
 		if typeof(vel_v) == TYPE_VECTOR2:
 			b.velocity = vel_v
+		if typeof(pos_v) == TYPE_VECTOR2:
+			b.net_apply_pos(pos_v, b.velocity)
 		var facing_v: Variant = entry[3]
 		if typeof(facing_v) == TYPE_FLOAT or typeof(facing_v) == TYPE_INT:
 			b.facing = float(facing_v)

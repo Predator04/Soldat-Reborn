@@ -32,6 +32,9 @@ const BLEND_TIME := 0.12
 
 # Movement speed above which the soldier plays biega/biegatyl instead of stoi.
 const RUN_THRESHOLD := 45.0
+# Ground speed the run cycles were authored at (Soldat run speed ~ our 205-235).
+const STRIDE_REF_SPEED := 215.0
+const STRIDE_ANIMS := ["biega", "biegatyl"]
 
 # Front-arm (RIGHT_*) aim overlay (#59). Soldat's arms barely follow the aim
 # axis — a few degrees is enough to sell "the gun is aimed there" without
@@ -377,6 +380,12 @@ static func _tick(node: CanvasItem, gs: Dictionary) -> PackedVector2Array:
 	st["last_msec"] = now
 	if dt < 0.0 or dt > 0.25:
 		dt = 1.0 / 60.0
+	# Stride follows ground speed on the run/crawl cycles so feet don't skate
+	# (a bunny-hop landing at 400 px/s used to play the same stride as a
+	# 60 px/s shuffle). Other anims stay clock-driven.
+	if target in STRIDE_ANIMS and bool(gs.get("on_floor", true)):
+		var vx: float = absf((gs.get("velocity", Vector2.ZERO) as Vector2).x)
+		dt *= clampf(vx / STRIDE_REF_SPEED, 0.45, 1.8)
 	st["phase"] = float(st["phase"]) + dt
 
 	var frames: Array = PoaLoader.get_frames(target)
