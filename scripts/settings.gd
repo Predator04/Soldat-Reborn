@@ -118,7 +118,7 @@ func load_settings() -> void:
 	# either see consistent state. A migration path from configs that only wrote
 	# `screen_shake` (pre-intensity) still respects the old value if intensity
 	# was defaulted.
-	if cf.get_value("game", "screen_shake_intensity", null) == null:
+	if not cf.has_section_key("game", "screen_shake_intensity"):
 		screen_shake = bool(cf.get_value("game", "screen_shake", true))
 		screen_shake_intensity = 1.0 if screen_shake else 0.0
 	else:

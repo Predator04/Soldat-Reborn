@@ -304,7 +304,11 @@ static func load_and_apply() -> void:
 		var aid := String(row[0])
 		if not InputMap.has_action(aid):
 			continue
-		var raw: Variant = cf.get_value("bindings", aid, null)
+		# (get_value with a null default logs an error for every action a
+		# newer build added since the file was saved — check first.)
+		if not cf.has_section_key("bindings", aid):
+			continue
+		var raw: Variant = cf.get_value("bindings", aid)
 		if raw == null:
 			continue
 		var list: Array = raw as Array

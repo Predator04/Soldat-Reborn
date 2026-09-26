@@ -7,6 +7,7 @@ var damage := 12.0
 var team := 0
 var killer_name := ""
 const DamagePopup = preload("res://scripts/damage_popup.gd")
+const ImpactFx = preload("res://scripts/impact_fx.gd")
 var weapon_name := ""
 # Visual style overrides. "flame" = short-lived orange puff, "arrow" = long thin shaft.
 # Default "" = classic yellow tracer.
@@ -63,6 +64,7 @@ func _on_body_entered(body: Node) -> void:
 			if same_team and not is_self and not MatchConfig.friendly_fire_on():
 				return
 			_hit = true
+			ImpactFx.spawn(get_parent(), global_position, -direction, "blood")
 			var dmg := damage
 			var wname := weapon_name
 			# Realistic: hit region above ~-14 (local) counts as a head-shot 1HK.
@@ -86,6 +88,8 @@ func _on_body_entered(body: Node) -> void:
 			return
 		return
 	_hit = true
+	if visual != "flame":
+		ImpactFx.spawn(get_parent(), global_position - direction * 3.0, -direction, "wall")
 	queue_free()
 
 
