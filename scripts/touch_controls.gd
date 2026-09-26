@@ -156,6 +156,9 @@ func _is_in_aim_half(p: Vector2) -> bool:
 	return _aim_half_rect().has_point(p)
 
 
+const BTN_TOP := 150.0
+
+
 func _default_btn_center(i: int) -> Vector2:
 	var b: Dictionary = _buttons[i]
 	var side: String = str(b["side"])
@@ -176,7 +179,9 @@ func _default_btn_center(i: int) -> Vector2:
 	for j in range(i):
 		if str(_buttons[j]["side"]) == side:
 			side_idx += 1
-	var cy: float = BTN_MARGIN + BTN_R + float(side_idx) * (BTN_R * 2.0 + BTN_SPACING)
+	# Start below the HUD strips (stats top-left, kill feed top-right end at
+	# ~140 px) — the old top-edge stack covered HP/JET and the kill feed.
+	var cy: float = BTN_TOP + BTN_R + float(side_idx) * (BTN_R * 2.0 + BTN_SPACING)
 	return Vector2(cx, cy)
 
 

@@ -1704,7 +1704,8 @@ func _maybe_build_touch_controls() -> void:
 		return
 	var touch: bool = OS.has_feature("android") \
 		or OS.has_feature("mobile") \
-		or DisplayServer.is_touchscreen_available()
+		or DisplayServer.is_touchscreen_available() \
+		or "--force-touch" in OS.get_cmdline_user_args()   # dev: preview the overlay on desktop
 	if not touch:
 		return
 	var layer := CanvasLayer.new()
@@ -2895,14 +2896,20 @@ func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: Str
 				break
 		if not carrier_is_killer:
 			return
-	scores[killer_team] = int(scores.get(killer_team, 0)) + 1
+	# Objective modes score only objectives (Soldat rules). Kills used to add
+	# to the same team score, so a CTF team with two kills won on its first
+	# capture (the limit is 3).
+	var kill_scores: bool = not (Settings.game_mode in [Settings.MODE_CTF, Settings.MODE_INF,
+			Settings.MODE_HTF, Settings.MODE_DOM, Settings.MODE_PM])
+	if kill_scores:
+		scores[killer_team] = int(scores.get(killer_team, 0)) + 1
 	# Advance: bump the local player's kill counter and auto-equip any new tier.
 	if Settings.advance and is_instance_valid(player) and str(player.display_name) == killer_name:
 		var unlocked: PackedStringArray = player.advance_receive_kill()
 		for name in unlocked:
 			if hud != null and hud.has_method("post_chat"):
 				hud.post_chat("ADVANCE", "Unlocked: %s" % name, false)
-	if scores[killer_team] >= SCORE_TO_WIN:
+	if kill_scores and scores[killer_team] >= SCORE_TO_WIN:
 		_end_round(killer_team)
 	elif Settings.survival:
 		# Survival: last team standing ends the round early.
