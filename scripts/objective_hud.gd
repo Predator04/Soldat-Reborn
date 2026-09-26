@@ -16,6 +16,7 @@ var _banner: Label
 var _banner_tween: Tween = null
 var _t := 0.0
 const EDGE_PAD := 44.0
+const TOP_PAD := 160.0
 
 
 func _ready() -> void:
@@ -213,7 +214,8 @@ func _draw() -> void:
 		return
 	var xf := get_viewport().get_canvas_transform()
 	var vr := get_viewport_rect()
-	var inner := vr.grow(-EDGE_PAD)
+	# Keep arrows below the top HUD row (vitals box, score strip, kill feed).
+	var inner := Rect2(vr.position + Vector2(EDGE_PAD, TOP_PAD), vr.size - Vector2(EDGE_PAD * 2.0, TOP_PAD + EDGE_PAD))
 	var center := vr.size * 0.5
 	var font := get_theme_default_font()
 	for tgt in targets:
@@ -224,8 +226,8 @@ func _draw() -> void:
 		var dir: Vector2 = (sp - center)
 		if dir.length() < 1.0:
 			continue
-		var sx: float = (inner.size.x * 0.5) / maxf(absf(dir.x), 0.001)
-		var sy: float = (inner.size.y * 0.5) / maxf(absf(dir.y), 0.001)
+		var sx: float = ((inner.end.x if dir.x > 0.0 else inner.position.x) - center.x) / dir.x if absf(dir.x) > 0.001 else INF
+		var sy: float = ((inner.end.y if dir.y > 0.0 else inner.position.y) - center.y) / dir.y if absf(dir.y) > 0.001 else INF
 		var k := minf(sx, sy)
 		var at: Vector2 = center + dir * k
 		var ang := dir.angle()
