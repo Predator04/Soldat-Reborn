@@ -41,7 +41,7 @@ if [ $FINAL = 1 ]; then
   echo "== $( [ "$n" = 0 ] && echo 'GATE PASSED' || echo "GATE FAILED ($n)" )  pass=$p  $(date -Is)" | tee -a "$SUM"
   exit "$n"
 fi
-ERR_RE='SCRIPT ERROR|Parse Error|Cannot load|Identifier not found|Invalid call|Cannot infer|Node not found|Invalid packet|Failed to get path|previously freed|Invalid access|Invalid get|Invalid set|Invalid assignment|Nonexistent function|out of bounds'
+ERR_RE='No multiplayer peer is assigned|SCRIPT ERROR|Parse Error|Cannot load|Identifier not found|Invalid call|Cannot infer|Node not found|Invalid packet|Failed to get path|previously freed|Invalid access|Invalid get|Invalid set|Invalid assignment|Nonexistent function|out of bounds'
 pass() { echo "PASS  $1" | tee -a "$SUM"; }
 fail() { echo "FAIL  $1" | tee -a "$SUM"; FAILS=$((FAILS+1)); }
 info() { echo "INFO  $1" | tee -a "$SUM"; }
@@ -156,7 +156,7 @@ has D && for m in $MODESEL; do
   secs=60; case $m in 2|3|4|6|7) secs=120;; esac
   # --autopilot: the human player is driven with random input so player.gd
   # (jet, weapons, nades, stances, throwing) runs in every mode too.
-  timeout 170 "$G" --headless --fixed-fps 60 -s tools/stuck_test.gd -- --secs=$secs --from=19 --to=21 --mode=$m --autopilot > "$f" 2>&1
+  timeout 170 "$G" --headless --fixed-fps 60 -s tools/stuck_test.gd -- --secs=$secs --from=19 --to=21 --mode=$m --autopilot --sp > "$f" 2>&1
   n=$(errs "$f"); maps=$(grep -c '^map' "$f")
   kills=$(grep '^map' "$f" | sed -n 's/.*kills=\([0-9]*\).*/\1/p' | paste -sd+ | bc)
   caps=$(grep '^map' "$f" | sed -n 's/.*caps=\([0-9]*\).*/\1/p' | paste -sd+ | bc)

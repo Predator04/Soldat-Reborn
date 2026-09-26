@@ -459,9 +459,13 @@ func set_singleplayer() -> void:
 
 
 func leave() -> void:
-	if multiplayer.multiplayer_peer != null:
+	if multiplayer.multiplayer_peer != null and not (multiplayer.multiplayer_peer is OfflineMultiplayerPeer):
 		multiplayer.multiplayer_peer.close()
-		multiplayer.multiplayer_peer = null
+	# Offline peer, not null: with a null peer every is_multiplayer_authority()
+	# / get_unique_id() logs "No multiplayer peer is assigned" (~50 errors a
+	# second in a single-player match started from the menu). Offline is also
+	# what the soak/gate tests run with, so SP == the tested configuration.
+	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 	mode = Mode.SINGLEPLAYER
 	_map_synced = false
 	custom_map_json = ""
@@ -568,7 +572,7 @@ func _on_connected() -> void:
 
 func _on_connection_failed() -> void:
 	_set_status("Connection failed")
-	multiplayer.multiplayer_peer = null
+	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 	mode = Mode.SINGLEPLAYER
 	_map_synced = false
 	disconnected.emit()
@@ -576,7 +580,7 @@ func _on_connection_failed() -> void:
 
 func _on_server_disconnected() -> void:
 	_set_status("Server disconnected")
-	multiplayer.multiplayer_peer = null
+	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 	mode = Mode.SINGLEPLAYER
 	_map_synced = false
 	disconnected.emit()

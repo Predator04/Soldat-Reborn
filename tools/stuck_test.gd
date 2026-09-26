@@ -28,6 +28,9 @@ var _last_carrier: Dictionary = {}
 # player.gd code paths (move / jump / jet / aim / fire / reload / nades /
 # weapon switch / crouch / prone / throw) get exercised on every map.
 var _auto := false
+# --sp: go through Net.set_singleplayer() like the menu does (multiplayer_peer
+# = null) instead of booting main.tscn with Godot's default offline peer.
+var _sp := false
 var _auto_t := 0.0
 var _auto_held: Array = []
 var _auto_deaths := 0
@@ -54,6 +57,7 @@ func _initialize() -> void:
 		elif a.begins_with("--to="): _to = int(a.substr(5))
 		elif a.begins_with("--mode="): _mode = int(a.substr(7))
 		elif a == "--autopilot": _auto = true
+		elif a == "--sp": _sp = true
 		elif a == "--trace": _trace = true
 		elif a.begins_with("--trace-name="): _trace = true; _trace_name = a.substr(13).replace("_", " ")
 		elif a.begins_with("--trace="): _trace = true; _trace_label = a.substr(8)
@@ -68,6 +72,10 @@ func _physics_process(delta: float) -> bool:
 		settings.set("custom_map_path", "")
 		settings.set("map_index", _idx)
 		settings.set("game_mode", _mode)
+		if _sp:
+			var net := root.get_node_or_null("Net")
+			if net != null:
+				net.set_singleplayer()
 		change_scene_to_file("res://scenes/main.tscn")
 		_loaded = true
 		_t = 0.0

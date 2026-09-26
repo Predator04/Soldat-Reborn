@@ -14,6 +14,7 @@ var _flagdrop := false
 var _scene := "res://scenes/main.tscn"
 var _sb := false
 var _nohud := false
+var _call := ""
 var _menu_map := ""
 var _vis := ""   # --show=NodeVar: make current_scene.<var> visible, hide _menu_root
 
@@ -32,6 +33,8 @@ func _initialize() -> void:
 			_scene = a.substr(8)
 		elif a.begins_with("--menu-map="):
 			_menu_map = a.substr(11)
+		elif a.begins_with("--call="):
+			_call = a.substr(7)
 		elif a == "--nohud":
 			_nohud = true
 		elif a == "--scoreboard":
@@ -74,6 +77,8 @@ func _process(_delta: float) -> bool:
 			if pk.get_item_text(i) == "Map: " + _menu_map:
 				pk.select(i)
 				current_scene._on_sp_map_selected(i)
+	if _call != "" and _n == 14 and current_scene != null and current_scene.has_method(_call):
+		current_scene.call(_call)
 	if _sb and current_scene != null and current_scene.get("hud") != null:
 		var sbn = current_scene.hud.get("scoreboard")
 		if sbn != null:
