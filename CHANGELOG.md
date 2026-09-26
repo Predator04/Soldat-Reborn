@@ -51,6 +51,7 @@ release gate (`tools/release_gate.sh`) run three times clean.
 - Release gate run 7: 23/23 passed — CTF 234 grabs / 28 captures / 3 falls, 0 broken nav routes.
 - App icon (jet-pack soldier) for the window, Windows and Android launcher. `tools/build_release.sh` exports the Windows .exe and a signed Android .apk.
 - Visuals: Domination points are now a floor ring + light column + pole with an owner pennant and a letter badge whose ring fills with the capture progress (was a flat disc); sky clouds are soft layered puffs instead of rows of hard circles.
+- HUD: health, jet fuel and magazine bars beside the readouts (health shifts green → red and pulses when low; the ammo bar flashes while reloading).
 - Controls: gamepad defaults are installed before saved rebinds are applied, so saved binds for aim / pause stick and a removed pad default stays removed (configs from before pads were saved keep their pad defaults).
 - Release gate gained stage N (nav routes). Run 5: 23/23 passed — CTF sweep 211 grabs, 28 captures, 586 kills, 4 falls.
 

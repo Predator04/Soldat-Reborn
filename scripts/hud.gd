@@ -103,6 +103,11 @@ func _ready() -> void:
 	lbl_ammo = _make_label(Vector2(14, 58), UITheme.COL_HUD_AMMO)
 	lbl_weapon = _make_label(Vector2(14, 82), UITheme.COL_HUD_WEAPON)
 	lbl_grenades = _make_label(Vector2(14, 106), UITheme.COL_HUD_GRENADE)
+	var bars := Control.new()
+	bars.name = "VitalsBars"
+	bars.set_script(preload("res://scripts/hud_bars.gd"))
+	bars.set("hud", self)
+	add_child(bars)
 	feed = VBoxContainer.new()
 	feed.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	# Offsets (not position) after the anchor preset: the old position=(-320,10)
@@ -837,8 +842,8 @@ func _process(delta: float) -> void:
 	var wi: int = int(player.weapon_index)
 	if wi < 0 or wi >= player.weapons.size() or wi >= player.ammo.size():
 		return
-	lbl_health.text = "HP  %d" % int(player.health)
-	lbl_fuel.text = "FUEL %d%%" % int(player.fuel)
+	lbl_health.text = "HP %d" % int(player.health)
+	lbl_fuel.text = "JET %d" % int(player.fuel)
 	# When the secondary slot is active (Q pressed), show its name/ammo instead of the primary's.
 	var use_sec: bool = bool(player.get("using_secondary"))
 	var w: Dictionary
