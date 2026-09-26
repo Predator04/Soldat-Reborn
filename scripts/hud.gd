@@ -960,8 +960,21 @@ func _update_match_ui() -> void:
 	else:
 		lbl_winner.visible = false
 	if lbl_winner_note != null:
-		lbl_winner_note.text = note
-		lbl_winner_note.visible = lbl_winner.visible and note != ""
+		# MVP: best kills + 3x captures this round (from the scoreboard stats).
+		var mvp := ""
+		var best := -9999
+		var ps: Dictionary = main.get("player_stats") if main.get("player_stats") != null else {}
+		for n in ps.keys():
+			var st: Dictionary = ps[n]
+			var sc: int = int(st.get("k", 0)) + 3 * int(st.get("c", 0))
+			if sc > best:
+				best = sc
+				mvp = "MVP: %s  (%d kills%s)" % [str(n), int(st.get("k", 0)), (", %d caps" % int(st.get("c", 0))) if int(st.get("c", 0)) > 0 else ""]
+		var full := note
+		if lbl_winner.visible and mvp != "" and best > 0:
+			full = (note + "   ·   " if note != "" else "") + mvp
+		lbl_winner_note.text = full
+		lbl_winner_note.visible = lbl_winner.visible and full != ""
 
 
 func _render_gg_scoreboard(main: Node) -> void:

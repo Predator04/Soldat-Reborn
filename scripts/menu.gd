@@ -44,6 +44,7 @@ const MODE_NAMES := [
 var _menu_box: VBoxContainer   # left column; visibility is driven via _menu_root
 var _menu_box2: VBoxContainer  # right column (Network + System)
 var _map_thumb: TextureRect = null
+var _host_thumb: TextureRect = null
 var _title_nodes: Array = []    # wordmark / tagline / version — main list only
 
 
@@ -459,6 +460,18 @@ func _build_host() -> void:
 	_map_pick.custom_minimum_size = Vector2(0, 34)
 	UITheme.style_option_button(_map_pick)
 	_host_panel.add_child(_map_pick)
+	_host_thumb = TextureRect.new()
+	_host_thumb.custom_minimum_size = Vector2(272, 102)
+	_host_thumb.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_host_thumb.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_host_thumb.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_host_panel.add_child(_host_thumb)
+	var upd := func(_i: int = 0) -> void:
+		var path := "res://assets/map_thumbs/%s.png" % NavGraph.key_for(_map_pick.get_item_text(_map_pick.selected))
+		_host_thumb.visible = ResourceLoader.exists(path)
+		_host_thumb.texture = load(path) if _host_thumb.visible else null
+	_map_pick.item_selected.connect(upd)
+	upd.call()
 
 	_host_panel.add_child(UITheme.make_section_header("Network"))
 
