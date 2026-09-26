@@ -67,6 +67,17 @@ const TEXTURE_LIBRARY := [
 
 var _tool: int = Tool.PLATFORM
 var _map: Dictionary = _fresh_map()
+# Undo / redo (Ctrl+Z / Ctrl+Y or Ctrl+Shift+Z, and the toolbar buttons):
+# whole-map snapshots taken after each click / key that changed something, so a
+# drag-move is one step. Capped at UNDO_MAX.
+const UNDO_MAX := 60
+var _undo: Array = []
+var _redo: Array = []
+var _snap_map: Dictionary = {}
+var _snap_sig: int = 0
+var _tool_btns: Dictionary = {}
+var _bg_top: ColorRect
+var _top_bar: HFlowContainer   # Tool id -> Button (highlight the active one)
 # In-progress terrain polygon (Tool.TERRAIN_POLY). Cleared on tool switch / commit.
 var _poly_pts: PackedVector2Array = PackedVector2Array()
 # Selected library entries (persist across tool switches).
@@ -115,8 +126,9 @@ func _ready() -> void:
 	add_child(_cam)
 	_build_ui()
 	_set_tool(Tool.PLATFORM)
-	_set_status("Ready. LMB place/drag · RMB delete · MMB pan · wheel zoom · 1–9 tools · F5 play-test · ESC exit.")
+	_set_status("Ready. LMB place/drag · RMB delete · MMB pan · wheel zoom · 1–9 tools · Ctrl+Z / Ctrl+Y undo / redo · F5 play-test · ESC exit.")
 	queue_redraw()
+	_checkpoint()
 
 
 # ── Rendering ─────────────────────────────────────────
@@ -309,10 +321,62 @@ func _draw_ladder(r: Rect2, col: Color, preview: bool) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		_handle_mouse_button(event)
+		_checkpoint()
 	elif event is InputEventMouseMotion:
 		_handle_mouse_motion(event)
 	elif event is InputEventKey and event.pressed and not event.echo:
+		var k := event as InputEventKey
+		if k.ctrl_pressed or k.meta_pressed:
+			if k.keycode == KEY_Z:
+				_redo_step() if k.shift_pressed else _undo_step()
+				return
+			if k.keycode == KEY_Y:
+				_redo_step()
+				return
 		_handle_key(event)
+		_checkpoint()
+
+
+## Record the map if it changed since the last snapshot.
+func _checkpoint() -> void:
+	var sig := str(_map).hash()
+	if sig == _snap_sig:
+		return
+	if not _snap_map.is_empty():
+		_undo.push_back(_snap_map)
+		if _undo.size() > UNDO_MAX:
+			_undo.pop_front()
+	_redo.clear()
+	_snap_map = _map.duplicate(true)
+	_snap_sig = sig
+
+
+func _undo_step() -> void:
+	_checkpoint()   # fold in anything not recorded yet
+	if _undo.is_empty():
+		_set_status("Nothing to undo.")
+		return
+	_redo.push_back(_snap_map)
+	_restore(_undo.pop_back())
+	_set_status("Undo (%d more)." % _undo.size())
+
+
+func _redo_step() -> void:
+	if _redo.is_empty():
+		_set_status("Nothing to redo.")
+		return
+	_undo.push_back(_snap_map)
+	_restore(_redo.pop_back())
+	_set_status("Redo (%d more)." % _redo.size())
+
+
+func _restore(snap: Dictionary) -> void:
+	_map = snap.duplicate(true)
+	_snap_map = snap
+	_snap_sig = str(_map).hash()
+	_poly_pts = PackedVector2Array()
+	_dragging = false
+	queue_redraw()
 
 
 func _handle_mouse_button(ev: InputEventMouseButton) -> void:
@@ -685,6 +749,8 @@ func _build_ui() -> void:
 	top.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	top.offset_top = 6
 	top.offset_bottom = 86
+	_bg_top = bg_top
+	_top_bar = top
 	top.offset_left = 10
 	top.offset_right = -10
 	top.add_theme_constant_override("h_separation", 6)
@@ -720,6 +786,7 @@ func _build_ui() -> void:
 		var tid: int = int(spec[1])
 		b.pressed.connect(func() -> void: _set_tool(tid))
 		top.add_child(b)
+		_tool_btns[tid] = b
 
 	top.add_child(VSeparator.new())
 
@@ -729,6 +796,8 @@ func _build_ui() -> void:
 		["Load", "_open_load"],
 		["Generate", "_generate"],
 		["Play-test", "_play_test"],
+		["Undo", "_undo_step"],
+		["Redo", "_redo_step"],
 		["Exit", "_exit_to_menu"],
 	]
 	for spec in op_specs:
@@ -841,6 +910,29 @@ func _build_ui() -> void:
 	ui.add_child(_tool_label)
 
 	_build_load_panel(ui)
+	_style_tree(top)
+	# The toolbar wraps to 3 rows at 1280 wide; size the backing strip to it.
+	top.resized.connect(_fit_top_bar)
+	_fit_top_bar.call_deferred()
+
+
+func _fit_top_bar() -> void:
+	if _bg_top != null and _top_bar != null:
+		_bg_top.offset_bottom = _top_bar.position.y + _top_bar.size.y + 6.0
+
+
+## Give the toolbar widgets the same look as the menus.
+func _style_tree(n: Node) -> void:
+	for c in n.get_children():
+		if c is OptionButton:
+			UITheme.style_option_button(c)
+		elif c is Button:
+			UITheme.style_button(c, 13)
+		elif c is LineEdit:
+			UITheme.style_lineedit(c)
+		elif c is Label:
+			(c as Label).add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)
+		_style_tree(c)
 
 
 func _build_load_panel(ui: CanvasLayer) -> void:
@@ -888,6 +980,7 @@ func _new_map() -> void:
 	_map = _fresh_map()
 	_set_status("New empty map.")
 	queue_redraw()
+	_checkpoint()
 
 
 func _save_map() -> void:
@@ -945,6 +1038,7 @@ func _load_map(path: String) -> void:
 	_load_panel.visible = false
 	_set_status("Loaded %s" % path.get_file())
 	queue_redraw()
+	_checkpoint()
 
 
 func _delete_map(path: String) -> void:
@@ -964,6 +1058,7 @@ func _generate() -> void:
 	_name_edit.text = str(_map.get("name", "generated"))
 	_set_status("Generated with seed %d. Edit & Save, or Play-test." % seed_val)
 	queue_redraw()
+	_checkpoint()
 
 
 func _play_test() -> void:
@@ -994,6 +1089,10 @@ func _set_tool(t: int) -> void:
 	_tool = t
 	if _tool_label != null:
 		_tool_label.text = "Tool: %s" % _tool_name(t)
+	for id in _tool_btns.keys():
+		var tb: Button = _tool_btns[id]
+		if is_instance_valid(tb):
+			UITheme.style_button(tb, 13, int(id) == t)
 	queue_redraw()
 
 

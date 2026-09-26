@@ -230,8 +230,8 @@ fi
 if has F; then
   f="$OUT/editor.log"
   timeout 60 "$G" --headless --fixed-fps 60 -s tools/editor_test.gd > "$f" 2>&1
-  if grep -q "EDITOR-TEST roundtrip ok" "$f" && grep -q "EDITOR-TEST playtest ok.*player=true" "$f" && [ "$(errs "$f")" = "0" ]; then
-    pass "F map editor: place-all / save / reload / move / delete / generate / play-test"
+  if grep -q "EDITOR-TEST roundtrip ok" "$f" && grep -q "EDITOR-TEST undo ok" "$f" && grep -q "EDITOR-TEST playtest ok.*player=true" "$f" && [ "$(errs "$f")" = "0" ]; then
+    pass "F map editor: place-all / save / reload / move / delete / undo / generate / play-test"
   else
     fail "F map editor: $(grep -h 'EDITOR-TEST' "$f" | tr '\n' ' ') errors=$(errs "$f")"
   fi
