@@ -2211,6 +2211,16 @@ func net_spawn_player(peer_id: int, spawn_pos: Vector2, display_name: String, as
 		if is_instance_valid(old):
 			old.queue_free()
 		_players_by_id.erase(peer_id)
+	# The new body MUST get the exact name "Player_<peer>": every RPC to it is
+	# addressed by that path. A queue_free()d old body is still in the tree
+	# this frame, so add_child silently renamed the newcomer ("@CharacterBody2D@N")
+	# and every later state / shot RPC for it failed ("Node not found") on that
+	# peer. Rename the outgoing body first.
+	var clash := get_node_or_null("Player_%d" % peer_id)
+	if clash != null:
+		clash.name = "Player_%d_gone_%d" % [peer_id, clash.get_instance_id()]
+		if not clash.is_queued_for_deletion():
+			clash.queue_free()
 	var p := player_scene.instantiate()
 	p.name = "Player_%d" % peer_id
 	p.position = spawn_pos
@@ -3883,6 +3893,13 @@ func net_spawn_bot(bot_id: int, spawn_pos: Vector2, team: int, display_name: Str
 		if is_instance_valid(old):
 			old.queue_free()
 		_bots_by_id.erase(bot_id)
+	# Same exact-name rule as players (see net_spawn_player): a duplicate spawn
+	# (mirror + broadcast) must not leave the live replica auto-renamed.
+	var clash := get_node_or_null("Bot_%d" % bot_id)
+	if clash != null:
+		clash.name = "Bot_%d_gone_%d" % [bot_id, clash.get_instance_id()]
+		if not clash.is_queued_for_deletion():
+			clash.queue_free()
 	var b := bot_scene.instantiate()
 	b.name = "Bot_%d" % bot_id
 	b.position = spawn_pos

@@ -307,6 +307,13 @@ func _smoke_join() -> void:
 			if is_instance_valid(s) and s.get_script() != null and String(s.get_script().resource_path).ends_with("bot.gd"):
 				bots_visible += 1
 		print("SMOKE-JOIN id=%d mode=%d players=%d bots_visible=%d bot_shots_seen=%d" % [local_id(), mode, pcount, bots_visible, bot_shots_seen])
+		var _mn = get_tree().current_scene
+		if _mn != null:
+			var _names := []
+			for _c in _mn.get_children():
+				if _c is CharacterBody2D and _c.get("loadout") == null:
+					_names.append(str(_c.name))
+			print("SMOKE-JOIN-PLAYERS ", _names)
 		leave()
 		get_tree().quit())
 

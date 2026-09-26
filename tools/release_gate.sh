@@ -23,7 +23,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 G="${GODOT_BIN:-$HOME/godot/Godot_v4.7.2-stable_linux.x86_64}"
 QUICK=0; OUT="build/gate"; ONLY="A B N C D E"; MODESEL="0 1 2 3 4 5 6 7 8 9"
-NETSEL="ctf dm host"; SWEEP=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
+NETSEL="ctf dm two host"; SWEEP=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --quick) QUICK=1;; --out) OUT="$2"; shift;; --only) ONLY="$2"; shift;;
@@ -103,6 +103,27 @@ netcase() { # label map mode
 if has C; then
 case " $NETSEL " in *" ctf "*) netcase ctf_arena 18 2;; esac
 case " $NETSEL " in *" dm "*) netcase dm_ascent 0 0;; esac
+case " $NETSEL " in *" two "*)
+  # Two clients on one dedicated server: the second joins mid-match; every
+  # body must keep its exact node name and no RPC may miss its node.
+  port=$((7700 + RANDOM % 200))
+  timeout 100 "$G" --headless -- --dedicated --port $port --map 19 --mode 2 > "$OUT/net_two_server.log" 2>&1 &
+  spid=$!
+  for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_two_server.log" 2>/dev/null && break; sleep 0.5; done
+  sleep 3
+  timeout 80 "$G" --headless -- --smoke-botfire --port $port > "$OUT/net_two_c1.log" 2>&1 &
+  c1=$!
+  sleep 3
+  timeout 70 "$G" --headless -- --smoke-join --port $port > "$OUT/net_two_c2.log" 2>&1
+  wait $c1 2>/dev/null; wait $spid 2>/dev/null
+  e=$(( $(errs "$OUT/net_two_server.log") + $(errs "$OUT/net_two_c1.log") + $(errs "$OUT/net_two_c2.log") ))
+  names=$(grep -m1 "SMOKE-JOIN-PLAYERS" "$OUT/net_two_c2.log")
+  if grep -q "players=2" "$OUT/net_two_c2.log" && [ "$e" = "0" ] && ! echo "$names" | grep -q "@"; then
+    pass "C net two clients: $names errors=0"
+  else
+    fail "C net two clients: '$(grep -m1 SMOKE-JOIN "$OUT/net_two_c2.log")' $names errors=$e"
+  fi
+;; esac
 case " $NETSEL " in *" host "*)
 timeout 60 "$G" --headless -- --smoke-host > "$OUT/net_host.log" 2>&1
 if grep -q "SMOKE-HOST" "$OUT/net_host.log" && [ "$(errs "$OUT/net_host.log")" = "0" ]; then pass "C net listen host: $(grep -m1 SMOKE-HOST "$OUT/net_host.log")"; else fail "C net listen host ($(errs "$OUT/net_host.log") errors)"; fi

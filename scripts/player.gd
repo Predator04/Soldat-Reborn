@@ -753,9 +753,8 @@ func _physics_process(delta: float) -> void:
 				for pid in m.ready_peer_ids():
 					rpc_id(pid, "net_state", position, velocity, aim_dir, facing, jet_on, health, fuel, weapon_index, ammo[weapon_index], reloading, grenades, secondary_index, secondary_ammo[secondary_index], using_secondary, crouching, prone, climbing)
 		else:
-			# Broadcast so the host relays to other clients (Godot's server_relay).
-			# Using rpc_id(1, ...) would freeze non-host peers' views of this body.
-			rpc("net_state", position, velocity, aim_dir, facing, jet_on, health, fuel, weapon_index, ammo[weapon_index], reloading, grenades, secondary_index, secondary_ammo[secondary_index], using_secondary, crouching, prone, climbing)
+			# To the host only; it relays to ready peers (see net_state).
+			rpc_id(1, "net_state", position, velocity, aim_dir, facing, jet_on, health, fuel, weapon_index, ammo[weapon_index], reloading, grenades, secondary_index, secondary_ammo[secondary_index], using_secondary, crouching, prone, climbing)
 
 
 # ── /command console (gestures) ────────────────────────
@@ -827,13 +826,15 @@ func apply_gesture(cmd_raw: String) -> void:
 	if cmd == "":
 		return
 	if Net.is_networked():
-		rpc("net_gesture", cmd)
+		_cast("net_gesture", [cmd])
 	else:
 		net_gesture(cmd)
 
 
-@rpc("authority", "call_local", "reliable")
+@rpc("any_peer", "call_remote", "reliable")
 func net_gesture(cmd: String) -> void:
+	if not _net_accept("net_gesture", [cmd]):
+		return
 	match cmd:
 		"victory":
 			gesture_anim = "cieszy"
@@ -1114,7 +1115,7 @@ func _shoot() -> void:
 		# per pellet so each rocket gets a unique node path on every peer (#61).
 		var base_id := _next_proj_id
 		_next_proj_id += maxi(1, int(w["pellets"]))
-		rpc("net_shoot", muzzle, dirs, slot, base_id)
+		_cast("net_shoot", [muzzle, dirs, slot, base_id])
 	else:
 		net_shoot(muzzle, dirs, slot, 0)
 	if _active_mag() <= 0:
@@ -1138,7 +1139,7 @@ func _perform_melee() -> void:
 	# up from the weapon dict on the receiving side.
 	var dirs := PackedVector2Array([aim_dir])
 	if Net.is_networked():
-		rpc("net_shoot", muzzle, dirs, slot, 0)
+		_cast("net_shoot", [muzzle, dirs, slot, 0])
 	else:
 		net_shoot(muzzle, dirs, slot, 0)
 	# Show a brief punch pose (bije) on each swing — clears itself in _physics_process.
@@ -1424,7 +1425,7 @@ func _throw_grenade() -> void:
 	if Net.is_networked():
 		var pid := _next_proj_id
 		_next_proj_id += 1
-		rpc("net_grenade", g_pos, g_vel, g_ang, use_cluster, pid)
+		_cast("net_grenade", [g_pos, g_vel, g_ang, use_cluster, pid])
 	else:
 		net_grenade(g_pos, g_vel, g_ang, use_cluster, 0)
 
@@ -1465,7 +1466,7 @@ func take_damage(amount: float, killer := "", weapon := "", killer_team := -1) -
 		last_killer_team = killer_team
 	if health <= 0.0:
 		if Net.is_networked():
-			rpc("net_die", last_killer, last_weapon, last_killer_team)
+			_cast("net_die", [last_killer, last_weapon, last_killer_team])
 		else:
 			_die()
 
@@ -1545,8 +1546,22 @@ func restore_for_round() -> void:
 
 # ── RPCs ──────────────────────────────────────────────
 
-@rpc("authority", "call_remote", "unreliable_ordered")
+# any_peer + explicit sender check: a client sends its state to the HOST only,
+# and the host relays it to the peers that have finished loading. The old
+# rpc() broadcast went through Godot's server relay to every peer, including
+# ones still loading the match ("Node not found: Main/Player_N" spam).
+@rpc("any_peer", "call_remote", "unreliable_ordered")
 func net_state(pos: Vector2, vel: Vector2, aim: Vector2, face: float, jetting: bool, hp: float, fuel_val: float, wi: int, mag: int, is_reloading: bool, grens: int, sec_i: int, sec_mag: int, use_sec: bool, crouch_f: bool, prone_f: bool, climb_f: bool = false) -> void:
+	var sender := multiplayer.get_remote_sender_id()
+	var auth := get_multiplayer_authority()
+	if sender != auth and sender != 1:
+		return   # only the owner (or the host relaying it) may move this body
+	if Net.is_host() and sender == auth and auth != 1:
+		var m := get_parent()
+		if m != null and m.has_method("ready_peer_ids"):
+			for pid in m.ready_peer_ids():
+				if int(pid) != auth:
+					rpc_id(int(pid), "net_state", pos, vel, aim, face, jetting, hp, fuel_val, wi, mag, is_reloading, grens, sec_i, sec_mag, use_sec, crouch_f, prone_f, climb_f)
 	net_apply_pos(pos, vel)
 	velocity = vel
 	aim_dir = aim
@@ -1574,8 +1589,10 @@ func net_state(pos: Vector2, vel: Vector2, aim: Vector2, face: float, jetting: b
 	grenades = maxi(0, grens)
 
 
-@rpc("authority", "call_local", "reliable")
+@rpc("any_peer", "call_remote", "reliable")
 func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_proj_id: int = 0) -> void:
+	if not _net_accept("net_shoot", [shot_pos, dirs, weapon_i, base_proj_id]):
+		return
 	# Slots ≥ 100 are secondaries at (slot - 100).
 	var w: Dictionary
 	if weapon_i >= 100:
@@ -1659,8 +1676,10 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_
 			get_parent().add_child(b)
 
 
-@rpc("authority", "call_local", "reliable")
+@rpc("any_peer", "call_remote", "reliable")
 func net_grenade(g_pos: Vector2, g_vel: Vector2, g_ang: float, cluster: bool = false, proj_id: int = 0) -> void:
+	if not _net_accept("net_grenade", [g_pos, g_vel, g_ang, cluster, proj_id]):
+		return
 	var g := grenade_scene.instantiate()
 	# #61: name so every peer's replica lives at the same NodePath — required for
 	# per-projectile state RPCs. proj_id==0 is SP; no rename / no authority swap.
@@ -1708,8 +1727,10 @@ func net_drop_weapon(weapon_name: String, from_pos: Vector2, aim: Vector2, mag: 
 		parent.add_child(wp)
 
 
-@rpc("authority", "call_local", "reliable")
+@rpc("any_peer", "call_remote", "reliable")
 func net_die(killer: String, weapon: String, killer_team: int) -> void:
+	if not _net_accept("net_die", [killer, weapon, killer_team]):
+		return
 	last_killer = killer
 	last_weapon = weapon
 	last_killer_team = killer_team
@@ -1993,3 +2014,44 @@ func _update_camera_lead(stick: Vector2, delta: float) -> void:
 			lead = (vp.get_mouse_position() - c) * 0.45 / maxf(0.1, cam.zoom.x)
 		lead = lead.limit_length(CAM_LEAD_MAX)
 	cam.position = cam.position.lerp(lead, clampf(delta * 6.0, 0.0, 1.0))
+
+
+
+# ── Owner → everyone RPC fan-out ─────────────────────────────────────────────
+# The owning peer runs the effect locally, then: the host sends it to every
+# peer that has finished loading; a client sends it to the host, which relays
+# it (see _net_accept). A plain rpc() also reached peers still loading the
+# match via Godot's server relay ("Node not found: Main/Player_N" spam).
+func _cast(method: StringName, args: Array) -> void:
+	callv(method, args)
+	if not (Net.is_networked() and multiplayer.has_multiplayer_peer()):
+		return
+	if Net.is_host():
+		_fanout(method, args, -1)
+	else:
+		callv("rpc_id", [1, method] + args)
+
+
+func _fanout(method: StringName, args: Array, except_pid: int) -> void:
+	var m := get_parent()
+	if m == null or not m.has_method("ready_peer_ids"):
+		return
+	for pid in m.ready_peer_ids():
+		if int(pid) != except_pid and int(pid) != multiplayer.get_unique_id():
+			callv("rpc_id", [int(pid), method] + args)
+
+
+# Gate for the fan-out RPCs above: accept local calls, the body's owner, or
+# the host relaying the owner; the host relays an owner's call onward.
+func _net_accept(method: StringName, args: Array) -> bool:
+	if multiplayer.multiplayer_peer == null:
+		return true
+	var sender := multiplayer.get_remote_sender_id()
+	if sender == 0:
+		return true
+	var auth := get_multiplayer_authority()
+	if sender != auth and sender != 1:
+		return false
+	if Net.is_host() and sender == auth and auth != 1:
+		_fanout(method, args, auth)
+	return true
