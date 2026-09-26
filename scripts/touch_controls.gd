@@ -252,6 +252,10 @@ func _on_touch(ev: InputEventScreenTouch) -> void:
 		_on_touch_edit(idx, pos, ev.pressed)
 		return
 	if ev.pressed:
+		# On-screen panels that take taps themselves (limbo weapon menu).
+		for c in get_tree().get_nodes_in_group("touch_passthrough"):
+			if c is Control and (c as Control).is_visible_in_tree() and (c as Control).get_global_rect().has_point(pos):
+				return
 		# Priority: buttons > zones. Buttons are small so this rarely conflicts.
 		var bi: int = _button_at(pos)
 		if bi >= 0 and _btn_touch[bi] < 0:

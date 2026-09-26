@@ -20,7 +20,7 @@ var player: Node = null
 const UITheme = preload("res://scripts/ui_theme.gd")
 
 const PRIMARY_KEYS := ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
-const ROW_H := 16.0
+var ROW_H := 16.0   # taller rows on touch screens (set in _ready)
 const HDR_H := 20.0
 const GAP := 8.0
 const PANEL_W := 250.0
@@ -68,6 +68,16 @@ func _ready() -> void:
 	_weapons = (tmp.weapons as Array).duplicate(true)
 	_secondary = (tmp.secondary as Array).duplicate(true)
 	tmp.free()
+	if OS.has_feature("android") or OS.has_feature("mobile") or DisplayServer.is_touchscreen_available() \
+			or "--force-touch" in OS.get_cmdline_user_args():
+		ROW_H = 26.0
+		_font_size = 15
+		position.x = 132.0   # clear of the left touch-button column
+	# Cover the whole panel so clicks / taps on any row reach _gui_input.
+	size = Vector2(PANEL_W, HDR_H + PRIMARY_KEYS.size() * ROW_H + GAP + HDR_H + _secondary.size() * ROW_H)
+	# Touch overlay lets taps on this panel through instead of starting the
+	# move stick (see touch_controls._on_touch).
+	add_to_group("touch_passthrough")
 
 
 func _process(_delta: float) -> void:
@@ -218,7 +228,7 @@ func _draw_row(key: String, name: String, y: float, is_current: bool, is_hover: 
 		name_col = COL_CURRENT
 	elif is_hover:
 		name_col = COL_HOVER
-	var text_y: float = y + _font_size + 1
+	var text_y: float = y + (ROW_H + _font_size) * 0.5 - 1.0
 	_draw_outlined_text(key + ".", Vector2(10, text_y), _font_size, COL_ROW_KEY)
 	_draw_outlined_text(name, Vector2(28, text_y), _font_size, name_col)
 
