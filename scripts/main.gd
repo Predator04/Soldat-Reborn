@@ -1319,6 +1319,14 @@ func net_m2_fire(m2_id: int, muzzle: Vector2, aim_dir: Vector2, shooter_team: in
 
 # ── Singleplayer spawn path ───────────────────────────
 
+## Respawn with the gun picked in the limbo menu (or last switched to).
+## Advance and Gun Game pick the weapon themselves.
+func _apply_spawn_loadout(p: Node) -> void:
+	if Settings.advance or Settings.game_mode == Settings.MODE_GG:
+		return
+	p.set("weapon_index", clampi(Settings.spawn_primary, 0, 9))
+	p.set("secondary_index", clampi(Settings.spawn_secondary, 0, 3))
+
 func _spawn_player() -> void:
 	var p := player_scene.instantiate()
 	p.position = _find_free_spot_near(_map["player_spawn"])
@@ -1336,6 +1344,7 @@ func _spawn_player() -> void:
 	# Gun Game: restore the persisted rung so death keeps you on the same weapon.
 	if Settings.game_mode == Settings.MODE_GG:
 		p.gg_level = _gg_get(str(p.display_name))
+	_apply_spawn_loadout(p)
 	p.died.connect(_on_player_died)
 	add_child(p)
 	player = p
@@ -1360,6 +1369,11 @@ func _on_player_died() -> void:
 				hud.show_death(str(player.last_killer), str(player.last_weapon), -1.0)
 			else:
 				hud.show_death(str(player.last_killer), str(player.last_weapon), mp_delay)
+		# The body lingers ~1.5 s as an inert husk (see player._become_husk);
+		# drop our references now so nothing treats it as the live player.
+		player = null
+		if hud:
+			hud.player = null
 		return
 	# Survival: no respawn until round ends. _reset_round will (re)spawn everyone
 	# (also when we die on the winner screen — a timer here would add a 2nd body).
@@ -2050,8 +2064,8 @@ func _handle_client_ready(sender_id: int, joiner_name: String = "", client_versi
 	# tell the new peer about all currently living players
 	for existing_id in _players_by_id.keys():
 		var p: Node = _players_by_id[existing_id]
-		if not is_instance_valid(p):
-			continue
+		if not is_instance_valid(p) or bool(p.get("dead")):
+			continue   # dead husks respawn through the normal broadcast
 		rpc_id(sender, "net_spawn_player", existing_id, p.position, p.display_name, int(p.team))
 	# Mirror every live bot to the joining peer so they see the current roster
 	# (dedicated server pre-populates before any client connects — issue #55).
@@ -2265,6 +2279,8 @@ func net_spawn_player(peer_id: int, spawn_pos: Vector2, display_name: String, as
 	# Gun Game: restore persisted rung on respawn so death doesn't reset progress.
 	if Settings.game_mode == Settings.MODE_GG:
 		p.gg_level = _gg_get(display_name)
+	if peer_id == Net.local_id():
+		_apply_spawn_loadout(p)
 	add_child(p)
 	# Re-apply after add_child so children created in _ready (cam, jet_particles) inherit authority.
 	p.set_multiplayer_authority(peer_id, true)

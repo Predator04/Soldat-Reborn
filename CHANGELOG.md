@@ -74,6 +74,11 @@ release gate (`tools/release_gate.sh`) run three times clean.
 - Release gate gained stage N (nav routes). Run 5: 23/23 passed — CTF sweep 211 grabs, 28 captures, 586 kills, 4 falls.
 - Fixed: hosting (or a dedicated server with `--map`) after an editor play-test loaded the play-test map instead of the map you picked.
 - Host-side broadcasts (spawns, despawns, kill feed, objective events, Gun Game rungs, votes, round resets) now only go to peers that have loaded the match; a second client joining mid-match no longer logs "Node not found: Main". Gate run 12: all stages passed (CTF sweep 245 grabs, 41 captures, 662 kills, 3 falls).
+- **Limbo weapon menu works**: while you're dead the Soldat weapon panel shows on the left; pick a primary (1–0, click or tap) and a secondary (click / tap) and you respawn with them. Your last number-key pick carries over too, and the choice is saved. (The panel existed but never appeared, and every respawn reset you to the AK-74.) Off in Advance and Gun Game.
+- Death screen says "You died" for suicides instead of "killed by <you>"; the empty HP/JET box hides while you're dead.
+- Multiplayer: a dead soldier's body lingers 1.5 s as an inert, hidden husk so shots / state already in flight from its owner don't log "Node not found" on every peer.
+- The single-player map picker no longer shows "Rotation" while PLAY would load the editor's last play-test map.
+- QA: `--smoke-auto` drives a network smoke client with random input; `--net "m0 … m9"` runs a dedicated server + autopiloted client per mode (all 10 modes: zero errors on either side, and the client runs the server's mode). The gate now starts every Godot run from default settings and restores this machine's files afterwards; the feature test checks the limbo pick.
 
 ## [1.14.0] — 2026-09-24
 

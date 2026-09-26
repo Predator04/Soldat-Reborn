@@ -10,6 +10,9 @@ var _t := 0.0
 var _counts := {}
 
 
+var _saw_player := false
+
+
 func _count(m: Dictionary) -> Dictionary:
 	var out := {}
 	for k in ["platforms", "ladders", "bot_spawns", "ctf_flags", "dom_points", "m2_mounts", "polys",
@@ -77,9 +80,17 @@ func _process(delta: float) -> bool:
 		if e != null and e.get("MAPS") != null and int(_t * 2.0) != int((_t - delta) * 2.0):
 			var pp = e.get("player")
 			print("  t=%.1f player=%s soldiers=%d fell=%s" % [_t, str(pp != null and is_instance_valid(pp) and not bool(pp.get("dead"))), get_nodes_in_group("soldier").size(), str((e.get("safety_stats") as Dictionary).get("fell", -1))])
+		if e != null and e.get("MAPS") != null:
+			var pv = e.get("player")
+			if pv != null and is_instance_valid(pv):
+				_saw_player = true   # bots may have killed it by the 6 s mark
 		if e != null and e.get("MAPS") != null and _t > 6.0:
-			var p = e.get("player")
-			print("EDITOR-TEST playtest ok map=%s player=%s" % [str((e.get("_map") as Dictionary).get("name", "?")), str(p != null and is_instance_valid(p))])
+			print("EDITOR-TEST playtest ok map=%s player=%s" % [str((e.get("_map") as Dictionary).get("name", "?")), str(_saw_player)])
+			# Don't leave the play-test map selected in this machine's settings.
+			var st := root.get_node_or_null("Settings")
+			if st != null:
+				st.set("custom_map_path", "")
+				st.call("save")
 			quit()
 			return true
 	return false

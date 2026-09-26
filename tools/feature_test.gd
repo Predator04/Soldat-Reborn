@@ -89,11 +89,24 @@ func _process(delta: float) -> bool:
 				root.get_node("GifRecorder").toggle()
 				if p != null and is_instance_valid(p):
 					p.apply_gesture("/kill")
-				_log.append("gif stop + /kill")
+				# Limbo weapon menu: pick slot 6 (Ruger) while dead; the
+				# respawned body must carry it.
+				get_root().get_tree().create_timer(0.5).timeout.connect(func() -> void:
+					var h = m.get("hud")
+					var wm = h.get("weapon_menu") if h != null else null
+					print("FEATURE-LIMBO menu_visible=%s hud_dead=%s" % [str(wm != null and wm.visible), str(h != null and bool(h.get("_dead")))])
+					_tap("weapon_6"))
+				get_root().get_tree().create_timer(0.9).timeout.connect(func() -> void:
+					if int(st.get("spawn_primary")) != 5:
+						push_error("FEATURE-FAIL limbo pick not stored: spawn_primary=%d" % int(st.get("spawn_primary"))))
+				_log.append("gif stop + /kill + limbo pick")
 			10:
 				if p != null and is_instance_valid(p):
+					if not bool(st.get("advance")) and int(st.get("game_mode")) != 9 and int(p.get("weapon_index")) != 5:
+						push_error("FEATURE-FAIL limbo pick not applied: weapon_index=%d spawn_primary=%d" % [int(p.get("weapon_index")), int(st.get("spawn_primary"))])
 					p.apply_gesture("/mercy")
-				_log.append("mercy")
+				st.set("spawn_primary", 2)
+				_log.append("respawn weapon + mercy")
 			11:
 				st.set("bot_count", -1)
 				m._reconcile_bots()

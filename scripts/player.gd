@@ -932,6 +932,9 @@ func _switch_weapon(idx: int) -> void:
 		reloading = false
 		reload_t = 0.0
 	weapon_index = idx
+	# Your last hotkey pick is also what you respawn with (limbo menu shows it).
+	if idx < 10:
+		Settings.spawn_primary = idx
 	fire_cd = 0.15
 	spin_up_t = 0.0
 	lmb_prev = true
@@ -1497,7 +1500,29 @@ func _die() -> void:
 		var m := get_parent()
 		if m != null and m.has_method("_schedule_peer_respawn"):
 			m._schedule_peer_respawn(get_multiplayer_authority(), int(team))
-	queue_free()
+	if Net.is_networked():
+		# Keep an inert husk under the same name for a moment: state / shot
+		# packets already in flight from the owner still address this path,
+		# and a freed node makes every peer log "Node not found". The husk
+		# ignores them (dead) and the respawn renames it out of the way.
+		_become_husk()
+		get_tree().create_timer(1.5).timeout.connect(func() -> void:
+			if is_instance_valid(self):
+				queue_free())
+	else:
+		queue_free()
+
+
+func _become_husk() -> void:
+	remove_from_group("soldier")
+	hide()
+	collision_layer = 0
+	collision_mask = 0
+	velocity = Vector2.ZERO
+	set_physics_process(false)
+	set_process(false)
+	set_process_input(false)
+	set_process_unhandled_input(false)
 
 
 func _emit_kill() -> void:
@@ -1556,6 +1581,8 @@ func net_state(pos: Vector2, vel: Vector2, aim: Vector2, face: float, jetting: b
 	var auth := get_multiplayer_authority()
 	if sender != auth and sender != 1:
 		return   # only the owner (or the host relaying it) may move this body
+	if dead:
+		return
 	if Net.is_host() and sender == auth and auth != 1:
 		var m := get_parent()
 		if m != null and m.has_method("ready_peer_ids"):
@@ -2052,6 +2079,8 @@ func _net_accept(method: StringName, args: Array) -> bool:
 	var auth := get_multiplayer_authority()
 	if sender != auth and sender != 1:
 		return false
+	if dead:
+		return false   # husk of a dead body: late packets from its owner
 	if Net.is_host() and sender == auth and auth != 1:
 		_fanout(method, args, auth)
 	return true

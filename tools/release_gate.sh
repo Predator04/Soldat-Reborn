@@ -14,6 +14,7 @@
 #   N nav      every map in CTF: each team can path spawn -> enemy flag -> home
 #              (known exceptions allowed: NAV_KNOWN_BROKEN)
 #   E sweep    every map in CTF: grabs / captures / falls / anti-stuck frees
+#   C extra: --net "m0 m3 m9" runs a dedicated server + autopiloted client per mode
 #   M modes    (opt-in: --only M --msweep MODE:FROM:TO, then --only M --mode-verdict)
 #              every map in INF / HTF / DOM: errors, falls, objective activity
 # --quick skips E (CI-sized). Logs + summary land in build/gate/ (or --out).
@@ -44,13 +45,25 @@ if [ $FINAL = 1 ]; then
   echo "== $( [ "$n" = 0 ] && echo 'GATE PASSED' || echo "GATE FAILED ($n)" )  pass=$p  $(date -Is)" | tee -a "$SUM"
   exit "$n"
 fi
-ERR_RE='No multiplayer peer is assigned|SCRIPT ERROR|Parse Error|Cannot load|Identifier not found|Invalid call|Cannot infer|Node not found|Invalid packet|Failed to get path|previously freed|Invalid access|Invalid get|Invalid set|Invalid assignment|Nonexistent function|out of bounds'
+ERR_RE='FEATURE-FAIL|No multiplayer peer is assigned|SCRIPT ERROR|Parse Error|Cannot load|Identifier not found|Invalid call|Cannot infer|Node not found|Invalid packet|Failed to get path|previously freed|Invalid access|Invalid get|Invalid set|Invalid assignment|Nonexistent function|out of bounds'
 pass() { echo "PASS  $1" | tee -a "$SUM"; }
 fail() { echo "FAIL  $1" | tee -a "$SUM"; FAILS=$((FAILS+1)); }
 info() { echo "INFO  $1" | tee -a "$SUM"; }
 errs() { grep -cE "$ERR_RE" "$1" 2>/dev/null || true; }
 
 echo "== Release gate $(date -Is)  godot=$G" | tee -a "$SUM"
+
+# Hermetic runs: every Godot launch starts from default settings / controls
+# (tests toggle mods, bot counts, loadouts and some of them save), and this
+# machine's own files are restored when the gate exits.
+UD="${GODOT_USER_DIR:-$HOME/.local/share/godot/app_userdata/Soldat Reborn}"
+BAK="$OUT/.userbak"; mkdir -p "$BAK"
+for f in settings.cfg controls.cfg; do [ -f "$UD/$f" ] && cp "$UD/$f" "$BAK/$f"; done
+restore_user() { for f in settings.cfg controls.cfg; do rm -f "$UD/$f"; [ -f "$BAK/$f" ] && cp "$BAK/$f" "$UD/$f"; done; rm -rf "$BAK"; }
+trap restore_user EXIT
+trap "exit 143" TERM INT
+REAL_G="$G"; G="$OUT/.godot_fresh.sh"
+printf '#!/bin/bash\nrm -f "%s/settings.cfg" "%s/controls.cfg"\nexec "%s" "$@"\n' "$UD" "$UD" "$REAL_G" > "$G"; chmod +x "$G"
 
 # ── A static ────────────────────────────────────────────────────────────────
 NMAPS=$(ls assets/maps/*.json | wc -l)
@@ -85,19 +98,20 @@ if has N; then
 fi
 
 # ── C net ───────────────────────────────────────────────────────────────────
-netcase() { # label map mode
+netcase() { # label map mode [extra client flags]
   local L="$1" port=$((7700 + RANDOM % 200))
   timeout 95 "$G" --headless -- --dedicated --port $port --map "$2" --mode "$3" > "$OUT/net_${L}_server.log" 2>&1 &
   local spid=$!
   # Wait for the server to actually listen (boot time varies with CPU load).
   for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_${L}_server.log" 2>/dev/null && break; sleep 0.5; done
   sleep 4
-  timeout 70 "$G" --headless -- --smoke-botfire --port $port > "$OUT/net_${L}_client.log" 2>&1
-  wait $spid 2>/dev/null
+  timeout 70 "$G" --headless -- --smoke-botfire --port $port ${4:-} > "$OUT/net_${L}_client.log" 2>&1
+  kill $spid 2>/dev/null; wait $spid 2>/dev/null
   local line; line=$(grep -m1 SMOKE-BOTFIRE "$OUT/net_${L}_client.log")
   local ce se; ce=$(errs "$OUT/net_${L}_client.log"); se=$(errs "$OUT/net_${L}_server.log")
   local shots; shots=$(echo "$line" | sed -n 's/.*bot_shots_seen=\([0-9]*\).*/\1/p')
-  if [ -n "$line" ] && [ "${shots:-0}" -gt 0 ] && [ "$ce" = "0" ] && [ "$se" = "0" ]; then
+  local gm; gm=$(echo "$line" | sed -n 's/.* gm=\([0-9]*\).*/\1/p')
+  if [ -n "$line" ] && [ "${shots:-0}" -gt 0 ] && [ "$ce" = "0" ] && [ "$se" = "0" ] && [ "${gm:-$3}" = "$3" ]; then
     pass "C net $L: $line"
   else
     fail "C net $L: '${line:-no SMOKE line}' client_errs=$ce server_errs=$se"
@@ -106,6 +120,8 @@ netcase() { # label map mode
 if has C; then
 case " $NETSEL " in *" ctf "*) netcase ctf_arena 18 2;; esac
 case " $NETSEL " in *" dm "*) netcase dm_ascent 0 0;; esac
+# Opt-in per-mode cases: --net "m3 m7" = dedicated server on map 19 in mode N.
+for tok in $NETSEL; do case "$tok" in m[0-9]) netcase "mode${tok#m}" 19 "${tok#m}" --smoke-auto;; esac; done
 case " $NETSEL " in *" two "*)
   # Two clients on one dedicated server: the second joins mid-match; every
   # body must keep its exact node name and no RPC may miss its node.

@@ -1,15 +1,16 @@
 extends Control
 ## WeaponMenu — Soldat-style limbo weapon panel on the HUD.
 ##
-## Appears when the player dies (limbo), mirroring RenderWeaponMenuText / LimboMenu:
-##   "Primary Weapon:"   → 10 primary rows (keys 1..0)
-##   "Secondary Weapon:" → 4 secondary rows (Q swaps in / out)
-## Hides once the player picks a weapon, reappears on the next death.
+## Appears while you're dead (limbo), mirroring RenderWeaponMenuText / LimboMenu:
+##   "Primary Weapon:"   → 10 primary rows (keys 1..0, click / tap)
+##   "Secondary Weapon:" → 4 secondary rows (click / tap)
+## The pick is what you respawn with (Settings.spawn_primary / spawn_secondary,
+## saved). Hidden in Advance and Gun Game, where the mode decides the gun.
 ##
 ## Currently equipped row is drawn in Soldat's classic green (55,165,55).
 ## Hovering another row highlights it in a lighter green (85,105,55) and pops a
 ## tooltip with the weapon's damage/rate/mag/kind. Names + stats come straight
-## from `player.weapons` / `player.secondary` — no hardcoded lists.
+## from player.gd's `weapons` / `secondary` tables — no hardcoded lists.
 
 # Reads the local player through our parent HUD each frame. Main.gd sets
 # `hud.player` AFTER add_child, and it changes on respawn/scene reset — so caching
@@ -44,13 +45,12 @@ var _font_size := 12
 var _hdr_font_size := 13
 var _hover_slot := -1  # 0..9 = primary index, 100..103 = secondary index+100, -1 = none
 
-# Death-triggered limbo menu: appears when the player dies, hides once they pick
-# a weapon, reappears on the next death. _was_dead/_picked drive that lifecycle.
-var _was_dead := false
-var _picked := false
-var _base_wi := -1
-var _base_si := -1
-var _base_us := false
+const PlayerScript = preload("res://scripts/player.gd")
+var _weapons: Array = []
+var _secondary: Array = []
+var _keys_down: Dictionary = {}
+const _KEY_ACTIONS := ["weapon_1", "weapon_2", "weapon_3", "weapon_4", "weapon_5",
+	"weapon_6", "weapon_7", "weapon_8", "weapon_9", "weapon_10"]
 
 
 func _ready() -> void:
@@ -62,59 +62,67 @@ func _ready() -> void:
 	_font = ThemeDB.fallback_font
 	visible = false
 	set_process(true)
+	# Weapon tables straight from the soldier script (an unparented instance
+	# never enters the tree, so _ready / physics never run).
+	var tmp = PlayerScript.new()
+	_weapons = (tmp.weapons as Array).duplicate(true)
+	_secondary = (tmp.secondary as Array).duplicate(true)
+	tmp.free()
 
 
 func _process(_delta: float) -> void:
 	# Pull the local player pointer off the parent HUD (may swap on respawn).
 	var parent := get_parent()
-	if parent != null and parent.get("player") != null:
-		player = parent.get("player")
-	if player == null or not is_instance_valid(player):
+	if parent != null and "player" in parent:
+		var pp = parent.get("player")
+		player = pp if is_instance_valid(pp) else null
+	var alive: bool = player != null and not bool(player.get("dead"))
+	var limbo: bool = parent != null and bool(parent.get("_dead")) and not alive \
+			and not Settings.advance and Settings.game_mode != Settings.MODE_GG
+	# Rising edge on the number keys (tracked here rather than
+	# is_action_just_pressed, which misses presses injected mid-frame).
+	for i in _KEY_ACTIONS.size():
+		var a: String = _KEY_ACTIONS[i]
+		var down: bool = i < _weapons.size() and InputMap.has_action(a) and Input.is_action_pressed(a)
+		if limbo and down and not _keys_down.get(a, false):
+			_pick(i)
+		_keys_down[a] = down
+	if not limbo:
 		visible = false
+		_hover_slot = -1
 		return
-	# Show only while dead; hide once the player picks a weapon (or on respawn).
-	var dead: bool = bool(player.get("dead"))
-	if not dead:
-		visible = false
-		_was_dead = false
-		_picked = false
-		return
-	if not _was_dead:
-		# Just died — baseline the current loadout so the existing weapon
-		# doesn't read as an instant "pick".
-		_was_dead = true
-		_picked = false
-		_base_wi = int(player.get("weapon_index"))
-		_base_si = int(player.get("secondary_index"))
-		_base_us = bool(player.get("using_secondary"))
-	else:
-		var wi: int = int(player.get("weapon_index"))
-		var si: int = int(player.get("secondary_index"))
-		var us: bool = bool(player.get("using_secondary"))
-		if wi != _base_wi or si != _base_si or us != _base_us:
-			_picked = true
-			_base_wi = wi
-			_base_si = si
-			_base_us = us
-	visible = not _picked
-	if not visible:
-		return  # already picked — skip hover tracking + redraw entirely
-	# Track hover from local coordinates. Redraw every frame so the current-weapon
-	# highlight tracks player.weapon_index / secondary_index / using_secondary live.
-	var mouse := get_local_mouse_position()
-	var new_slot := _slot_at(mouse)
+	visible = true
+	var new_slot := _slot_at(get_local_mouse_position())
 	if new_slot != _hover_slot:
 		_hover_slot = new_slot
 	queue_redraw()
 
 
+func _gui_input(event: InputEvent) -> void:
+	var press: bool = (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT) \
+			or (event is InputEventScreenTouch and event.pressed)
+	if not press:
+		return
+	var slot := _slot_at(event.position)
+	if slot >= 0:
+		_pick(slot)
+		accept_event()
+
+
+## slot 0..9 = primary, 100+ = secondary. Takes effect on the next spawn.
+func _pick(slot: int) -> void:
+	if slot >= 100:
+		Settings.spawn_secondary = clampi(slot - 100, 0, _secondary.size() - 1)
+	else:
+		Settings.spawn_primary = clampi(slot, 0, mini(PRIMARY_KEYS.size(), _weapons.size()) - 1)
+	Settings.save()
+	Sfx.ui()
+	queue_redraw()
+
+
 func _slot_at(local_pos: Vector2) -> int:
-	if player == null or not is_instance_valid(player):
-		return -1
-	var weapons: Array = player.get("weapons")
-	var secondary: Array = player.get("secondary")
-	if weapons == null or secondary == null:
-		return -1
+	var weapons: Array = _weapons
+	var secondary: Array = _secondary
 	if local_pos.x < 0.0 or local_pos.x > PANEL_W:
 		return -1
 	var y: float = 0.0
@@ -139,15 +147,12 @@ func _slot_at(local_pos: Vector2) -> int:
 
 
 func _draw() -> void:
-	if player == null or not is_instance_valid(player):
+	if not visible:
 		return
-	var weapons: Array = player.get("weapons")
-	var secondary: Array = player.get("secondary")
-	if weapons == null or secondary == null:
-		return
-	var wi: int = int(player.get("weapon_index"))
-	var si: int = int(player.get("secondary_index"))
-	var using_sec: bool = bool(player.get("using_secondary"))
+	var weapons: Array = _weapons
+	var secondary: Array = _secondary
+	var wi: int = Settings.spawn_primary
+	var si: int = Settings.spawn_secondary
 
 	# Backing panel — tinted rect + hairline border so the limbo menu reads as
 	# a discrete UI element instead of raw text over gameplay.
@@ -165,7 +170,7 @@ func _draw() -> void:
 		if i >= weapons.size():
 			break
 		var w: Dictionary = weapons[i]
-		var is_current: bool = (not using_sec) and (wi == i)
+		var is_current: bool = wi == i
 		var is_hover: bool = _hover_slot == i
 		_draw_row(String(PRIMARY_KEYS[i]), str(w["name"]), y, is_current, is_hover)
 		y += ROW_H
@@ -174,7 +179,7 @@ func _draw() -> void:
 	y += HDR_H
 	for j in secondary.size():
 		var w2: Dictionary = secondary[j]
-		var is_current2: bool = using_sec and (si == j)
+		var is_current2: bool = si == j
 		var is_hover2: bool = _hover_slot == 100 + j
 		_draw_row(str(j + 1), str(w2["name"]), y, is_current2, is_hover2)
 		y += ROW_H

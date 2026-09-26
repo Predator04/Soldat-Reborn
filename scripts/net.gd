@@ -294,6 +294,7 @@ func _smoke_join() -> void:
 	map_received.connect(func() -> void:
 		get_tree().change_scene_to_file("res://scenes/main.tscn"))
 	join_game("127.0.0.1", _smoke_port())
+	_smoke_auto_start()
 	# --smoke-die: kill our own body mid-session so the MP respawn path runs;
 	# the SMOKE-JOIN-PLAYERS line then shows the respawned body's node name.
 	if "--smoke-die" in OS.get_cmdline_user_args():
@@ -340,6 +341,7 @@ func _smoke_botfire() -> void:
 	map_received.connect(func() -> void:
 		get_tree().change_scene_to_file("res://scenes/main.tscn"))
 	join_game("127.0.0.1", _smoke_port())
+	_smoke_auto_start()
 	# Track the lowest HP the local player was seen at during the smoke — the
 	# player may already have died and respawned (or died and not yet respawned)
 	# by the time we print, so a single snapshot of main.player.health can miss
@@ -415,7 +417,7 @@ func _smoke_botfire() -> void:
 		var local_hp: float = -1.0
 		if main != null and main.get("player") != null and is_instance_valid(main.player):
 			local_hp = float(main.player.health)
-		print("SMOKE-BOTFIRE id=%d mode=%d players=%d bots_visible=%d bot_shots_seen=%d bot_bullets_seen=%d bot_bullets_max=%d bot_bullets_visible=%d local_hp=%.1f min_hp=%.1f deaths=%d status=\"%s\" left=\"%s\" stats=%d" % [local_id(), mode, pcount, bots_visible, bot_shots_seen, bot_bullets_seen, max_bullets_ref[0], bot_bullets_visible, local_hp, min_hp_ref[0], deaths_ref[0], status, last_disconnect_reason, (main.player_stats.size() if main != null and main.get("player_stats") != null else -1)])
+		print("SMOKE-BOTFIRE id=%d mode=%d gm=%d players=%d bots_visible=%d bot_shots_seen=%d bot_bullets_seen=%d bot_bullets_max=%d bot_bullets_visible=%d local_hp=%.1f min_hp=%.1f deaths=%d status=\"%s\" left=\"%s\" stats=%d auto_shots=%d" % [local_id(), mode, Settings.game_mode, pcount, bots_visible, bot_shots_seen, bot_bullets_seen, max_bullets_ref[0], bot_bullets_visible, local_hp, min_hp_ref[0], deaths_ref[0], status, last_disconnect_reason, (main.player_stats.size() if main != null and main.get("player_stats") != null else -1), smoke_auto_shots])
 		leave()
 		get_tree().quit())
 
@@ -620,3 +622,71 @@ func _smoke_secs(default_secs: float) -> float:
 		if a.begins_with("--smoke-secs="):
 			return maxf(1.0, float(a.substr(13)))
 	return default_secs
+
+
+# --smoke-auto: drive the joined client's soldier with random input (move, jet,
+# aim at the nearest soldier, fire, nades, weapon swaps / throws, stances) so
+# the client → host RPC paths (shots, grenades, pickups, deaths) get exercised
+# in the net smoke tests, not just the passive join.
+const _SMOKE_HOLD := ["move_left", "move_right", "jump", "jet", "fire", "crouch"]
+const _SMOKE_TAP := ["reload", "grenade", "grenade_toggle", "secondary_swap", "prone",
+	"weapon_1", "weapon_2", "weapon_3", "weapon_4", "weapon_5", "weapon_throw"]
+var _smoke_held: Array = []
+var _smoke_auto_t: float = 0.0
+var smoke_auto_shots: int = 0
+
+
+func _smoke_auto_start() -> void:
+	if not "--smoke-auto" in OS.get_cmdline_user_args():
+		return
+	var t := Timer.new()
+	t.wait_time = 0.1
+	t.autostart = true
+	add_child(t)
+	t.timeout.connect(_smoke_auto_tick.bind(0.1))
+
+
+func _smoke_auto_tick(delta: float) -> void:
+	var main := get_tree().current_scene
+	if main == null:
+		return
+	var p = main.get("player")
+	if p == null or not is_instance_valid(p):
+		return
+	var best: Node2D = null
+	var bd := INF
+	for s in get_tree().get_nodes_in_group("soldier"):
+		if s == p or not is_instance_valid(s) or bool(s.get("dead")):
+			continue
+		var d: float = (s as Node2D).global_position.distance_to(p.global_position)
+		if d < bd:
+			bd = d
+			best = s
+	if best != null:
+		var v: Vector2 = (best.global_position - p.global_position).normalized()
+		for pair in [["aim_right", maxf(0.0, v.x)], ["aim_left", maxf(0.0, -v.x)], ["aim_down", maxf(0.0, v.y)], ["aim_up", maxf(0.0, -v.y)]]:
+			if InputMap.has_action(pair[0]):
+				if float(pair[1]) > 0.05:
+					Input.action_press(pair[0], clampf(float(pair[1]), 0.3, 1.0))
+				else:
+					Input.action_release(pair[0])
+	_smoke_auto_t -= delta
+	if _smoke_auto_t > 0.0:
+		return
+	_smoke_auto_t = randf_range(0.25, 1.2)
+	for a in _smoke_held:
+		Input.action_release(a)
+	_smoke_held.clear()
+	for a in _SMOKE_HOLD:
+		if randf() < (0.55 if a == "fire" else 0.3) and InputMap.has_action(a):
+			if a == "move_left" and _smoke_held.has("move_right"):
+				continue
+			Input.action_press(a)
+			_smoke_held.append(a)
+			if a == "fire":
+				smoke_auto_shots += 1
+	if randf() < 0.35:
+		var tap: String = _SMOKE_TAP[randi() % _SMOKE_TAP.size()]
+		if InputMap.has_action(tap):
+			Input.action_press(tap)
+			_smoke_held.append(tap)

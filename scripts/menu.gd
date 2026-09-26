@@ -867,6 +867,11 @@ func _refresh_sp_map_pick() -> void:
 		var idx := _sp_map_paths.find(Settings.custom_map_path)
 		if idx >= 0:
 			sel = idx
+		else:
+			# Not in the list (the editor's _playtest slot, or a deleted file):
+			# the picker would say "Rotation" while PLAY loaded that map.
+			Settings.custom_map_path = ""
+			Settings.save()
 	elif Settings.map_index >= 0 and Settings.map_index < MAP_NAMES.size():
 		# Rotation mode leaves map_index cycling, so we can't distinguish "pinned"
 		# from "rotating" — keep slot 0 selected by default.

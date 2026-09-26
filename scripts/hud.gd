@@ -36,6 +36,8 @@ var command_line: LineEdit
 var _command_visible := false
 var _line_mode := "cmd"  # "cmd" | "global" | "team"
 var chat_feed: VBoxContainer
+var _left_strip: Control
+var _bars: Control
 var weapon_menu: Control  # left-side Soldat weapon selection panel (#70)
 var lbl_fps: Label        # top-right FPS overlay — visible only when Settings.show_fps (#73)
 var lbl_spectate: Label   # "Spectating: <name>" label while dead (#75)
@@ -87,6 +89,7 @@ func _ready() -> void:
 	left_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	left_strip.add_theme_stylebox_override("panel", UITheme.hud_strip_style())
 	add_child(left_strip)
+	_left_strip = left_strip
 
 	# Top-center strip behind the mode/timer/score cluster.
 	var top_strip := PanelContainer.new()
@@ -115,6 +118,7 @@ func _ready() -> void:
 	bars.set_script(preload("res://scripts/hud_bars.gd"))
 	bars.set("hud", self)
 	add_child(bars)
+	_bars = bars
 	feed = VBoxContainer.new()
 	feed.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	# Offsets (not position) after the anchor preset: the old position=(-320,10)
@@ -712,8 +716,10 @@ func show_death(killer: String, weapon: String, respawn_secs: float = 2.0) -> vo
 	# while the player is still on the floor (INF attackers pay 5s, not 2s).
 	# Pass a negative value to display the "no respawn" survival hint instead.
 	_death_remaining = respawn_secs
-	lbl_death.text = ("You were killed by %s" % killer) if killer != "" else "You died"
-	if weapon != "" and killer != "":
+	var me: String = str(player.display_name) if is_instance_valid(player) else Settings.player_name
+	var suicide: bool = killer != "" and killer == me
+	lbl_death.text = ("You were killed by %s" % killer) if killer != "" and not suicide else "You died"
+	if weapon != "" and killer != "" and not suicide:
 		lbl_death.text += "  [%s]" % weapon
 	lbl_death.visible = true
 	lbl_respawn.visible = true
@@ -881,7 +887,14 @@ func _process(delta: float) -> void:
 	lbl_map.text = mode_str + map_name
 	lbl_status.text = Net.status if Net.is_networked() else ""
 	_update_match_ui()
-	if not is_instance_valid(player):
+	# No body (dead / spectating): hide the empty vitals box; the limbo
+	# weapon menu takes that corner.
+	var has_body: bool = is_instance_valid(player)
+	if _left_strip != null:
+		_left_strip.visible = has_body
+	if _bars != null:
+		_bars.visible = has_body
+	if not has_body:
 		# Blank the per-player readouts so we don't display last-frame HP/Fuel/Ammo
 		# for a body that no longer exists (spectator, mid-respawn, disconnect).
 		lbl_health.text = ""
