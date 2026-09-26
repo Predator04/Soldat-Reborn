@@ -1053,7 +1053,10 @@ func _shoot(to_t: Vector2) -> void:
 		if String(stats["kind"]) == "rocket":
 			pid = _next_proj_id
 			_next_proj_id += 1
-		_bcast("net_bot_shoot", [muzzle, aim, pid])
+		# The weapon travels with the shot: a replica's loadout / secondary
+		# flag can lag the host, and a LAW shot fired as a bullet there left
+		# no rocket node for the host's rocket RPCs to reach.
+		_bcast("net_bot_shoot", [muzzle, aim, pid, active_weapon])
 	else:
 		net_bot_shoot(muzzle, aim, 0)
 	# Fire cadence tracks the active weapon's rate (#80) — a Barrett bot no
@@ -1079,11 +1082,11 @@ func _shoot(to_t: Vector2) -> void:
 # too, keeping SP and the host-side branch of MP on the same code path.
 
 @rpc("authority", "call_local", "reliable")
-func net_bot_shoot(muzzle: Vector2, aim: Vector2, proj_id: int = 0) -> void:
+func net_bot_shoot(muzzle: Vector2, aim: Vector2, proj_id: int = 0, weapon: String = "") -> void:
 	# Active weapon = USSOCOM secondary if the bot has swapped, else primary loadout (#79).
 	# Damage/speed come from the WEAPON_STATS table (#80) — before that fix, every
 	# non-LAW bot fired AK-74 damage at BULLET_SPEED regardless of loadout.
-	var active_weapon: String = "USSOCOM" if using_secondary else loadout
+	var active_weapon: String = weapon if weapon != "" else ("USSOCOM" if using_secondary else loadout)
 	var stats: Dictionary = WEAPON_STATS.get(active_weapon, WEAPON_STATS["AK-74"])
 	Sfx.shoot(active_weapon)
 	muzzle_t = 0.08

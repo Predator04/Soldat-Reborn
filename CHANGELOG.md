@@ -77,6 +77,7 @@ release gate (`tools/release_gate.sh`) run three times clean.
 - **Limbo weapon menu works**: while you're dead the Soldat weapon panel shows on the left (bigger rows beside the touch buttons on phones); pick a primary (1–0, click or tap) and a secondary (click / tap) and you respawn with them. Your last number-key pick carries over too, and the choice is saved. (The panel existed but never appeared, and every respawn reset you to the AK-74.) Off in Advance and Gun Game.
 - Death screen says "You died" for suicides instead of "killed by <you>"; the empty HP/JET box hides while you're dead.
 - Multiplayer: a dead soldier's body lingers 1.5 s as an inert, hidden husk so shots / state already in flight from its owner don't log "Node not found" on every peer.
+- Multiplayer: bot shots carry the weapon they were fired with. A replica whose loadout / secondary flag lagged the host (they sync unreliably at state rate) fired a bullet where the host fired a LAW, so the host's rocket updates hit a node the client never made ("Node not found: BotRocket").
 - The single-player map picker no longer shows "Rotation" while PLAY would load the editor's last play-test map.
 - QA: `--smoke-auto` drives a network smoke client with random input; `--net "m0 … m9"` runs a dedicated server + autopiloted client per mode (all 10 modes: zero errors on either side, and the client runs the server's mode). The gate now starts every Godot run from default settings and restores this machine's files afterwards; the feature test checks the limbo pick.
 
