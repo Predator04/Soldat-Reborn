@@ -13,6 +13,7 @@ var _flagdemo := false
 var _flagdrop := false
 var _scene := "res://scenes/main.tscn"
 var _sb := false
+var _menu_map := ""
 var _vis := ""   # --show=NodeVar: make current_scene.<var> visible, hide _menu_root
 
 
@@ -28,6 +29,8 @@ func _initialize() -> void:
 			_flagdrop = true
 		elif a.begins_with("--scene="):
 			_scene = a.substr(8)
+		elif a.begins_with("--menu-map="):
+			_menu_map = a.substr(11)
 		elif a == "--scoreboard":
 			_sb = true
 		elif a.begins_with("--show="):
@@ -62,6 +65,12 @@ func _process(_delta: float) -> bool:
 		var panel = current_scene.get(_vis)
 		if panel != null:
 			panel.visible = true
+	if _menu_map != "" and _n == 12 and current_scene != null and current_scene.get("_sp_map_pick") != null:
+		var pk = current_scene._sp_map_pick
+		for i in pk.item_count:
+			if pk.get_item_text(i) == "Map: " + _menu_map:
+				pk.select(i)
+				current_scene._on_sp_map_selected(i)
 	if _sb and current_scene != null and current_scene.get("hud") != null:
 		var sbn = current_scene.hud.get("scoreboard")
 		if sbn != null:

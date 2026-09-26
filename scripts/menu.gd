@@ -1,4 +1,5 @@
 extends Control
+const NavGraph = preload("res://scripts/nav_graph.gd")
 ## Main menu — Play (vs bots), Host, Join, Settings, Quit.
 
 const MapIO = preload("res://scripts/map_io.gd")
@@ -42,6 +43,7 @@ const MODE_NAMES := [
 
 var _menu_box: VBoxContainer   # left column; visibility is driven via _menu_root
 var _menu_box2: VBoxContainer  # right column (Network + System)
+var _map_thumb: TextureRect = null
 var _title_nodes: Array = []    # wordmark / tagline / version — main list only
 
 
@@ -298,18 +300,36 @@ func _build_menu() -> void:
 	settings.pressed.connect(func() -> void:
 		_menu_root.visible = false
 		_settings_panel.visible = true)
-	_menu_box2.add_child(settings)
+	var sys_row := HBoxContainer.new()
+	sys_row.add_theme_constant_override("separation", 8)
+	_menu_box2.add_child(sys_row)
+	for b in [settings]:
+		b.custom_minimum_size = Vector2(0, b.custom_minimum_size.y)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sys_row.add_child(settings)
 
 	var stats := _make_button("STATS")
 	stats.pressed.connect(func() -> void:
 		_refresh_stats_labels()
 		_menu_root.visible = false
 		_stats_root.visible = true)
-	_menu_box2.add_child(stats)
-
 	var quit := _make_button("QUIT")
 	quit.pressed.connect(func() -> void: get_tree().quit())
-	_menu_box2.add_child(quit)
+	# Settings / Stats / Quit share one row so the map preview fits below.
+	for b in [stats, quit]:
+		b.custom_minimum_size = Vector2(0, b.custom_minimum_size.y)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		sys_row.add_child(b)
+
+	# Preview of the picked map (thumbnails baked by tools/make_thumbs.py).
+	_map_thumb = TextureRect.new()
+	_map_thumb.custom_minimum_size = Vector2(272, 102)
+	_map_thumb.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_map_thumb.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_map_thumb.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_menu_box2.add_child(UITheme.spacer(4))
+	_menu_box2.add_child(_map_thumb)
+	_update_map_thumb()
 
 
 func _build_settings() -> void:
@@ -853,6 +873,23 @@ func _on_generate_and_play() -> void:
 	get_tree().change_scene_to_file("res://scenes/main.tscn")
 
 
+func _update_map_thumb() -> void:
+	if _map_thumb == null:
+		return
+	var name := ""
+	if Settings.custom_map_path == "":
+		var idx := _sp_map_pick.selected if _sp_map_pick != null else 0
+		if idx > 0 and idx < _sp_map_paths.size() and str(_sp_map_paths[idx]).begins_with("builtin:"):
+			name = str(_sp_map_paths[idx]).substr(len("builtin:"))
+	var path := "res://assets/map_thumbs/%s.png" % NavGraph.key_for(name)
+	if name != "" and ResourceLoader.exists(path):
+		_map_thumb.texture = load(path)
+		_map_thumb.visible = true
+	else:
+		_map_thumb.texture = null
+		_map_thumb.visible = false
+
+
 func _on_sp_map_selected(idx: int) -> void:
 	if idx < 0 or idx >= _sp_map_paths.size():
 		return
@@ -866,3 +903,4 @@ func _on_sp_map_selected(idx: int) -> void:
 	else:
 		Settings.custom_map_path = v
 	Settings.save()
+	_update_map_thumb()

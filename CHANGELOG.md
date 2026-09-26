@@ -54,6 +54,7 @@ release gate (`tools/release_gate.sh`) run three times clean.
 - HUD: health, jet fuel and magazine bars beside the readouts (health shifts green → red and pulses when low; the ammo bar flashes while reloading).
 - **Scoreboard**: hold Tab (pad: Back/Select, rebindable; touch: tap the score strip) for per-player kills / deaths / captures, grouped by team or ranked in FFA; it also shows under the winner banner at round end. Suicides cost a kill, as in Soldat. Counted on every peer from the replicated feed; joiners get a snapshot.
 - **Hit feedback**: your hits pop a damage number and a small impact X (Settings > Video > Damage numbers).
+- **Map previews** in the main menu: pick a map and a thumbnail (sky, terrain, both flag bases) shows under the System row. Baked for all 99 classic maps by `tools/make_thumbs.py`. Settings / Stats / Quit now share one row.
 - Controls: gamepad defaults are installed before saved rebinds are applied, so saved binds for aim / pause stick and a removed pad default stays removed (configs from before pads were saved keep their pad defaults).
 - Release gate gained stage N (nav routes). Run 5: 23/23 passed — CTF sweep 211 grabs, 28 captures, 586 kills, 4 falls.
 
