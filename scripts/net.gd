@@ -169,6 +169,7 @@ func _resolve_mode_arg(v: String) -> int:
 func _start_dedicated(port: int, map_index: int, mode_index: int) -> void:
 	Settings.map_index = map_index
 	Settings.game_mode = mode_index
+	Settings.custom_map_path = ""
 	if not host_game(port, map_index):
 		push_error("Dedicated host failed on port %d" % port)
 		get_tree().quit(1)

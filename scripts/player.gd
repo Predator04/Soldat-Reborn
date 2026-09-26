@@ -1482,7 +1482,7 @@ func _die() -> void:
 		if Net.is_host():
 			var m := get_parent()
 			if m != null:
-				m.rpc("net_kill_feed", last_killer, display_name, last_weapon, last_killer_team, team)
+				m.bcast("net_kill_feed", [last_killer, display_name, last_weapon, last_killer_team, team], true)
 	else:
 		_emit_kill()
 	# defer FX spawn out of the physics flush (bullet body_entered → take_damage path)

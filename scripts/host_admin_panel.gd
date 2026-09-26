@@ -254,7 +254,7 @@ func _do_restart() -> void:
 		var main := get_tree().current_scene
 		if main != null and main.has_method("net_match_restart"):
 			# call_local ensures the host also runs it locally.
-			main.rpc("net_match_restart", map_idx, mode_idx)
+			main.bcast("net_match_restart", [map_idx, mode_idx], true)
 		return
 	# Singleplayer path — just apply and reload.
 	Settings.map_index = map_idx

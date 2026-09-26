@@ -1235,7 +1235,7 @@ func _die() -> void:
 	if Net.is_networked() and Net.is_host() and last_killer != "" and multiplayer.has_multiplayer_peer():
 		var mm := get_parent()
 		if mm != null and mm.has_method("net_kill_feed"):
-			mm.rpc("net_kill_feed", last_killer, display_name, last_weapon, last_killer_team, team)
+			mm.bcast("net_kill_feed", [last_killer, display_name, last_weapon, last_killer_team, team], true)
 		else:
 			_emit_kill()
 	else:
@@ -1245,7 +1245,7 @@ func _die() -> void:
 	if Net.is_networked() and Net.is_host() and bot_id > 0:
 		var m := get_parent()
 		if m != null:
-			m.rpc("net_bot_die", bot_id)
+			m.bcast("net_bot_die", [bot_id], false)
 	# defer FX spawn out of the physics flush (bullet body_entered → take_damage path)
 	if not Settings.lofi:
 		_spawn_gibs.call_deferred()

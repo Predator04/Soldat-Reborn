@@ -1238,7 +1238,7 @@ func net_m2_mount(m2_id: int, peer_id: int) -> void:
 		if peer_id != multiplayer.get_remote_sender_id():
 			return
 		# Rebroadcast to everyone (call_local ensures host also applies it).
-		rpc("net_m2_mount", m2_id, peer_id)
+		bcast("net_m2_mount", [m2_id, peer_id], true)
 		return
 	var m2 := find_m2(m2_id)
 	if m2 == null:
@@ -1264,7 +1264,7 @@ func net_m2_dismount(m2_id: int) -> void:
 			var op = m2_local.get("operator")
 			if is_instance_valid(op) and int(op.get_multiplayer_authority()) != multiplayer.get_remote_sender_id():
 				return
-		rpc("net_m2_dismount", m2_id)
+		bcast("net_m2_dismount", [m2_id], true)
 		return
 	var m2 := find_m2(m2_id)
 	if m2 != null and m2.has_method("net_dismount"):
@@ -1600,7 +1600,7 @@ func _live_bots() -> Array:
 func _despawn_bot(b: Node) -> void:
 	var bid: int = int(b.get("bot_id"))
 	if Net.is_networked() and Net.is_host() and bid > 0:
-		rpc("net_bot_despawn", bid)
+		bcast("net_bot_despawn", [bid], false)
 		_bots_by_id.erase(bid)
 	if is_instance_valid(b):
 		b.queue_free()
@@ -1857,7 +1857,7 @@ func _spawn_networked_player(peer_id: int) -> void:
 			base = bs[randi() % bs.size()]
 	var spawn_pos := _jitter_spawn(base)
 	var display_name: String = Settings.player_name if peer_id == 1 else str(_peer_names.get(peer_id, "Player %d" % peer_id))
-	rpc("net_spawn_player", peer_id, spawn_pos, display_name, t)
+	bcast("net_spawn_player", [peer_id, spawn_pos, display_name, t], true)
 
 
 func _assign_team_for_peer(peer_id: int) -> int:
@@ -1915,7 +1915,7 @@ func _on_net_peer_disconnected(id: int) -> void:
 	if Net.is_host():
 		_ready_peers.erase(id)
 		_connected_peers.erase(id)
-		rpc("net_despawn_player", id)
+		bcast("net_despawn_player", [id], true)
 		# If the disconnecting peer was the votekick target, resolve the vote
 		# immediately — no one benefits from a countdown against a phantom.
 		if vote_active and vote_kind == "votekick" and vote_target_arg == id:
@@ -1992,6 +1992,27 @@ func net_stats_sync(stats: Dictionary) -> void:
 
 func ready_peer_ids() -> Array:
 	return _ready_peers.keys()
+
+
+## Host broadcast that only reaches peers whose Main scene exists
+## (_connected_peers, set in _handle_client_ready). A plain rpc() also hits
+## peers still loading the match, which log "Node not found: Main" and drop
+## the packet. The joiner gets a full snapshot on ready anyway. `local`
+## mirrors call_local. Non-host callers fall back to a plain rpc().
+func bcast(method: StringName, args: Array = [], local: bool = false) -> void:
+	if not Net.is_networked() or not multiplayer.has_multiplayer_peer():
+		if local:
+			callv(method, args)
+		return
+	if not Net.is_host():
+		callv("rpc", [method] + args)
+		return
+	if local:
+		callv(method, args)
+	var me := multiplayer.get_unique_id()
+	for pid in _connected_peers.keys():
+		if int(pid) != me and multiplayer.get_peers().has(int(pid)):
+			callv("rpc_id", [int(pid), method] + args)
 
 
 func _handle_client_ready(sender_id: int, joiner_name: String = "", client_version: String = "") -> void:
@@ -2285,7 +2306,7 @@ func net_despawn_player(peer_id: int) -> void:
 func _objective_event(kind: String, team: int, who: String) -> void:
 	if Net.is_networked():
 		if Net.is_host() and multiplayer.has_multiplayer_peer():
-			rpc("net_objective_event", kind, team, who)
+			bcast("net_objective_event", [kind, team, who], true)
 	else:
 		net_objective_event(kind, team, who)
 
@@ -2877,12 +2898,12 @@ func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: Str
 		# they own (host owns bots + host player; each client owns their player).
 		if on_rung:
 			if Net.is_networked():
-				rpc("net_gg_set_level", killer_name, k_lvl + 1)
+				bcast("net_gg_set_level", [killer_name, k_lvl + 1], true)
 			else:
 				_gg_set(killer_name, k_lvl + 1)
 		if is_knife_kill:
 			if Net.is_networked():
-				rpc("net_gg_set_level", victim_name, _gg_get(victim_name) - 1)
+				bcast("net_gg_set_level", [victim_name, _gg_get(victim_name) - 1], true)
 			else:
 				_gg_set(victim_name, _gg_get(victim_name) - 1)
 		if Settings.survival:
@@ -3104,7 +3125,7 @@ func _reset_round() -> void:
 				for bid in _bots_by_id.keys():
 					var b = _bots_by_id[bid]
 					if is_instance_valid(b):
-						rpc("net_bot_despawn", bid)
+						bcast("net_bot_despawn", [bid], false)
 						b.queue_free()
 				_bots_by_id.clear()
 				call_deferred("_spawn_bots")
@@ -3123,7 +3144,7 @@ func _reset_round() -> void:
 		# fresh the normal way.
 		if Net.is_networked():
 			if Net.is_host():
-				rpc("net_round_reset")
+				bcast("net_round_reset", [], false)
 				_restore_living_soldiers_local()
 		else:
 			_restore_living_soldiers_local()
@@ -3487,7 +3508,7 @@ func _resolve_vote(passed: bool, reason: String = "") -> void:
 	_vote_chat("%s %s — %s" % [kind, target_label, summary])
 	# Broadcast end state so clients clear their prompt in sync.
 	if Net.is_networked() and Net.is_host():
-		rpc("net_vote_end", kind, target_label, passed, yes_ct, no_ct, reason)
+		bcast("net_vote_end", [kind, target_label, passed, yes_ct, no_ct, reason], false)
 	# Clear locally BEFORE triggering restart/kick — scene reload otherwise fires
 	# with stale vote_active still true on the next frame.
 	vote_active = false
@@ -3504,7 +3525,7 @@ func _resolve_vote(passed: bool, reason: String = "") -> void:
 	match kind:
 		"votemap":
 			if Net.is_networked() and Net.is_host():
-				rpc("net_match_restart", target, Settings.game_mode)
+				bcast("net_match_restart", [target, Settings.game_mode], true)
 			elif not Net.is_networked():
 				Settings.map_index = target
 				Settings.custom_map_path = ""
@@ -3663,7 +3684,7 @@ func _on_bonus_touched(body: Node, bid: int, slot_idx: int) -> void:
 		player.apply_bonus(kind, BONUS_EFFECT_DURATION)
 	# Despawn on every peer.
 	if Net.is_networked() and Net.is_host():
-		rpc("net_bonus_despawn", bid)
+		bcast("net_bonus_despawn", [bid], false)
 	_despawn_bonus_local(bid)
 	# Free the slot and start the respawn countdown so a new random-kind box
 	# will land there in BONUS_RESPAWN seconds.

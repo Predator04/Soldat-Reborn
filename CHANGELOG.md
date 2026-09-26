@@ -72,6 +72,8 @@ release gate (`tools/release_gate.sh`) run three times clean.
 - QA: `tools/feature_test.gd` (gate stage F) scripts a single-player session through gestures, every weapon slot, both grenade types, weapon throw, extreme mods, live bot-count changes, a vote, the GIF recorder and /kill. GIF recording is skipped on headless / dedicated instances (it logged an engine error every frame).
 - Controls: gamepad defaults are installed before saved rebinds are applied, so saved binds for aim / pause stick and a removed pad default stays removed (configs from before pads were saved keep their pad defaults).
 - Release gate gained stage N (nav routes). Run 5: 23/23 passed — CTF sweep 211 grabs, 28 captures, 586 kills, 4 falls.
+- Fixed: hosting (or a dedicated server with `--map`) after an editor play-test loaded the play-test map instead of the map you picked.
+- Host-side broadcasts (spawns, despawns, kill feed, objective events, Gun Game rungs, votes, round resets) now only go to peers that have loaded the match; a second client joining mid-match no longer logs "Node not found: Main". Gate run 12: all stages passed (CTF sweep 245 grabs, 41 captures, 662 kills, 3 falls).
 
 ## [1.14.0] — 2026-09-24
 

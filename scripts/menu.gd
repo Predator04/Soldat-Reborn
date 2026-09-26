@@ -497,6 +497,9 @@ func _build_host() -> void:
 			idx = _map_pick.selected
 		idx = clampi(idx, 0, MAP_NAMES.size() - 1)
 		Settings.map_index = idx
+		# The host picker only lists built-in maps; drop any leftover custom
+		# map (e.g. the editor play-test) so the chosen map actually loads.
+		Settings.custom_map_path = ""
 		Settings.save()
 		start.disabled = true
 		var port := int(_host_port_edit.text) if _host_port_edit.text.is_valid_int() else Net.DEFAULT_PORT
