@@ -6,6 +6,7 @@ var speed := 900.0
 var damage := 12.0
 var team := 0
 var killer_name := ""
+const DamagePopup = preload("res://scripts/damage_popup.gd")
 var weapon_name := ""
 # Visual style overrides. "flame" = short-lived orange puff, "arrow" = long thin shaft.
 # Default "" = classic yellow tracer.
@@ -79,7 +80,8 @@ func _on_body_entered(body: Node) -> void:
 			if multiplayer.multiplayer_peer == null or body.is_multiplayer_authority():
 				body.take_damage(dmg, killer_name, wname, team)
 			# Local stats: only when the local player fired this bullet.
-			_maybe_record_hit()
+			if _maybe_record_hit() and not is_self:
+				_spawn_popup(minf(dmg, 100.0), dmg >= 999.0 or wname.ends_with("(headshot)"))
 			queue_free()
 			return
 		return
@@ -87,15 +89,31 @@ func _on_body_entered(body: Node) -> void:
 	queue_free()
 
 
-func _maybe_record_hit() -> void:
+func _maybe_record_hit() -> bool:
 	# Route stats through the local player only. Main.player is the human peer's node.
 	var m := get_tree().current_scene
 	if m == null:
-		return
+		return false
 	var pl = m.get("player")
 	if pl != null and is_instance_valid(pl) and str(pl.get("display_name")) == killer_name:
 		Stats.record_hit()
 		Sfx.hit()
+		return true
+	return false
+
+
+func _spawn_popup(amount: float, big: bool) -> void:
+	if not Settings.damage_numbers:
+		return
+	var m := get_tree().current_scene
+	if m == null:
+		return
+	var p := Node2D.new()
+	p.set_script(DamagePopup)
+	p.set("amount", amount)
+	p.set("big", big)
+	p.global_position = global_position
+	m.add_child(p)
 
 
 func _draw() -> void:

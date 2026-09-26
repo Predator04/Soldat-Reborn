@@ -176,6 +176,10 @@ func _build_video(box: VBoxContainer) -> void:
 		func(on: bool) -> void:
 			Settings.show_fps = on
 			Settings.save()))
+	box.add_child(_check_button("Damage numbers on hits", Settings.damage_numbers,
+		func(on: bool) -> void:
+			Settings.damage_numbers = on
+			Settings.save()))
 
 
 func _build_controls_card(box: VBoxContainer) -> void:
