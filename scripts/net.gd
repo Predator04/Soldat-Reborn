@@ -278,9 +278,9 @@ func _smoke_dedicated(port: int, map_index: int, mode_index: int) -> void:
 
 
 func _smoke_host() -> void:
-	host_game(DEFAULT_PORT)
+	host_game(_smoke_port())
 	get_tree().change_scene_to_file("res://scenes/main.tscn")
-	get_tree().create_timer(8.0).timeout.connect(func() -> void:
+	get_tree().create_timer(_smoke_secs(8.0)).timeout.connect(func() -> void:
 		var main := get_tree().current_scene
 		var pbi = main.get("_players_by_id") if main != null else null
 		var pcount: int = pbi.size() if pbi != null else 0
@@ -295,7 +295,7 @@ func _smoke_join() -> void:
 	join_game("127.0.0.1", _smoke_port())
 	# Larger window so the client has time to complete: connect → map_received →
 	# main.tscn._ready → net_client_ready → host mirrors bots via net_spawn_bot.
-	get_tree().create_timer(6.0).timeout.connect(func() -> void:
+	get_tree().create_timer(_smoke_secs(6.0)).timeout.connect(func() -> void:
 		var main := get_tree().current_scene
 		var pbi = main.get("_players_by_id") if main != null else null
 		var pcount: int = pbi.size() if pbi != null else 0
@@ -597,3 +597,11 @@ func _smoke_port() -> int:
 		if a.begins_with("--port="):
 			return int(a.substr(7))
 	return DEFAULT_PORT
+
+
+
+func _smoke_secs(default_secs: float) -> float:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--smoke-secs="):
+			return maxf(1.0, float(a.substr(13)))
+	return default_secs
