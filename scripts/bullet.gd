@@ -71,9 +71,9 @@ func _on_body_entered(body: Node) -> void:
 			# Prone soldiers have a much smaller head hitbox — offset accordingly.
 			if Settings.realistic:
 				var head_top: float = -14.0
-				if bool(body.get("prone")):
+				if body.get("prone") == true:
 					head_top = -4.0
-				elif bool(body.get("crouching")):
+				elif body.get("crouching") == true:
 					head_top = -10.0
 				var rel_y: float = global_position.y - body.global_position.y
 				if rel_y < head_top:

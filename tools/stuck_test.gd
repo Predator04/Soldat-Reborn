@@ -31,6 +31,7 @@ var _auto := false
 # --sp: go through Net.set_singleplayer() like the menu does (multiplayer_peer
 # = null) instead of booting main.tscn with Godot's default offline peer.
 var _sp := false
+var _flags: Dictionary = {}   # --survival / --realistic / --advance rule toggles
 var _auto_t := 0.0
 var _auto_held: Array = []
 var _auto_deaths := 0
@@ -58,6 +59,9 @@ func _initialize() -> void:
 		elif a.begins_with("--mode="): _mode = int(a.substr(7))
 		elif a == "--autopilot": _auto = true
 		elif a == "--sp": _sp = true
+		elif a == "--survival": _flags["survival"] = true
+		elif a == "--realistic": _flags["realistic"] = true
+		elif a == "--advance": _flags["advance"] = true
 		elif a == "--trace": _trace = true
 		elif a.begins_with("--trace-name="): _trace = true; _trace_name = a.substr(13).replace("_", " ")
 		elif a.begins_with("--trace="): _trace = true; _trace_label = a.substr(8)
@@ -72,6 +76,8 @@ func _physics_process(delta: float) -> bool:
 		settings.set("custom_map_path", "")
 		settings.set("map_index", _idx)
 		settings.set("game_mode", _mode)
+		for k in ["survival", "realistic", "advance"]:
+			settings.set(k, bool(_flags.get(k, false)))
 		if _sp:
 			var net := root.get_node_or_null("Net")
 			if net != null:
