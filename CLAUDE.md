@@ -72,3 +72,4 @@ This directory (`game/`) is the git repo root — note the space in the parent p
 - MP respawns are scheduled by `main._schedule_peer_respawn`; objective events go through `_objective_event` (never the `kill` signal).
 - Path has a space (`soldat reborn/game`) — always quote it in shell commands.
 - Remote bodies are smoothed: set replica positions through `net_apply_pos(pos, vel)` (player.gd / bot.gd), not `position =`. Nav JSON `air` = mid-air waypoints; never use them as patrol/roam targets.
+- Builds: `tools/build_release.sh [win|android|all]` → build/SoldatReborn.exe + signed .apk (stub SDK + uber-apk-signer; keystore lives in ../keys, outside the repo).
