@@ -47,6 +47,8 @@ This directory (`game/`) is the git repo root — note the space in the parent p
 - `--smoke-botfire` — join + wait 20s, confirm remote bot fire replicates (prints `bot_shots_seen`).
 - `--smoke-dedicated` — dedicated (headless) host smoke.
 - Dedicated server: `--dedicated --port N --map <name|index> --mode <name|index> [--register <master-url>]`.
+- `--smoke-auto` (with `--smoke-join` / `--smoke-botfire`) drives the client's soldier with random input; `--smoke-lan` listens 5 s for LAN beacons and prints them.
+- `tools/mp_soak.sh MODE [MAP] [OUT]` — dedicated server + two autopiloted clients (~50 s), prints error counts per log.
 
 ## Maps & anti-stuck (v1.13)
 - World rect is per map: `main.gd` vars `MAP_W / MAP_H / GROUND_Y / KILL_Y` come from `_map["world"]` (ported maps) or the 4800×2000 defaults. Never hard-code 4800/2000/1900.
@@ -67,7 +69,8 @@ This directory (`game/`) is the git repo root — note the space in the parent p
 ## Gotchas
 - GDScript uses TAB indentation — do not convert to spaces.
 - Version string is in `project.godot` (`config/version`); bump it for releases together with `export_presets.cfg` (Android `version/name` + `version/code` = MAJOR*10000+MINOR*100+PATCH, Windows `file_version`/`product_version` = X.Y.Z.0) and the top `CHANGELOG.md` heading — the gate checks they agree.
-- Release gate: `tools/release_gate.sh` (full, ~20 min: static, boots, MP smokes, all 10 modes bots-vs-bots, all-map CTF sweep) or `--quick` (CI). Must end `GATE PASSED`; logs in `build/gate/`.
+- Release gate: `tools/release_gate.sh` (full, ~20 min: static, boots, nav, MP smokes incl. per-mode `m3 m7 m9` + LAN discovery, all 10 modes with the autopilot, rules, feature/editor tests, all-map CTF sweep) or `--quick` (CI). Must end `GATE PASSED`; logs in `build/gate/`. Every Godot launch in the gate starts from default settings/controls (the user's files are backed up and restored), so results don't depend on this machine's saved settings.
+- Host broadcasts from `main.gd` go through `bcast(method, args, local)` (reaches only peers whose Main exists). Dead / disconnected soldiers linger 1.5 s as an inert husk (`player._become_husk`) so in-flight packets still find the node.
 - Host → client RPCs from bots/projectiles go only to acked peers (`ready_peer_ids()`, `_bcast`, `_net_send`); a plain `rpc()` reaches peers still loading and spams "Node not found".
 - MP respawns are scheduled by `main._schedule_peer_respawn`; objective events go through `_objective_event` (never the `kill` signal).
 - Path has a space (`soldat reborn/game`) — always quote it in shell commands.
