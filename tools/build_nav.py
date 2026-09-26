@@ -287,7 +287,10 @@ def build(m):
 
 
 
-BRIDGE_MAX_RISE = 700.0   # longest unbroken climb a bridge may ask of a full tank
+# Triumph: its only home route crosses the central pit; bridged, bots spent the
+# match falling in (15 falls / 150 s vs 6) without scoring more. Humans jet it.
+NO_BRIDGE = {"triumph"}
+BRIDGE_MAX_RISE = 740.0   # longest unbroken climb a bridge may ask of a full tank
 
 
 def _max_climb(chain):
@@ -364,6 +367,8 @@ def _raster_bridges(m, sp, stand, pts_l, edges, void_span):
             return p
         return (c[1] * R, c[0] * R)
 
+    if map_key(m.get("name", "")) in NO_BRIDGE:
+        return pts_l, edges, 0
     ts = m.get("team_spawns") or {}
     fl = m.get("ctf_flags") or []
     legs = []
@@ -373,6 +378,16 @@ def _raster_bridges(m, sp, stand, pts_l, edges, void_span):
             for sp_pt in list(ts.get(str(t), ts.get(t, [])))[:2]:
                 legs.append((landed(sp_pt), f[e]))
             legs.append((f[e], f[t]))
+    # Other modes' objectives: reachable from a spawn and back.
+    base_pts = list(ts.get("1", ts.get(1, [])))[:1] or ([m["player_spawn"]] if m.get("player_spawn") else [])
+    if base_pts:
+        home = landed(base_pts[0])
+        objs = [m[k] for k in ("inf_flag", "htf_flag", "rambo_pos") if m.get(k) is not None]
+        objs += list(m.get("dom_points", []))
+        for o in objs:
+            op = landed(o)
+            legs.append((home, op))
+            legs.append((op, home))
     added = 0
     for a_pt, b_pt in legs:
         for _attempt in range(3):
@@ -396,36 +411,37 @@ def _raster_bridges(m, sp, stand, pts_l, edges, void_span):
                     dst[c] = i
             if not src or not dst:
                 break
-            # 0-1 BFS: stepping into air over a bottomless pit costs 1, all
-            # else 0 — the route that crosses the least void wins.
+            # Dijkstra over the free-space raster: a step costs 1, climbing a
+            # cell costs 1 more (prefer routes with somewhere to land), air
+            # over a bottomless pit costs 40 (cross as little void as possible).
+            import heapq
             parent = {}
             dist = {}
-            q = collections.deque()
+            hp = []
             for c in src:
                 parent[c] = None
                 dist[c] = 0
-                q.append(c)
+                hp.append((0, c))
+            heapq.heapify(hp)
             hit = None
-            budget = 4000000
-            while q and budget > 0:
+            budget = 3000000
+            while hp and budget > 0:
                 budget -= 1
-                c = q.popleft()
+                dc, c = heapq.heappop(hp)
+                if dc > dist.get(c, 1 << 30):
+                    continue
                 if c in dst:
                     hit = c
                     break
                 y, x = c
-                dc = dist[c]
                 for yy, xx in ((y - 1, x), (y + 1, x), (y, x - 1), (y, x + 1)):
                     if 0 <= yy < H2 and 0 <= xx < W2 and coarse[yy, xx]:
-                        w = 0 if safe[yy, xx] else 1
+                        w = 1 + (1 if yy < y else 0) + (0 if safe[yy, xx] else 40)
                         nd = dc + w
                         if nd < dist.get((yy, xx), 1 << 30):
                             dist[(yy, xx)] = nd
                             parent[(yy, xx)] = c
-                            if w:
-                                q.append((yy, xx))
-                            else:
-                                q.appendleft((yy, xx))
+                            heapq.heappush(hp, (nd, (yy, xx)))
             if hit is None:
                 _dbg("no raster route", a_pt, b_pt, len(src), len(dst))
                 break
@@ -438,6 +454,7 @@ def _raster_bridges(m, sp, stand, pts_l, edges, void_span):
             # Void stretches must be jet-able: short and roughly level.
             bad = False
             run = []
+            voidruns = []
             for c in path + [None]:
                 if c is not None and not safe[c]:
                     run.append(c)
@@ -445,6 +462,7 @@ def _raster_bridges(m, sp, stand, pts_l, edges, void_span):
                 if run:
                     xs = [r[1] for r in run]
                     ys = [r[0] for r in run]
+                    voidruns.append((min(xs) * CR, max(xs) * CR, run[0][0] * CR, run[-1][0] * CR))
                     if (max(xs) - min(xs)) * CR > 240.0 or (run[-1][0] - run[0][0]) * CR > 40.0:
                         bad = True
                         break
@@ -452,7 +470,20 @@ def _raster_bridges(m, sp, stand, pts_l, edges, void_span):
             if bad:
                 _dbg("void too wide/steep", a_pt, b_pt, "run x", min(xs) * CR, max(xs) * CR, "y", run[0][0] * CR, run[-1][0] * CR, len(run))
                 break
-            wp = [(cx * CR, cy * CR + 8.0) for (cy, cx) in path[BRIDGE_STEP:-BRIDGE_STEP:BRIDGE_STEP]]
+            # Waypoints hug the floor where there is one: the raster route
+            # floats mid-air, and a bot walking below an air waypoint can
+            # only hover at it (Triumph's lower hall loop).
+            def _snap(x, y):
+                col = int(round(x / R))
+                row = int(round(y / R))
+                for dr in range(0, int(160 / R)):
+                    rr = row + dr
+                    if rr >= sp.ground.shape[0] or not stand[rr, col]:
+                        break
+                    if sp.ground[rr, col]:
+                        return (x, rr * R)
+                return (x, y)
+            wp = [_snap(cx * CR, cy * CR + 8.0) for (cy, cx) in path[BRIDGE_STEP:-BRIDGE_STEP:BRIDGE_STEP]]
             si, di = src[path[0]], dst[path[-1]]
             chain = [pts_l[si]] + wp + [pts_l[di]]
             # Never route over a bottomless drop (bots fell through Dusk's
@@ -460,9 +491,10 @@ def _raster_bridges(m, sp, stand, pts_l, edges, void_span):
             # Longest unbroken climb (a descent lets the bot land and refuel).
             rise_fwd = _max_climb(chain)
             if rise_fwd > BRIDGE_MAX_RISE:
-                _dbg("too much climb", a_pt, b_pt, rise_fwd)
+                _dbg("too much climb", a_pt, b_pt, rise_fwd, "chain", [(int(c[0]), int(c[1])) for c in chain])
                 break
             rise_back = _max_climb(chain[::-1])
+            _dbg("bridge ok", a_pt, b_pt, "climb", rise_fwd, "voidruns", voidruns, "chain", [(int(c[0]), int(c[1])) for c in chain])
             ids = [si]
             for w in wp:
                 ids.append(len(pts_l))

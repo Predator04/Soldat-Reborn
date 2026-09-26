@@ -11,6 +11,8 @@
 #   N nav      every map in CTF: each team can path spawn -> enemy flag -> home
 #              (known exceptions allowed: NAV_KNOWN_BROKEN)
 #   E sweep    every map in CTF: grabs / captures / falls / anti-stuck frees
+#   M modes    (opt-in: --only M --msweep MODE:FROM:TO, then --only M --mode-verdict)
+#              every map in INF / HTF / DOM: errors, falls, objective activity
 # --quick skips E (CI-sized). Logs + summary land in build/gate/ (or --out).
 # Piecewise runs (each piece fits a short shell budget; summary accumulates):
 #   --only "A B"   run just these stages      --modes "0 1 2"  subset for D
@@ -21,12 +23,13 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 G="${GODOT_BIN:-$HOME/godot/Godot_v4.7.2-stable_linux.x86_64}"
 QUICK=0; OUT="build/gate"; ONLY="A B N C D E"; MODESEL="0 1 2 3 4 5 6 7 8 9"
-NETSEL="ctf dm host"; SWEEP=""; KEEP=0; FINAL=0
+NETSEL="ctf dm host"; SWEEP=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --quick) QUICK=1;; --out) OUT="$2"; shift;; --only) ONLY="$2"; shift;;
     --modes) MODESEL="$2"; shift;; --net) NETSEL="$2"; shift;;
-    --sweep) SWEEP="$2"; shift;; --keep) KEEP=1;; --final) FINAL=1;;
+    --sweep) SWEEP="$2"; shift;;
+    --msweep) MSWEEP="$2"; shift;; --mode-verdict) MVERDICT=1;; --keep) KEEP=1;; --final) FINAL=1;;
   esac; shift
 done
 mkdir -p "$OUT"
@@ -70,7 +73,7 @@ has B && for sc in main menu map_editor; do
 done
 
 # ── N nav reachability ──────────────────────────────────────────────────────
-NAV_KNOWN_BROKEN="Dusk Nuclear Triumph"   # need a map fix, not a bake fix
+NAV_KNOWN_BROKEN="Triumph"   # its only home route crosses the central pit; see NO_BRIDGE in build_nav.py
 if has N; then
   timeout 175 "$G" --headless -s tools/nav_check.gd > "$OUT/navcheck.log" 2>&1
   line=$(grep -m1 NAVCHECK "$OUT/navcheck.log")
@@ -153,6 +156,23 @@ elif [ $QUICK = 0 ] && has E; then
   if [ "$maps" = "$total" ] && [ "$n" = "0" ] && [ "${grabs:-0}" -ge 100 ] && [ "${caps:-0}" -ge 10 ] && [ "${fell:-0}" -le 25 ] && [ "${unstuck:-0}" -le 25 ]; then pass "$msg"; else fail "$msg"; fi
   info "E worst maps (fell/unstuck > 0):"
   grep '^map' "$OUT/sweep.log" | grep -vE 'unstuck=0 fell=0' | cut -c1-110 | tee -a "$SUM" >/dev/null
+fi
+
+# ── M all-map sweeps for other objective modes (opt-in) ─────────────────────
+if has M && [ -n "$MSWEEP" ]; then
+  IFS=: read -r mm mf mt <<< "$MSWEEP"
+  timeout 175 "$G" --headless --fixed-fps 60 -s tools/stuck_test.gd -- --secs=30 --from=$mf --to=$mt --mode=$mm >> "$OUT/msweep_$mm.log" 2>&1
+  info "M sweep mode $mm chunk $mf:$mt: $(grep -c '^map' "$OUT/msweep_$mm.log") maps logged"
+fi
+if has M && [ $MVERDICT = 1 ]; then
+  for f in "$OUT"/msweep_*.log; do
+    [ -f "$f" ] || continue
+    mm=$(basename "$f" .log | sed 's/msweep_//')
+    n=$(errs "$f"); maps=$(grep -c '^map' "$f")
+    s_() { grep '^map' "$f" | sed -n "s/.* $1=\([0-9]*\).*/\1/p" | paste -sd+ | bc; }
+    msg="M mode ${MODES[$mm]:-$mm} all maps: maps=$maps grabs=$(s_ grabs) objective=$(s_ caps) kills=$(s_ kills) fell=$(s_ fell) errors=$n"
+    if [ "$n" = "0" ] && [ "${maps:-0}" -ge $((NMAPS + 3)) ] && [ "$(s_ fell)" -le 25 ]; then pass "$msg"; else fail "$msg"; fi
+  done
 fi
 
 if [ $KEEP = 0 ]; then

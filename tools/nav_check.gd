@@ -68,6 +68,23 @@ func _process(_d: float) -> bool:
 				probs.append("T%d spawn%s->enemy flag%s (node %s comp %d -> node %s comp %d)" % [t, Vector2i(s), Vector2i(home[e]), (Vector2i(nav.point(na)) if na >= 0 else Vector2i(-1, -1)), (nav._comp[na] if na >= 0 else -1), (Vector2i(nav.point(nb)) if nb >= 0 else Vector2i(-1, -1)), (nav._comp[nb] if nb >= 0 else -1)])
 			if not _ok(nav, home[e], home[t]):
 				probs.append("T%d enemy flag->home" % t)
+		# Other modes' objectives (INF/HTF flag, Rambo bow, DOM points) must be
+		# reachable from a spawn, and the spawn reachable back from them.
+		var md: Dictionary = m.get("_map")
+		var objs: Array = []
+		for k in ["inf_flag", "htf_flag", "rambo_pos"]:
+			if md.has(k):
+				objs.append([k, md[k]])
+		var di := 0
+		for dp in md.get("dom_points", []):
+			objs.append(["dom%d" % di, dp])
+			di += 1
+		var sp1: Array = m._team_spawn_list(1)
+		var base: Vector2 = m._settle_on_ground(sp1[0] if not sp1.is_empty() else home[1])
+		for o in objs:
+			var op: Vector2 = m._settle_on_ground(o[1])
+			if not _ok(nav, base, op) or not _ok(nav, op, base):
+				probs.append("OBJ %s%s" % [o[0], Vector2i(op)])
 		if not probs.is_empty():
 			_bad += 1
 			print("map %3d %-14s %s" % [_idx, name, ", ".join(probs)])

@@ -522,6 +522,20 @@ def to_reborn_map(pms, display_name=None, scale=DEFAULT_SCALE):
     return m
 
 
+OBJECTIVE_OVERRIDES = {
+    # DOM points on the ships' bow/stern tips: bots overshot into the void.
+    "airpirates": {"dom_points": [[3650.0, 2470.0], [4256.0, 2356.0], [5454.0, 1916.0]]},
+    # BLUE (team 1) base by the right tower, RED by the left tower.
+    "dusk": {"ctf_flags": [[4350.0, 1698.0], [1880.0, 1932.0]]},
+    # DOM point generated on a roof / ledge bots can't return from.
+    "bunker": {"dom_points": [[1422.0, 1436.0], [1692.0, 1430.0], [3040.0, 1852.0]]},
+    # DOM point generated on a roof / ledge bots can't return from.
+    "veoto": {"dom_points": [[1600.0, 2948.0], [3726.0, 1822.0], [5840.0, 2900.0]]},
+    # DOM point generated on a roof / ledge bots can't return from.
+    "outpost": {"dom_points": [[1964.0, 2662.0], [5078.0, 2664.0], [7680.0, 3674.0]]},
+}
+
+
 def fix_entities(m):
     """Move any spawn / flag / mount that would start embedded in terrain, over a
     pit, or in a sealed pocket onto the nearest reachable ground. Flags are also
@@ -534,6 +548,11 @@ def fix_entities(m):
         import map_audit as MA
     sp = MA.Space(m)
     notes = []
+    # Hand-picked objectives where the generator's pick is technically
+    # reachable but unplayable (Dusk: flags on the sky arch above the map).
+    for k, v in OBJECTIVE_OVERRIDES.get(str(m.get("name", "")).lower(), {}).items():
+        m[k] = v
+        notes.append("%s override -> %s" % (k, v))
     # Every objective the runtime needs gets an explicit, reachable spot —
     # otherwise main.gd falls back to 4800x2000-arena defaults (x=300 /
     # MAP_W-300 / fixed thirds on ctf_ground_y), which on ported maps land in
