@@ -9,6 +9,8 @@
 #   D modes    every game mode (DM..GG) on 3 maps with bots-vs-bots: kills,
 #              objective scoring where the mode has one, no script errors
 #   R rules    Realistic / Survival / Advance toggles (autopilot, menu path)
+#   F features scripted SP run: gestures, all weapon slots, nades, throw,
+#              extreme mods, live bot-count changes, vote, GIF recorder, /kill
 #   N nav      every map in CTF: each team can path spawn -> enemy flag -> home
 #              (known exceptions allowed: NAV_KNOWN_BROKEN)
 #   E sweep    every map in CTF: grabs / captures / falls / anti-stuck frees
@@ -23,7 +25,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 G="${GODOT_BIN:-$HOME/godot/Godot_v4.7.2-stable_linux.x86_64}"
-QUICK=0; OUT="build/gate"; ONLY="A B N C D R E"; MODESEL="0 1 2 3 4 5 6 7 8 9"
+QUICK=0; OUT="build/gate"; ONLY="A B N C D R F E"; MODESEL="0 1 2 3 4 5 6 7 8 9"
 NETSEL="ctf dm two respawn host"; SWEEP=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -183,6 +185,17 @@ if has R; then
     timeout 60 "$G" --headless --fixed-fps 60 -s tools/stuck_test.gd -- --secs=40 --from=19 --to=19 --mode=1 --sp --autopilot $fl > "$f" 2>&1
     n=$(errs "$f"); k=$(grep '^map' "$f" | sed -n 's/.*kills=\([0-9]*\).*/\1/p')
     if [ "$n" = "0" ] && [ "${k:-0}" -gt 0 ]; then pass "R rules ${fl#--}: kills=$k"; else fail "R rules ${fl#--}: kills=${k:-none} errors=$n"; fi
+  done
+fi
+
+# ── F feature exercise ───────────────────────────────────────────────────────
+if has F; then
+  for spec in "19 1" "11 2" "7 7"; do
+    set -- $spec
+    f="$OUT/feature_$1_$2.log"
+    timeout 60 "$G" --headless --fixed-fps 60 -s tools/feature_test.gd -- --map=$1 --mode=$2 > "$f" 2>&1
+    n=$(( $(errs "$f") + $(grep -c 'ERROR: Parameter' "$f") ))
+    if grep -q "FEATURE-TEST done" "$f" && [ "$n" = "0" ]; then pass "F features map $1 mode $2"; else fail "F features map $1 mode $2: $(grep -c 'FEATURE-TEST done' "$f") done, errors=$n"; fi
   done
 fi
 

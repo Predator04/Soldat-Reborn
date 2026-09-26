@@ -34,6 +34,10 @@ func toggle() -> void:
 func start() -> void:
 	if _recording:
 		return
+	# No framebuffer to read on a headless / dedicated instance (every capture
+	# logged 'Parameter "t" is null').
+	if DisplayServer.get_name() == "headless":
+		return
 	if not DirAccess.dir_exists_absolute(OUTPUT_DIR):
 		DirAccess.make_dir_recursive_absolute(OUTPUT_DIR)
 	_recording = true
