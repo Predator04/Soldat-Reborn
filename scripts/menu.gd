@@ -628,7 +628,7 @@ func _build_join() -> void:
 	_join_panel.add_child(ip_lbl)
 
 	_ip_edit = LineEdit.new()
-	_ip_edit.text = "127.0.0.1"
+	_ip_edit.text = Settings.last_join_ip
 	_ip_edit.placeholder_text = "127.0.0.1"
 	_ip_edit.custom_minimum_size = Vector2(0, 34)
 	UITheme.style_lineedit(_ip_edit)
@@ -640,7 +640,7 @@ func _build_join() -> void:
 	_join_panel.add_child(port_lbl)
 
 	_port_edit = LineEdit.new()
-	_port_edit.text = str(Net.DEFAULT_PORT)
+	_port_edit.text = str(Settings.last_join_port)
 	_port_edit.custom_minimum_size = Vector2(0, 34)
 	UITheme.style_lineedit(_port_edit)
 	_join_panel.add_child(_port_edit)
@@ -845,6 +845,9 @@ func _on_connect_pressed() -> void:
 	if ip == "":
 		ip = "127.0.0.1"
 	var port := int(_port_edit.text) if _port_edit.text.is_valid_int() else Net.DEFAULT_PORT
+	Settings.last_join_ip = ip
+	Settings.last_join_port = port
+	Settings.save()
 	_connecting = true
 	_connect_btn.disabled = true
 	if not Net.join_game(ip, port):

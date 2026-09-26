@@ -87,6 +87,8 @@ var bot_skill := 3
 # Multiplayer lobby / master server (#33). server_name is what a dedicated host
 # advertises to the master; master_url is the "Browse Servers" list endpoint.
 var server_name := "Soldat Server"
+var last_join_ip := "127.0.0.1"   # Join panel remembers the last address
+var last_join_port := 7777
 var player_name := "Player"
 var master_url := ""
 
@@ -170,6 +172,8 @@ func load_settings() -> void:
 	bot_count = clampi(int(cf.get_value("bots", "count", -1)), -1, 8)
 	bot_skill = clampi(int(cf.get_value("bots", "skill", 3)), 1, 5)
 	server_name = str(cf.get_value("net", "server_name", "Soldat Server"))
+	last_join_ip = str(cf.get_value("net", "last_join_ip", "127.0.0.1"))
+	last_join_port = clampi(int(cf.get_value("net", "last_join_port", 7777)), 1, 65535)
 	player_name = str(cf.get_value("net", "player_name", "Player"))
 	master_url = str(cf.get_value("net", "master_url", ""))
 
@@ -216,6 +220,8 @@ func save() -> void:
 	cf.set_value("bots", "count", bot_count)
 	cf.set_value("bots", "skill", bot_skill)
 	cf.set_value("net", "server_name", server_name)
+	cf.set_value("net", "last_join_ip", last_join_ip)
+	cf.set_value("net", "last_join_port", last_join_port)
 	cf.set_value("net", "player_name", player_name)
 	cf.set_value("net", "master_url", master_url)
 	cf.save(PATH)
