@@ -16,6 +16,7 @@ var lbl_grenades: Label
 var lbl_map: Label
 var lbl_rec: Label
 var lbl_status: Label
+var scoreboard: Control = null
 var lbl_timer: Label
 var lbl_score: RichTextLabel
 var lbl_winner: Label
@@ -103,6 +104,12 @@ func _ready() -> void:
 	lbl_ammo = _make_label(Vector2(14, 58), UITheme.COL_HUD_AMMO)
 	lbl_weapon = _make_label(Vector2(14, 82), UITheme.COL_HUD_WEAPON)
 	lbl_grenades = _make_label(Vector2(14, 106), UITheme.COL_HUD_GRENADE)
+	scoreboard = Control.new()
+	scoreboard.name = "Scoreboard"
+	scoreboard.set_script(preload("res://scripts/scoreboard.gd"))
+	scoreboard.set("hud", self)
+	scoreboard.set("main", get_parent())
+	add_child(scoreboard)
 	var bars := Control.new()
 	bars.name = "VitalsBars"
 	bars.set_script(preload("res://scripts/hud_bars.gd"))

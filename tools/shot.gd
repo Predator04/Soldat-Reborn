@@ -12,6 +12,7 @@ var _moved := false
 var _flagdemo := false
 var _flagdrop := false
 var _scene := "res://scenes/main.tscn"
+var _sb := false
 var _vis := ""   # --show=NodeVar: make current_scene.<var> visible, hide _menu_root
 
 
@@ -27,6 +28,8 @@ func _initialize() -> void:
 			_flagdrop = true
 		elif a.begins_with("--scene="):
 			_scene = a.substr(8)
+		elif a == "--scoreboard":
+			_sb = true
 		elif a.begins_with("--show="):
 			_vis = a.substr(7)
 		elif a.begins_with("--at="):
@@ -59,6 +62,10 @@ func _process(_delta: float) -> bool:
 		var panel = current_scene.get(_vis)
 		if panel != null:
 			panel.visible = true
+	if _sb and current_scene != null and current_scene.get("hud") != null:
+		var sbn = current_scene.hud.get("scoreboard")
+		if sbn != null:
+			sbn.peek(5.0)
 	if _n == _frames:
 		var img := root.get_texture().get_image()
 		img.save_png(_out)

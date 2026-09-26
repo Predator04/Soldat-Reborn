@@ -25,7 +25,7 @@ const ACTION_SECTION := {
 	"weapon_7": "Weapons", "weapon_8": "Weapons", "weapon_9": "Weapons",
 	"weapon_10": "Weapons",
 	"chat": "Chat", "team_chat": "Chat", "taunt": "Chat", "command": "Chat",
-	"vote_yes": "Utility", "vote_no": "Utility", "pause": "Utility",
+	"vote_yes": "Utility", "vote_no": "Utility", "pause": "Utility", "scoreboard": "Utility",
 	"record_gif": "Utility",
 }
 
@@ -89,6 +89,8 @@ const ACTIONS := [
 	["pause",           "Pause Menu",       [{"type": "key", "physical_keycode": 4194305},    # Esc
 											 {"type": "joy_button", "button_index": 6}]],    # Start
 	["record_gif",      "Record GIF",       [{"type": "key", "physical_keycode": 4194340}]],  # F9
+	["scoreboard",      "Scoreboard (hold)", [{"type": "key", "physical_keycode": 4194306},   # Tab
+											 {"type": "joy_button", "button_index": 4}]],    # Back / Select
 ]
 
 

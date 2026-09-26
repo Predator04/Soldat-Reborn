@@ -34,6 +34,11 @@ var _map: Dictionary = {}
 var _players_by_id: Dictionary = {}  # peer_id -> player node (host only, but also mirrored on clients)
 var _peer_names: Dictionary = {}    # peer_id -> chosen display name (host only; client sends it in net_client_ready)
 var _peer_team_by_id: Dictionary = {}  # peer_id -> last team (every peer; survives death, for chat identity)
+# Per-soldier match stats for the scoreboard: name -> {"k", "d", "c"} (kills,
+# deaths, captures/points). Every peer counts them from the same replicated
+# kill-feed / objective events; joiners get a snapshot in net_client_ready.
+var player_stats: Dictionary = {}
+var _stats_round_active := true
 var _bot_pending: Dictionary = {}    # bot name -> true while its respawn timer runs
 var _ready_peers: Dictionary = {}    # peer_id -> true (host only, gate for outbound state RPCs)
 # Peers whose main.tscn is loaded — populated on net_client_ready (before the
@@ -1916,6 +1921,20 @@ func _on_net_peer_disconnected(id: int) -> void:
 			_resolve_vote(false, "Target left the server")
 
 
+func _stat_add(who: String, key: String, n: int) -> void:
+	if who == "":
+		return
+	if not player_stats.has(who):
+		player_stats[who] = {"k": 0, "d": 0, "c": 0}
+	player_stats[who][key] = int(player_stats[who][key]) + n
+
+
+@rpc("authority", "call_remote", "reliable")
+func net_stats_sync(stats: Dictionary) -> void:
+	if typeof(stats) == TYPE_DICTIONARY:
+		player_stats = stats.duplicate(true)
+
+
 func ready_peer_ids() -> Array:
 	return _ready_peers.keys()
 
@@ -1971,6 +1990,7 @@ func _handle_client_ready(sender_id: int, joiner_name: String = "", client_versi
 		if not is_instance_valid(box):
 			continue
 		rpc_id(sender, "net_bonus_spawn", int(bid), box.position, str(box.get("bonus_kind")))
+	rpc_id(sender, "net_stats_sync", player_stats)
 	# then spawn a body for the new peer on everyone
 	_spawn_networked_player(sender)
 	# NOTE: _ready_peers[sender] is set only when the client acks the spawn (net_spawn_ack).
@@ -2208,6 +2228,8 @@ func _objective_event(kind: String, team: int, who: String) -> void:
 @rpc("authority", "call_local", "reliable")
 func net_objective_event(kind: String, team: int, who: String) -> void:
 	objective.emit(kind, team, who)
+	if kind == "capture" or kind == "point":
+		_stat_add(who, "c", 1)
 	if hud != null and hud.has_method("announce_objective"):
 		hud.announce_objective(kind, team, who)
 	Sfx.objective(kind)
@@ -2254,6 +2276,10 @@ func _process(delta: float) -> void:
 	_tick_vote(delta)
 	# Kill line + anti-stuck watchdog — per peer, for locally-owned soldiers.
 	_tick_soldier_safety(delta)
+	# New round (on every peer, from the synced round_active flag): fresh board.
+	if round_active and not _stats_round_active:
+		player_stats.clear()
+	_stats_round_active = round_active
 	# Client: state is driven entirely by host's net_match_state RPCs.
 	if Net.is_networked() and not Net.is_host():
 		# BR ring damage is applied by each soldier's authority; the host can't
@@ -2729,6 +2755,12 @@ func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: Str
 	# (+1 here on top of the mode's own point) and counting as kills in Stats.
 	if victim_team < 0:
 		return
+	if round_active:
+		_stat_add(victim_name, "d", 1)
+		if killer_name != "" and killer_name != victim_name:
+			_stat_add(killer_name, "k", 1)
+		elif killer_name == victim_name:
+			_stat_add(victim_name, "k", -1)   # Soldat: a suicide costs a point
 	# Local stats — track the local player's kills / deaths / suicides.
 	# Skips scoreboard synthetic entries (FLAG/POINT etc.) which have killer_team but no soldier.
 	if is_instance_valid(player):
