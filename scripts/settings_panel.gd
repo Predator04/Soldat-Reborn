@@ -263,6 +263,11 @@ func _build_game(box: VBoxContainer) -> void:
 		func(on: bool) -> void:
 			Settings.advance = on
 			Settings.save()))
+	box.add_child(_check_button("Bot chatter (bots taunt in chat)",
+		Settings.bot_chatter,
+		func(on: bool) -> void:
+			Settings.bot_chatter = on
+			Settings.save()))
 
 
 func _build_mods(box: VBoxContainer) -> void:

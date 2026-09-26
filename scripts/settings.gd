@@ -28,6 +28,7 @@ var touch_swap := false
 var touch_btn_pos: Dictionary = {}
 var show_fps := false          # overlay FPS counter on the HUD
 var damage_numbers := true     # floating damage numbers when you land a hit
+var bot_chatter := true        # bots trash-talk in chat now and then
 var blood_intensity := 1.0     # 0.0..1.5 — visual gore multiplier (particles + gib count in gostek/gibs)
 
 # Cosmetics — the local player's persistent character look.
@@ -146,6 +147,7 @@ func load_settings() -> void:
 				touch_btn_pos[str(k)] = Vector2(float(v[0]), float(v[1]))
 	show_fps = bool(cf.get_value("video", "show_fps", false))
 	damage_numbers = bool(cf.get_value("video", "damage_numbers", true))
+	bot_chatter = bool(cf.get_value("game", "bot_chatter", true))
 	blood_intensity = clampf(float(cf.get_value("game", "blood_intensity", 1.0)), 0.0, 1.5)
 	cos_head = str(cf.get_value("cosmetics", "head", "helm"))
 	cos_vest = bool(cf.get_value("cosmetics", "vest", true))
@@ -187,6 +189,7 @@ func save() -> void:
 	cf.set_value("controls", "touch_btn_pos", touch_btn_pos)
 	cf.set_value("video", "show_fps", show_fps)
 	cf.set_value("video", "damage_numbers", damage_numbers)
+	cf.set_value("game", "bot_chatter", bot_chatter)
 	cf.set_value("game", "blood_intensity", blood_intensity)
 	cf.set_value("cosmetics", "head", cos_head)
 	cf.set_value("cosmetics", "vest", cos_vest)

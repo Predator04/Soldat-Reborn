@@ -1921,6 +1921,60 @@ func _on_net_peer_disconnected(id: int) -> void:
 			_resolve_vote(false, "Target left the server")
 
 
+# ── Bot chatter (host decides, everyone sees it in chat) ───────────────────
+const BOT_KILL_LINES := ["Too easy.", "Next!", "Stay down.", "Get off my map!", "Nice try.",
+	"Boom.", "Who's next?", "Sit.", "That's one.", "Should've jetted.", "gg ez", "Reload that."]
+const BOT_DEATH_LINES := ["Lucky shot!", "I'll be back.", "Lag!", "Ugh...", "Not again!",
+	"Respawning angry.", "Camper!", "Hax.", "You got lucky.", "Ow."]
+var _bot_chat_cd: Dictionary = {}   # bot name -> msec of last line
+
+
+func _is_bot_name(n: String) -> bool:
+	for b in _live_bots():
+		if str(b.get("display_name")) == n:
+			return true
+	for b in _bots_by_id.values():
+		if is_instance_valid(b) and str(b.get("display_name")) == n:
+			return true
+	return n.begins_with("Bot ") or n.begins_with("Red Bot") or n.begins_with("Blue Bot")
+
+
+func _maybe_bot_chatter(killer: String, victim: String) -> void:
+	if not Settings.bot_chatter or killer == "" or killer == victim:
+		return
+	var speaker := ""
+	var lines: Array = []
+	# Mostly react to humans: bots trash-talk the player they killed and
+	# complain when a player gets them; bot-vs-bot stays quieter.
+	var human_involved: bool = not _is_bot_name(killer) or not _is_bot_name(victim)
+	var chance := 0.35 if human_involved else 0.06
+	if randf() > chance:
+		return
+	if _is_bot_name(killer) and (randf() < 0.6 or not _is_bot_name(victim)):
+		speaker = killer
+		lines = BOT_KILL_LINES
+	elif _is_bot_name(victim):
+		speaker = victim
+		lines = BOT_DEATH_LINES
+	if speaker == "":
+		return
+	var now := Time.get_ticks_msec()
+	if now - int(_bot_chat_cd.get(speaker, -100000)) < 12000:
+		return
+	_bot_chat_cd[speaker] = now
+	var msg: String = str(lines[randi() % lines.size()])
+	net_bot_chat(speaker, msg)
+	if Net.is_networked() and multiplayer.has_multiplayer_peer():
+		for pid in _ready_peers.keys():
+			rpc_id(int(pid), "net_bot_chat", speaker, msg)
+
+
+@rpc("authority", "call_local", "reliable")
+func net_bot_chat(author: String, msg: String) -> void:
+	if hud != null and hud.has_method("post_chat"):
+		hud.post_chat(author, msg.left(80), false)
+
+
 func _stat_add(who: String, key: String, n: int) -> void:
 	if who == "":
 		return
@@ -2778,6 +2832,7 @@ func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: Str
 		return
 	if not round_active or killer_team < 0:
 		return
+	_maybe_bot_chatter(killer_name, victim_name)
 	# Gun Game runs its own ladder BEFORE the generic team/suicide gate.
 	# Suicides are still filtered here so a self-kill can't earn a rung-up.
 	if Settings.game_mode == Settings.MODE_GG:
