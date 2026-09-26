@@ -28,6 +28,7 @@ var touch_swap := false
 var touch_btn_pos: Dictionary = {}
 var show_fps := false          # overlay FPS counter on the HUD
 var damage_numbers := true     # floating damage numbers when you land a hit
+var help_seen := 0             # matches that auto-showed the controls card
 var bot_chatter := true        # bots trash-talk in chat now and then
 var spawn_primary := 2         # limbo weapon menu pick (AK-74)
 var spawn_secondary := 0       # (USSOCOM)
@@ -152,6 +153,7 @@ func load_settings() -> void:
 	damage_numbers = bool(cf.get_value("video", "damage_numbers", true))
 	bot_chatter = bool(cf.get_value("game", "bot_chatter", true))
 	camera_lead = bool(cf.get_value("controls", "camera_lead", true))
+	help_seen = int(cf.get_value("game", "help_seen", 0))
 	spawn_primary = clampi(int(cf.get_value("loadout", "primary", 2)), 0, 9)
 	spawn_secondary = clampi(int(cf.get_value("loadout", "secondary", 0)), 0, 3)
 	blood_intensity = clampf(float(cf.get_value("game", "blood_intensity", 1.0)), 0.0, 1.5)
@@ -197,6 +199,7 @@ func save() -> void:
 	cf.set_value("video", "damage_numbers", damage_numbers)
 	cf.set_value("game", "bot_chatter", bot_chatter)
 	cf.set_value("controls", "camera_lead", camera_lead)
+	cf.set_value("game", "help_seen", help_seen)
 	cf.set_value("loadout", "primary", spawn_primary)
 	cf.set_value("loadout", "secondary", spawn_secondary)
 	cf.set_value("game", "blood_intensity", blood_intensity)

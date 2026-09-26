@@ -264,6 +264,11 @@ func _ready() -> void:
 	# player is dead, hides once they pick a weapon. See weapon_menu.gd _process.
 	weapon_menu = WeaponMenu.new()
 	add_child(weapon_menu)
+	# First-matches controls card (H toggles).
+	var hint := PanelContainer.new()
+	hint.name = "ControlsHint"
+	hint.set_script(preload("res://scripts/controls_hint.gd"))
+	add_child(hint)
 	weapon_menu.player = player
 
 	# FPS overlay (#73) — top-right corner. Hidden by default; toggle via Settings.
