@@ -397,7 +397,7 @@ func _smoke_botfire() -> void:
 		var local_hp: float = -1.0
 		if main != null and main.get("player") != null and is_instance_valid(main.player):
 			local_hp = float(main.player.health)
-		print("SMOKE-BOTFIRE id=%d mode=%d players=%d bots_visible=%d bot_shots_seen=%d bot_bullets_seen=%d bot_bullets_max=%d bot_bullets_visible=%d local_hp=%.1f min_hp=%.1f deaths=%d status=\"%s\" left=\"%s\"" % [local_id(), mode, pcount, bots_visible, bot_shots_seen, bot_bullets_seen, max_bullets_ref[0], bot_bullets_visible, local_hp, min_hp_ref[0], deaths_ref[0], status, last_disconnect_reason])
+		print("SMOKE-BOTFIRE id=%d mode=%d players=%d bots_visible=%d bot_shots_seen=%d bot_bullets_seen=%d bot_bullets_max=%d bot_bullets_visible=%d local_hp=%.1f min_hp=%.1f deaths=%d status=\"%s\" left=\"%s\" stats=%d" % [local_id(), mode, pcount, bots_visible, bot_shots_seen, bot_bullets_seen, max_bullets_ref[0], bot_bullets_visible, local_hp, min_hp_ref[0], deaths_ref[0], status, last_disconnect_reason, (main.player_stats.size() if main != null and main.get("player_stats") != null else -1)])
 		leave()
 		get_tree().quit())
 
