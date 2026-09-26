@@ -65,11 +65,19 @@ func _draw() -> void:
 
 
 func _draw_cloud(center: Vector2, w: float, h: float, col: Color) -> void:
-	# Stacked circles fake a soft cloud silhouette without a texture asset.
-	var count := 5
-	for i in count:
-		var t := (float(i) + 0.5) / float(count)
+	# Soft, puffy cloud with a flat-ish base: overlapping puffs, each drawn as
+	# a few concentric discs of falling alpha (a cheap blur), brighter tops.
+	var puffs := 7
+	for i in puffs:
+		var t := (float(i) + 0.5) / float(puffs)
 		var cx := center.x - w * 0.5 + t * w
-		var cy := center.y + sin(t * PI) * -h * 0.3
-		var r := h * (0.9 + 0.5 * sin(t * PI))
-		draw_circle(Vector2(cx, cy), r, col)
+		var bump := sin(t * PI)
+		var r := h * (0.55 + 0.75 * bump) * (0.9 + 0.2 * sin(float(i) * 2.3))
+		var cy := center.y - r * 0.35 * bump
+		for k in 4:
+			var f := 1.0 - float(k) * 0.22
+			draw_circle(Vector2(cx, cy), r * (1.0 + float(k) * 0.28), Color(col, col.a * 0.55 * f))
+		# Lit crown.
+		draw_circle(Vector2(cx, cy - r * 0.25), r * 0.6, Color(col.lightened(0.3), col.a * 0.35))
+	# Flatten the underside: a wide, faint base band.
+	draw_rect(Rect2(center.x - w * 0.45, center.y - h * 0.1, w * 0.9, h * 0.35), Color(col, col.a * 0.25))
