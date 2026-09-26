@@ -293,6 +293,14 @@ func _smoke_join() -> void:
 	map_received.connect(func() -> void:
 		get_tree().change_scene_to_file("res://scenes/main.tscn"))
 	join_game("127.0.0.1", _smoke_port())
+	# --smoke-die: kill our own body mid-session so the MP respawn path runs;
+	# the SMOKE-JOIN-PLAYERS line then shows the respawned body's node name.
+	if "--smoke-die" in OS.get_cmdline_user_args():
+		get_tree().create_timer(4.0).timeout.connect(func() -> void:
+			var mn = get_tree().current_scene
+			if mn != null and mn.get("player") != null and is_instance_valid(mn.player):
+				mn.player.take_damage(999.0, str(mn.player.display_name), "Selfkill", int(mn.player.team))
+				print("SMOKE-DIE sent"))
 	# Larger window so the client has time to complete: connect → map_received →
 	# main.tscn._ready → net_client_ready → host mirrors bots via net_spawn_bot.
 	get_tree().create_timer(_smoke_secs(6.0)).timeout.connect(func() -> void:
@@ -314,6 +322,8 @@ func _smoke_join() -> void:
 				if _c is CharacterBody2D and _c.get("loadout") == null:
 					_names.append(str(_c.name))
 			print("SMOKE-JOIN-PLAYERS ", _names)
+			var lp = _mn.get("player")
+			print("SMOKE-JOIN-LOCAL alive=%s" % str(lp != null and is_instance_valid(lp) and not bool(lp.get("dead"))))
 		leave()
 		get_tree().quit())
 
