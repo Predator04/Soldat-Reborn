@@ -2,6 +2,43 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.16.0] — 2026-09-27
+
+Limbo weapon menu, LAN game discovery, map-editor undo, Domination bot fixes and a round of multiplayer hardening (every mode soaked with two autopiloted clients, zero errors).
+
+### Gameplay & UI
+- **Limbo weapon menu works**: while you're dead the Soldat weapon panel shows on the left (bigger rows beside the touch buttons on phones); pick a primary (1–0, click or tap) and a secondary (click / tap) and you respawn with them. Your last number-key pick carries over too, and the choice is saved. (The panel existed but never appeared, and every respawn reset you to the AK-74.) Off in Advance and Gun Game.
+- **Low-FPS guard**: if a match runs under ~35 fps for 8 seconds, Lo-fi mode switches on once and a chat line says so (Settings → Video turns it back off). Aimed at weaker phones.
+- On touch devices the menu's bottom hint line explains the touch controls instead of listing keyboard keys.
+- **Controls card**: the first three matches open with a small bottom-centre card of the controls (read from your current bindings, pad buttons too when a controller is plugged in); it fades after 12 s and **H** brings it back any time (rebindable, "Controls Help"). Not shown on touch screens.
+- Objective edge arrows stay below the top HUD row (they could land on the timer / score strip).
+- Spectating while dead: tap the left / right half of the screen (touch) or LB / RB / D-pad (gamepad) to switch who you follow; the hint says so.
+- Kill confirmation: when you score a kill a short "KILLED <name>" line (red with · HEADSHOT) pops under the action for a second.
+- Death screen says "You died" for suicides instead of "killed by <you>"; the empty HP/JET box hides while you're dead.
+- The single-player map picker no longer shows "Rotation" while PLAY would load the editor's last play-test map.
+
+### Bots
+- **Bots: Domination fixes.** Standing on a point to capture it no longer trips the anti-stuck escape (bots used to walk off after ~2 s, before the 4 s capture finished); after jetting up a shaft, bots hold altitude while stepping sideways onto the ledge instead of dropping back down (Equinox's blue spawn was a trap); Kampf's third DOM point moved off a ledge bots couldn't reach. On tall slanted climbs bots now follow the nav link's line instead of cutting the corner into the underside of the ledge (MFM). All-map DOM sweep: 330 captures (was 204), falls 2 (was 10).
+
+### Multiplayer
+- Network protocol changed (bot shots, ready list): 1.15 and 1.16 builds can't play together — the host refuses the other version with a message, so update every PC / phone.
+- Fixed: hosting (or a dedicated server with `--map`) after an editor play-test loaded the play-test map instead of the map you picked.
+- Host-side broadcasts (spawns, despawns, kill feed, objective events, Gun Game rungs, votes, round resets) now only go to peers that have loaded the match; a second client joining mid-match no longer logs "Node not found: Main". Gate run 12: all stages passed (CTF sweep 245 grabs, 41 captures, 662 kills, 3 falls).
+- **LAN games show up by themselves**: a listen or dedicated host broadcasts a small beacon every second, and Join → FIND GAMES lists games on your network (name, players, map, mode) live — click to join, no IP typing. Different builds are shown greyed out. The master-server list sits below it as before. (UDP port 23074.)
+- The Join panel remembers the last address and port you connected to.
+- Host Game panel: game mode picker next to the map (mirrors the main menu's), and it tells you how LAN players find you (plus your LAN IP when there is one). The in-game status line shows the address you're hosting on.
+- Multiplayer: a dead (or disconnected) soldier's body lingers 1.5 s as an inert, hidden husk so shots / state already in flight from its owner don't log "Node not found" on every peer.
+- Multiplayer: bonus grants / Predator breaks and client-owned grenades and rockets no longer broadcast to everyone — they go to peers that have loaded the match (the host now tells clients who that is). A second player joining mid-match sometimes logged "Node not found: Main/Player_…" from these. Ten per-mode two-client soaks: zero errors.
+- Multiplayer: bot shots carry the weapon they were fired with. A replica whose loadout / secondary flag lagged the host (they sync unreliably at state rate) fired a bullet where the host fired a LAW, so the host's rocket updates hit a node the client never made ("Node not found: BotRocket").
+
+### Map editor
+- **Map editor undo / redo**: Ctrl+Z, Ctrl+Y (or Ctrl+Shift+Z) and toolbar buttons, 60 steps; a drag-move is one step. The toolbar now uses the game's UI style, highlights the active tool, and its backing strip grows to fit all three rows. On touch screens two fingers pan and pinch-zoom the editor view, and Android back leaves the editor (or closes the load list).
+
+### QA
+- QA: `--smoke-auto` drives a network smoke client with random input; `--net "m0 … m9"` runs a dedicated server + autopiloted client per mode (all 10 modes: zero errors on either side, and the client runs the server's mode). The gate now starts every Godot run from default settings and restores this machine's files afterwards; the feature test checks the limbo pick.
+- Gate run 15: 36/36 passed (adds LAN discovery; CTF sweep 230 grabs, 43 captures, 628 kills, 2 falls; mode matrix DOM 55 captures).
+- Gate run 14: 35/35 passed (stage C now includes INF / DOM / Gun Game with an autopiloted client; CTF sweep 222 grabs, 34 captures, 648 kills, 6 falls).
+
 ## [1.15.0] — 2026-09-24
 
 Release-readiness pass: bots fight bots, a five-reviewer "pre-release" audit
@@ -72,29 +109,6 @@ release gate (`tools/release_gate.sh`) run three times clean.
 - QA: `tools/feature_test.gd` (gate stage F) scripts a single-player session through gestures, every weapon slot, both grenade types, weapon throw, extreme mods, live bot-count changes, a vote, the GIF recorder and /kill. GIF recording is skipped on headless / dedicated instances (it logged an engine error every frame).
 - Controls: gamepad defaults are installed before saved rebinds are applied, so saved binds for aim / pause stick and a removed pad default stays removed (configs from before pads were saved keep their pad defaults).
 - Release gate gained stage N (nav routes). Run 5: 23/23 passed — CTF sweep 211 grabs, 28 captures, 586 kills, 4 falls.
-- Fixed: hosting (or a dedicated server with `--map`) after an editor play-test loaded the play-test map instead of the map you picked.
-- Host-side broadcasts (spawns, despawns, kill feed, objective events, Gun Game rungs, votes, round resets) now only go to peers that have loaded the match; a second client joining mid-match no longer logs "Node not found: Main". Gate run 12: all stages passed (CTF sweep 245 grabs, 41 captures, 662 kills, 3 falls).
-- **Limbo weapon menu works**: while you're dead the Soldat weapon panel shows on the left (bigger rows beside the touch buttons on phones); pick a primary (1–0, click or tap) and a secondary (click / tap) and you respawn with them. Your last number-key pick carries over too, and the choice is saved. (The panel existed but never appeared, and every respawn reset you to the AK-74.) Off in Advance and Gun Game.
-- **LAN games show up by themselves**: a listen or dedicated host broadcasts a small beacon every second, and Join → FIND GAMES lists games on your network (name, players, map, mode) live — click to join, no IP typing. Different builds are shown greyed out. The master-server list sits below it as before. (UDP port 23074.)
-- **Bots: Domination fixes.** Standing on a point to capture it no longer trips the anti-stuck escape (bots used to walk off after ~2 s, before the 4 s capture finished); after jetting up a shaft, bots hold altitude while stepping sideways onto the ledge instead of dropping back down (Equinox's blue spawn was a trap); Kampf's third DOM point moved off a ledge bots couldn't reach. On tall slanted climbs bots now follow the nav link's line instead of cutting the corner into the underside of the ledge (MFM). All-map DOM sweep: 330 captures (was 204), falls 2 (was 10).
-- **Map editor undo / redo**: Ctrl+Z, Ctrl+Y (or Ctrl+Shift+Z) and toolbar buttons, 60 steps; a drag-move is one step. The toolbar now uses the game's UI style, highlights the active tool, and its backing strip grows to fit all three rows. On touch screens two fingers pan and pinch-zoom the editor view, and Android back leaves the editor (or closes the load list).
-- **Low-FPS guard**: if a match runs under ~35 fps for 8 seconds, Lo-fi mode switches on once and a chat line says so (Settings → Video turns it back off). Aimed at weaker phones.
-- On touch devices the menu's bottom hint line explains the touch controls instead of listing keyboard keys.
-- The Join panel remembers the last address and port you connected to.
-- Host Game panel: game mode picker next to the map (mirrors the main menu's), and it tells you how LAN players find you (plus your LAN IP when there is one). The in-game status line shows the address you're hosting on.
-- **Controls card**: the first three matches open with a small bottom-centre card of the controls (read from your current bindings, pad buttons too when a controller is plugged in); it fades after 12 s and **H** brings it back any time (rebindable, "Controls Help"). Not shown on touch screens.
-- Objective edge arrows stay below the top HUD row (they could land on the timer / score strip).
-- Spectating while dead: tap the left / right half of the screen (touch) or LB / RB / D-pad (gamepad) to switch who you follow; the hint says so.
-- Kill confirmation: when you score a kill a short "KILLED <name>" line (red with · HEADSHOT) pops under the action for a second.
-- Death screen says "You died" for suicides instead of "killed by <you>"; the empty HP/JET box hides while you're dead.
-- Multiplayer: a dead (or disconnected) soldier's body lingers 1.5 s as an inert, hidden husk so shots / state already in flight from its owner don't log "Node not found" on every peer.
-- Multiplayer: bonus grants / Predator breaks and client-owned grenades and rockets no longer broadcast to everyone — they go to peers that have loaded the match (the host now tells clients who that is). A second player joining mid-match sometimes logged "Node not found: Main/Player_…" from these. Ten per-mode two-client soaks: zero errors.
-- Multiplayer: bot shots carry the weapon they were fired with. A replica whose loadout / secondary flag lagged the host (they sync unreliably at state rate) fired a bullet where the host fired a LAW, so the host's rocket updates hit a node the client never made ("Node not found: BotRocket").
-- The single-player map picker no longer shows "Rotation" while PLAY would load the editor's last play-test map.
-- QA: `--smoke-auto` drives a network smoke client with random input; `--net "m0 … m9"` runs a dedicated server + autopiloted client per mode (all 10 modes: zero errors on either side, and the client runs the server's mode). The gate now starts every Godot run from default settings and restores this machine's files afterwards; the feature test checks the limbo pick.
-- Gate run 15: 36/36 passed (adds LAN discovery; CTF sweep 230 grabs, 43 captures, 628 kills, 2 falls; mode matrix DOM 55 captures).
-- Gate run 14: 35/35 passed (stage C now includes INF / DOM / Gun Game with an autopiloted client; CTF sweep 222 grabs, 34 captures, 648 kills, 6 falls).
-
 ## [1.14.0] — 2026-09-24
 
 Smarter bots: real navigation + objective play. Plus more stuck/placement fixes.
