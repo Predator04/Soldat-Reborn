@@ -39,5 +39,15 @@
   "commit": "21355bb",
   "version": "1.17.0",
   "body": "Retail checklist: everyone played as 'Player' unless they found the Settings field. First launch now shows a skippable name prompt."
+ },
+ {
+  "title": "Training mode for first-time players",
+  "labels": [
+   "enhancement",
+   "area: gameplay"
+  ],
+  "commit": "ee32264",
+  "version": "1.17.0",
+  "body": "Retail checklist: new players were dropped straight into a match. A guided Training match (9 steps, ends with one easy bot) is on the main menu and offered after the first-launch name prompt."
  }
 ]
