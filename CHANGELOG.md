@@ -6,8 +6,10 @@ All notable changes to Soldat Reborn.
 
 ### Added
 - The game pauses (pause menu opens) when it loses focus — alt-tab on PC, home button / incoming call on phones — so a single-player match doesn't keep running without you. Toggle: Settings → Game.
+- **Training** (main menu, and offered right after the first-launch name prompt): a guided first match on Arena2 — move, jump, jet boots, shoot, reload, switch weapons, grenade, crouch — each step waits until you've done it, then a training bot joins for the last one. Prompts use your actual key bindings (button names on touch screens). Your match settings are put back afterwards and are never overwritten while training runs. Gate stage F plays it through.
 - First launch asks for your player name (skippable; Settings → Game changes it). Existing players who already set a name aren't asked.
 - **Credits & licenses** screen in the main menu (Soldat authors, CC BY 4.0 attribution for the Soldat base content, Godot). The CC BY license expects the attribution to be visible to players, not only in the source.
+- The desktop window can't be resized below 960×540 (menus and HUD overlapped).
 - Settings → Video: VSync toggle and a frame-rate limit (Unlimited / 30 / 60 / 120 / 144 / 240).
 
 ## [1.16.2] — 2026-09-27

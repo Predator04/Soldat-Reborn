@@ -443,6 +443,12 @@ func _ready() -> void:
 	_build_weather()
 	_build_hud()
 	_build_pause_menu()
+	if Settings.training and not Net.is_networked() and hud != null:
+		var tr := PanelContainer.new()
+		tr.name = "Training"
+		tr.set_script(preload("res://scripts/training.gd"))
+		tr.set("main", self)
+		hud.add_child(tr)
 	_maybe_build_touch_controls()
 	_spawn_mode_entities()
 	_spawn_bonus_boxes_init()

@@ -350,7 +350,15 @@ func _build_menu() -> void:
 	editor.pressed.connect(func() -> void:
 		Net.set_singleplayer()
 		get_tree().change_scene_to_file("res://scenes/map_editor.tscn"))
-	_menu_box.add_child(editor)
+	var train := _make_button("TRAINING")
+	train.pressed.connect(start_training_match)
+	var deploy_row := HBoxContainer.new()
+	deploy_row.add_theme_constant_override("separation", 8)
+	for b in [train, editor]:
+		b.custom_minimum_size = Vector2(0, b.custom_minimum_size.y)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		deploy_row.add_child(b)
+	_menu_box.add_child(deploy_row)
 
 	var gen := _make_button("GENERATE + PLAY")
 	gen.pressed.connect(_on_generate_and_play)
@@ -512,7 +520,9 @@ func _build_name_prompt() -> void:
 	edit.custom_minimum_size = Vector2(0, 38)
 	UITheme.style_lineedit(edit)
 	box.add_child(edit)
-	var go := _make_button("LET'S GO", true)
+	var train := _make_button("START WITH TRAINING", true)
+	box.add_child(train)
+	var go := _make_button("TO THE MENU")
 	box.add_child(go)
 	var skip := Button.new()
 	skip.text = "Skip (you can change it in Settings)"
@@ -531,9 +541,18 @@ func _build_name_prompt() -> void:
 		_menu_root.visible = true
 		UITheme.safe_grab_focus_deferred(_menu_first_focus)
 	go.pressed.connect(func() -> void: finish.call(edit.text))
+	train.pressed.connect(func() -> void:
+		finish.call(edit.text)
+		start_training_match())
 	edit.text_submitted.connect(func(t: String) -> void: finish.call(t))
 	skip.pressed.connect(func() -> void: finish.call(""))
 	UITheme.safe_grab_focus_deferred(edit)
+
+
+func start_training_match() -> void:
+	preload("res://scripts/training.gd").start_training()
+	Net.set_singleplayer()
+	get_tree().change_scene_to_file("res://scenes/main.tscn")
 
 
 func _open_credits() -> void:

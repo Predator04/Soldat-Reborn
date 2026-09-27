@@ -95,7 +95,9 @@ var last_join_ip := "127.0.0.1"   # Join panel remembers the last address
 var last_join_port := 7777
 var host_public := false        # listen host registers with the master server
 var player_name := "Player"
-var name_set := false          # first-launch name prompt answered
+var name_set := false
+var training := false          # runtime only: the Training match is running
+var training_saved: Dictionary = {}   # the match settings Training replaced          # first-launch name prompt answered
 var master_url := ""
 
 # Convenience: DM / Rambo / Battle Royale / Gun Game are FFA (friendly-fire on), teams disable friendly damage.
@@ -192,6 +194,18 @@ func load_settings() -> void:
 
 
 func save() -> void:
+	# Training swaps in its own match settings; never write those to disk.
+	if training and not training_saved.is_empty():
+		var live := {}
+		for k in training_saved.keys():
+			live[k] = get(k)
+			set(k, training_saved[k])
+		training = false
+		save()
+		training = true
+		for k in live.keys():
+			set(k, live[k])
+		return
 	# Read-modify-write: keep sections other code owns (controls bindings,
 	# anything a newer build added) instead of truncating the file.
 	var cf := ConfigFile.new()

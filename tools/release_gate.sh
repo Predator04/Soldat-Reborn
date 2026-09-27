@@ -260,6 +260,12 @@ if has F; then
     fail "F map editor: $(grep -h 'EDITOR-TEST' "$f" | tr '\n' ' ') errors=$(errs "$f")"
   fi
 fi
+if has F; then
+  f="$OUT/training.log"
+  timeout 90 "$G" --headless --fixed-fps 60 -s tools/training_test.gd > "$f" 2>&1
+  line=$(grep "TRAINING-TEST" "$f" | tail -1)
+  if echo "$line" | grep -q "TRAINING-TEST ok" && [ "$(errs "$f")" = "0" ]; then pass "F training: $(grep -h TRAINING-TEST "$f" | tr '\n' ' ')"; else fail "F training: '${line:-no result}' errors=$(errs "$f")"; fi
+fi
 
 # ── E sweep ─────────────────────────────────────────────────────────────────
 total=$((NMAPS + 3))
