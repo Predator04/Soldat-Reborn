@@ -28,5 +28,15 @@
   "commit": "39cdcf5",
   "version": "1.16.2",
   "body": "On the right edge the label 'FLAG 214m' ran under the arrow head (report screenshot). The label is now placed its own width back from the arrow, clamped on screen."
+ },
+ {
+  "title": "Survival: show who's still alive while you wait for the next round",
+  "labels": [
+   "enhancement",
+   "area: ui"
+  ],
+  "commit": "3d3f20c",
+  "version": "1.16.2",
+  "body": "The waiting screen only said 'Waiting for next round...'. It now shows the living count per team (or players left in FFA), updated live."
  }
 ]
