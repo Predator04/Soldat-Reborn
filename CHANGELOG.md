@@ -2,6 +2,14 @@
 
 All notable changes to Soldat Reborn.
 
+## [Unreleased]
+
+### Fixed
+- The death text ("You were killed by … / Waiting for next round") no longer prints over the round-end "BLUE WINS" / MVP banner; it steps aside while the banner is up.
+
+### QA
+- `tools/respawn_test.gd` (gate stage R): kill the player, wait for the next life (timed respawn and Survival round reset) and check the death screen is gone. It fails on the 1.16.0 Survival bug.
+
 ## [1.16.1] — 2026-09-27
 
 ### Fixed

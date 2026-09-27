@@ -885,6 +885,12 @@ func _process(delta: float) -> void:
 			lbl_fps.text = "%d FPS" % int(round(Engine.get_frames_per_second()))
 	_update_vote_ui()
 	_update_bonus_ui()
+	# The round-end banner owns the middle of the screen; the death lines
+	# printed over "BLUE WINS" / the MVP line (Survival especially).
+	var winner_up: bool = lbl_winner != null and lbl_winner.visible
+	if _dead:
+		lbl_death.visible = not winner_up
+		lbl_respawn.visible = not winner_up
 	if _dead:
 		if _death_remaining < 0.0:
 			# Survival: no respawn until the round resets. The desaturated overlay

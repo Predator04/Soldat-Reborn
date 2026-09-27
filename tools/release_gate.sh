@@ -231,6 +231,13 @@ if has R; then
     n=$(errs "$f"); k=$(grep '^map' "$f" | sed -n 's/.*kills=\([0-9]*\).*/\1/p')
     if [ "$n" = "0" ] && [ "${k:-0}" -gt 0 ]; then pass "R rules ${fl#--}: kills=$k"; else fail "R rules ${fl#--}: kills=${k:-none} errors=$n"; fi
   done
+  # Death screen clears on the next life (timed respawn and Survival round reset).
+  for fl in "" "--survival"; do
+    f="$OUT/respawn${fl:-_timed}.log"
+    timeout 90 "$G" --headless --fixed-fps 60 -s tools/respawn_test.gd -- --mode=2 $fl > "$f" 2>&1
+    line=$(grep -m1 RESPAWN-TEST "$f")
+    if echo "$line" | grep -q "RESPAWN-TEST ok" && [ "$(errs "$f")" = "0" ]; then pass "R respawn: $line"; else fail "R respawn: '${line:-no result}' errors=$(errs "$f")"; fi
+  done
 fi
 
 # ── F feature exercise ───────────────────────────────────────────────────────
