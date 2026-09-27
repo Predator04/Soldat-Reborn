@@ -18,5 +18,15 @@
   "commit": "8c8a3c8",
   "version": "1.16.2",
   "body": "The score strip listed teams from living soldiers plus teams that already scored, so in Survival a wiped-out team with 0 points disappeared (screenshot showed only 'BLUE 0'). Team modes now always list BLUE and RED."
+ },
+ {
+  "title": "Objective arrow label overlapped its own arrow at the side edges",
+  "labels": [
+   "bug",
+   "area: ui"
+  ],
+  "commit": "39cdcf5",
+  "version": "1.16.2",
+  "body": "On the right edge the label 'FLAG 214m' ran under the arrow head (report screenshot). The label is now placed its own width back from the arrow, clamped on screen."
  }
 ]
