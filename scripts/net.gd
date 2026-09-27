@@ -232,9 +232,9 @@ func _send_master_heartbeat(http: HTTPRequest, port: int) -> void:
 	var mode_idx: int = Settings.game_mode
 	var mode_name: String = MODE_NAMES[mode_idx] if mode_idx >= 0 and mode_idx < MODE_NAMES.size() else "mode#%d" % mode_idx
 	var body := JSON.stringify({
-		"name": Settings.server_name,
+		"name": Settings.server_name if is_dedicated else "%s's game" % Settings.player_name,
 		"port": port,
-		"map": map_name,
+		"map": map_name if Settings.custom_map_path == "" else "Custom: %s" % Settings.custom_map_path.get_file().get_basename(),
 		"mode": mode_name,
 		"players": _count_human_players(),
 		"max": MAX_PEERS,

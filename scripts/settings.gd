@@ -90,6 +90,7 @@ var bot_skill := 3
 var server_name := "Soldat Server"
 var last_join_ip := "127.0.0.1"   # Join panel remembers the last address
 var last_join_port := 7777
+var host_public := false        # listen host registers with the master server
 var player_name := "Player"
 var master_url := ""
 
@@ -175,6 +176,7 @@ func load_settings() -> void:
 	bot_skill = clampi(int(cf.get_value("bots", "skill", 3)), 1, 5)
 	server_name = str(cf.get_value("net", "server_name", "Soldat Server"))
 	last_join_ip = str(cf.get_value("net", "last_join_ip", "127.0.0.1"))
+	host_public = bool(cf.get_value("net", "host_public", false))
 	last_join_port = clampi(int(cf.get_value("net", "last_join_port", 7777)), 1, 65535)
 	player_name = str(cf.get_value("net", "player_name", "Player"))
 	master_url = str(cf.get_value("net", "master_url", ""))
@@ -224,6 +226,7 @@ func save() -> void:
 	cf.set_value("bots", "skill", bot_skill)
 	cf.set_value("net", "server_name", server_name)
 	cf.set_value("net", "last_join_ip", last_join_ip)
+	cf.set_value("net", "host_public", host_public)
 	cf.set_value("net", "last_join_port", last_join_port)
 	cf.set_value("net", "player_name", player_name)
 	cf.set_value("net", "master_url", master_url)

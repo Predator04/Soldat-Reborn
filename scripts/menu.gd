@@ -74,6 +74,11 @@ func _open_settings() -> void:
 func _open_host() -> void:
 	_menu_root.visible = false
 	_host_root.visible = true
+	if _host_pub_cb != null:
+		var has_url: bool = Settings.master_url.strip_edges() != ""
+		_host_pub_cb.disabled = not has_url
+		_host_pub_cb.tooltip_text = "" if has_url else "Set a master server URL on the Join screen first."
+		_host_pub_cb.text = "List on the master server" if has_url else "List on the master server (set its URL under Join first)"
 	UITheme.safe_grab_focus_deferred(_host_first_focus)
 
 
@@ -127,6 +132,7 @@ var _port_edit: LineEdit
 var _host_port_edit: LineEdit
 var _mode_pick: OptionButton
 var _host_custom_paths: Array = []
+var _host_pub_cb: CheckBox
 var _host_mode_pick: OptionButton
 var _connect_btn: Button
 var _map_pick: OptionButton
@@ -583,6 +589,17 @@ func _build_host() -> void:
 	ip_note.add_theme_font_size_override("font_size", 13)
 	ip_note.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)
 	_host_panel.add_child(ip_note)
+	# Optional internet listing through the master server (URL lives on the
+	# Join screen). Players outside your LAN still need the port forwarded.
+	var pub_cb := CheckBox.new()
+	pub_cb.text = "List on the master server"
+	pub_cb.button_pressed = Settings.host_public
+	UITheme.style_checkbox(pub_cb)
+	pub_cb.toggled.connect(func(on: bool) -> void:
+		Settings.host_public = on
+		Settings.save())
+	_host_panel.add_child(pub_cb)
+	_host_pub_cb = pub_cb
 
 	_host_panel.add_child(UITheme.spacer(6))
 
@@ -604,6 +621,9 @@ func _build_host() -> void:
 		start.disabled = true
 		var port := int(_host_port_edit.text) if _host_port_edit.text.is_valid_int() else Net.DEFAULT_PORT
 		if Net.host_game(port, idx):
+			if Settings.host_public and Settings.master_url.strip_edges() != "":
+				Net.register_url = Settings.master_url.strip_edges()
+				Net._start_master_heartbeat(port)
 			get_tree().change_scene_to_file("res://scenes/main.tscn")
 		else:
 			# Net.host_game already set the status text; re-enable so the user can retry.

@@ -23,6 +23,7 @@ Limbo weapon menu, LAN game discovery, map-editor undo, Domination bot fixes and
 ### Multiplayer
 - Network protocol changed (bot shots, ready list): 1.15 and 1.16 builds can't play together — the host refuses the other version with a message, so update every PC / phone.
 - **Hosting from the menu now fills the match with bots** (the Bots setting, same as single player; 0 = none, Host Settings changes it live). Before, only dedicated servers had bots, so two friends on a listen server played alone.
+- Host Game: "List on the master server" (uses the master URL from the Join screen) registers a listen host the same way dedicated servers do, so it shows up in FIND GAMES over the internet (the game port still has to be forwarded). Checked against the bundled Go master server.
 - Host Game lists your own maps too (editor saves / Generate, shown as "Custom: name"); they're sent to clients as JSON. LAN listings show the custom map's name.
 - Fixed: hosting (or a dedicated server with `--map`) after an editor play-test loaded the play-test map instead of the map you picked.
 - Host-side broadcasts (spawns, despawns, kill feed, objective events, Gun Game rungs, votes, round resets) now only go to peers that have loaded the match; a second client joining mid-match no longer logs "Node not found: Main". Gate run 12: all stages passed (CTF sweep 245 grabs, 41 captures, 662 kills, 3 falls).
