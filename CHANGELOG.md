@@ -4,7 +4,7 @@ All notable changes to Soldat Reborn.
 
 ## [1.17.0] — 2026-09-28
 
-Retail-readiness pass: Training mode, first-launch name prompt, credits screen, pause on focus loss, VSync / FPS cap. See RETAIL_CHECKLIST.md for what's left (mostly legal, store accounts and real-device testing).
+Retail-readiness pass: Training mode, first-launch name prompt, credits screen, pause on focus loss, VSync / FPS cap. See RETAIL_CHECKLIST.md for what's left (mostly legal, store accounts and real-device testing). Gate run 19: all stages passed (CTF sweep 220 grabs, 33 captures, 626 kills, 5 falls, 0 errors; Training played through).
 
 ### Added
 - The game pauses (pause menu opens) when it loses focus — alt-tab on PC, home button / incoming call on phones — so a single-player match doesn't keep running without you. Toggle: Settings → Game.
