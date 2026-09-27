@@ -8,5 +8,15 @@
   "commit": "38473f7",
   "version": "1.16.2",
   "body": "Seen in the Survival report screenshot: 'Waiting for next round...' overlapped 'BLUE WINS' and the MVP line. The death lines now hide while the winner banner is visible. Gate stage R gained tools/respawn_test.gd (death screen must clear on the next life, timed and Survival)."
+ },
+ {
+  "title": "Top bar dropped a team's score when it had nobody alive (Survival)",
+  "labels": [
+   "bug",
+   "area: ui"
+  ],
+  "commit": "8c8a3c8",
+  "version": "1.16.2",
+  "body": "The score strip listed teams from living soldiers plus teams that already scored, so in Survival a wiped-out team with 0 points disappeared (screenshot showed only 'BLUE 0'). Team modes now always list BLUE and RED."
  }
 ]
