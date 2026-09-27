@@ -4,7 +4,7 @@
   python tools/github/sync.py labels                  # create / update the label set
   python tools/github/sync.py backlog FILE.json       # file already-fixed issues, then close them
   python tools/github/sync.py release v1.16.0         # release + upload build/SoldatReborn.exe/.apk
-  python tools/github/sync.py all                     # labels + backlog_1_16.json + release of the
+  python tools/github/sync.py all                     # labels + every backlog_*.json + release of the
                                                       # version in project.godot
 
 Auth: GITHUB_TOKEN / GH_TOKEN, else `gh auth token`, else the token Git already
@@ -163,7 +163,9 @@ if __name__ == "__main__":
         release(sys.argv[2] if len(sys.argv) > 2 else project_version())
     elif cmd == "all":
         labels()
-        backlog(os.path.join(HERE, "backlog_1_16.json"))
+        for f in sorted(os.listdir(HERE)):
+            if f.startswith("backlog_") and f.endswith(".json"):
+                backlog(os.path.join(HERE, f))
         release(project_version())
     else:
         sys.exit(__doc__)

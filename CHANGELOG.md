@@ -2,6 +2,12 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.16.1] — 2026-09-27
+
+### Fixed
+- Survival: after you died and the next round respawned you, "You were killed by … / Waiting for next round" and the grey overlay stayed on screen over your new life. The single-player spawn now clears the death screen (the timed respawn only hid it by counting down, and Survival has no countdown).
+- Multiplayer: 1.16.1 and 1.16.0 refuse each other (exact version match), so update every copy.
+
 ## [1.16.0] — 2026-09-27
 
 Limbo weapon menu, LAN game discovery, map-editor undo, Domination bot fixes and a round of multiplayer hardening (every mode soaked with two autopiloted clients, zero errors).

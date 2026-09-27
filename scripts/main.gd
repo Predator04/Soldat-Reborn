@@ -1356,6 +1356,11 @@ func _spawn_player() -> void:
 		hud.player = p
 	# SP respawn — end the spectator cam so the new body's camera takes over (#75).
 	_end_spectator()
+	# Clear the death screen too: the timed respawn hides it by counting down,
+	# but a Survival round reset (no countdown) left "Waiting for next round"
+	# and the grey overlay up over the new life.
+	if hud and hud.has_method("_hide_death"):
+		hud._hide_death()
 
 
 func _on_player_died() -> void:
