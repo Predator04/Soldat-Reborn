@@ -304,8 +304,21 @@ func _smoke_join() -> void:
 		get_tree().create_timer(4.0).timeout.connect(func() -> void:
 			var mn = get_tree().current_scene
 			if mn != null and mn.get("player") != null and is_instance_valid(mn.player):
+				var old_body = mn.player
 				mn.player.take_damage(999.0, str(mn.player.display_name), "Selfkill", int(mn.player.team))
-				print("SMOKE-DIE sent"))
+				print("SMOKE-DIE sent")
+				# Report the first new living body (bots may kill it again
+				# before the end-of-window summary, so don't rely on that).
+				var watch := Timer.new()
+				watch.wait_time = 0.2
+				watch.autostart = true
+				add_child(watch)
+				watch.timeout.connect(func() -> void:
+					var m2 = get_tree().current_scene
+					var np = m2.get("player") if m2 != null else null
+					if np != null and is_instance_valid(np) and np != old_body and not bool(np.get("dead")):
+						print("SMOKE-RESPAWNED name=%s" % str(np.name))
+						watch.queue_free()))
 	# Larger window so the client has time to complete: connect → map_received →
 	# main.tscn._ready → net_client_ready → host mirrors bots via net_spawn_bot.
 	get_tree().create_timer(_smoke_secs(6.0)).timeout.connect(func() -> void:

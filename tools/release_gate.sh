@@ -154,11 +154,11 @@ case " $NETSEL " in *" respawn "*)
   timeout 40 "$G" --headless -- --smoke-join --port $port --smoke-secs=12 --smoke-die > "$OUT/net_respawn_client.log" 2>&1
   wait $spid 2>/dev/null
   e=$(( $(errs "$OUT/net_respawn_server.log") + $(errs "$OUT/net_respawn_client.log") ))
-  if grep -q "SMOKE-DIE sent" "$OUT/net_respawn_client.log" && grep -q "SMOKE-JOIN-LOCAL alive=true" "$OUT/net_respawn_client.log" \
+  if grep -q "SMOKE-DIE sent" "$OUT/net_respawn_client.log" && grep -q "SMOKE-RESPAWNED name=Player_" "$OUT/net_respawn_client.log" \
       && ! grep -m1 "SMOKE-JOIN-PLAYERS" "$OUT/net_respawn_client.log" | grep -q "@" && [ "$e" = "0" ]; then
-    pass "C net client death + respawn: $(grep -m1 SMOKE-JOIN-PLAYERS "$OUT/net_respawn_client.log")"
+    pass "C net client death + respawn: $(grep -m1 SMOKE-RESPAWNED "$OUT/net_respawn_client.log")"
   else
-    fail "C net client death + respawn: $(grep -hE 'SMOKE-(DIE|JOIN-LOCAL|JOIN-PLAYERS)' "$OUT/net_respawn_client.log" | tr '\n' ' ') errors=$e"
+    fail "C net client death + respawn: $(grep -hE 'SMOKE-(DIE|RESPAWNED|JOIN-LOCAL|JOIN-PLAYERS)' "$OUT/net_respawn_client.log" | tr '\n' ' ') errors=$e"
   fi
 ;; esac
 case " $NETSEL " in *" host "*)
