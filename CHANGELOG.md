@@ -11,7 +11,7 @@ Limbo weapon menu, LAN game discovery, map-editor undo, Domination bot fixes and
 - **Low-FPS guard**: if a match runs under ~35 fps for 8 seconds, Lo-fi mode switches on once and a chat line says so (Settings → Video turns it back off). Aimed at weaker phones.
 - On touch devices the menu's bottom hint line explains the touch controls instead of listing keyboard keys.
 - **Controls card**: the first three matches open with a small bottom-centre card of the controls (read from your current bindings, pad buttons too when a controller is plugged in); it fades after 12 s and **H** brings it back any time (rebindable, "Controls Help"). Not shown on touch screens.
-- Objective edge arrows stay below the top HUD row (they could land on the timer / score strip).
+- Objective edge arrows stay below the top HUD row (they could land on the timer / score strip), and while you're dead objective banners show below the death text instead of over the spectator lines.
 - Spectating while dead: tap the left / right half of the screen (touch) or LB / RB / D-pad (gamepad) to switch who you follow; the hint says so.
 - Kill confirmation: when you score a kill a short "KILLED <name>" line (red with · HEADSHOT) pops under the action for a second.
 - Death screen says "You died" for suicides instead of "killed by <you>"; the empty HP/JET box hides while you're dead.

@@ -79,6 +79,12 @@ func _flag_color(team: int) -> Color:
 # ── announcements ─────────────────────────────────────────────────────────
 
 func announce(kind: String, team: int, who: String) -> void:
+	# While you're dead the spectator lines + death text own the upper
+	# middle; drop the banner below them instead of printing over them.
+	var dead_view: bool = main != null and is_instance_valid(main) and main.get("hud") != null \
+			and bool(main.hud.get("_dead"))
+	_banner.offset_top = 380.0 if dead_view else 196.0
+	_banner.offset_bottom = _banner.offset_top + 40.0
 	var text := ""
 	var col := Color(1, 1, 1)
 	match kind:
