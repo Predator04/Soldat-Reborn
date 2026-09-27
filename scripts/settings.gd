@@ -249,6 +249,9 @@ func save() -> void:
 func apply_display() -> void:
 	if DisplayServer.get_name() == "headless":
 		return
+	# Below ~960x540 the menus and HUD overlap; don't let the window shrink past it.
+	if not (OS.has_feature("android") or OS.has_feature("mobile")):
+		DisplayServer.window_set_min_size(Vector2i(960, 540))
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if vsync else DisplayServer.VSYNC_DISABLED)
 	Engine.max_fps = max_fps
 	if fullscreen:
