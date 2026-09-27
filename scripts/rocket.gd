@@ -220,11 +220,18 @@ var _net_peers: Array = []
 var _net_peers_set := false
 
 func _snapshot_net_peers() -> void:
-	if multiplayer.multiplayer_peer == null or not multiplayer.is_server():
+	if multiplayer.multiplayer_peer == null or not Net.is_networked():
 		return
 	var m := get_tree().current_scene
-	if m != null and m.has_method("ready_peer_ids"):
+	if m == null:
+		return
+	if multiplayer.is_server() and m.has_method("ready_peer_ids"):
 		_net_peers = m.ready_peer_ids()
+		_net_peers_set = true
+	elif m.has_method("client_send_peer_ids"):
+		# Client-owned projectile: the host plus the peers the host says have
+		# loaded (a broadcast would reach peers still loading via the relay).
+		_net_peers = m.client_send_peer_ids()
 		_net_peers_set = true
 
 

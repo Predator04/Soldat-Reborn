@@ -1929,6 +1929,7 @@ func _on_net_peer_disconnected(id: int) -> void:
 	if Net.is_host():
 		_ready_peers.erase(id)
 		_connected_peers.erase(id)
+		_push_ready_list()
 		bcast("net_despawn_player", [id], true)
 		# If the disconnecting peer was the votekick target, resolve the vote
 		# immediately — no one benefits from a countdown against a phantom.
@@ -2006,6 +2007,33 @@ func net_stats_sync(stats: Dictionary) -> void:
 
 func ready_peer_ids() -> Array:
 	return _ready_peers.keys()
+
+
+# Clients learn which peers have loaded the match (host pushes the list on
+# every ack / disconnect) so their own projectiles only address those.
+var _client_ready_list: Array = []
+
+
+func _push_ready_list() -> void:
+	if not Net.is_host():
+		return
+	var ids: Array = _ready_peers.keys()
+	for pid in ids:
+		rpc_id(int(pid), "net_ready_list", ids)
+
+
+@rpc("authority", "reliable")
+func net_ready_list(ids: Array) -> void:
+	_client_ready_list = ids
+
+
+func client_send_peer_ids() -> Array:
+	var me := multiplayer.get_unique_id()
+	var out: Array = [1]
+	for pid in _client_ready_list:
+		if int(pid) != me and int(pid) != 1:
+			out.append(int(pid))
+	return out
 
 
 ## Host broadcast that only reaches peers whose Main scene exists
@@ -2132,6 +2160,7 @@ func net_spawn_ack() -> void:
 		return
 	var sender := multiplayer.get_remote_sender_id()
 	_ready_peers[sender] = true
+	_push_ready_list()
 	# Push the current MatchConfig snapshot (#74) so the joining peer applies
 	# the host's mods / friendly-fire / bot roster immediately instead of
 	# running under its own local Settings until the next admin-menu change.

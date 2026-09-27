@@ -1911,16 +1911,20 @@ func net_bonus_clear() -> void:
 				return
 		elif sender != 1 and sender != get_multiplayer_authority():
 			return  # the owner may clear its own buff (Predator breaks on fire)
+		# Host relays the owner's clear to the other loaded peers.
+		if Net.is_host() and sender != 0 and sender == get_multiplayer_authority():
+			_fanout("net_bonus_clear", [], sender)
 	_clear_bonus_local()
 
 
 func apply_bonus(kind: String, duration: float) -> void:
 	# Fire the RPC (call_local) so every peer applies. In SP this just calls
 	# the local method — no multiplayer peer to route through.
-	if Net.is_networked():
-		rpc("net_bonus_apply", kind, duration)
-	else:
-		_apply_bonus_local(kind, duration)
+	# Host-only grant, fanned out to peers that have loaded the match (a
+	# plain rpc() also hit peers still loading: "Node not found").
+	_apply_bonus_local(kind, duration)
+	if Net.is_networked() and Net.is_host() and multiplayer.has_multiplayer_peer():
+		_fanout("net_bonus_apply", [kind, duration], -1)
 
 
 func _apply_bonus_local(kind: String, duration: float) -> void:
@@ -1970,8 +1974,11 @@ func _break_predator_if_active() -> void:
 	# peer initiates the broadcast so we don't get 4 RPCs from 4 peers.
 	if bonus_kind != "predator":
 		return
-	if Net.is_networked() and is_multiplayer_authority():
-		rpc("net_bonus_clear")
+	if Net.is_networked() and is_multiplayer_authority() and multiplayer.has_multiplayer_peer():
+		if Net.is_host():
+			_fanout("net_bonus_clear", [], -1)
+		else:
+			rpc_id(1, "net_bonus_clear")
 	_clear_bonus_local()
 
 
