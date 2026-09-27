@@ -1763,6 +1763,16 @@ func _nav_step(goal: Vector2, delta: float) -> Vector3:
 	var dy: float = wp.y - global_position.y
 	var d := 0.0 if absf(dx) < 6.0 else signf(dx)
 	var up := 1.0 if dy < -18.0 else 0.0
+	# Tall slanted climb: track the link's line (the part the nav builder
+	# checked for clearance) instead of steering straight for the top node —
+	# cutting the corner jetted bots into the underside of the ledge they
+	# were climbing onto (MFM's east DOM point).
+	if up > 0.5 and dy < -150.0 and _path_i > 0:
+		var pw: Vector2 = _path[_path_i - 1]
+		if pw.y - wp.y > 150.0:
+			var t: float = clampf((pw.y - (global_position.y - 40.0)) / (pw.y - wp.y), 0.0, 1.0)
+			var lx: float = lerpf(pw.x, wp.x, t)
+			d = 0.0 if absf(lx - global_position.x) < 6.0 else signf(lx - global_position.x)
 	# Near-vertical climb: go straight up; a sideways drift off a lip is how
 	# bots slid into pits.
 	if up > 0.5 and absf(dx) < 24.0 and absf(dy) > 60.0:
