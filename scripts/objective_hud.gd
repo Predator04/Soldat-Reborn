@@ -246,6 +246,14 @@ func _draw() -> void:
 		if p != null and font != null:
 			var dist_m := int(p.global_position.distance_to(tgt[0]) / 16.0)
 			var txt := "%s %dm" % [str(tgt[2]), dist_m]
-			var tpos := at - Vector2(Vector2.RIGHT.rotated(ang).x * 30.0 + 20.0, Vector2.RIGHT.rotated(ang).y * 22.0 - 4.0)
+			# Put the label on the inward side of the arrow, far enough back
+			# that its own width never runs under the arrow head (it used to
+			# on the right edge: "FLAG 2▶4m").
+			var dirv := Vector2.RIGHT.rotated(ang)
+			var tw: float = font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
+			var back: float = 20.0 + tw * 0.5 * absf(dirv.x) + 10.0 * absf(dirv.y)
+			var c := at - dirv * back
+			var tpos := Vector2(c.x - tw * 0.5, c.y + 4.0)
+			tpos.x = clampf(tpos.x, 6.0, vr.size.x - tw - 6.0)
 			draw_string_outline(font, tpos, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, 3, Color(0, 0, 0, 0.9))
 			draw_string(font, tpos, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, col)
