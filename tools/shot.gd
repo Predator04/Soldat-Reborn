@@ -86,8 +86,15 @@ func _process(_delta: float) -> bool:
 				current_scene._on_sp_map_selected(i)
 	if _gesture != "" and _n == 14 and current_scene != null and current_scene.get("player") != null:
 		current_scene.player.apply_gesture(_gesture)
-	if _call != "" and _n == 14 and current_scene != null and current_scene.has_method(_call):
-		current_scene.call(_call)
+	if _call != "" and _n == 14 and current_scene != null:
+		# --call=method on the scene root, or --call=Child/Path:method
+		var tgt: Node = current_scene
+		var meth := _call
+		if ":" in _call:
+			tgt = current_scene.get_node_or_null(_call.get_slice(":", 0))
+			meth = _call.get_slice(":", 1)
+		if tgt != null and tgt.has_method(meth):
+			tgt.call(meth)
 	if _sb and current_scene != null and current_scene.get("hud") != null:
 		var sbn = current_scene.hud.get("scoreboard")
 		if sbn != null:

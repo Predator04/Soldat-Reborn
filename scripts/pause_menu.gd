@@ -71,6 +71,14 @@ func _build_main_menu() -> void:
 
 	var title := UITheme.make_screen_title("PAUSED", 44)
 	_menu_box.add_child(title)
+	# Session line: map / mode, and in multiplayer where you're hosting or
+	# connected (so a host can read the address out to LAN friends).
+	_info_lbl = Label.new()
+	_info_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_info_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_info_lbl.add_theme_font_size_override("font_size", 13)
+	_info_lbl.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)
+	_menu_box.add_child(_info_lbl)
 
 	var rule := ColorRect.new()
 	rule.color = UITheme.COL_ACCENT_DIM
@@ -231,6 +239,9 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
+var _info_lbl: Label
+
+
 func open() -> void:
 	if _open:
 		return
@@ -241,6 +252,17 @@ func open() -> void:
 	_host_admin_panel.visible = false
 	_quit_confirm_wrapper.visible = false
 	_root_panel.visible = true
+	if _info_lbl != null:
+		var main := get_parent()
+		var mp: Dictionary = main.get("_map") if main != null and main.get("_map") != null else {}
+		var gm: int = Settings.game_mode
+		var mode_name: String = str(Net.MODE_NAMES[gm]) if gm >= 0 and gm < Net.MODE_NAMES.size() else "?"
+		var txt := "%s · %s" % [str(mp.get("name", "?")), mode_name]
+		if Net.is_networked():
+			txt += "\n" + Net.status
+			if Net.is_host():
+				txt += "  ·  %d player(s) connected" % multiplayer.get_peers().size()
+		_info_lbl.text = txt
 	# Host admin button only makes sense on host or SP. Clients get nothing.
 	if _host_admin_btn != null:
 		_host_admin_btn.visible = not Net.is_client()

@@ -25,6 +25,7 @@ Limbo weapon menu, LAN game discovery, map-editor undo, Domination bot fixes and
 - Fixed: hosting (or a dedicated server with `--map`) after an editor play-test loaded the play-test map instead of the map you picked.
 - Host-side broadcasts (spawns, despawns, kill feed, objective events, Gun Game rungs, votes, round resets) now only go to peers that have loaded the match; a second client joining mid-match no longer logs "Node not found: Main". Gate run 12: all stages passed (CTF sweep 245 grabs, 41 captures, 662 kills, 3 falls).
 - **LAN games show up by themselves**: a listen or dedicated host broadcasts a small beacon every second, and Join → FIND GAMES lists games on your network (name, players, map, mode) live — click to join, no IP typing. Different builds are shown greyed out. The master-server list sits below it as before. (UDP port 23074.)
+- Pause menu shows the map and mode, and in multiplayer the connection line (the host sees the address it's hosting on and how many players are connected).
 - The Join panel remembers the last address and port you connected to.
 - Host Game panel: game mode picker next to the map (mirrors the main menu's), and it tells you how LAN players find you (plus your LAN IP when there is one). The in-game status line shows the address you're hosting on.
 - Multiplayer: a dead (or disconnected) soldier's body lingers 1.5 s as an inert, hidden husk so shots / state already in flight from its owner don't log "Node not found" on every peer.
