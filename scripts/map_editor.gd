@@ -1151,3 +1151,12 @@ func _tool_name(t: int) -> String:
 func _set_status(s: String) -> void:
 	if _status != null:
 		_status.text = s
+
+
+# Android back button / gesture: close the load list, else leave to the menu.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST and is_inside_tree():
+		if _load_panel != null and _load_panel.visible:
+			_load_panel.visible = false
+		else:
+			_exit_to_menu()
