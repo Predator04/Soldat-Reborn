@@ -27,6 +27,25 @@ godot --headless --export-release "Windows Desktop" build/SoldatReborn.exe
 5. Update `ROADMAP.md` (check off what you did, add bugs to *Known bugs*) and
    `CHANGELOG.md` where behavior changed.
 
+## Issues: every bug and feature is tracked on GitHub
+
+1. **Report first.** Anything found — by a player, by the release gate, or while
+   working — gets a GitHub issue before the fix (templates: *Bug report*,
+   *Feature / improvement*). Labels: `bug` / `enhancement` plus one `area: …`
+   (`gameplay`, `bots`, `multiplayer`, `ui`, `input`, `editor`, `maps`, `qa`,
+   `platform`) and `platform: android` when it's phone-specific.
+2. **Fix on the branch, reference the issue.** The commit that fixes it says
+   `Fixes #N` (GitHub closes the issue when it reaches `main`). Several commits:
+   `Refs #N` on all but the last.
+3. **Verify, then close.** The gate (or the stages it touches) must pass; the
+   CHANGELOG line for the fix names the issue, e.g. `(#123)`.
+4. **Release.** Tag `vX.Y.Z` and attach the Windows .exe and Android .apk —
+   `python tools/github/sync.py release` does it from `build/`.
+
+`tools/github/sync.py` also creates the label set (`labels`) and can file a
+batch of already-fixed issues and close them (`backlog FILE.json`) when work
+happened offline.
+
 ## Headless gotchas
 
 - Headless mode skips `_draw()` — rendering bugs won't surface in verify. Inspect
