@@ -1,0 +1,23 @@
+[
+ {
+  "title": "Pause when the game loses focus (alt-tab / phone backgrounded)",
+  "labels": [
+   "enhancement",
+   "area: gameplay",
+   "platform: android"
+  ],
+  "commit": "ff1e50b",
+  "version": "1.17.0",
+  "body": "Retail checklist: a single-player match kept running when you switched apps. The pause menu now opens on application focus-out / pause (toggle in Settings -> Game)."
+ },
+ {
+  "title": "VSync and frame-rate limit options",
+  "labels": [
+   "enhancement",
+   "area: ui"
+  ],
+  "commit": "ff1e50b",
+  "version": "1.17.0",
+  "body": "Retail checklist: Settings -> Video gains a VSync toggle and an FPS cap."
+ }
+]
