@@ -1,0 +1,12 @@
+[
+ {
+  "title": "Death text printed over the round-end winner banner",
+  "labels": [
+   "bug",
+   "area: ui"
+  ],
+  "commit": "38473f7",
+  "version": "1.16.2",
+  "body": "Seen in the Survival report screenshot: 'Waiting for next round...' overlapped 'BLUE WINS' and the MVP line. The death lines now hide while the winner banner is visible. Gate stage R gained tools/respawn_test.gd (death screen must clear on the next life, timed and Survival)."
+ }
+]
