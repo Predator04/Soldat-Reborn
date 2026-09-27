@@ -5,6 +5,7 @@ All notable changes to Soldat Reborn.
 ## [Unreleased]
 
 ### Fixed
+- Team modes always show both team scores in the top bar; in Survival a team with nobody alive and no points dropped out of it (the report screenshot showed only "BLUE 0").
 - The death text ("You were killed by … / Waiting for next round") no longer prints over the round-end "BLUE WINS" / MVP banner; it steps aside while the banner is up.
 
 ### QA

@@ -1031,6 +1031,10 @@ func _update_match_ui() -> void:
 			seen[e] = true
 			ordered.append(e)
 		ordered.sort()
+		if Settings.is_team_mode():
+			# Always both sides — in Survival a wiped-out team (no living
+			# soldiers, no points yet) used to vanish from the strip.
+			ordered = [1, 2]
 		if not Settings.is_team_mode():
 			# FFA (bots fight each other too): leaderboard — best first, top 4,
 			# and the local player's line always shown.
