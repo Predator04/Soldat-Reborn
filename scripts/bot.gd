@@ -502,6 +502,13 @@ func _physics_process(delta: float) -> void:
 				dir = step.x
 				nav_up = step.y > 0.5
 				navigating = true
+				# Air control: crossing sideways onto a ledge at (or above) our
+				# height after a climb — hold altitude instead of dropping back
+				# down the shaft we just jetted up.
+				if not nav_up and not is_on_floor() and _path_i < _path.size() and velocity.y > 60.0 and fuel > 8.0:
+					var awp: Vector2 = _path[_path_i]
+					if global_position.y > awp.y - 30.0 and absf(awp.x - global_position.x) > 16.0:
+						nav_up = true
 				# Fuel management: jets are weak (thrust barely beats gravity), a
 				# tank lifts ~600 px. If the next climb needs more fuel than we
 				# have, stand on the ground and let the tank refill first instead
@@ -544,8 +551,10 @@ func _physics_process(delta: float) -> void:
 
 		# Escape manoeuvre (see _progress_anchor). Only when the bot actually
 		# wants to travel — close-range strafing legitimately stays in place.
-		var wants_travel: bool = navigating or not is_instance_valid(target) or absf(dx) > 160.0 \
-				or not _target_visible
+		# Standing on the goal (a DOM point being captured) isn't being stuck.
+		var at_goal: bool = _goal.x > -1.0e8 and global_position.distance_to(_goal) < 56.0
+		var wants_travel: bool = (navigating or not is_instance_valid(target) or absf(dx) > 160.0 \
+				or not _target_visible) and not at_goal
 		if global_position.distance_to(_progress_anchor) > 60.0 or not wants_travel:
 			_progress_anchor = global_position
 			_progress_t = 0.0

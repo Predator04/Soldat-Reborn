@@ -533,6 +533,8 @@ OBJECTIVE_OVERRIDES = {
     "veoto": {"dom_points": [[1600.0, 2948.0], [3726.0, 1822.0], [5840.0, 2900.0]]},
     # DOM point generated on a roof / ledge bots can't return from.
     "outpost": {"dom_points": [[1964.0, 2662.0], [5078.0, 2664.0], [7680.0, 3674.0]]},
+    # DOM point on a thin ledge under an overhang bots can't jet onto: the floor below.
+    "kampf": {"dom_points": [[1110.0, 906.0], [2072.0, 1258.0], [2788.0, 1554.0]]},
 }
 
 
