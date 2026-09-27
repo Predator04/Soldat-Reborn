@@ -27,7 +27,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 G="${GODOT_BIN:-$HOME/godot/Godot_v4.7.2-stable_linux.x86_64}"
 QUICK=0; OUT="build/gate"; ONLY="A B N C D R F E"; MODESEL="0 1 2 3 4 5 6 7 8 9"
-NETSEL="ctf dm two respawn host lan m3 m7 m9"; SWEEP=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
+NETSEL="ctf dm two respawn host lan soak m3 m7 m9"; SWEEP=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --quick) QUICK=1;; --out) OUT="$2"; shift;; --only) ONLY="$2"; shift;;
@@ -164,6 +164,11 @@ case " $NETSEL " in *" respawn "*)
 case " $NETSEL " in *" host "*)
 timeout 60 "$G" --headless -- --smoke-host > "$OUT/net_host.log" 2>&1
 if grep -q "SMOKE-HOST" "$OUT/net_host.log" && [ "$(errs "$OUT/net_host.log")" = "0" ]; then pass "C net listen host: $(grep -m1 SMOKE-HOST "$OUT/net_host.log")"; else fail "C net listen host ($(errs "$OUT/net_host.log") errors)"; fi
+;; esac
+case " $NETSEL " in *" soak "*)
+  # Two autopiloted clients (second joins late) on a CTF server for ~50 s.
+  line=$(GODOT_BIN="$G" timeout 110 bash tools/mp_soak.sh 2 18 "$OUT/soak" 2>&1 | grep '^SOAK')
+  if echo "$line" | grep -q "errors=0"; then pass "C net soak: $line"; else fail "C net soak: '${line:-no SOAK line}' (logs in $OUT/soak)"; fi
 ;; esac
 case " $NETSEL " in *" lan "*)
   # LAN discovery: a dedicated host's beacon must show up in a listener.
