@@ -5,7 +5,7 @@
    "bug",
    "area: ui"
   ],
-  "commit": "SEE_COMMIT",
+  "commit": "9d80772",
   "version": "1.16.1",
   "body": "Reported in play (CTF, Survival on, Nuubia): after dying you wait for the next round; when the round reset respawned the player, 'You were killed by Red Bot 5 [Grenade] / Waiting for next round...' and the desaturated overlay stayed on screen while playing. Cause: main._spawn_player (single player) ended the spectator cam but never called hud._hide_death(); the normal respawn only hid it by the countdown reaching 0, and Survival has no countdown (-1)."
  }
