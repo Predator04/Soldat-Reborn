@@ -66,6 +66,11 @@ func _process(_delta: float) -> void:
 		_lan_listening = false
 
 
+func _open_settings() -> void:
+	_menu_root.visible = false
+	_settings_panel.visible = true
+
+
 func _open_host() -> void:
 	_menu_root.visible = false
 	_host_root.visible = true
@@ -355,9 +360,7 @@ func _build_menu() -> void:
 	_menu_box2.add_child(UITheme.make_section_header("System"))
 
 	var settings := _make_button("SETTINGS")
-	settings.pressed.connect(func() -> void:
-		_menu_root.visible = false
-		_settings_panel.visible = true)
+	settings.pressed.connect(_open_settings)
 	var sys_row := HBoxContainer.new()
 	sys_row.add_theme_constant_override("separation", 8)
 	_menu_box2.add_child(sys_row)
@@ -827,6 +830,8 @@ func _build_status() -> void:
 func _build_footer() -> void:
 	var foot := Label.new()
 	foot.text = "WASD · W jump · S crouch/roll · X prone · RMB jet · LMB shoot · 1-0 · Q sec · R reload · E nade · F throw · G nade type · Tab scores · H help · F9 GIF"
+	if OS.has_feature("android") or OS.has_feature("mobile") or DisplayServer.is_touchscreen_available():
+		foot.text = "Left side: move / jump · right side: aim + hold to fire · on-screen buttons: jet, grenade, reload, swap, throw, prone · tap the top bar for scores"
 	foot.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	foot.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	foot.offset_top = -42
