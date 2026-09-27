@@ -39,6 +39,7 @@ Limbo weapon menu, LAN game discovery, map-editor undo, Domination bot fixes and
 - **Map editor undo / redo**: Ctrl+Z, Ctrl+Y (or Ctrl+Shift+Z) and toolbar buttons, 60 steps; a drag-move is one step. The toolbar now uses the game's UI style, highlights the active tool, and its backing strip grows to fit all three rows. On touch screens two fingers pan and pinch-zoom the editor view, and Android back leaves the editor (or closes the load list).
 
 ### QA
+- Gate run 17 (v1.16.0, final build): 38/38 passed — adds the listen-host + client case; CTF sweep 243 grabs, 34 captures, 639 kills, 5 falls, 0 errors.
 - Gate run 16 (v1.16.0): 37/37 passed — stage C adds a two-client autopilot soak; CTF sweep 230 grabs, 42 captures, 630 kills, 5 falls; mode matrix DOM 53 captures.
 - QA: the autopiloted player ran every map in PM, HTF, INF, GG, Rambo and BR (15 s each, 612 map runs): zero script errors.
 - QA: gate stage C adds a listen-host + autopiloted-client case.
