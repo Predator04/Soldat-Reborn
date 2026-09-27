@@ -4,6 +4,9 @@ All notable changes to Soldat Reborn.
 
 ## [Unreleased]
 
+### Added
+- Survival: while you wait for the next round the death screen shows who's still in it ("BLUE 4 alive · RED 1 alive", or "3 left" in free-for-all).
+
 ### Fixed
 - Objective arrow labels ("FLAG 214m") sit fully inside the arrow instead of running under the arrow head at the left / right screen edges.
 - Team modes always show both team scores in the top bar; in Survival a team with nobody alive and no points dropped out of it (the report screenshot showed only "BLUE 0").

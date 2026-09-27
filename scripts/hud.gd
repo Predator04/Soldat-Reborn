@@ -734,6 +734,24 @@ func show_death(killer: String, weapon: String, respawn_secs: float = 2.0) -> vo
 	desat_overlay.visible = true
 
 
+## "BLUE 3 alive · RED 2 alive" (team modes) or "4 left" (FFA) for the
+## Survival waiting screen.
+func _alive_summary() -> String:
+	var blue := 0
+	var red := 0
+	var all := 0
+	for s in get_tree().get_nodes_in_group("soldier"):
+		if not is_instance_valid(s) or bool(s.get("dead")):
+			continue
+		all += 1
+		match int(s.get("team")):
+			1: blue += 1
+			2: red += 1
+	if Settings.is_team_mode():
+		return "BLUE %d alive  ·  RED %d alive" % [blue, red]
+	return "%d left" % all
+
+
 func _hide_death() -> void:
 	_dead = false
 	lbl_death.visible = false
@@ -895,7 +913,7 @@ func _process(delta: float) -> void:
 		if _death_remaining < 0.0:
 			# Survival: no respawn until the round resets. The desaturated overlay
 			# stays up until show_death is called again (or _hide_death fires).
-			lbl_respawn.text = "Waiting for next round..."
+			lbl_respawn.text = "Waiting for next round  ·  " + _alive_summary()
 		else:
 			_death_remaining -= delta
 			lbl_respawn.text = "Respawning in %d" % maxi(0, int(ceil(_death_remaining)))
