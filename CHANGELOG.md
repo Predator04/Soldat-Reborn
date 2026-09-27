@@ -40,6 +40,7 @@ Limbo weapon menu, LAN game discovery, map-editor undo, Domination bot fixes and
 
 ### QA
 - Gate run 16 (v1.16.0): 37/37 passed — stage C adds a two-client autopilot soak; CTF sweep 230 grabs, 42 captures, 630 kills, 5 falls; mode matrix DOM 53 captures.
+- QA: the autopiloted player ran every map in PM, HTF, INF, GG, Rambo and BR (15 s each, 612 map runs): zero script errors.
 - QA: gate stage C adds a listen-host + autopiloted-client case.
 - QA: `--smoke-auto` drives a network smoke client with random input; `--net "m0 … m9"` runs a dedicated server + autopiloted client per mode (all 10 modes: zero errors on either side, and the client runs the server's mode). The gate now starts every Godot run from default settings and restores this machine's files afterwards; the feature test checks the limbo pick.
 - Gate run 15: 36/36 passed (adds LAN discovery; CTF sweep 230 grabs, 43 captures, 628 kills, 2 falls; mode matrix DOM 55 captures).
