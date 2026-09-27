@@ -801,6 +801,8 @@ func _on_kill(killer_name: String, victim_name: String, weapon_name: String, kil
 	feed.add_child(lbl)
 	feed.move_child(lbl, 0)
 	_feed_entries.push_front(lbl)
+	if is_instance_valid(player) and killer_name == str(player.display_name) and victim_name != killer_name:
+		_kill_confirm(victim_name, weapon_name.ends_with("(headshot)"))
 	while _feed_entries.size() > FEED_MAX:
 		var old: Control = _feed_entries.pop_back()
 		if is_instance_valid(old):
@@ -815,6 +817,35 @@ func _on_kill(killer_name: String, victim_name: String, weapon_name: String, kil
 		_feed_entries.erase(lbl)
 		if is_instance_valid(lbl):
 			lbl.queue_free())
+
+
+var _confirm_lbl: Label
+var _confirm_tween: Tween
+
+
+## Short "KILLED <name>" line under the action when *you* score a kill.
+func _kill_confirm(victim: String, headshot: bool) -> void:
+	if _confirm_lbl == null:
+		_confirm_lbl = Label.new()
+		_confirm_lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
+		_confirm_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_confirm_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		_confirm_lbl.offset_top = 150
+		_confirm_lbl.offset_bottom = 150
+		_confirm_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_confirm_lbl.add_theme_font_size_override("font_size", 17)
+		_confirm_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+		_confirm_lbl.add_theme_constant_override("outline_size", 4)
+		add_child(_confirm_lbl)
+	_confirm_lbl.text = ("KILLED  %s  ·  HEADSHOT" if headshot else "KILLED  %s") % victim
+	_confirm_lbl.add_theme_color_override("font_color", Color(1.0, 0.55, 0.45) if headshot else Color(1.0, 0.88, 0.55))
+	_confirm_lbl.modulate.a = 1.0
+	_confirm_lbl.visible = true
+	if _confirm_tween != null and _confirm_tween.is_valid():
+		_confirm_tween.kill()
+	_confirm_tween = create_tween()
+	_confirm_tween.tween_interval(1.1)
+	_confirm_tween.tween_property(_confirm_lbl, "modulate:a", 0.0, 0.4)
 
 
 func _input(event: InputEvent) -> void:

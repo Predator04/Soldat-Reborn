@@ -84,6 +84,7 @@ release gate (`tools/release_gate.sh`) run three times clean.
 - **Controls card**: the first three matches open with a small bottom-centre card of the controls (read from your current bindings, pad buttons too when a controller is plugged in); it fades after 12 s and **H** brings it back any time (rebindable, "Controls Help"). Not shown on touch screens.
 - Objective edge arrows stay below the top HUD row (they could land on the timer / score strip).
 - Spectating while dead: tap the left / right half of the screen (touch) or LB / RB / D-pad (gamepad) to switch who you follow; the hint says so.
+- Kill confirmation: when you score a kill a short "KILLED <name>" line (red with · HEADSHOT) pops under the action for a second.
 - Death screen says "You died" for suicides instead of "killed by <you>"; the empty HP/JET box hides while you're dead.
 - Multiplayer: a dead (or disconnected) soldier's body lingers 1.5 s as an inert, hidden husk so shots / state already in flight from its owner don't log "Node not found" on every peer.
 - Multiplayer: bot shots carry the weapon they were fired with. A replica whose loadout / secondary flag lagged the host (they sync unreliably at state rate) fired a bullet where the host fired a LAW, so the host's rocket updates hit a node the client never made ("Node not found: BotRocket").
