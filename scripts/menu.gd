@@ -162,6 +162,7 @@ func _ready() -> void:
 	_build_settings()
 	_build_controls()
 	_build_stats()
+	_build_credits()
 	_build_host()
 	_build_join()
 	_build_browse()
@@ -400,6 +401,15 @@ func _build_menu() -> void:
 	_map_thumb.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_menu_box2.add_child(UITheme.spacer(4))
 	_menu_box2.add_child(_map_thumb)
+	var credits_btn := Button.new()
+	credits_btn.text = "Credits & licenses"
+	credits_btn.flat = true
+	credits_btn.add_theme_font_size_override("font_size", 13)
+	credits_btn.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)
+	credits_btn.add_theme_color_override("font_hover_color", UITheme.COL_ACCENT_HI)
+	credits_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	credits_btn.pressed.connect(_open_credits)
+	_menu_box2.add_child(credits_btn)
 	_update_map_thumb()
 
 
@@ -430,6 +440,54 @@ var _stats_body: RichTextLabel = null
 
 
 var _stats_root: PanelContainer = null
+
+
+var _credits_root: PanelContainer = null
+
+const CREDITS_TEXT := """[b]Soldat Reborn[/b] %s — a Godot 4 rebuild of the classic run-and-gun Soldat.
+Game code: Soldat Reborn contributors (MIT license).
+
+[b]Soldat[/b] was created by Michał "MM" Marcinkowski (Transhuman Design) with the Soldat community.
+Sounds, weapon / soldier / interface graphics, animations and the classic maps are from the Soldat base content — [color=#9fd0ff]github.com/Soldat/base[/color] — licensed CC BY 4.0 ([color=#9fd0ff]creativecommons.org/licenses/by/4.0[/color]). Repackaged for Godot; see CREDITS.md in the source for details.
+
+Built with the [b]Godot Engine[/b] (MIT license, godotengine.org).
+
+This is an unofficial fan rebuild and is not endorsed by the original Soldat authors."""
+
+
+func _build_credits() -> void:
+	_credits_root = PanelContainer.new()
+	_credits_root.add_theme_stylebox_override("panel", UITheme.panel_style())
+	_credits_root.set_anchors_preset(Control.PRESET_CENTER, true)
+	_credits_root.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_credits_root.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_credits_root.visible = false
+	add_child(_credits_root)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 10)
+	box.custom_minimum_size = Vector2(620, 0)
+	_credits_root.add_child(box)
+	box.add_child(UITheme.make_screen_title("CREDITS"))
+	var body := RichTextLabel.new()
+	body.bbcode_enabled = true
+	body.fit_content = true
+	body.scroll_active = false
+	body.custom_minimum_size = Vector2(0, 280)
+	body.add_theme_font_size_override("normal_font_size", 15)
+	body.add_theme_font_size_override("bold_font_size", 15)
+	body.add_theme_color_override("default_color", UITheme.COL_TEXT)
+	body.text = CREDITS_TEXT % ("v" + str(ProjectSettings.get_setting("application/config/version", "")))
+	box.add_child(body)
+	var back := _make_button("BACK")
+	back.pressed.connect(func() -> void:
+		_credits_root.visible = false
+		_menu_root.visible = true)
+	box.add_child(back)
+
+
+func _open_credits() -> void:
+	_menu_root.visible = false
+	_credits_root.visible = true
 
 
 func _build_stats() -> void:
@@ -960,6 +1018,9 @@ func _go_back() -> void:
 		_menu_root.visible = true
 	elif _stats_root != null and _stats_root.visible:
 		_stats_root.visible = false
+		_menu_root.visible = true
+	elif _credits_root != null and _credits_root.visible:
+		_credits_root.visible = false
 		_menu_root.visible = true
 	elif _host_root != null and _host_root.visible:
 		_host_root.visible = false
