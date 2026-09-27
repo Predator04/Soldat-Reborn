@@ -8,3 +8,4 @@
 *.poa -text
 *.exe binary
 *.zip binary
+*.bat text eol=crlf
