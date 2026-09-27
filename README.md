@@ -12,7 +12,7 @@ past the classic, with most of Soldat 2's feature list folded in.
 - **Game modes** — Deathmatch, Pointmatch, Teammatch, Capture the Flag, Rambomatch, Infiltration, Hold the Flag, **Domination**, **Battle Royale** + Realistic/Survival/Advance sub-modes
 - **Map editor** — in-game editor: place platforms, spawns, flags, control points; save/load custom maps; play-test live
 - **Procedural maps** — seeded generator with re-roll, produces playable layouts for every mode
-- **Classic maps** — 10 original Soldat levels ported from `.pms` (Nuubia, Maya, Aftermath, Hormone, Viet, Scorpion, Warehouse, Baire, Airpirates, Bunker) with scenery + textured terrain
+- **Classic maps** — 99 original Soldat levels ported from `.pms` with scenery, textured terrain, weather and baked bot navigation (bots play every objective mode on every map)
 - **Polish** — gestures/taunts, chat, weapon throw/pickup, ceasefire, bink, game modifiers, character customization, lo-fi mode, local stats, GIF recording, improved grenade physics
 - **Multiplayer** — host-authoritative ENet (host / join), replicated bots that shoot and damage clients, dedicated headless server mode, LAN-scale sync, authority-owned grenade/rocket transforms so shooter + victim see the same trajectory and impact spot
 - **Round hygiene** — clean-slate reset (full HP/ammo, spawn-slot teleport) in every mode, not just Survival
@@ -37,16 +37,21 @@ past the classic, with most of Soldat 2's feature list folded in.
 | / | Gesture console — `/victory /smoke /tabac /takeoff /kill /brutalkill /mercy` |
 | T / Y | Chat (global / team); ALT+keys for taunts |
 | F9 | Record a GIF of gameplay |
+| Tab | Scoreboard (hold) |
+| H | Controls card (shown automatically in your first matches) |
 | ESC | Pause menu — Resume / Settings / Controls / Exit |
 
 Every action above is rebindable. Open **SETTINGS → CONTROLS** from the main menu
 or the ESC pause menu, click a row, then press any key or mouse button. Bindings
 persist to `user://controls.cfg`; "Reset to Defaults" restores the table above.
 
+While you're dead the Soldat weapon panel appears on the left: pick the primary (1–0 or click) and
+secondary you respawn with. Gamepads and touch screens work too (on-screen stick and buttons on phones).
+
 ## Map editor & procedural generation
 
 - Launch from the menu (**MAP EDITOR**) or open an existing map.
-- **Editor controls:** toolbar to place platforms (drag), markers (click), move/delete (right-click); middle-drag pan, wheel zoom, ESC exit, F5 play-test.
+- **Editor controls:** toolbar to place platforms (drag), markers (click), move/delete (right-click); middle-drag pan, wheel zoom, Ctrl+Z / Ctrl+Y undo / redo, ESC exit, F5 play-test. On touch screens two fingers pan and pinch-zoom.
 - Maps save to `user://maps/*.json` and are selectable in the menu alongside the built-in rotation.
 - **GENERATE + PLAY** rolls a seeded procedural map and drops you straight in.
 
@@ -64,21 +69,24 @@ Requires Godot 4.7.2.
 # Headless verify (must print ZERO lines matching error|invalid|nil|failed|attempt)
 godot --headless --path . --quit-after 900
 
-# Windows export
-godot --headless --export-release "Windows Desktop" build/SoldatReborn.exe
+# Windows .exe + signed Android .apk
+bash tools/build_release.sh all
+
+# Full release gate (~25 min): static checks, boots, multiplayer smokes, every mode, every map
+bash tools/release_gate.sh
 ```
 
 CI runs the headless verify on every push (`.github/workflows/ci.yml`).
 
 ## Multiplayer
 
-- **HOST GAME** — pick a map, then share your IP/port (default `7777`).
-- **JOIN GAME** — enter host IP + port.
+- **HOST GAME** — pick a mode and map (your own editor maps included); bots fill the match per the Bots setting. Port `7777` by default.
+- **JOIN GAME → FIND GAMES** — games on your local network show up automatically (UDP 23074); click one to join. Or type the host's IP + port. A master server (see `../server/master-server`) lists internet games — dedicated servers with `--register <url>`, listen hosts with the "List on the master server" box.
+- Everyone must run the same version; the host refuses other builds with a message.
 - Host-authoritative state sync, with bots replicated and fighting on all peers.
 - **Dedicated server** — run a headless host with no local player:
   `SoldatReborn.exe --dedicated [--port 7777] [--map ctf_Nuubia] [--mode dm]`
   (maps: name or index; modes: `dm`/`tdm`/`ctf`/`inf`/`htf`/`rm`/`pm`/`dom`/`br`).
-- Custom maps are single-player; networked play uses the built-in rotation. See *Known limitations* in `ROADMAP.md`.
 
 ## Project layout
 
