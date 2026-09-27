@@ -2,7 +2,7 @@
 
 All notable changes to Soldat Reborn.
 
-## [Unreleased]
+## [1.16.2] — 2026-09-27
 
 ### Added
 - Hovering the Realistic / Survival / Advance boxes in the main menu explains what each one does (Survival: no respawns until one side is wiped out).

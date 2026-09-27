@@ -38,5 +38,15 @@
   "commit": "3d3f20c",
   "version": "1.16.2",
   "body": "The waiting screen only said 'Waiting for next round...'. It now shows the living count per team (or players left in FFA), updated live."
+ },
+ {
+  "title": "Explain the Realistic / Survival / Advance options in the menu",
+  "labels": [
+   "enhancement",
+   "area: ui"
+  ],
+  "commit": "58985c8",
+  "version": "1.16.2",
+  "body": "Survival was on without the player knowing why they couldn't respawn. The three boxes now have tooltips describing the rules."
  }
 ]
