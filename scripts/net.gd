@@ -287,7 +287,8 @@ func _smoke_host() -> void:
 		var main := get_tree().current_scene
 		var pbi = main.get("_players_by_id") if main != null else null
 		var pcount: int = pbi.size() if pbi != null else 0
-		print("SMOKE-HOST peers=%d players=%d" % [multiplayer.get_peers().size(), pcount])
+		var bbi = main.get("_bots_by_id") if main != null else null
+		print("SMOKE-HOST peers=%d players=%d bots=%d" % [multiplayer.get_peers().size(), pcount, bbi.size() if bbi != null else 0])
 		leave()
 		get_tree().quit())
 
@@ -319,6 +320,8 @@ func _smoke_join() -> void:
 			if is_instance_valid(s) and s.get_script() != null and String(s.get_script().resource_path).ends_with("bot.gd"):
 				bots_visible += 1
 		print("SMOKE-JOIN id=%d mode=%d players=%d bots_visible=%d bot_shots_seen=%d" % [local_id(), mode, pcount, bots_visible, bot_shots_seen])
+		var jm = get_tree().current_scene.get("_map") if get_tree().current_scene != null else null
+		print("SMOKE-JOIN-MAP %s custom=%s" % [str(jm.get("name", "?")) if jm is Dictionary else "?", str(custom_map_json != "")])
 		var _mn = get_tree().current_scene
 		if _mn != null:
 			var _names := []
@@ -736,8 +739,11 @@ func _lan_beacon() -> void:
 	if _lan_tx == null or mode != Mode.HOST:
 		return
 	var mi: int = chosen_map_index
-	var map_name: String = "Custom" if custom_map_json != "" or Settings.custom_map_path != "" \
-			else (str(MAP_NAMES[mi]) if mi >= 0 and mi < MAP_NAMES.size() else "?")
+	var map_name: String = (str(MAP_NAMES[mi]) if mi >= 0 and mi < MAP_NAMES.size() else "?")
+	if Settings.custom_map_path != "":
+		map_name = "Custom: %s" % Settings.custom_map_path.get_file().get_basename()
+	elif custom_map_json != "":
+		map_name = "Custom"
 	var gm: int = Settings.game_mode
 	var info := {
 		"g": LAN_TAG,

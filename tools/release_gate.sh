@@ -27,7 +27,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 G="${GODOT_BIN:-$HOME/godot/Godot_v4.7.2-stable_linux.x86_64}"
 QUICK=0; OUT="build/gate"; ONLY="A B N C D R F E"; MODESEL="0 1 2 3 4 5 6 7 8 9"
-NETSEL="ctf dm two respawn host lan soak m3 m7 m9"; SWEEP=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
+NETSEL="ctf dm two respawn host listen lan soak m3 m7 m9"; SWEEP=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --quick) QUICK=1;; --out) OUT="$2"; shift;; --only) ONLY="$2"; shift;;
@@ -164,6 +164,18 @@ case " $NETSEL " in *" respawn "*)
 case " $NETSEL " in *" host "*)
 timeout 60 "$G" --headless -- --smoke-host > "$OUT/net_host.log" 2>&1
 if grep -q "SMOKE-HOST" "$OUT/net_host.log" && [ "$(errs "$OUT/net_host.log")" = "0" ]; then pass "C net listen host: $(grep -m1 SMOKE-HOST "$OUT/net_host.log")"; else fail "C net listen host ($(errs "$OUT/net_host.log") errors)"; fi
+;; esac
+case " $NETSEL " in *" listen "*)
+  # Listen host (a player hosting from the menu) + an autopiloted client.
+  port=$((7700 + RANDOM % 200))
+  timeout 60 "$G" --headless -- --smoke-host --port $port --smoke-secs=32 > "$OUT/net_listen_host.log" 2>&1 &
+  hpid=$!
+  sleep 7
+  timeout 45 "$G" --headless -- --smoke-join --port $port --smoke-secs=18 --smoke-auto > "$OUT/net_listen_client.log" 2>&1
+  wait $hpid 2>/dev/null
+  hl=$(grep -m1 SMOKE-HOST "$OUT/net_listen_host.log"); cl=$(grep -m1 '^SMOKE-JOIN ' "$OUT/net_listen_client.log")
+  he=$(errs "$OUT/net_listen_host.log"); ce=$(errs "$OUT/net_listen_client.log")
+  if echo "$cl" | grep -q "players=2" && [ "$he" = "0" ] && [ "$ce" = "0" ]; then pass "C net listen host + client: $hl | $cl"; else fail "C net listen host + client: '$hl' '$cl' host_errs=$he client_errs=$ce"; fi
 ;; esac
 case " $NETSEL " in *" soak "*)
   # Two autopiloted clients (second joins late) on a CTF server for ~50 s.

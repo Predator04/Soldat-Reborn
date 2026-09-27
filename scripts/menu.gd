@@ -126,6 +126,7 @@ var _ip_edit: LineEdit
 var _port_edit: LineEdit
 var _host_port_edit: LineEdit
 var _mode_pick: OptionButton
+var _host_custom_paths: Array = []
 var _host_mode_pick: OptionButton
 var _connect_btn: Button
 var _map_pick: OptionButton
@@ -534,6 +535,15 @@ func _build_host() -> void:
 	_map_pick = OptionButton.new()
 	for name in MAP_NAMES:
 		_map_pick.add_item(name)
+	# Your own maps (editor saves / Generate) can be hosted too — they travel
+	# to clients as JSON. Ids 10000+ index into _host_custom_paths.
+	_host_custom_paths.clear()
+	for path_v in MapIO.list_files():
+		var cpath: String = String(path_v)
+		if cpath.ends_with("/_playtest.json"):
+			continue
+		_map_pick.add_item("Custom: %s" % cpath.get_file().get_basename(), 10000 + _host_custom_paths.size())
+		_host_custom_paths.append(cpath)
 	_map_pick.selected = clampi(Settings.map_index, 0, MAP_NAMES.size() - 1)
 	_map_pick.custom_minimum_size = Vector2(0, 34)
 	UITheme.style_option_button(_map_pick)
@@ -582,11 +592,14 @@ func _build_host() -> void:
 		var idx := _map_pick.get_selected_id()
 		if idx < 0:
 			idx = _map_pick.selected
+		# A custom map sets the path; a built-in pick clears any leftover one
+		# (e.g. the editor play-test) so the chosen map actually loads.
+		Settings.custom_map_path = ""
+		if idx >= 10000 and idx - 10000 < _host_custom_paths.size():
+			Settings.custom_map_path = _host_custom_paths[idx - 10000]
+			idx = 0
 		idx = clampi(idx, 0, MAP_NAMES.size() - 1)
 		Settings.map_index = idx
-		# The host picker only lists built-in maps; drop any leftover custom
-		# map (e.g. the editor play-test) so the chosen map actually loads.
-		Settings.custom_map_path = ""
 		Settings.save()
 		start.disabled = true
 		var port := int(_host_port_edit.text) if _host_port_edit.text.is_valid_int() else Net.DEFAULT_PORT

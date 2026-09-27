@@ -461,6 +461,9 @@ func _ready() -> void:
 					_handle_client_ready(_pending.id, _pending.name, _pending.version)
 			else:
 				_spawn_networked_player(1)  # host is peer 1
+				# Listen host: same bot roster as single player (Bots setting;
+				# 0 = none, and Host Settings can change it live).
+				_spawn_bots()
 		else:
 			# Client asks the host to spawn us; host also mirrors any existing players.
 			# Send to Net autoload (always present) — it forwards to Main or buffers

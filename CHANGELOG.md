@@ -22,6 +22,8 @@ Limbo weapon menu, LAN game discovery, map-editor undo, Domination bot fixes and
 
 ### Multiplayer
 - Network protocol changed (bot shots, ready list): 1.15 and 1.16 builds can't play together — the host refuses the other version with a message, so update every PC / phone.
+- **Hosting from the menu now fills the match with bots** (the Bots setting, same as single player; 0 = none, Host Settings changes it live). Before, only dedicated servers had bots, so two friends on a listen server played alone.
+- Host Game lists your own maps too (editor saves / Generate, shown as "Custom: name"); they're sent to clients as JSON. LAN listings show the custom map's name.
 - Fixed: hosting (or a dedicated server with `--map`) after an editor play-test loaded the play-test map instead of the map you picked.
 - Host-side broadcasts (spawns, despawns, kill feed, objective events, Gun Game rungs, votes, round resets) now only go to peers that have loaded the match; a second client joining mid-match no longer logs "Node not found: Main". Gate run 12: all stages passed (CTF sweep 245 grabs, 41 captures, 662 kills, 3 falls).
 - **LAN games show up by themselves**: a listen or dedicated host broadcasts a small beacon every second, and Join → FIND GAMES lists games on your network (name, players, map, mode) live — click to join, no IP typing. Different builds are shown greyed out. The master-server list sits below it as before. (UDP port 23074.)
@@ -37,6 +39,7 @@ Limbo weapon menu, LAN game discovery, map-editor undo, Domination bot fixes and
 
 ### QA
 - Gate run 16 (v1.16.0): 37/37 passed — stage C adds a two-client autopilot soak; CTF sweep 230 grabs, 42 captures, 630 kills, 5 falls; mode matrix DOM 53 captures.
+- QA: gate stage C adds a listen-host + autopiloted-client case.
 - QA: `--smoke-auto` drives a network smoke client with random input; `--net "m0 … m9"` runs a dedicated server + autopiloted client per mode (all 10 modes: zero errors on either side, and the client runs the server's mode). The gate now starts every Godot run from default settings and restores this machine's files afterwards; the feature test checks the limbo pick.
 - Gate run 15: 36/36 passed (adds LAN discovery; CTF sweep 230 grabs, 43 captures, 628 kills, 2 falls; mode matrix DOM 55 captures).
 - Gate run 14: 35/35 passed (stage C now includes INF / DOM / Gun Game with an autopiloted client; CTF sweep 222 grabs, 34 captures, 648 kills, 6 falls).
