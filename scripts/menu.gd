@@ -168,6 +168,8 @@ func _ready() -> void:
 	_build_browse()
 	_build_status()
 	_build_footer()
+	if not Settings.name_set and DisplayServer.get_name() != "headless":
+		_build_name_prompt()
 	# Kicked / host lost / version mismatch: say why we're back at the menu.
 	if Net.last_disconnect_reason != "" and _status_label != null:
 		_status_label.text = Net.last_disconnect_reason
@@ -483,6 +485,55 @@ func _build_credits() -> void:
 		_credits_root.visible = false
 		_menu_root.visible = true)
 	box.add_child(back)
+
+
+## First launch: ask what to call the player (used in kill feed, scoreboard,
+## multiplayer). Skippable; Settings -> Game changes it later.
+func _build_name_prompt() -> void:
+	var root := PanelContainer.new()
+	root.add_theme_stylebox_override("panel", UITheme.panel_style())
+	root.set_anchors_preset(Control.PRESET_CENTER, true)
+	root.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	root.grow_vertical = Control.GROW_DIRECTION_BOTH
+	add_child(root)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 12)
+	box.custom_minimum_size = Vector2(440, 0)
+	root.add_child(box)
+	box.add_child(UITheme.make_screen_title("WELCOME, SOLDIER"))
+	var lbl := Label.new()
+	lbl.text = "What should we call you? It shows in the kill feed, the scoreboard and online."
+	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	UITheme.style_body(lbl)
+	box.add_child(lbl)
+	var edit := LineEdit.new()
+	edit.max_length = 24
+	edit.placeholder_text = "Your name"
+	edit.custom_minimum_size = Vector2(0, 38)
+	UITheme.style_lineedit(edit)
+	box.add_child(edit)
+	var go := _make_button("LET'S GO", true)
+	box.add_child(go)
+	var skip := Button.new()
+	skip.text = "Skip (you can change it in Settings)"
+	skip.flat = true
+	skip.add_theme_font_size_override("font_size", 13)
+	skip.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)
+	box.add_child(skip)
+	_menu_root.visible = false
+	var finish := func(name: String) -> void:
+		var clean := name.strip_edges().left(24)
+		if clean != "":
+			Settings.player_name = clean
+		Settings.name_set = true
+		Settings.save()
+		root.queue_free()
+		_menu_root.visible = true
+		UITheme.safe_grab_focus_deferred(_menu_first_focus)
+	go.pressed.connect(func() -> void: finish.call(edit.text))
+	edit.text_submitted.connect(func(t: String) -> void: finish.call(t))
+	skip.pressed.connect(func() -> void: finish.call(""))
+	UITheme.safe_grab_focus_deferred(edit)
 
 
 func _open_credits() -> void:

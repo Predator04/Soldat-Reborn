@@ -95,6 +95,7 @@ var last_join_ip := "127.0.0.1"   # Join panel remembers the last address
 var last_join_port := 7777
 var host_public := false        # listen host registers with the master server
 var player_name := "Player"
+var name_set := false          # first-launch name prompt answered
 var master_url := ""
 
 # Convenience: DM / Rambo / Battle Royale / Gun Game are FFA (friendly-fire on), teams disable friendly damage.
@@ -185,6 +186,8 @@ func load_settings() -> void:
 	host_public = bool(cf.get_value("net", "host_public", false))
 	last_join_port = clampi(int(cf.get_value("net", "last_join_port", 7777)), 1, 65535)
 	player_name = str(cf.get_value("net", "player_name", "Player"))
+	# Players from before the prompt existed who already picked a name keep it.
+	name_set = bool(cf.get_value("net", "name_set", player_name != "Player"))
 	master_url = str(cf.get_value("net", "master_url", ""))
 
 
@@ -238,6 +241,7 @@ func save() -> void:
 	cf.set_value("net", "host_public", host_public)
 	cf.set_value("net", "last_join_port", last_join_port)
 	cf.set_value("net", "player_name", player_name)
+	cf.set_value("net", "name_set", name_set)
 	cf.set_value("net", "master_url", master_url)
 	cf.save(PATH)
 

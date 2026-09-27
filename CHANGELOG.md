@@ -6,6 +6,7 @@ All notable changes to Soldat Reborn.
 
 ### Added
 - The game pauses (pause menu opens) when it loses focus — alt-tab on PC, home button / incoming call on phones — so a single-player match doesn't keep running without you. Toggle: Settings → Game.
+- First launch asks for your player name (skippable; Settings → Game changes it). Existing players who already set a name aren't asked.
 - **Credits & licenses** screen in the main menu (Soldat authors, CC BY 4.0 attribution for the Soldat base content, Godot). The CC BY license expects the attribution to be visible to players, not only in the source.
 - Settings → Video: VSync toggle and a frame-rate limit (Unlimited / 30 / 60 / 120 / 144 / 240).
 
