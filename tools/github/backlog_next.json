@@ -19,5 +19,15 @@
   "commit": "ff1e50b",
   "version": "1.17.0",
   "body": "Retail checklist: Settings -> Video gains a VSync toggle and an FPS cap."
+ },
+ {
+  "title": "In-game credits / license attribution screen",
+  "labels": [
+   "enhancement",
+   "area: ui"
+  ],
+  "commit": "cbabf0f",
+  "version": "1.17.0",
+  "body": "Retail checklist: CC BY 4.0 attribution for the Soldat base content was only in CREDITS.md. The main menu now has a Credits & licenses screen."
  }
 ]
