@@ -303,6 +303,13 @@ func _notification(what: int) -> void:
 			close()
 		else:
 			open()
+	# Alt-tab / phone home button / incoming call: open the pause menu so a
+	# single-player match doesn't keep running (and you don't come back dead).
+	# In multiplayer it only stops your own input, same as pressing Esc.
+	elif what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_APPLICATION_PAUSED:
+		if not _open and not Net.is_dedicated and DisplayServer.get_name() != "headless" \
+				and Settings.pause_on_focus_loss:
+			open()
 
 
 func _open_settings() -> void:

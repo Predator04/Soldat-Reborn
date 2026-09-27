@@ -2,6 +2,12 @@
 
 All notable changes to Soldat Reborn.
 
+## [Unreleased]
+
+### Added
+- The game pauses (pause menu opens) when it loses focus — alt-tab on PC, home button / incoming call on phones — so a single-player match doesn't keep running without you. Toggle: Settings → Game.
+- Settings → Video: VSync toggle and a frame-rate limit (Unlimited / 30 / 60 / 120 / 144 / 240).
+
 ## [1.16.2] — 2026-09-27
 
 ### Added

@@ -172,6 +172,29 @@ func _build_video(box: VBoxContainer) -> void:
 		func(on: bool) -> void:
 			Settings.lofi = on
 			Settings.save()))
+	box.add_child(_check_button("VSync (no tearing; caps FPS to the monitor)", Settings.vsync,
+		func(on: bool) -> void:
+			Settings.vsync = on
+			Settings.save()
+			Settings.apply_display()))
+	var fps_opts := [0, 30, 60, 120, 144, 240]
+	var fps_row := HBoxContainer.new()
+	var fps_lbl := Label.new()
+	fps_lbl.text = "Frame rate limit"
+	fps_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	UITheme.style_body(fps_lbl)
+	fps_row.add_child(fps_lbl)
+	var fps_pick := OptionButton.new()
+	for f in fps_opts:
+		fps_pick.add_item("Unlimited" if f == 0 else "%d FPS" % f)
+	fps_pick.selected = maxi(0, fps_opts.find(Settings.max_fps))
+	UITheme.style_option_button(fps_pick)
+	fps_pick.item_selected.connect(func(i: int) -> void:
+		Settings.max_fps = int(fps_opts[i])
+		Settings.save()
+		Settings.apply_display())
+	fps_row.add_child(fps_pick)
+	box.add_child(fps_row)
 	box.add_child(_check_button("Show FPS overlay", Settings.show_fps,
 		func(on: bool) -> void:
 			Settings.show_fps = on
@@ -231,6 +254,10 @@ func _build_game(box: VBoxContainer) -> void:
 		func(t: String) -> void:
 			var clean := t.strip_edges()
 			Settings.player_name = clean if clean != "" else "Player"
+			Settings.save()))
+	box.add_child(_check_button("Pause when the game loses focus (alt-tab, phone home button)", Settings.pause_on_focus_loss,
+		func(on: bool) -> void:
+			Settings.pause_on_focus_loss = on
 			Settings.save()))
 	# Screen shake — now a 0-2 intensity slider. Setting to 0 disables shake
 	# (matches the old bool-off behavior); >0 keeps `screen_shake=true` set so

@@ -28,6 +28,9 @@ var touch_swap := false
 # "Reset touch layout" action.
 var touch_btn_pos: Dictionary = {}
 var show_fps := false          # overlay FPS counter on the HUD
+var pause_on_focus_loss := true  # open the pause menu when the window / app loses focus
+var vsync := true
+var max_fps := 0                # 0 = unlimited (VSync still caps it)
 var damage_numbers := true     # floating damage numbers when you land a hit
 var help_seen := 0             # matches that auto-showed the controls card
 var bot_chatter := true        # bots trash-talk in chat now and then
@@ -156,6 +159,9 @@ func load_settings() -> void:
 				touch_btn_pos[str(k)] = Vector2(float(v[0]), float(v[1]))
 	show_fps = bool(cf.get_value("video", "show_fps", false))
 	damage_numbers = bool(cf.get_value("video", "damage_numbers", true))
+	vsync = bool(cf.get_value("video", "vsync", true))
+	max_fps = clampi(int(cf.get_value("video", "max_fps", 0)), 0, 360)
+	pause_on_focus_loss = bool(cf.get_value("game", "pause_on_focus_loss", true))
 	bot_chatter = bool(cf.get_value("game", "bot_chatter", true))
 	camera_lead = bool(cf.get_value("controls", "camera_lead", true))
 	help_seen = int(cf.get_value("game", "help_seen", 0))
@@ -206,6 +212,9 @@ func save() -> void:
 	cf.set_value("controls", "touch_btn_pos", touch_btn_pos)
 	cf.set_value("video", "show_fps", show_fps)
 	cf.set_value("video", "damage_numbers", damage_numbers)
+	cf.set_value("video", "vsync", vsync)
+	cf.set_value("video", "max_fps", max_fps)
+	cf.set_value("game", "pause_on_focus_loss", pause_on_focus_loss)
 	cf.set_value("game", "bot_chatter", bot_chatter)
 	cf.set_value("controls", "camera_lead", camera_lead)
 	cf.set_value("game", "help_seen", help_seen)
@@ -236,6 +245,8 @@ func save() -> void:
 func apply_display() -> void:
 	if DisplayServer.get_name() == "headless":
 		return
+	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if vsync else DisplayServer.VSYNC_DISABLED)
+	Engine.max_fps = max_fps
 	if fullscreen:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 	else:
