@@ -299,6 +299,7 @@ func _build_menu() -> void:
 	_menu_box.add_child(subs)
 	var real_cb := CheckBox.new()
 	real_cb.text = "Realistic"
+	real_cb.tooltip_text = "Realistic: headshots kill in one hit, no jet boots, and no ammo or fuel readouts."
 	real_cb.button_pressed = Settings.realistic
 	UITheme.style_checkbox(real_cb)
 	real_cb.toggled.connect(func(on: bool) -> void:
@@ -307,6 +308,7 @@ func _build_menu() -> void:
 	subs.add_child(real_cb)
 	var surv_cb := CheckBox.new()
 	surv_cb.text = "Survival"
+	surv_cb.tooltip_text = "Survival: no respawns — when you die you wait (spectating) until one side is wiped out and the next round starts."
 	surv_cb.button_pressed = Settings.survival
 	UITheme.style_checkbox(surv_cb)
 	surv_cb.toggled.connect(func(on: bool) -> void:
@@ -315,6 +317,7 @@ func _build_menu() -> void:
 	subs.add_child(surv_cb)
 	var adv_cb := CheckBox.new()
 	adv_cb.text = "Advance"
+	adv_cb.tooltip_text = "Advance: start with a knife and unlock better guns as you score kills."
 	adv_cb.button_pressed = Settings.advance
 	UITheme.style_checkbox(adv_cb)
 	adv_cb.toggled.connect(func(on: bool) -> void:

@@ -5,6 +5,7 @@ All notable changes to Soldat Reborn.
 ## [Unreleased]
 
 ### Added
+- Hovering the Realistic / Survival / Advance boxes in the main menu explains what each one does (Survival: no respawns until one side is wiped out).
 - Survival: while you wait for the next round the death screen shows who's still in it ("BLUE 4 alive · RED 1 alive", or "3 left" in free-for-all).
 
 ### Fixed
