@@ -29,5 +29,15 @@
   "commit": "cbabf0f",
   "version": "1.17.0",
   "body": "Retail checklist: CC BY 4.0 attribution for the Soldat base content was only in CREDITS.md. The main menu now has a Credits & licenses screen."
+ },
+ {
+  "title": "Ask the player's name on first launch",
+  "labels": [
+   "enhancement",
+   "area: ui"
+  ],
+  "commit": "21355bb",
+  "version": "1.17.0",
+  "body": "Retail checklist: everyone played as 'Player' unless they found the Settings field. First launch now shows a skippable name prompt."
  }
 ]
