@@ -29,6 +29,9 @@ var fire_cd := 0.5
 var jump_cd := 0.0
 var muzzle_t := 0.0
 var target: Node2D = null
+# Riding a buggy as its gunner (v1.19.1). The buggy aims and fires for us.
+var mounted_m2: Node2D = null
+var _ride_cd := 0.0
 var _target_refresh_cd := 0.0
 var _stuck_t := 0.0
 var _wedge_t := 0.0  # seconds resting wedged without floor contact
@@ -353,6 +356,18 @@ func _physics_process(delta: float) -> void:
 		_target_visible = is_instance_valid(target) and _has_line_of_sight(target)
 		if _target_visible:
 			_last_seen_pos = target.global_position
+	# In a buggy: the buggy places us and works the gun; we just keep picking
+	# targets (above) for it.
+	if mounted_m2 != null:
+		if not is_instance_valid(mounted_m2):
+			mounted_m2 = null
+		else:
+			velocity = Vector2.ZERO
+			jet_on = false
+			muzzle_t = maxf(0.0, muzzle_t - delta * 10.0)
+			queue_redraw()
+			return
+	_ride_cd = maxf(0.0, _ride_cd - delta)
 	_think_cd -= delta
 	if _think_cd <= 0.0:
 		_think_cd = THINK_INTERVAL * randf_range(0.8, 1.2)
@@ -1587,6 +1602,8 @@ func _set_goal(pos: Vector2, label: String) -> void:
 func _think() -> void:
 	_goal = Vector2.INF
 	_goal_label = ""
+	if _think_ride():
+		return
 	var mode: int = Settings.game_mode
 	var flags := _flags()
 	# Grabbing a close, useful pickup beats everything except flag duty.
@@ -1908,6 +1925,40 @@ func _lob_aim(to: Vector2, v: float, g: float) -> Vector2:
 		return Vector2.ZERO
 	var ang: float = atan((v2 - sqrt(disc)) / (g * x))
 	return Vector2(cos(ang) * signf(to.x), -sin(ang))
+
+
+func mount_m2(v: Node2D) -> void:
+	mounted_m2 = v
+
+
+func dismount_m2() -> void:
+	mounted_m2 = null
+	_ride_cd = 6.0   # don't hop straight back in
+
+
+# A teammate is driving a buggy with an empty gun seat nearby: go and man the
+# gun. Team modes only; never while carrying a flag.
+func _think_ride() -> bool:
+	if _ride_cd > 0.0 or not Settings.is_team_mode() or _carrying_flag():
+		return false
+	var m := _main()
+	if m == null or not m.has_method("vehicle_bot_board"):
+		return false
+	for v in get_tree().get_nodes_in_group("vehicle"):
+		if not is_instance_valid(v) or not v.get("alive"):
+			continue
+		var d: Node = v.driver()
+		if d == null or v.gunner() != null or int(d.get("team")) != team:
+			continue
+		var dist: float = global_position.distance_to((v as Node2D).global_position)
+		if dist > 480.0 or absf((v as CharacterBody2D).velocity.x) > 160.0:
+			continue
+		if dist < float(v.ENTER_RADIUS) - 6.0:
+			m.vehicle_bot_board(v, self)
+			return true
+		_set_goal((v as Node2D).global_position, "ride")
+		return true
+	return false
 
 
 func _void_below() -> bool:

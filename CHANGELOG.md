@@ -13,9 +13,12 @@ Gate run 25: 49/49 passed (CTF sweep with buggies on the maps: 206 grabs, 30 cap
   - 350 HP. Bullets hurt it, rockets and grenades hurt it more; when it's wrecked it explodes, killing anyone still inside and hurting people nearby, then comes back at its spot 25 s later.
   - Works online: the host decides who sits where and owns health / wrecks / respawns; the driver's machine drives it and everyone else follows. Late joiners see the buggies, their damage and who is in them.
   - The map editor has a **Buggy** tool; Settings → Game has a Vehicles switch (the host's setting counts online). Not in Gun Game.
-- Bots don't drive yet, but they shoot the people in a buggy and get run over by it.
+- **Crew play.** Driving and shooting at once is possible but costly: while a lone driver holds the trigger the buggy is held to half speed and the gun is about twice as inaccurate. In team modes a teammate bot near a buggy you're driving walks over and takes the gun — it leads its targets, fires in bursts to keep the barrel from overheating, and hops out when you do.
+- While you're in a buggy the HUD shows its health, the gun's heat (and OVERHEATED), who's on the gun, and a reminder when you're driving solo.
+- Bots don't drive yet; they ride as gunners, shoot the people in enemy buggies and get run over by them.
 
 ### QA
+- `tools/vehicle_crew_test.gd` (gate stage F): a solo driver who fires tops out at half speed (260 vs 520); a teammate bot boards as gunner within a second, hits an enemy, and leaves 1.5 s after the driver does.
 - `tools/vehicle_test.gd` (gate stage F): on a test range — F gets you in as driver, D drives it, it runs a bot over, the gun hits, F gets you out, a rocket blast damages it, wrecking it kills the driver, and it respawns at its spot.
 - Gate stage C: `drive` — a client joins a dedicated server, the host gives it the driver's seat, and it drives 1000+ px with no network errors on either side.
 - A probe of every map with buggies (0–101): every buggy spawns on the ground and stays put until someone drives it.

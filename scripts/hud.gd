@@ -648,6 +648,7 @@ func _update_bonus_ui() -> void:
 # ── Mode banner + pickup toasts (v1.18) ──────────────────
 var lbl_mode_banner: Label
 var lbl_toast: Label
+var lbl_vehicle: Label
 var _banner_t := 0.0
 var _toast_t := 0.0
 const BANNER_HOLD := 7.0
@@ -683,6 +684,17 @@ func _build_info_labels() -> void:
 	lbl_toast.add_theme_constant_override("outline_size", 6)
 	lbl_toast.visible = false
 	add_child(lbl_toast)
+	lbl_vehicle = Label.new()
+	lbl_vehicle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl_vehicle.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	lbl_vehicle.offset_top = -98
+	lbl_vehicle.offset_bottom = -64
+	lbl_vehicle.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lbl_vehicle.add_theme_font_size_override("font_size", 18)
+	lbl_vehicle.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	lbl_vehicle.add_theme_constant_override("outline_size", 6)
+	lbl_vehicle.visible = false
+	add_child(lbl_vehicle)
 	show_mode_banner()
 
 
@@ -715,7 +727,29 @@ func toast(title: String, desc: String, col: Color = Color(1, 1, 1)) -> void:
 	_toast_t = TOAST_HOLD
 
 
+# Buggy readout while you're in one: its health, the gun's heat, and a note
+# when you're driving solo (firing slows you down).
+func _tick_vehicle_label() -> void:
+	if lbl_vehicle == null:
+		return
+	var v = player.get("mounted_m2") if is_instance_valid(player) else null
+	if v == null or not is_instance_valid(v) or not v.is_in_group("vehicle"):
+		lbl_vehicle.visible = false
+		return
+	var hp_frac: float = float(v.hp) / float(v.MAX_HP)
+	var gun := "GUN OVERHEATED" if v.overheated else "GUN %d%%" % int(round(float(v.heat) * 100.0))
+	var t := "BUGGY  %d HP  ·  %s" % [int(v.hp), gun]
+	if v.driver() == player and v.gunner() == null:
+		t += "  ·  solo: slower while firing"
+	elif v.gunner() != null and v.gunner() != player and v.gunner().get("bot_id") != null:
+		t += "  ·  %s on the gun" % str(v.gunner().get("display_name"))
+	lbl_vehicle.text = t
+	lbl_vehicle.add_theme_color_override("font_color", Color(0.95, 0.35, 0.25) if v.overheated or hp_frac < 0.3 else Color(0.95, 0.85, 0.5))
+	lbl_vehicle.visible = true
+
+
 func _tick_info_labels(delta: float) -> void:
+	_tick_vehicle_label()
 	if lbl_mode_banner != null and lbl_mode_banner.visible:
 		_banner_t -= delta
 		lbl_mode_banner.modulate.a = clampf(_banner_t, 0.0, 1.0)

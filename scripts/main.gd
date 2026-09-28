@@ -2179,7 +2179,11 @@ func _handle_client_ready(sender_id: int, joiner_name: String = "", client_versi
 		rpc_id(sender, "net_vehicle_spawn", int(vid), v.get("spawn_pos"), (v as Node2D).global_position, float(v.get("hp")), bool(v.get("alive")))
 		var seats: Array = v.get("seats")
 		for i in seats.size():
-			if is_instance_valid(seats[i]):
+			if not is_instance_valid(seats[i]):
+				continue
+			if seats[i].get("bot_id") != null:
+				rpc_id(sender, "net_vehicle_seat_bot", int(vid), i, int(seats[i].get("bot_id")), true)
+			else:
 				rpc_id(sender, "net_vehicle_seat", int(vid), i, int(seats[i].get_multiplayer_authority()), true)
 	rpc_id(sender, "net_stats_sync", player_stats)
 	# then spawn a body for the new peer on everyone
@@ -4409,6 +4413,38 @@ func _decide_seat(v: Node, s: Node, enter: bool) -> void:
 		if seat2 < 0:
 			return
 		vehicle_send("net_vehicle_seat", [int(v.get("vehicle_id")), seat2, _peer_of(s), false], true)
+
+
+# Host / single-player: a bot takes a free seat (the gunner's, in practice).
+func vehicle_bot_board(v: Node, bot: Node) -> void:
+	if Net.is_networked() and not Net.is_host():
+		return
+	if not v.can_enter(bot):
+		return
+	var seat: int = v.free_seat()
+	if seat != 1:
+		return
+	if Net.is_networked():
+		bcast("net_vehicle_seat_bot", [int(v.get("vehicle_id")), seat, int(bot.get("bot_id")), true], true)
+	else:
+		v.set_seat(seat, bot)   # bot_id is only unique online
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func net_vehicle_seat_bot(vid: int, seat: int, bot_id: int, enter: bool) -> void:
+	if not _from_host():
+		return
+	var v := find_vehicle(vid)
+	var b = null
+	for s in get_tree().get_nodes_in_group("soldier"):
+		if is_instance_valid(s) and s.get("bot_id") != null and int(s.get("bot_id")) == bot_id:
+			b = s
+	if v == null or b == null:
+		return
+	if enter:
+		v.set_seat(seat, b)
+	else:
+		v.clear_seat_of(b)
 
 
 func _peer_of(s: Node) -> int:

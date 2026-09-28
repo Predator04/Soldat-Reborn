@@ -30,6 +30,11 @@ const RESPAWN_TIME := 25.0
 const EXPLODE_RADIUS := 150.0
 const EXPLODE_DAMAGE := 120.0
 const EXPLOSIVE_MUL := 1.6      # rockets / grenades hurt it more than bullets
+# Driving and shooting at once (no gunner): slower and sloppier. A crew of
+# two is the strong way to run a buggy.
+const SOLO_FIRE_SPEED := 0.5    # top speed while the solo driver holds the trigger
+const SOLO_FIRE_SPREAD := 2.2   # spread multiplier for a solo driver
+const BOT_GUN_RANGE := 900.0
 
 # Seat offsets (local, facing right, before tilt). The soldier's origin sits
 # here; the body is drawn over their legs so they look seated.
@@ -60,6 +65,9 @@ var _runover_cd: Dictionary = {}
 var _f_prev := true
 var _engine: AudioStreamPlayer2D
 var _smoke_t := 0.0
+var _solo_fire_t := 0.0         # >0 while a lone driver is firing
+var _bot_hold := false          # bot gunner letting the barrel cool
+var _no_driver_t := 0.0
 
 const _BARREL_TEX := preload("res://assets/weapons-gfx/m2.png")
 const TouchControls = preload("res://scripts/touch_controls.gd")
@@ -228,6 +236,7 @@ func _physics_process(delta: float) -> void:
 			_update_team()
 	fire_cd = maxf(0.0, fire_cd - delta)
 	_hop_cd = maxf(0.0, _hop_cd - delta)
+	_solo_fire_t = maxf(0.0, _solo_fire_t - delta)
 	heat = maxf(0.0, heat - HEAT_COOL * delta)
 	if overheated and heat <= 0.25:
 		overheated = false
@@ -242,6 +251,7 @@ func _physics_process(delta: float) -> void:
 	_place_occupants()
 	_local_occupant_input()
 	if _is_host_side():
+		_bot_gunner(delta)
 		_runover()
 		var kill_y: float = float(get_parent().get("KILL_Y")) if get_parent() != null and get_parent().get("KILL_Y") != null else INF
 		if global_position.y > kill_y:
@@ -266,6 +276,8 @@ func _simulate(delta: float) -> void:
 	if on_floor:
 		if throttle != 0.0:
 			var cap: float = MAX_SPEED if signf(throttle) == face or absf(velocity.x) < 30.0 else REVERSE_SPEED
+			if _solo_fire_t > 0.0:
+				cap *= SOLO_FIRE_SPEED
 			if signf(velocity.x) != 0.0 and signf(velocity.x) != signf(throttle):
 				velocity.x = move_toward(velocity.x, 0.0, BRAKE * delta)
 			else:
@@ -402,7 +414,11 @@ func _gun_pivot() -> Vector2:
 
 func _fire(me: Node2D) -> void:
 	var muzzle := _gun_pivot() + aim_dir * 24.0
-	var dir := aim_dir.rotated(randf_range(-GUN_SPREAD, GUN_SPREAD))
+	var spread := GUN_SPREAD
+	if gunner() == null and me == driver():
+		spread *= SOLO_FIRE_SPREAD
+		_solo_fire_t = 0.3
+	var dir := aim_dir.rotated(randf_range(-spread, spread))
 	fire_cd = GUN_RATE
 	var main := get_parent()
 	if Net.is_networked() and main != null and main.has_method("vehicle_send"):
@@ -435,6 +451,46 @@ func apply_fire(muzzle: Vector2, dir: Vector2) -> void:
 	if heat >= 1.0 and not overheated:
 		overheated = true
 		Sfx._play_key("m2overheat", -6.0, 1.0, muzzle)
+
+
+# A bot in the gun seat (host / single-player): aim at its target with lead,
+# fire in bursts and let the barrel cool before it overheats. Hops out if
+# the driver leaves.
+func _bot_gunner(delta: float) -> void:
+	var g := gunner()
+	if g == null or g.get("bot_id") == null:
+		_no_driver_t = 0.0
+		return
+	if driver() == null:
+		_no_driver_t += delta
+		if _no_driver_t > 1.5:
+			_no_driver_t = 0.0
+			var main := get_parent()
+			if Net.is_networked() and main != null and main.has_method("net_vehicle_seat_bot"):
+				main.bcast("net_vehicle_seat_bot", [vehicle_id, 1, int(g.get("bot_id")), false], true)
+			else:
+				clear_seat_of(g)
+		return
+	_no_driver_t = 0.0
+	var t = g.get("target")
+	if t == null or not is_instance_valid(t) or t.get("dead") == true or seat_of(t) >= 0:
+		return
+	var piv := _gun_pivot()
+	var to: Vector2 = (t as Node2D).global_position + Vector2(0, -6) - piv
+	if to.length() > BOT_GUN_RANGE or g.get("_target_visible") != true:
+		return
+	if t is CharacterBody2D:
+		to += (t as CharacterBody2D).velocity * (to.length() / GUN_SPEED)
+	var want := to.normalized()
+	if want.y > 0.55:
+		return   # can't depress that far
+	aim_dir = aim_dir.slerp(want, clampf(delta * 7.0, 0.0, 1.0)).normalized()
+	if heat > 0.85:
+		_bot_hold = true
+	elif heat < 0.3:
+		_bot_hold = false
+	if not overheated and not _bot_hold and fire_cd <= 0.0 and absf(aim_dir.angle_to(want)) < 0.12:
+		_fire(g)
 
 
 # Run over enemies at speed (host / single-player decides).
