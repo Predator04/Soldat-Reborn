@@ -36,7 +36,7 @@
    "bug",
    "area: gameplay"
   ],
-  "commit": "",
+  "commit": "9e18536",
   "version": "1.18.0",
   "body": "Reported in play: the Barrett has no shot coming out. Cause: semi-auto + startup 0.32 s; the semi-auto gate (lmb_prev) was true by the time spin_up_t reached startup, so can_fire was always false. Fix: a click arms one queued shot (_semi_armed) that fires after the wind-up; one round per click. tools/fire_test.gd in gate stage F fails on the old code."
  }
