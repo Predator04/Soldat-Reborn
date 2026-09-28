@@ -1,0 +1,33 @@
+[
+ {
+  "title": "Positional audio + unused Soldat sounds (footsteps, ricochets, whizz-bys, distant gunfire, deaths, ambience)",
+  "labels": [
+   "enhancement",
+   "area: audio"
+  ],
+  "commit": "4755898",
+  "version": "1.18.0",
+  "body": "Requested: more sound. Sfx now plays world sounds from AudioStreamPlayer2D at the event position (distance attenuation + panning); far gunfire / explosions switch to dist-gun*/dist-grenade/dist-m79. Wired footsteps, landings, ricochets, whizz-bys, death cries + headchop, grenade pin/bounce, weapon switch/pickup/throw, roll, prone, spawn, rain/snow loop. tools/sound_test.gd in gate stage F."
+ },
+ {
+  "title": "Team radio callouts (V) with Soldat radio voice lines",
+  "labels": [
+   "enhancement",
+   "area: gameplay"
+  ],
+  "commit": "350e7d6",
+  "version": "1.18.0",
+  "body": "Soldat's radio: enemy flag carrier / friendly flag carrier / enemy spotted + up / mid / down. Team-only voice line + chat line, sender validated like team chat, rate-limited. Bots on the robbed team call out the enemy flag carrier. Number keys stay blocked for weapon switching until released. tools/radio_test.gd in gate stage F."
+ },
+ {
+  "title": "Medikits and grenade kits from the original map spawn points",
+  "labels": [
+   "enhancement",
+   "area: gameplay",
+   "area: maps"
+  ],
+  "commit": "",
+  "version": "1.18.0",
+  "body": "The .pms spawn types 7 (grenade kit) and 8 (medikit) were dropped by the port. pms_to_map.py now exports them (settled on the ground) and all 99 bundled maps were re-merged from the .pms files (plus .pms weather where the JSON had none). Runtime reuses the host-authoritative bonus-box sync; kits heal / refill players and bots, only when useful, respawn after 25 s. Bots seek them when hurt / out of grenades. tools/kit_test.gd in gate stage F."
+ }
+]

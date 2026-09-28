@@ -15,6 +15,8 @@ past the classic, with most of Soldat 2's feature list folded in.
 - **Classic maps** — 99 original Soldat levels ported from `.pms` with scenery, textured terrain, weather and baked bot navigation (bots play every objective mode on every map)
 - **Polish** — gestures/taunts, chat, weapon throw/pickup, ceasefire, bink, game modifiers, character customization, lo-fi mode, local stats, GIF recording, improved grenade physics
 - **Multiplayer** — host-authoritative ENet (host / join), replicated bots that shoot and damage clients, dedicated headless server mode, LAN-scale sync, authority-owned grenade/rocket transforms so shooter + victim see the same trajectory and impact spot
+- **Pickups** — medikits and grenade kits where the original maps put them (bots use them too), plus timed bonus crates (Predator, Berserker, Vest, Cluster)
+- **Sound** — positional audio (distance + stereo), footsteps, landings, ricochets, bullet whizz-bys, distant-gunfire tails, death cries, rain / snow ambience, Soldat radio voice lines
 - **Round hygiene** — clean-slate reset (full HP/ammo, spawn-slot teleport) in every mode, not just Survival
 - **Gostek fidelity** — front arm tracks aim_dir; dreadlocks, dogtag, blood/damage overlays, belt grenade, and secondary-on-back render on top of the base gostek
 
@@ -36,6 +38,7 @@ past the classic, with most of Soldat 2's feature list folded in.
 | F | Throw away current weapon |
 | / | Gesture console — `/victory /smoke /tabac /takeoff /kill /brutalkill /mercy` |
 | T / Y | Chat (global / team); ALT+keys for taunts |
+| V | Team radio: enemy / friendly flag carrier, enemy spotted — up / mid / down |
 | F9 | Record a GIF of gameplay |
 | Tab | Scoreboard (hold) |
 | H | Controls card (shown automatically in your first matches) |

@@ -2,6 +2,20 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.18.0] — 2026-09-28
+
+Content and sound pass.
+
+### Added
+- **Medikits and grenade kits** on all 99 classic maps, at the spots the original map makers placed them (read from the Soldat `.pms` files). A medikit heals you to full, a grenade kit refills you to 3 grenades; each comes back 25 s after it's taken. You can't waste one: at full health you walk past a medikit. Bots use them too and head for one when they're hurt or out of grenades. Bonus crates now use Soldat's own kit sprites.
+- **Team radio** (V, rebindable): pick what — enemy flag carrier, friendly flag carrier, enemy spotted — then where — up / mid / down — with 1–3. Your team hears Soldat's radio voice line and sees an amber "(RADIO)" chat line. Bots call out the enemy flag carrier when someone steals their flag.
+- **Positional sound**: other soldiers' gunfire, reloads, jumps, explosions and deaths come from where they happen — quieter with distance and panned left/right. Far-off fights use Soldat's muffled distant-gunfire / distant-explosion samples.
+- New sounds from the Soldat set that were sitting unused: footsteps (running and crouched), landing thuds (heavier after big drops), bullet ricochets off walls, bullet whizz-bys when an enemy round passes your head, death cries (plus a crunch on headshot kills), grenade pin pull when you start cooking, grenade bounces, weapon switch, weapon pickup and throw, roll, going prone / standing up, respawn, kit and bonus pickups.
+- Rain and snow maps play a looping rain / wind bed. Six more classic maps get the weather their `.pms` file asks for (April, Bigfalls, Biologic, Mossy: rain; B2B, Messner: snow).
+
+### QA
+- Gate stage F gains four checks: `tools/sound_test.gd` (every family of world sound fires in a bot match and every requested sample exists), `tools/radio_test.gd` (V → 2 → 3 posts "Friendly flag carrier — down" with its voice line and doesn't switch weapons; a bot calls out the flag carrier), `tools/kit_test.gd` (a full-health soldier leaves a medikit; hurt → healed; no grenades → refilled).
+
 ## [1.17.1] — 2026-09-28
 
 ### Changed

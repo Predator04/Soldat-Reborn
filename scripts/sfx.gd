@@ -369,6 +369,22 @@ func ambience(kind: String) -> void:
 	play_counts[key] = int(play_counts.get(key, 0)) + 1
 
 
+# Crate / kit collected (heard by everyone nearby).
+const PICKUP_SOUNDS := {
+	"medkit": ["takemedikit", -6.0],
+	"grenades": ["pickupgun", -6.0],
+	"vest": ["vesttake", -4.0],
+	"berserker": ["berserker", -4.0],
+	"predator": ["predator", -4.0],
+	"cluster": ["clustergrenade", -4.0],
+}
+
+
+func pickup_kit(kind: String, at: Vector2) -> void:
+	var e: Array = PICKUP_SOUNDS.get(kind, ["pickupgun", -6.0])
+	_play_key(str(e[0]), float(e[1]), 1.0, at)
+
+
 # Team radio voice line (assets/sfx/radio/<code>.wav, e.g. efcup).
 func radio(code: String) -> void:
 	_play_key("radio/" + code.replace("_", ""), -2.0, 1.0)

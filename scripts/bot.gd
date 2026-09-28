@@ -860,6 +860,27 @@ func _scan_pickup(delta: float) -> void:
 	if _pickup_scan_cd > 0.0:
 		return
 	_pickup_scan_cd = 0.25
+	# Hurt or out of grenades: a medikit / grenade kit in reach (v1.18) wins
+	# over everything else — even mid-retreat, that's where you retreat to.
+	var need_med: bool = health < 60.0
+	var need_nades: bool = grenades == 0
+	if need_med or need_nades:
+		var kit: Node2D = null
+		var kit_d2: float = (520.0 if need_med else 320.0) ** 2
+		for bx in get_tree().get_nodes_in_group("bonus_pickup"):
+			if not is_instance_valid(bx):
+				continue
+			var k: String = str(bx.get("bonus_kind"))
+			if not ((k == "medkit" and need_med) or (k == "grenades" and need_nades)):
+				continue
+			var kd2: float = (bx.global_position - global_position).length_squared()
+			if kd2 < kit_d2:
+				kit_d2 = kd2
+				kit = bx
+		if kit != null:
+			_pickup_target = kit
+			_pickup_t = 0.0
+			return
 	# Only pursue pickups when we're not in the middle of a retreat / hurt.
 	if _retreat_t > 0.0 or health < 30.0:
 		return

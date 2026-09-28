@@ -400,6 +400,15 @@ def to_reborn_map(pms, display_name=None, scale=DEFAULT_SCALE):
     if by_team.get(15):
         rambo_pos = r2(by_team[15][0])
     m2_mounts = [r2(p) for p in by_team.get(16, [])]
+    # Soldat kit spawns: 7 = grenade kit, 8 = medikit (v1.18).
+    def _dedupe(pts, gap=40.0):
+        out = []
+        for p in pts:
+            if all(abs(p[0] - q[0]) + abs(p[1] - q[1]) > gap for q in out):
+                out.append(r2(p))
+        return out
+    medkits = _dedupe(by_team.get(8, []))
+    grenade_kits = _dedupe(by_team.get(7, []))
 
     alpha = by_team.get(2, [])   # Soldat Bravo -> Reborn BLUE (player side)
     bravo = by_team.get(1, [])   # Soldat Alpha -> Reborn RED
@@ -498,6 +507,13 @@ def to_reborn_map(pms, display_name=None, scale=DEFAULT_SCALE):
         m["rambo_pos"] = rambo_pos
     if m2_mounts:
         m["m2_mounts"] = m2_mounts
+    if medkits:
+        m["medkits"] = medkits
+    if grenade_kits:
+        m["grenade_kits"] = grenade_kits
+    # Soldat weather byte: 1 rain, 3 snow (2 = sandstorm has no Reborn effect).
+    if pms.get("weather") in (1, 3):
+        m["weather"] = "rain" if pms["weather"] == 1 else "snow"
     # Per-team spawn lists so each side respawns at its own base in team
     # modes. (`alpha`/`bravo` here are already swapped to Reborn BLUE/RED —
     # see the ctf_flags comment above.)
@@ -650,7 +666,8 @@ def fix_entities(m):
             arr[i], n = fix("team_spawns[%s]" % t, p, False)
             if n:
                 notes.append(n)
-    for key, settle in (("bot_spawns", False), ("ctf_flags", True), ("m2_mounts", False)):
+    for key, settle in (("bot_spawns", False), ("ctf_flags", True), ("m2_mounts", False),
+                        ("medkits", True), ("grenade_kits", True)):
         arr = m.get(key, [])
         for i, p in enumerate(arr):
             arr[i], n = fix(key, p, settle)
@@ -679,7 +696,7 @@ def regen_bundled(pms_dir, maps_dir, scale=DEFAULT_SCALE):
         with open(jf, encoding="utf-8") as f:
             old = json.load(f)
         m = to_reborn_map(parse_pms(pms_by_stem[stem]), display_name=old.get("name"), scale=scale)
-        for keep in ("weather",):
+        for keep in ("weather",):  # hand-set weather wins over the .pms byte
             if keep in old:
                 m[keep] = old[keep]
         with open(jf, "w", encoding="utf-8") as f:

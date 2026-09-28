@@ -44,35 +44,38 @@ func _on_body_entered(body: Node) -> void:
 	touched.emit(body)
 
 
+# Soldat's own kit sprites (v1.18); medikits / grenade kits are map pickups
+# that share this node (see Main._collect_kit).
+const KIT_KINDS := ["medkit", "grenades"]
+const TEX := {
+	"predator": preload("res://assets/textures/objects/predatorkit.png"),
+	"berserker": preload("res://assets/textures/objects/berserkerkit.png"),
+	"vest": preload("res://assets/textures/objects/vestkit.png"),
+	"cluster": preload("res://assets/textures/objects/clusterkit.png"),
+	"medkit": preload("res://assets/textures/objects/medikit.png"),
+	"grenades": preload("res://assets/textures/objects/grenadekit.png"),
+}
+
+
 func _draw() -> void:
+	var tex: Texture2D = TEX.get(bonus_kind, null)
+	var bob: float = sin(_pulse_t * 2.5) * 1.5
+	if bonus_kind in KIT_KINDS:
+		# Plain supply crate: soft ground shadow, gentle bob.
+		draw_circle(Vector2(0, 12), 9.0, Color(0, 0, 0, 0.18))
+		if tex != null:
+			draw_texture_rect(tex, Rect2(Vector2(-12, -12 + bob), Vector2(24, 24)), false)
+		return
 	var col := kind_color(bonus_kind)
 	var pulse: float = 0.6 + 0.4 * sin(_pulse_t * 4.0)
 	# Outer soft glow — reads as "grab me" from a distance.
 	draw_circle(Vector2.ZERO, 22.0 + pulse * 5.0, Color(col.r, col.g, col.b, 0.10))
 	draw_circle(Vector2.ZERO, 15.0, Color(col.r, col.g, col.b, 0.32 * pulse))
-	# Crate body — dark box with team-colored border so the kind reads even
-	# when the glow is fading between pulses.
+	if tex != null:
+		draw_texture_rect(tex, Rect2(Vector2(-13, -13 + bob), Vector2(26, 26)), false)
+		return
 	draw_rect(Rect2(-10, -10, 20, 20), Color(0.1, 0.1, 0.13, 0.95))
 	draw_rect(Rect2(-10, -10, 20, 20), col, false, 2.0)
-	# Kind glyph — hand-drawn icons keep this self-contained (no font asset).
-	match bonus_kind:
-		"predator":
-			# Stealth eye — outer ring + pupil.
-			draw_arc(Vector2.ZERO, 5.5, 0.0, TAU, 16, col, 1.5)
-			draw_circle(Vector2.ZERO, 2.0, col)
-		"berserker":
-			# Angry X.
-			draw_line(Vector2(-5, -5), Vector2(5, 5), col, 2.2)
-			draw_line(Vector2(-5, 5), Vector2(5, -5), col, 2.2)
-		"vest":
-			# Vest silhouette.
-			draw_rect(Rect2(-5, -6, 10, 12), col, false, 1.8)
-			draw_line(Vector2(-5, -2), Vector2(5, -2), col, 1.2)
-		"cluster":
-			# Three fragmentation dots.
-			draw_circle(Vector2(0, -3), 2.4, col)
-			draw_circle(Vector2(-3, 3), 2.4, col)
-			draw_circle(Vector2(3, 3), 2.4, col)
 
 
 static func kind_color(k: String) -> Color:
@@ -81,6 +84,8 @@ static func kind_color(k: String) -> Color:
 		"berserker": return Color(1.0, 0.35, 0.25)
 		"vest": return Color(0.35, 0.85, 1.0)
 		"cluster": return Color(1.0, 0.75, 0.25)
+		"medkit": return Color(0.45, 1.0, 0.45)
+		"grenades": return Color(0.8, 0.9, 0.5)
 	return Color(1, 1, 1)
 
 
@@ -90,4 +95,6 @@ static func kind_label(k: String) -> String:
 		"berserker": return "BERSERKER"
 		"vest": return "VEST"
 		"cluster": return "CLUSTER"
+		"medkit": return "MEDIKIT"
+		"grenades": return "GRENADES"
 	return k.to_upper()

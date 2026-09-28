@@ -162,6 +162,11 @@ var _vote_cooldown := 0.0          # host-only: gate between votes
 const BONUS_RESPAWN := 20.0
 const BONUS_EFFECT_DURATION := 30.0
 const BONUS_MAX_SLOTS := 3
+# Medikits / grenade kits (v1.18) — Soldat map pickups, bots take them too.
+const KIT_RESPAWN := 25.0
+const KIT_MAX_EACH := 6
+var _bonus_slot_kind: Array = []     # host: "" = random bonus, else fixed kit kind
+var _kit_poll_t := 0.0
 var _bonus_boxes: Dictionary = {}    # bonus_id → node (host + client)
 var _bonus_slots: Array = []         # host: list of Vector2 spawn positions
 var _bonus_slot_cd: Array = []       # host: seconds until each slot respawns
@@ -395,6 +400,8 @@ var MAPS := [
 const RadioMenu = preload("res://scripts/radio_menu.gd")
 # Radio calls seen (any team) — tools/radio_test.gd reads it.
 var radio_count := 0
+# Kits picked up this match — tools/kit_test.gd reads it.
+var kits_taken := 0
 
 
 func _ready() -> void:
@@ -3777,8 +3784,6 @@ func _spawn_bonus_boxes_init() -> void:
 	var explicit: Array = _map.get("bonus_spawns", [])
 	var spots: Array = explicit.duplicate() if not explicit.is_empty() \
 		else (_map.get("bot_spawns", []) as Array).duplicate()
-	if spots.is_empty():
-		return
 	spots.shuffle()
 	var count: int = mini(BONUS_MAX_SLOTS, spots.size())
 	for i in count:
@@ -3787,7 +3792,19 @@ func _spawn_bonus_boxes_init() -> void:
 		_bonus_slots.append((spots[i] as Vector2) + Vector2(0, -22.0))
 		_bonus_slot_cd.append(0.0)
 		_bonus_slot_active.append(0)
-	for i in count:
+		_bonus_slot_kind.append("")
+	# Kits sit on the ground where the map maker put them.
+	for pair in [["medkits", "medkit"], ["grenade_kits", "grenades"]]:
+		var pts: Array = (_map.get(pair[0], []) as Array).duplicate()
+		pts.shuffle()
+		for i in mini(KIT_MAX_EACH, pts.size()):
+			var v = pts[i]
+			var kp: Vector2 = v if v is Vector2 else Vector2(float(v[0]), float(v[1]))
+			_bonus_slots.append(kp + Vector2(0, -14.0))
+			_bonus_slot_cd.append(0.0)
+			_bonus_slot_active.append(0)
+			_bonus_slot_kind.append(pair[1])
+	for i in _bonus_slots.size():
 		_spawn_bonus_at_slot(i)
 
 
@@ -3797,7 +3814,9 @@ func _spawn_bonus_at_slot(slot_idx: int) -> void:
 	if int(_bonus_slot_active[slot_idx]) != 0:
 		return  # slot already occupied
 	var pos: Vector2 = _bonus_slots[slot_idx]
-	var kind: String = BonusPickup.KINDS[randi() % BonusPickup.KINDS.size()]
+	var kind: String = str(_bonus_slot_kind[slot_idx]) if slot_idx < _bonus_slot_kind.size() else ""
+	if kind == "":
+		kind = BonusPickup.KINDS[randi() % BonusPickup.KINDS.size()]
 	var bid: int = _next_bonus_id
 	_next_bonus_id += 1
 	_bonus_slot_active[slot_idx] = bid
@@ -3821,6 +3840,7 @@ func _make_bonus_box_local(bid: int, pos: Vector2, kind: String, slot_idx: int) 
 	box.bonus_kind = kind
 	box.position = pos
 	box.name = "Bonus_%d" % bid
+	box.set_meta("slot", slot_idx)
 	# Host: bind the collision-triggered signal to our collect handler. Client
 	# replicas don't need this — the box is inert until the host says so.
 	if not Net.is_networked() or Net.is_host():
@@ -3839,6 +3859,9 @@ func _on_bonus_touched(body: Node, bid: int, slot_idx: int) -> void:
 	if not is_instance_valid(box):
 		return
 	var kind: String = str(box.get("bonus_kind"))
+	if kind in BonusPickup.KIT_KINDS:
+		_collect_kit(body, bid, slot_idx, kind)
+		return
 	var peer_id: int = 0
 	if not Net.is_networked():
 		if body != player:
@@ -3868,14 +3891,37 @@ func _on_bonus_touched(body: Node, bid: int, slot_idx: int) -> void:
 	if slot_idx >= 0 and slot_idx < _bonus_slot_cd.size():
 		_bonus_slot_active[slot_idx] = 0
 		_bonus_slot_cd[slot_idx] = BONUS_RESPAWN
-	# Sfx cue for the local player — reuse the existing UI blip so we don't
-	# need a new sample.
-	Sfx.ui()
+
+
+# Medikit heals to full, grenade kit refills to 3 — for players and bots, and
+# only when it would do something (a full-health soldier leaves the medikit).
+func _collect_kit(body: Node, bid: int, slot_idx: int, kind: String) -> void:
+	if not is_instance_valid(body) or body.get("dead") == true or body.get("health") == null:
+		return
+	if kind == "medkit" and float(body.get("health")) >= 100.0:
+		return
+	if kind == "grenades" and int(body.get("grenades")) >= 3:
+		return
+	if body.has_method("apply_kit"):
+		body.apply_kit(kind)   # player: routed to its owner
+	elif kind == "medkit":
+		body.set("health", 100.0)
+	else:
+		body.set("grenades", 3)
+	kits_taken += 1
+	if Net.is_networked() and Net.is_host():
+		bcast("net_bonus_despawn", [bid], false)
+	_despawn_bonus_local(bid)
+	if slot_idx >= 0 and slot_idx < _bonus_slot_cd.size():
+		_bonus_slot_active[slot_idx] = 0
+		_bonus_slot_cd[slot_idx] = KIT_RESPAWN
 
 
 func _despawn_bonus_local(bid: int) -> void:
 	var box: Node = _bonus_boxes.get(bid, null)
 	if is_instance_valid(box):
+		# Every peer runs this on collection, so everyone hears the pickup.
+		Sfx.pickup_kit(str(box.get("bonus_kind")), (box as Node2D).global_position)
 		box.queue_free()
 	_bonus_boxes.erase(bid)
 
@@ -3883,6 +3929,19 @@ func _despawn_bonus_local(bid: int) -> void:
 func _tick_bonus_boxes(delta: float) -> void:
 	if _bonus_slots.is_empty():
 		return
+	# body_entered fires once; a soldier already standing on a kit when he
+	# gets hurt (or throws his last grenade) should still pick it up.
+	_kit_poll_t -= delta
+	if _kit_poll_t <= 0.0:
+		_kit_poll_t = 0.3
+		for bid in _bonus_boxes.keys():
+			var box = _bonus_boxes[bid]
+			if not is_instance_valid(box) or not (str(box.get("bonus_kind")) in BonusPickup.KIT_KINDS):
+				continue
+			for b in (box as Area2D).get_overlapping_bodies():
+				if b is CharacterBody2D:
+					_collect_kit(b, int(bid), int(box.get_meta("slot", -1)), str(box.get("bonus_kind")))
+					break
 	for i in _bonus_slot_cd.size():
 		if int(_bonus_slot_active[i]) != 0:
 			continue

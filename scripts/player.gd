@@ -2029,6 +2029,30 @@ func net_bonus_clear() -> void:
 	_clear_bonus_local()
 
 
+# Medikit / grenade kit (v1.18). Host decides, every peer applies (the owner's
+# copy is the one that counts; its state sync carries it from there).
+func apply_kit(kind: String) -> void:
+	_apply_kit_local(kind)
+	if Net.is_networked() and Net.is_host() and multiplayer.has_multiplayer_peer():
+		_fanout("net_kit_apply", [kind], -1)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func net_kit_apply(kind: String) -> void:
+	if multiplayer.multiplayer_peer != null and multiplayer.get_remote_sender_id() != 1:
+		return
+	_apply_kit_local(kind)
+
+
+func _apply_kit_local(kind: String) -> void:
+	if dead:
+		return
+	if kind == "medkit":
+		health = 100.0
+	elif kind == "grenades":
+		grenades = 3
+
+
 func apply_bonus(kind: String, duration: float) -> void:
 	# Fire the RPC (call_local) so every peer applies. In SP this just calls
 	# the local method — no multiplayer peer to route through.
