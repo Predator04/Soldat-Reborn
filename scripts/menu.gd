@@ -51,6 +51,7 @@ var _title_nodes: Array = []    # wordmark / tagline / version — main list onl
 # Taller sub-panels (Host, Join, Settings, Stats) sit over the wordmark; show
 # the title stack only while the main list is up.
 func _process(_delta: float) -> void:
+	_tick_rejoin(_delta)
 	var show_title: bool = _menu_root != null and _menu_root.visible
 	for n in _title_nodes:
 		if is_instance_valid(n) and n.visible != show_title:
@@ -61,6 +62,20 @@ func _process(_delta: float) -> void:
 		if _lan_t <= 0.0:
 			_lan_t = 0.5
 			_refresh_lan()
+		_ping_t -= _delta
+		if _ping_t <= 0.0:
+			_ping_t = 1.0
+			var targets: Array = []
+			for d in (Net.lan_poll() if _lan_listening else []):
+				targets.append([str(d.get("ip")), int(d.get("port"))])
+			for d in _master_rows:
+				targets.append([str(d.get("ip")), int(d.get("port"))])
+			Net.query_send(targets)
+			_render_master()
+		if _qj_active:
+			_qj_t -= _delta
+			if _qj_t <= 0.0:
+				_quick_join_pick()
 	elif _lan_listening:
 		Net.lan_listen_stop()
 		_lan_listening = false
@@ -94,7 +109,7 @@ func _refresh_lan() -> void:
 	if not _lan_listening:
 		_lan_listening = Net.lan_listen_start()
 	var found: Array = Net.lan_poll() if _lan_listening else []
-	var sig := str(found.map(func(d): return [d.get("ip"), d.get("port"), d.get("players"), d.get("map"), d.get("mode")]))
+	var sig := str(found.map(func(d): return [d.get("ip"), d.get("port"), d.get("players"), d.get("map"), d.get("mode"), _ping_bucket(str(d.get("ip")), int(d.get("port")))]))
 	if sig == _lan_sig and _lan_list.get_child_count() > 0:
 		return
 	_lan_sig = sig
@@ -108,18 +123,8 @@ func _refresh_lan() -> void:
 		l.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)
 		_lan_list.add_child(l)
 		return
-	var mine := str(ProjectSettings.get_setting("application/config/version", ""))
 	for d in found:
-		var btn := Button.new()
-		var ver := str(d.get("v", ""))
-		btn.text = "  %s   [%d/%d]   %s · %s%s" % [str(d.get("name", "?")), int(d.get("players", 0)), int(d.get("max", 0)),
-				str(d.get("map", "?")), str(d.get("mode", "?")), "" if ver == mine else "   (v%s)" % ver]
-		btn.custom_minimum_size = Vector2(580, 40)
-		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		UITheme.style_button(btn, 15, false)
-		btn.disabled = ver != mine   # the host would refuse a different build
-		btn.pressed.connect(_join_server.bind(str(d.get("ip")), int(d.get("port"))))
-		_lan_list.add_child(btn)
+		_lan_list.add_child(_server_row(d))
 var _menu_root: PanelContainer # wrapper panel we hide/show
 var _settings_panel: VBoxContainer
 var _controls_panel: VBoxContainer
@@ -177,6 +182,9 @@ func _ready() -> void:
 	if Net.last_disconnect_reason != "" and _status_label != null:
 		_status_label.text = Net.last_disconnect_reason
 		Net.last_disconnect_reason = ""
+	if Net.rejoin_offer and Net.last_server_ip != "":
+		Net.rejoin_offer = false
+		_build_rejoin()
 	Net.status_changed.connect(_on_net_status_changed)
 	Net.connected.connect(_on_net_connected)
 	Net.disconnected.connect(_on_net_disconnected)
@@ -389,6 +397,13 @@ func _build_menu() -> void:
 		_join_root.visible = true
 		UITheme.safe_grab_focus_deferred(_join_first_focus))
 	_menu_box2.add_child(join)
+
+	var qj := _make_button("QUICK JOIN")
+	qj.tooltip_text = "Jump into the best open game: same version, not full, lowest ping (LAN and master server)."
+	qj.pressed.connect(func() -> void:
+		_menu_root.visible = false
+		_quick_join())
+	_menu_box2.add_child(qj)
 
 	_menu_box2.add_child(UITheme.spacer(4))
 	_menu_box2.add_child(UITheme.make_section_header("System"))
@@ -850,6 +865,15 @@ func _build_join() -> void:
 	browse.pressed.connect(_on_browse_pressed)
 	_join_panel.add_child(browse)
 
+	var qj2 := _make_button("QUICK JOIN")
+	qj2.tooltip_text = "Join the best open game automatically."
+	qj2.pressed.connect(func() -> void:
+		Settings.master_url = _master_edit.text.strip_edges()
+		Settings.save()
+		_join_root.visible = false
+		_quick_join())
+	_join_panel.add_child(qj2)
+
 	_connect_btn = _make_button("CONNECT", true)
 	_connect_btn.pressed.connect(_on_connect_pressed)
 	_join_panel.add_child(_connect_btn)
@@ -898,12 +922,82 @@ func _build_browse() -> void:
 	_browse_panel.add_child(_browse_list)
 
 	_browse_panel.add_child(UITheme.spacer(4))
+	var hint := Label.new()
+	hint.text = "Grey rows are full or a different version.  \"— ms\": no ping reply (internet hosts forward UDP port+1 too)."
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.add_theme_font_size_override("font_size", 12)
+	hint.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)
+	_browse_panel.add_child(hint)
+	var brow := HBoxContainer.new()
+	brow.add_theme_constant_override("separation", 8)
+	var refresh := _make_button("REFRESH")
+	refresh.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	refresh.pressed.connect(_refresh_browse)
+	brow.add_child(refresh)
+	var qj := _make_button("QUICK JOIN", true)
+	qj.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	qj.pressed.connect(_quick_join)
+	brow.add_child(qj)
+	_browse_panel.add_child(brow)
 
 	var back := _make_button("BACK")
 	back.pressed.connect(func() -> void:
+		_qj_active = false
 		_browse_root.visible = false
 		_join_root.visible = true)
 	_browse_panel.add_child(back)
+
+
+# Dropped out of a match: offer (and after a short countdown, try) a rejoin.
+var _rejoin_root: PanelContainer = null
+var _rejoin_lbl: Label = null
+var _rejoin_t := 0.0
+
+
+func _build_rejoin() -> void:
+	_rejoin_root = PanelContainer.new()
+	_rejoin_root.add_theme_stylebox_override("panel", UITheme.panel_style())
+	_rejoin_root.set_anchors_preset(Control.PRESET_CENTER, true)
+	_rejoin_root.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_rejoin_root.grow_vertical = Control.GROW_DIRECTION_BOTH
+	add_child(_rejoin_root)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 10)
+	box.custom_minimum_size = Vector2(420, 0)
+	_rejoin_root.add_child(box)
+	box.add_child(UITheme.make_screen_title("CONNECTION LOST"))
+	_rejoin_lbl = Label.new()
+	_rejoin_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	UITheme.style_body(_rejoin_lbl)
+	box.add_child(_rejoin_lbl)
+	var go := _make_button("REJOIN", true)
+	go.pressed.connect(_do_rejoin)
+	box.add_child(go)
+	var no := _make_button("BACK TO MENU")
+	no.pressed.connect(func() -> void:
+		_rejoin_t = 0.0
+		_rejoin_root.visible = false
+		_menu_root.visible = true)
+	box.add_child(no)
+	_menu_root.visible = false
+	_rejoin_t = 5.0
+	_tick_rejoin(0.0)
+	UITheme.safe_grab_focus_deferred(go)
+
+
+func _tick_rejoin(delta: float) -> void:
+	if _rejoin_root == null or not _rejoin_root.visible or _rejoin_t <= 0.0:
+		return
+	_rejoin_t -= delta
+	_rejoin_lbl.text = "Dropped from %s:%d.\nRejoining in %d s... (your score and team are kept)" % [Net.last_server_ip, Net.last_server_port, int(ceil(maxf(_rejoin_t, 0.0)))]
+	if _rejoin_t <= 0.0:
+		_do_rejoin()
+
+
+func _do_rejoin() -> void:
+	_rejoin_t = 0.0
+	_rejoin_root.visible = false
+	_join_server(Net.last_server_ip, Net.last_server_port)
 
 
 func _on_browse_pressed() -> void:
@@ -915,6 +1009,8 @@ func _on_browse_pressed() -> void:
 
 
 func _refresh_browse() -> void:
+	_master_rows.clear()
+	_master_sig = ""
 	for c in _browse_list.get_children():
 		c.queue_free()
 	var wait := Label.new()
@@ -958,6 +1054,14 @@ func _on_browse_http_done(_result: int, _code: int, _headers: PackedStringArray,
 		_browse_list.add_child(err2)
 		return
 	var servers: Array = parsed["servers"]
+	_master_rows.clear()
+	for sv in servers:
+		if sv is Dictionary:
+			var row: Dictionary = (sv as Dictionary).duplicate()
+			row["v"] = str(sv.get("version", sv.get("v", "")))
+			_master_rows.append(row)
+	_master_sig = ""
+	_ping_t = 0.0
 	if servers.is_empty():
 		var empty := Label.new()
 		empty.text = "No servers online."
@@ -966,24 +1070,127 @@ func _on_browse_http_done(_result: int, _code: int, _headers: PackedStringArray,
 		empty.add_theme_color_override("font_color", UITheme.COL_INFO)
 		_browse_list.add_child(empty)
 		return
-	for s in servers:
-		if not (s is Dictionary):
+	_render_master()
+
+
+var _master_rows: Array = []
+var _master_sig := ""
+var _ping_t := 0.0
+var _qj_active := false
+var _qj_t := 0.0
+
+
+func _ping_bucket(ip: String, port: int) -> int:
+	var p := Net.ping_of(ip, port)
+	return -1 if p < 0 else p / 10
+
+
+# Live numbers from the server's own query reply win over the (up to 30 s old)
+# master listing / LAN beacon.
+func _live(d: Dictionary) -> Dictionary:
+	var out := d.duplicate()
+	var info := Net.query_info(str(d.get("ip")), int(d.get("port")))
+	if not info.is_empty() and Net.ping_of(str(d.get("ip")), int(d.get("port"))) >= 0:
+		for k in ["players", "max", "map", "mode", "v", "name"]:
+			if info.has(k):
+				out[k] = info[k]
+	return out
+
+
+func _row_ok(d: Dictionary) -> bool:
+	var mine := str(ProjectSettings.get_setting("application/config/version", ""))
+	var v := str(d.get("v", ""))
+	var full: bool = int(d.get("max", 0)) > 0 and int(d.get("players", 0)) >= int(d.get("max", 0))
+	return (v == "" or v == mine) and not full and not bool(d.get("password", false))
+
+
+func _server_row(d0: Dictionary) -> Button:
+	var d := _live(d0)
+	var mine := str(ProjectSettings.get_setting("application/config/version", ""))
+	var ver := str(d.get("v", ""))
+	var ping := Net.ping_of(str(d.get("ip")), int(d.get("port")))
+	var full: bool = int(d.get("max", 0)) > 0 and int(d.get("players", 0)) >= int(d.get("max", 0))
+	var note := ""
+	if ver != "" and ver != mine:
+		note = "   (v%s)" % ver
+	elif full:
+		note = "   FULL"
+	elif bool(d.get("password", false)):
+		note = "   (locked)"
+	var btn := Button.new()
+	btn.text = "  %s   [%d/%d]   %s · %s   %s%s" % [str(d.get("name", "?")), int(d.get("players", 0)), int(d.get("max", 0)),
+			str(d.get("map", "?")), str(d.get("mode", "?")), ("%d ms" % ping) if ping >= 0 else "— ms", note]
+	btn.tooltip_text = "%s:%d" % [str(d.get("ip")), int(d.get("port"))]
+	btn.custom_minimum_size = Vector2(580, 40)
+	btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	UITheme.style_button(btn, 15, false)
+	btn.disabled = not _row_ok(d)   # the host would refuse a different build / no room
+	btn.pressed.connect(_join_server.bind(str(d.get("ip")), int(d.get("port"))))
+	if ping >= 0 and not btn.disabled:
+		btn.add_theme_color_override("font_color", Color(0.55, 0.95, 0.5) if ping < 80 else (Color(0.95, 0.85, 0.4) if ping < 160 else Color(0.95, 0.45, 0.35)))
+	return btn
+
+
+func _render_master() -> void:
+	if _browse_list == null or _master_rows.is_empty():
+		return
+	var rows: Array = _master_rows.map(func(d): return _live(d))
+	var sig := str(rows.map(func(d): return [d.get("ip"), d.get("port"), d.get("players"), d.get("map"), _ping_bucket(str(d.get("ip")), int(d.get("port")))]))
+	if sig == _master_sig:
+		return
+	_master_sig = sig
+	for c in _browse_list.get_children():
+		c.queue_free()
+	# Joinable first, then busiest, then lowest ping.
+	var order: Array = _master_rows.duplicate()
+	order.sort_custom(func(a, b) -> bool:
+		var la := _live(a)
+		var lb := _live(b)
+		if _row_ok(la) != _row_ok(lb):
+			return _row_ok(la)
+		if int(la.get("players", 0)) != int(lb.get("players", 0)):
+			return int(la.get("players", 0)) > int(lb.get("players", 0))
+		var pa := Net.ping_of(str(a.get("ip")), int(a.get("port")))
+		var pb := Net.ping_of(str(b.get("ip")), int(b.get("port")))
+		return (pa if pa >= 0 else 9999) < (pb if pb >= 0 else 9999))
+	for d in order:
+		_browse_list.add_child(_server_row(d))
+
+
+# QUICK JOIN: listen / fetch for a moment, then join the best open game.
+func _quick_join() -> void:
+	_browse_root.visible = true
+	_refresh_browse()
+	_qj_active = true
+	_qj_t = 2.5
+	_status_label.text = "Quick join: looking for an open game..."
+
+
+func _quick_join_pick() -> void:
+	_qj_active = false
+	var cands: Array = []
+	for d in (Net.lan_poll() if _lan_listening else []):
+		cands.append(d)
+	for d in _master_rows:
+		cands.append(d)
+	var best = null
+	var best_score := INF
+	for d0 in cands:
+		var d := _live(d0)
+		if not _row_ok(d):
 			continue
-		var ip: String = str(s.get("ip", ""))
-		var port: int = int(s.get("port", 0))
-		var name: String = str(s.get("name", "Unnamed"))
-		var mapn: String = str(s.get("map", "?"))
-		var mname: String = str(s.get("mode", "?"))
-		var players: int = int(s.get("players", 0))
-		var maxp: int = int(s.get("max", 0))
-		var pwd: bool = bool(s.get("password", false))
-		var btn := Button.new()
-		btn.text = "  %s   [%d/%d]   %s · %s%s" % [name, players, maxp, mapn, mname, "  (locked)" if pwd else ""]
-		btn.custom_minimum_size = Vector2(580, 40)
-		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		UITheme.style_button(btn, 15, false)
-		btn.pressed.connect(_join_server.bind(ip, port))
-		_browse_list.add_child(btn)
+		var ping := Net.ping_of(str(d.get("ip")), int(d.get("port")))
+		var score: float = (float(ping) if ping >= 0 else 400.0)
+		if int(d.get("players", 0)) > 0:
+			score -= 150.0   # a game with people in it beats an empty one
+		if score < best_score:
+			best_score = score
+			best = d
+	if best == null:
+		_status_label.text = "No open games found. Host one with HOST GAME, or try again."
+		return
+	_status_label.text = "Quick join: %s" % str(best.get("name", "?"))
+	_join_server(str(best.get("ip")), int(best.get("port")))
 
 
 func _join_server(ip: String, port: int) -> void:

@@ -1938,11 +1938,20 @@ func _spawn_networked_player(peer_id: int) -> void:
 	bcast("net_spawn_player", [peer_id, spawn_pos, display_name, t], true)
 
 
+var _left_team: Dictionary = {}   # host: display name -> team of players who dropped
+
+
 func _assign_team_for_peer(peer_id: int) -> int:
 	# Deathmatch / Rambomatch stay FFA — team = peer_id so every soldier is a
 	# distinct hostile entity.
 	if not Settings.is_team_mode():
 		return peer_id
+	var back_as := str(_peer_names.get(peer_id, ""))
+	if _left_team.has(back_as) and Settings.game_mode != Settings.MODE_INF:
+		var tb: int = int(_left_team[back_as])
+		_left_team.erase(back_as)
+		if tb == TEAM_BLUE or tb == TEAM_RED:
+			return tb
 	# Team modes: alternate BLUE/RED to keep sides balanced. INF is asymmetric —
 	# first peer defends (BLUE), everyone else attacks.
 	var blue_count := 0
@@ -1991,6 +2000,12 @@ func _respawn_peer(peer_id: int) -> void:
 
 func _on_net_peer_disconnected(id: int) -> void:
 	if Net.is_host():
+		# Remember the leaver's side so a rejoin (same name) lands on it again;
+		# their K/D stays in player_stats (name-keyed) already.
+		var lp = _players_by_id.get(id, null)
+		if lp != null and is_instance_valid(lp) and _peer_names.has(id):
+			_left_team[str(_peer_names[id])] = int(lp.team)
+		_peer_names.erase(id)
 		_ready_peers.erase(id)
 		_connected_peers.erase(id)
 		_push_ready_list()
@@ -2143,6 +2158,14 @@ func _handle_client_ready(sender_id: int, joiner_name: String = "", client_versi
 	var clean_name: String = str(joiner_name).strip_edges().left(24)
 	if clean_name == "":
 		clean_name = "Player %d" % sender
+	# Rejoin after a drop: the host may not have timed the old connection out
+	# yet. Same name from the same address = the same player coming back, so
+	# retire the stale peer now (keeps their name, score and team).
+	var stale := _stale_peer_for(sender, clean_name)
+	if stale > 0:
+		_on_net_peer_disconnected(stale)
+		if multiplayer.multiplayer_peer is ENetMultiplayerPeer:
+			(multiplayer.multiplayer_peer as ENetMultiplayerPeer).disconnect_peer(stale, true)
 	_peer_names[sender] = _unique_display_name(clean_name, sender)
 	# Mark the peer as able to receive reliable spawn RPCs BEFORE we mirror — any
 	# host-initiated spawn between now and net_spawn_ack still needs to reach
@@ -2193,6 +2216,23 @@ func _handle_client_ready(sender_id: int, joiner_name: String = "", client_versi
 	# Otherwise net_state (unreliable_ordered) can beat the reliable spawn RPC and error out.
 
 
+func _peer_address(id: int) -> String:
+	if not (multiplayer.multiplayer_peer is ENetMultiplayerPeer):
+		return ""
+	var pc := (multiplayer.multiplayer_peer as ENetMultiplayerPeer).get_peer(id)
+	return pc.get_remote_address() if pc != null else ""
+
+
+func _stale_peer_for(sender: int, want: String) -> int:
+	var addr := _peer_address(sender)
+	if addr == "":
+		return 0
+	for pid in _peer_names.keys():
+		if int(pid) != sender and str(_peer_names[pid]) == want and _peer_address(int(pid)) == addr:
+			return int(pid)
+	return 0
+
+
 func _unique_display_name(want: String, for_peer: int) -> String:
 	var taken := {}
 	if not Net.is_dedicated:
@@ -2217,7 +2257,13 @@ func net_reject(reason: String) -> void:
 
 
 func _on_lost_host() -> void:
-	_leave_to_menu("Disconnected from host")
+	# A drop (not a kick / reject): the menu offers to rejoin the same game.
+	var ip := Net.last_server_ip
+	var port := Net.last_server_port
+	_leave_to_menu("Lost connection to the host")
+	Net.last_server_ip = ip
+	Net.last_server_port = port
+	Net.rejoin_offer = ip != ""
 
 
 func _leave_to_menu(reason: String) -> void:
@@ -2421,6 +2467,7 @@ func net_despawn_player(peer_id: int) -> void:
 			if Net.is_networked() and p.has_method("_become_husk"):
 				p.dead = true
 				p._become_husk()
+				p.display_name = ""   # free the name for a rejoin right away
 				get_tree().create_timer(1.5).timeout.connect(p.queue_free)
 			else:
 				p.queue_free()

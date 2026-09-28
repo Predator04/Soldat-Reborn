@@ -28,6 +28,9 @@ const MODE_NAMES := [
 var mode: int = Mode.SINGLEPLAYER
 var status := ""
 var last_disconnect_reason := ""   # shown by the menu after a kick / lost host
+var last_server_ip := ""           # the game we last joined (rejoin after a drop)
+var last_server_port := 0
+var rejoin_offer := false          # set when the host connection dropped (not a kick)
 var chosen_map_index := 0     # host's picked map; clients receive it via net_set_map
 var _map_synced := false      # client-side: true once host has told us the map
 # #99: custom-map broadcast. Host stashes the full JSON so joining peers can
@@ -96,6 +99,10 @@ func _maybe_run_smoke_test() -> void:
 		call_deferred("_smoke_join")
 	elif "--smoke-lan" in args:
 		call_deferred("_smoke_lan")
+	elif "--smoke-query" in args:
+		call_deferred("_smoke_query")
+	elif "--smoke-rejoin" in args:
+		call_deferred("_smoke_rejoin")
 
 
 func _maybe_run_dedicated() -> void:
@@ -464,6 +471,7 @@ func host_game(port: int = DEFAULT_PORT, map_index: int = 0) -> bool:
 	var ips := lan_ips()
 	_set_status(("Hosting on %s:%d" % [ips[0], port]) if not ips.is_empty() else ("Hosting on port %d" % port))
 	_lan_advertise_start(port)
+	_query_listen(port)
 	return true
 
 
@@ -478,6 +486,8 @@ func join_game(ip: String, port: int = DEFAULT_PORT) -> bool:
 	mode = Mode.CLIENT
 	_map_synced = false
 	custom_map_json = ""
+	last_server_ip = ip
+	last_server_port = port
 	_set_status("Connecting to %s:%d..." % [ip, port])
 	return true
 
@@ -502,6 +512,7 @@ func leave() -> void:
 	# Stop the dedicated-mode master heartbeat — no session to advertise.
 	_stop_master_heartbeat()
 	_lan_advertise_stop()
+	_query_stop()
 
 
 # RPC entry point for joining clients. Hosted on Net (always loaded) rather than
@@ -756,6 +767,15 @@ func _lan_advertise_stop() -> void:
 func _lan_beacon() -> void:
 	if _lan_tx == null or mode != Mode.HOST:
 		return
+	var pkt := JSON.stringify(server_info()).to_utf8_buffer()
+	# Broadcast for the LAN, loopback for a second copy on this machine.
+	for dest in ["255.255.255.255", "127.0.0.1"]:
+		if _lan_tx.set_dest_address(dest, LAN_PORT) == OK:
+			_lan_tx.put_packet(pkt)
+
+
+## What this host tells browsers (LAN beacon + query replies).
+func server_info() -> Dictionary:
 	var mi: int = chosen_map_index
 	var map_name: String = (str(MAP_NAMES[mi]) if mi >= 0 and mi < MAP_NAMES.size() else "?")
 	if Settings.custom_map_path != "":
@@ -773,11 +793,7 @@ func _lan_beacon() -> void:
 		"players": multiplayer.get_peers().size() + (0 if is_dedicated else 1),
 		"max": MAX_PEERS + (0 if is_dedicated else 1),
 	}
-	var pkt := JSON.stringify(info).to_utf8_buffer()
-	# Broadcast for the LAN, loopback for a second copy on this machine.
-	for dest in ["255.255.255.255", "127.0.0.1"]:
-		if _lan_tx.set_dest_address(dest, LAN_PORT) == OK:
-			_lan_tx.put_packet(pkt)
+	return info
 
 
 ## Start / stop listening for LAN beacons (the Browse screen calls these).
@@ -890,3 +906,151 @@ func _smoke_drive(tries: int) -> void:
 			v2.request_exit(p2)
 		else:
 			print("SMOKE-DRIVE lost body (killed during the drive) vehicles=%d" % nv))
+
+
+
+# ── Server query (ping + live info) ─────────────────────────────────────────
+# Every host answers a tiny UDP query on its game port + 1 with server_info()
+# and the nonce it was sent, so a browser can show a live ping and player count
+# for LAN and master-listed servers alike (internet hosts forward both ports).
+const QUERY_OFFSET := 1
+const QUERY_TAG := "SRQ1"
+var _query_srv: PacketPeerUDP = null
+var _query_cli: PacketPeerUDP = null
+var query_results: Dictionary = {}    # "ip:port" -> {ping, info, t}
+var _query_sent: Dictionary = {}      # nonce -> [key, msec]
+var _query_nonce := 0
+
+
+func _query_listen(port: int) -> void:
+	_query_stop()
+	_query_srv = PacketPeerUDP.new()
+	if _query_srv.bind(port + QUERY_OFFSET, "*") != OK:
+		push_warning("server query port %d busy: browsers won't see a ping" % (port + QUERY_OFFSET))
+		_query_srv = null
+
+
+func _query_stop() -> void:
+	if _query_srv != null:
+		_query_srv.close()
+	_query_srv = null
+
+
+## Ask each server ([ip, port] pairs) for its ping and live info; answers land
+## in query_results as they arrive (query_poll drains them).
+func query_send(servers: Array) -> void:
+	if _query_cli == null:
+		_query_cli = PacketPeerUDP.new()
+		if _query_cli.bind(0) != OK:
+			_query_cli = null
+			return
+	var now := Time.get_ticks_msec()
+	for sv in servers:
+		var ip := str(sv[0])
+		var port := int(sv[1])
+		if ip == "" or port <= 0 or port >= 65535:
+			continue
+		_query_nonce += 1
+		_query_sent[_query_nonce] = ["%s:%d" % [ip, port], now]
+		if _query_cli.set_dest_address(ip, port + QUERY_OFFSET) == OK:
+			_query_cli.put_packet(("%s %d" % [QUERY_TAG, _query_nonce]).to_utf8_buffer())
+	for n in _query_sent.keys():
+		if now - int(_query_sent[n][1]) > 5000:
+			_query_sent.erase(n)
+
+
+func query_poll() -> void:
+	# Host side: answer queries.
+	while _query_srv != null and _query_srv.get_available_packet_count() > 0:
+		var raw := _query_srv.get_packet().get_string_from_utf8()
+		var ip := _query_srv.get_packet_ip()
+		var port := _query_srv.get_packet_port()
+		if not raw.begins_with(QUERY_TAG + " ") or raw.length() > 32 or mode != Mode.HOST:
+			continue
+		var info := server_info()
+		info["n"] = int(raw.substr(QUERY_TAG.length() + 1))
+		if _query_srv.set_dest_address(ip, port) == OK:
+			_query_srv.put_packet(JSON.stringify(info).to_utf8_buffer())
+	# Browser side: match answers to what we sent.
+	var now := Time.get_ticks_msec()
+	while _query_cli != null and _query_cli.get_available_packet_count() > 0:
+		var d = JSON.parse_string(_query_cli.get_packet().get_string_from_utf8())
+		if not (d is Dictionary) or str(d.get("g", "")) != LAN_TAG:
+			continue
+		var n := int(d.get("n", -1))
+		if not _query_sent.has(n):
+			continue
+		var key: String = _query_sent[n][0]
+		var ping: int = now - int(_query_sent[n][1])
+		_query_sent.erase(n)
+		var prev = query_results.get(key, null)
+		if prev is Dictionary and now - int(prev.get("t", 0)) < 8000:
+			ping = int(round(lerpf(float(prev.get("ping", ping)), float(ping), 0.5)))
+		query_results[key] = {"ping": ping, "info": d, "t": now}
+
+
+## Last measured ping to ip:port in ms, or -1 when it hasn't answered lately.
+func ping_of(ip: String, port: int) -> int:
+	var r = query_results.get("%s:%d" % [ip, port], null)
+	if r is Dictionary and Time.get_ticks_msec() - int(r.get("t", 0)) < 8000:
+		return int(r.get("ping", -1))
+	return -1
+
+
+func query_info(ip: String, port: int) -> Dictionary:
+	var r = query_results.get("%s:%d" % [ip, port], null)
+	return r.get("info", {}) if r is Dictionary else {}
+
+
+func _process(_delta: float) -> void:
+	if _query_srv != null or _query_cli != null:
+		query_poll()
+
+
+# (--smoke-query) Ping a local server three times and print what came back.
+func _smoke_query() -> void:
+	var port := _smoke_port()
+	for i in 3:
+		query_send([["127.0.0.1", port]])
+		await get_tree().create_timer(0.4).timeout
+	var info := query_info("127.0.0.1", port)
+	print("SMOKE-QUERY ping=%d players=%d/%d map=%s mode=%s v=%s" % [ping_of("127.0.0.1", port), int(info.get("players", -1)), int(info.get("max", -1)), str(info.get("map", "?")), str(info.get("mode", "?")), str(info.get("v", "?"))])
+	get_tree().quit()
+
+
+# (--smoke-rejoin) Join, drop the connection hard, and let the menu's REJOIN
+# countdown bring us back. Prints name/team before and after.
+func _smoke_rejoin() -> void:
+	var stage := [0]
+	map_received.connect(func() -> void:
+		if stage[0] == 0:
+			get_tree().change_scene_to_file("res://scenes/main.tscn"))
+	join_game("127.0.0.1", _smoke_port())
+	var before := [""]
+	var t0 := Time.get_ticks_msec()
+	var watch := Timer.new()
+	watch.wait_time = 0.25
+	watch.autostart = true
+	add_child(watch)
+	watch.timeout.connect(func() -> void:
+		var mn = get_tree().current_scene
+		var p = mn.get("player") if mn != null else null
+		var el := (Time.get_ticks_msec() - t0) / 1000.0
+		if stage[0] == 0 and el > 5.0 and p != null and is_instance_valid(p):
+			before[0] = "%s/%d" % [str(p.display_name), int(p.team)]
+			stage[0] = 1
+			multiplayer.multiplayer_peer.close()
+			mn._on_lost_host()
+			print("SMOKE-REJOIN dropped as %s" % before[0])
+		elif stage[0] == 1 and is_client() and p != null and is_instance_valid(p) and mn.has_method("_handle_client_ready"):
+			stage[0] = 2
+			get_tree().create_timer(1.0).timeout.connect(func() -> void:
+				var m2 = get_tree().current_scene
+				var p2 = m2.get("player") if m2 != null else null
+				var after: String = ("%s/%d" % [str(p2.display_name), int(p2.team)]) if p2 != null and is_instance_valid(p2) else "none"
+				print("SMOKE-REJOIN %s before=%s after=%s" % ["ok" if after == before[0] else "FAIL", before[0], after])
+				leave()
+				get_tree().quit())
+		elif el > 30.0:
+			print("SMOKE-REJOIN FAIL stage=%d" % stage[0])
+			get_tree().quit())

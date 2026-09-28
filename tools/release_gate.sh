@@ -27,7 +27,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 G="${GODOT_BIN:-$HOME/godot/Godot_v4.7.2-stable_linux.x86_64}"
 QUICK=0; OUT="build/gate"; ONLY="A B N C D R F E"; MODESEL="0 1 2 3 4 5 6 7 8 9"
-NETSEL="ctf dm two respawn drive host listen lan soak m3 m7 m9"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
+NETSEL="ctf dm two respawn drive rejoin host listen lan soak m3 m7 m9"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --quick) QUICK=1;; --out) OUT="$2"; shift;; --only) ONLY="$2"; shift;;
@@ -144,6 +144,20 @@ case " $NETSEL " in *" two "*)
     fail "C net two clients: '$(grep -m1 SMOKE-JOIN "$OUT/net_two_c2.log")' $names errors=$e"
   fi
 ;; esac
+case " $NETSEL " in *" rejoin "*)
+  # A client drops hard; the menu's REJOIN countdown brings it back under the
+  # same name and team (the host retires the stale connection).
+  port=$((7700 + RANDOM % 200))
+  timeout 60 "$G" --headless -- --dedicated --port $port --map 2 --mode 2 > "$OUT/net_rejoin_server.log" 2>&1 &
+  spid=$!
+  for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_rejoin_server.log" 2>/dev/null && break; sleep 0.5; done
+  sleep 3
+  timeout 45 "$G" --headless -- --smoke-rejoin --port $port > "$OUT/net_rejoin_client.log" 2>&1
+  kill $spid 2>/dev/null; wait $spid 2>/dev/null
+  e=$(( $(errs "$OUT/net_rejoin_server.log") + $(errs "$OUT/net_rejoin_client.log") ))
+  line=$(grep "SMOKE-REJOIN" "$OUT/net_rejoin_client.log" | tail -1)
+  if echo "$line" | grep -q "SMOKE-REJOIN ok" && [ "$e" = "0" ]; then pass "C net rejoin: $line"; else fail "C net rejoin: '${line:-no result}' errors=$e"; fi
+;; esac
 case " $NETSEL " in *" drive "*)
   # A client gets into a buggy (the host grants the seat) and drives it.
   port=$((7700 + RANDOM % 200))
@@ -209,9 +223,12 @@ case " $NETSEL " in *" lan "*)
   for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_lan_server.log" 2>/dev/null && break; sleep 0.5; done
   sleep 4   # the host is still loading the match right after it starts listening
   timeout 20 "$G" --headless -- --smoke-lan > "$OUT/net_lan_client.log" 2>&1
+  timeout 20 "$G" --headless -- --smoke-query --port $port > "$OUT/net_query_client.log" 2>&1
   kill $spid 2>/dev/null; wait $spid 2>/dev/null
   line=$(grep -m1 SMOKE-LAN "$OUT/net_lan_client.log")
   if echo "$line" | grep -q ":$port " && [ "$(errs "$OUT/net_lan_client.log")" = "0" ]; then pass "C net LAN discovery: $line"; else fail "C net LAN discovery: '${line:-no SMOKE-LAN}'"; fi
+  line=$(grep -m1 SMOKE-QUERY "$OUT/net_query_client.log")
+  if echo "$line" | grep -Eq "ping=[0-9]+ players=0/8" && [ "$(errs "$OUT/net_query_client.log")" = "0" ]; then pass "C net server query (ping): $line"; else fail "C net server query: '${line:-no SMOKE-QUERY}'"; fi
 ;; esac
 fi
 
