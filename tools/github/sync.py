@@ -138,13 +138,27 @@ def release(tag):
             "tag_name": tag, "target_commitish": "main", "name": "Soldat Reborn " + tag,
             "body": changelog_section(tag) + "\n\n**Downloads:** `SoldatReborn.exe` (Windows) and `SoldatReborn.apk` (Android)."})
         print("release created", tag)
-    have = {a["name"] for a in rel.get("assets", [])}
+    else:
+        # Keep the release notes in step with CHANGELOG.md (a version can gain
+        # entries after its first publish).
+        body = changelog_section(tag) + "\n\n**Downloads:** `SoldatReborn.exe` (Windows) and `SoldatReborn.apk` (Android)."
+        if (rel.get("body") or "") != body:
+            call("PATCH", "/repos/%s/releases/%d" % (REPO, rel["id"]), {"body": body})
+            print("release notes updated")
+    have = {a["name"]: a for a in rel.get("assets", [])}
     for f, ctype in (("SoldatReborn.exe", "application/vnd.microsoft.portable-executable"),
                      ("SoldatReborn.apk", "application/vnd.android.package-archive")):
         p = os.path.join(ROOT, "build", f)
-        if f in have or not os.path.exists(p):
-            print("asset skip", f, "(already there)" if f in have else "(no build)")
+        if not os.path.exists(p):
+            print("asset skip", f, "(no build)")
             continue
+        if f in have:
+            # Same size = same build. A rebuilt binary replaces the old one.
+            if int(have[f].get("size", -1)) == os.path.getsize(p):
+                print("asset skip", f, "(already up to date)")
+                continue
+            print("replacing", f, "(newer build)")
+            call("DELETE", "/repos/%s/releases/assets/%d" % (REPO, have[f]["id"]))
         up = rel["upload_url"].split("{")[0] + "?name=" + f
         print("uploading", f, os.path.getsize(p) // (1024 * 1024), "MB ...")
         with open(p, "rb") as fh:
