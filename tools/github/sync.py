@@ -30,6 +30,8 @@ LABELS = {
     "area: editor": ("bfd4f2", "Map editor"),
     "area: maps": ("006b75", "Map data, nav graphs"),
     "area: qa": ("ededed", "Tests, release gate, tooling"),
+    "area: audio": ("f9d0c4", "Sound effects, music, ambience"),
+    "area: graphics": ("c2e0c6", "Rendering, art, visual glitches"),
     "area: platform": ("d4c5f9", "Export, builds, OS specifics"),
     "platform: android": ("3ddc84", "Phones / touch"),
     "needs repro": ("e4e669", "Can't reproduce yet"),

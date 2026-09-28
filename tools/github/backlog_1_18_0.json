@@ -49,5 +49,85 @@
   "commit": "cd07c61",
   "version": "1.18.0",
   "body": "Reported: no way to tell what power-ups do or what Generate + Play does; asked to label all items and explain modes. Added scripts/game_info.gd (single source of mode/item/weapon text), mode description + tooltips in menu and host pickers, match-start mode banner, full mode name in the top bar, goal in pause menu and H card, floating name tags over crates/kits/weapons/points/M2, pickup toasts, bonus countdown hint, tooltips on menu and editor buttons. tools/label_test.gd in gate stage F checks coverage and that win numbers match main.gd."
+ },
+ {
+  "title": "Bots spawn outside HH's building and slide off the map",
+  "labels": [
+   "bug",
+   "area: bots"
+  ],
+  "commit": "337617b",
+  "version": "1.18.0",
+  "body": "Found in the full audit (DM sweep, map 53 HH: 9 falls in 30 s). _safe_spawn_near nudged a blocked spawn up to 440 px sideways, through the building wall onto the steep outer face. Fix: _spawn_slide_ok() requires no terrain between original and nudged spawn (ray) and standable ground (<120 px drop, not a cliff face)."
+ },
+ {
+  "title": "Bots walk off ledges into the void with a full jet tank",
+  "labels": [
+   "bug",
+   "area: bots"
+  ],
+  "commit": "337617b",
+  "version": "1.18.0",
+  "body": "Audit: Airpirates / Jungle bots fell with 100 fuel (idle walking off ledge, or diving after a target). Added a void rescue in bot.gd: falling with nothing but the kill line below -> jet + steer back toward the last safe floor x. All-maps DM sweep: falls 50 -> 9, kills +10%. Airpirates still has a few falls under the tree overhang."
+ },
+ {
+  "title": "Fast bullets tunnel through soldiers (Barrett never hits for bots)",
+  "labels": [
+   "bug",
+   "area: gameplay"
+  ],
+  "commit": "337617b",
+  "version": "1.18.0",
+  "body": "Audit weapon test: a bot with the Barrett fired 5+ shots at a standing player without a hit. Barrett moves 40 px/frame vs a ~14 px hitbox and bullet.gd only used overlap. Fix: swept ray from old to new position each physics step; same-team bodies are excluded after a pass-through."
+ },
+ {
+  "title": "Bot M79 fires a straight bullet instead of a lobbed grenade",
+  "labels": [
+   "bug",
+   "area: gameplay"
+  ],
+  "commit": "337617b",
+  "version": "1.18.0",
+  "body": "WEAPON_STATS had M79 as kind bullet: a 470 px/s 90-dmg straight shot with no blast. Now kind launcher with gravity 980 using rocket.gd ballistic mode; bots compute a low-arc launch angle (_lob_aim) and hold fire when the target is out of reach."
+ },
+ {
+  "title": "LAW/M79 bots stand idle at close range",
+  "labels": [
+   "bug",
+   "area: bots"
+  ],
+  "commit": "337617b",
+  "version": "1.18.0",
+  "body": "Audit: a LAW bot that closed within ROCKET_MIN_RANGE never fired again (just stood next to the enemy). Now it swaps to the USSOCOM up close and back to the launcher beyond 1.6x the minimum range."
+ },
+ {
+  "title": "Engine errors: 'flushing queries' on grenade spawn, 'Lambda capture was freed'",
+  "labels": [
+   "bug",
+   "area: qa"
+  ],
+  "commit": "337617b",
+  "version": "1.18.0",
+  "body": "Logs from gate run 23 showed 32 'Can't change this state while flushing queries' (grenade.gd _ready add_child during a physics callback) and 27 'Lambda capture ... was freed' (bot radio timer, peer despawn husk timer, smoke-die watcher). Shape add is deferred; timers capture instance ids / bound methods. The gate's error regex now includes both messages."
+ },
+ {
+  "title": "Sky / horizon gradient shows horizontal banding lines",
+  "labels": [
+   "bug",
+   "area: graphics"
+  ],
+  "commit": "337617b",
+  "version": "1.18.0",
+  "body": "Screenshot audit at 1920x1080: faint horizontal lines across the sky. sky.gd and parallax.gd drew gradients as stacked rects overlapping by 1 px (translucent ones doubled alpha on seams). Replaced with vertex-coloured polygons."
+ },
+ {
+  "title": "Audit tooling: weapon range test, sweep death counter",
+  "labels": [
+   "enhancement",
+   "area: qa"
+  ],
+  "commit": "337617b",
+  "version": "1.18.0",
+  "body": "New tools/weapon_test.gd (gate F): every player weapon hits/uses ammo/reloads; every bot weapon hurts a player. stuck_test autopilot death counter fixed (SP respawn reuses the body)."
  }
 ]
