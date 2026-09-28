@@ -261,6 +261,10 @@ if has F; then
   fi
 fi
 if has F; then
+  f="$OUT/grenade.log"
+  timeout 90 "$G" --headless --fixed-fps 60 -s tools/grenade_test.gd > "$f" 2>&1
+  line=$(grep -m1 "GRENADE-TEST" "$f")
+  if echo "$line" | grep -q "GRENADE-TEST ok" && [ "$(errs "$f")" = "0" ]; then pass "F grenade cooking: $line"; else fail "F grenade cooking: '${line:-no result}' errors=$(errs "$f")"; fi
   f="$OUT/training.log"
   timeout 90 "$G" --headless --fixed-fps 60 -s tools/training_test.gd > "$f" 2>&1
   line=$(grep "TRAINING-TEST" "$f" | tail -1)

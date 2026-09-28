@@ -2,6 +2,11 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.17.1] — 2026-09-28
+
+### Changed
+- **Grenades cook like in Soldat.** Pressing the grenade key pulls the pin and starts the fuse; holding winds up a harder throw (a tap lobs it, ~0.9 s gives the full throw); letting go throws it with whatever fuse is left. Hold it past the fuse (2.2 s frag, 1.9 s cluster) and it goes off in your hand. A ring over your head shows the fuse and flashes red near the end. Die while holding one and it drops live at your feet. The touch GRENADE button now works as a hold button. Gate stage F checks tap / wind-up / in-hand.
+
 ## [1.17.0] — 2026-09-28
 
 Retail-readiness pass: Training mode, first-launch name prompt, credits screen, pause on focus loss, VSync / FPS cap. See RETAIL_CHECKLIST.md for what's left (mostly legal, store accounts and real-device testing). Gate run 19: all stages passed (CTF sweep 220 grabs, 33 captures, 626 kills, 5 falls, 0 errors; Training played through).

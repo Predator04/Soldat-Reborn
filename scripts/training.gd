@@ -32,7 +32,7 @@ const STEPS := [
 	["SHOOT", "Aim and fire with %s. Fire 5 shots.", ["fire"]],
 	["RELOAD", "Reload with %s. The yellow bar is your magazine.", ["reload"]],
 	["SWITCH WEAPON", "Pick another gun with the number keys (%s = Deagles … %s = Minigun), or swap to your pistol with %s.", ["weapon_1", "weapon_10", "secondary_swap"]],
-	["GRENADE", "Throw a grenade with %s. Hold it longer to throw further.", ["grenade"]],
+	["GRENADE", "Throw a grenade with %s. Holding it pulls the pin and throws harder — but the fuse is burning (ring over your head). Hold it too long and it goes off in your hand!", ["grenade"]],
 	["CROUCH", "Crouch with %s — smaller target, steadier aim. %s lies prone.", ["crouch", "prone"]],
 	["FIGHT", "A training bot has joined. Take it down!", []],
 ]

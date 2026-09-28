@@ -68,7 +68,7 @@ var _aim_pos: Vector2 = Vector2.ZERO
 # a parallel array to keep the code short.
 var _buttons: Array = [
 	{"action": "jet",             "hold": true,  "label": "JET",     "side": "move"},
-	{"action": "grenade",         "hold": false, "label": "GRENADE", "side": "move"},
+	{"action": "grenade",         "hold": true,  "label": "GRENADE", "side": "move"},
 	{"action": "reload",          "hold": false, "label": "RELOAD",  "side": "move"},
 	{"action": "secondary_swap",  "hold": false, "label": "SWAP",    "side": "aim"},
 	{"action": "weapon_throw",    "hold": false, "label": "THROW",   "side": "aim"},

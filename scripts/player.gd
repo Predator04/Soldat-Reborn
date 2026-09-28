@@ -60,6 +60,13 @@ var reloading := false
 var reload_t := 0.0
 var grenades := 3
 var grenade_cd := 0.0
+# Grenade cooking: -1 = not holding one; otherwise seconds since the pin was pulled.
+const GRENADE_FUSE := 2.2          # frag: pin pulled -> boom
+const CLUSTER_FUSE := 1.9
+const COOK_FULL_POWER := 0.9       # seconds of holding for the hardest throw
+var _cook_t := -1.0
+var _cook_cluster := false
+var _g_held_prev := false
 # Grenade type toggle — press G to swap Frag ↔ Cluster.
 var use_cluster := false
 var g_prev := false
@@ -646,11 +653,26 @@ func _physics_process(delta: float) -> void:
 	f_prev = f_now
 
 	# grenade — locked out in Gun Game so grenade kills can't skip the ladder.
+	# Soldat-style cooking: pressing pulls the pin and starts the fuse; holding
+	# winds up a harder throw; releasing throws with whatever fuse is left.
+	# Hold past the fuse and it goes off in your hand.
 	grenade_cd -= delta
-	if Settings.game_mode != Settings.MODE_GG \
-			and Input.is_action_pressed("grenade") and grenade_cd <= 0.0 and grenades > 0:
-		_throw_grenade()
-		grenade_cd = 0.6
+	var g_held := Input.is_action_pressed("grenade")
+	if _cook_t >= 0.0:
+		_cook_t += delta
+		queue_redraw()
+		if _cook_t >= _cook_fuse():
+			_explode_in_hand()
+		elif not g_held:
+			_throw_grenade(_cook_t)
+			_cook_t = -1.0
+			grenade_cd = 0.6
+	elif Settings.game_mode != Settings.MODE_GG \
+			and g_held and not _g_held_prev and grenade_cd <= 0.0 and grenades > 0:
+		_cook_t = 0.0
+		_cook_cluster = use_cluster
+		Sfx.empty()   # pin click
+	_g_held_prev = g_held
 
 	# shooting
 	fire_cd -= delta
@@ -1408,7 +1430,28 @@ func net_remote_damage(amount: float, killer: String, weapon: String, killer_tea
 	take_damage(amount, killer, weapon, killer_team)
 
 
-func _throw_grenade() -> void:
+func _cook_fuse() -> float:
+	return CLUSTER_FUSE if _cook_cluster else GRENADE_FUSE
+
+
+func _explode_in_hand() -> void:
+	# Held too long: it detonates right here (and usually kills you).
+	_cook_t = -1.0
+	grenade_cd = 0.6
+	grenades -= 1
+	var fuse_left := 0.02
+	if Net.is_networked():
+		var pid := _next_proj_id
+		_next_proj_id += 1
+		_cast("net_grenade", [global_position + Vector2(0, -8), Vector2.ZERO, 0.0, _cook_cluster, pid, fuse_left])
+	else:
+		net_grenade(global_position + Vector2(0, -8), Vector2.ZERO, 0.0, _cook_cluster, 0, fuse_left)
+	# A grenade going off in your fist is not survivable (the blast alone
+	# falls off with distance and could leave you standing).
+	take_damage(999.0, display_name, "Grenade", int(team))
+
+
+func _throw_grenade(cook: float = 0.0) -> void:
 	grenades -= 1
 	Sfx.grenade_throw()
 	ceasefire_t = 0.0
@@ -1423,14 +1466,17 @@ func _throw_grenade() -> void:
 	var hit := space.intersect_ray(query)
 	if hit.has("position"):
 		g_pos = (hit["position"] as Vector2) - aim_dir * 4.0
-	var g_vel := toss * 480.0
+	# A tap lobs it (~300); a full wind-up throws hard (~650).
+	var power: float = clampf(cook / COOK_FULL_POWER, 0.0, 1.0)
+	var g_vel := toss * lerpf(300.0, 650.0, power)
 	var g_ang := randf_range(-8.0, 8.0)
+	var fuse_left: float = maxf(0.05, _cook_fuse() - cook)
 	if Net.is_networked():
 		var pid := _next_proj_id
 		_next_proj_id += 1
-		_cast("net_grenade", [g_pos, g_vel, g_ang, use_cluster, pid])
+		_cast("net_grenade", [g_pos, g_vel, g_ang, _cook_cluster, pid, fuse_left])
 	else:
-		net_grenade(g_pos, g_vel, g_ang, use_cluster, 0)
+		net_grenade(g_pos, g_vel, g_ang, _cook_cluster, 0, fuse_left)
 
 
 func _shake(amount: float) -> void:
@@ -1478,6 +1524,17 @@ func _die() -> void:
 	if dead:
 		return
 	dead = true
+	# Killed while cooking a grenade: it drops at your feet, still live.
+	if _cook_t >= 0.0 and grenades > 0:
+		var left: float = maxf(0.05, _cook_fuse() - _cook_t)
+		_cook_t = -1.0
+		grenades -= 1
+		if Net.is_networked() and multiplayer.has_multiplayer_peer() and is_multiplayer_authority():
+			var pid := _next_proj_id
+			_next_proj_id += 1
+			_cast("net_grenade", [global_position + Vector2(0, -8), Vector2(0, -60), 0.0, _cook_cluster, pid, left])
+		elif not Net.is_networked():
+			net_grenade(global_position + Vector2(0, -8), Vector2(0, -60), 0.0, _cook_cluster, 0, left)
 	Sfx.gib()
 	if Net.is_networked():
 		# Host emits (not victim) so the kill is not lost if the dying client disconnects
@@ -1704,8 +1761,8 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_
 
 
 @rpc("any_peer", "call_remote", "reliable")
-func net_grenade(g_pos: Vector2, g_vel: Vector2, g_ang: float, cluster: bool = false, proj_id: int = 0) -> void:
-	if not _net_accept("net_grenade", [g_pos, g_vel, g_ang, cluster, proj_id]):
+func net_grenade(g_pos: Vector2, g_vel: Vector2, g_ang: float, cluster: bool = false, proj_id: int = 0, fuse_left: float = -1.0) -> void:
+	if not _net_accept("net_grenade", [g_pos, g_vel, g_ang, cluster, proj_id, fuse_left]):
 		return
 	var g := grenade_scene.instantiate()
 	# #61: name so every peer's replica lives at the same NodePath — required for
@@ -1723,6 +1780,8 @@ func net_grenade(g_pos: Vector2, g_vel: Vector2, g_ang: float, cluster: bool = f
 		# comes from the fragment cascade, not the initial pop.
 		g.fuse = 1.4
 		g.damage = 40.0
+	if fuse_left >= 0.0:
+		g.fuse = fuse_left   # cooked in hand before the throw
 	if Net.is_networked() and proj_id > 0:
 		g.set_multiplayer_authority(get_multiplayer_authority())
 	get_parent().add_child(g)
@@ -1879,6 +1938,16 @@ func _draw() -> void:
 		use_cluster,
 		is_multiplayer_authority(),
 	)
+	if _cook_t >= 0.0:
+		# Grenade in hand + a fuse ring that empties (and flashes red) as it cooks.
+		var left: float = clampf(1.0 - _cook_t / _cook_fuse(), 0.0, 1.0)
+		var hand := Vector2(aim_dir.x * 10.0, -18.0 + aim_dir.y * 6.0)
+		draw_circle(hand, 4.2, Color(0, 0, 0, 0.8))
+		draw_circle(hand, 3.2, Color(0.35, 0.45, 0.22))
+		var warn: bool = left < 0.35 and int(_cook_t * 10.0) % 2 == 0
+		var ring_col := Color(1.0, 0.25, 0.2) if left < 0.35 else Color(1.0, 0.85, 0.3)
+		draw_arc(Vector2(0, -60), 9.0, 0.0, TAU, 24, Color(0, 0, 0, 0.55), 4.5)
+		draw_arc(Vector2(0, -60), 9.0, -PI * 0.5, -PI * 0.5 + TAU * left, 24, ring_col if not warn else Color(1, 1, 1), 3.0)
 
 
 # ── Bonus pickups (#78) ───────────────────────────────
