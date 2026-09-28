@@ -392,6 +392,11 @@ var MAPS := [
 ]
 
 
+const RadioMenu = preload("res://scripts/radio_menu.gd")
+# Radio calls seen (any team) — tools/radio_test.gd reads it.
+var radio_count := 0
+
+
 func _ready() -> void:
 	# Dev override: `--mode=N` on the command line sets game_mode for headless smoke tests.
 	# `--map=N` forces a specific MAPS index (useful for verifying each classic).
@@ -538,6 +543,10 @@ func _build_parallax() -> void:
 # stay consistent with the rest of the particle stack.
 func _build_weather() -> void:
 	var kind: String = str(_map.get("weather", "")).strip_edges().to_lower()
+	# Sound bed plays even in Lo-fi (it's the particles that cost).
+	Sfx.ambience(kind)
+	if not tree_exiting.is_connected(_stop_ambience):
+		tree_exiting.connect(_stop_ambience)
 	if kind == "" or Settings.lofi:
 		return
 	var host := Node2D.new()
@@ -599,6 +608,10 @@ func _build_weather() -> void:
 	follower.set("host_path", host.get_path())
 	follower.set("band_w", band_w)
 	host.add_child(follower)
+
+
+func _stop_ambience() -> void:
+	Sfx.ambience("")
 
 
 static func _arr_to_color(a: Variant) -> Color:
@@ -1704,6 +1717,7 @@ func _spawn_bot(pos: Vector2, team: int, bname: String, loadout: String = "AK-74
 func _build_hud() -> void:
 	hud = CanvasLayer.new()
 	hud.set_script(hud_script)
+	hud.name = "HUD"
 	add_child(hud)
 	hud.player = player
 	hud.map_name = str(_map["name"])
@@ -2395,6 +2409,68 @@ func net_kill_feed(killer_name: String, victim_name: String, weapon_name: String
 	kill.emit(killer_name, victim_name, weapon_name, killer_team, victim_team)
 
 
+# Team radio (v1.18). Same sender validation as net_chat; only the sender's
+# team hears the voice line and sees the chat line.
+@rpc("any_peer", "call_local", "reliable")
+func net_radio(author: String, code: String, sender_team: int) -> void:
+	var text: String = RadioMenu.label_for(code)
+	if text == "":
+		return
+	if Net.is_networked():
+		var sender: int = multiplayer.get_remote_sender_id()
+		if sender > 0 and sender != multiplayer.get_unique_id():
+			if _players_by_id.has(sender) and is_instance_valid(_players_by_id[sender]):
+				author = str(_players_by_id[sender].display_name)
+				sender_team = int(_players_by_id[sender].team)
+			elif _peer_team_by_id.has(sender):
+				author = str(_peer_names.get(sender, "Player %d" % sender))
+				sender_team = int(_peer_team_by_id[sender])
+			else:
+				return
+	radio_count += 1
+	if not is_instance_valid(player) or int(player.team) != sender_team:
+		return
+	Sfx.radio(code)
+	if hud != null and hud.has_method("post_radio"):
+		hud.post_radio(author, text)
+
+
+# Up / mid / down relative to the two flag bases (Soldat's convention).
+func radio_dir(pos: Vector2) -> String:
+	var ys: Array = []
+	for f in flags:
+		if is_instance_valid(f) and f.has_meta("home"):
+			ys.append(float((f.get_meta("home") as Vector2).y))
+	var mid_y: float = MAP_H * 0.5
+	if not ys.is_empty():
+		mid_y = 0.0
+		for y in ys:
+			mid_y += float(y)
+		mid_y /= ys.size()
+	var band: float = maxf(220.0, MAP_H * 0.12)
+	if pos.y < mid_y - band:
+		return "up"
+	if pos.y > mid_y + band:
+		return "down"
+	return "mid"
+
+
+# A bot on the robbed team calls out the enemy flag carrier (host / SP only).
+func _bot_radio_efc(robbed_team: int, carrier: Node) -> void:
+	var callers: Array = []
+	for b in get_tree().get_nodes_in_group("soldier"):
+		if is_instance_valid(b) and b.get("bot_id") != null and b.get("dead") != true and int(b.get("team")) == robbed_team:
+			callers.append(b)
+	if callers.is_empty():
+		return
+	var bot: Node = callers[randi() % callers.size()]
+	get_tree().create_timer(0.7).timeout.connect(func() -> void:
+		if not is_instance_valid(bot) or not is_instance_valid(carrier) or bot.get("dead") == true:
+			return
+		var code := "efc_" + radio_dir((carrier as Node2D).global_position)
+		bcast("net_radio", [str(bot.get("display_name")), code, robbed_team], true))
+
+
 @rpc("any_peer", "call_local", "reliable")
 func net_chat(author: String, msg: String, scope: String, sender_team: int) -> void:
 	# #105: never trust client-supplied author / sender_team. In a networked
@@ -2598,6 +2674,7 @@ func _tick_ctf() -> void:
 					# Enemy pickup.
 					f.set_meta("carrier", s)
 					_objective_event("grab", flag_team, str(s.get("display_name")))
+					_bot_radio_efc(flag_team, s)
 				break
 
 

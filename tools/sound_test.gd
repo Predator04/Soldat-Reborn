@@ -2,7 +2,7 @@ extends SceneTree
 ## Sound wiring check (gate stage F).
 ##   godot --headless --fixed-fps 60 -s tools/sound_test.gd
 ## Runs a bot deathmatch and makes sure every family of world sound fires:
-## gunfire, footsteps, jumps/landings, ricochets, deaths, and that every
+## gunfire, footsteps, jumps/landings, ricochets, deaths, the rain bed, and that every
 ## requested sample actually exists on disk.
 
 const FAMILIES := {
@@ -11,6 +11,7 @@ const FAMILIES := {
 	"jump/land": ["jump", "fall", "roll"],
 	"ricochet": ["ric"],
 	"death": ["playerdeath", "death"],
+	"weather": ["sfx_rain"],
 }
 
 var _t := 0.0
@@ -22,7 +23,7 @@ func _process(d: float) -> bool:
 	if st == null:
 		return false
 	if _phase == 0:
-		st.set("custom_map_path", ""); st.set("map_index", 0); st.set("game_mode", 0)
+		st.set("custom_map_path", ""); st.set("map_index", 5); st.set("game_mode", 0)  # 5 = Aftermath (rain)
 		st.set("bot_count", 7); st.set("bot_skill", 2)
 		st.set("sfx_volume", 0.8)
 		root.get_node("Net").set_singleplayer()

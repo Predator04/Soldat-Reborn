@@ -23,6 +23,7 @@ const ROWS := [
 	["Drop gun / mount M2", "weapon_throw"],
 	["Scoreboard", "scoreboard"],
 	["Chat / team chat", "chat|team_chat"],
+	["Team radio", "radio"],
 	["Menu", "pause"],
 	["This help", "help"],
 ]

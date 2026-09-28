@@ -24,7 +24,7 @@ const ACTION_SECTION := {
 	"weapon_4": "Weapons", "weapon_5": "Weapons", "weapon_6": "Weapons",
 	"weapon_7": "Weapons", "weapon_8": "Weapons", "weapon_9": "Weapons",
 	"weapon_10": "Weapons",
-	"chat": "Chat", "team_chat": "Chat", "taunt": "Chat", "command": "Chat",
+	"chat": "Chat", "team_chat": "Chat", "radio": "Chat", "taunt": "Chat", "command": "Chat",
 	"vote_yes": "Utility", "vote_no": "Utility", "pause": "Utility", "scoreboard": "Utility", "help": "Utility",
 	"record_gif": "Utility",
 }
@@ -82,6 +82,7 @@ const ACTIONS := [
 	["weapon_10",       "Weapon Slot 10",   [{"type": "key", "physical_keycode": 48}]],       # 0
 	["chat",            "Chat",             [{"type": "key", "physical_keycode": 84}]],       # T
 	["team_chat",       "Team Chat",        [{"type": "key", "physical_keycode": 89}]],       # Y
+	["radio",           "Radio Callouts",   [{"type": "key", "physical_keycode": 86}]],       # V
 	["taunt",           "Taunt Modifier",   [{"type": "key", "physical_keycode": 4194328}]],  # Alt
 	["command",         "Command Console",  [{"type": "key", "physical_keycode": 47}]],       # /
 	["vote_yes",        "Vote Yes",         [{"type": "key", "physical_keycode": 4194332}]],  # F1

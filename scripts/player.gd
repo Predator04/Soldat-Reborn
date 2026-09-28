@@ -146,6 +146,9 @@ const GG_LADDER := [
 # Input lock — HUD sets this while the chat/command LineEdit is focused so held
 # WASD keys don't leak into movement while the player is typing.
 var input_locked := false
+# Radio menu (v1.18) is up: number keys pick a callout, not a weapon.
+var radio_open := false
+var _radio_cd := 0.0
 
 # Bonus pickup (#78). Applied/cleared via net_bonus_apply / net_bonus_clear
 # (call_local, so every peer applies its own copy). Duration ticks locally on
@@ -605,7 +608,9 @@ func _physics_process(delta: float) -> void:
 	_update_wedge(delta)
 
 	# primary weapon switching (keys 1..9,0). Numbers map to Soldat's classic slot order.
-	if Input.is_action_pressed("weapon_1"):
+	if radio_open:
+		pass
+	elif Input.is_action_pressed("weapon_1"):
 		_switch_weapon(0)
 	elif Input.is_action_pressed("weapon_2"):
 		_switch_weapon(1)
@@ -828,6 +833,25 @@ func _unhandled_input(event: InputEvent) -> void:
 		if hud != null:
 			hud.open_command()
 			get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("radio"):
+		if hud != null and hud.has_method("toggle_radio"):
+			hud.toggle_radio()
+			get_viewport().set_input_as_handled()
+
+
+# Team radio callout (see radio_menu.gd). Rate-limited so it can't be spammed.
+func send_radio(code: String) -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	if now < _radio_cd:
+		return
+	_radio_cd = now + 1.5
+	var parent := get_parent()
+	if parent == null or not parent.has_method("net_radio"):
+		return
+	if Net.is_networked():
+		parent.rpc("net_radio", display_name, code, team)
+	else:
+		parent.net_radio(display_name, code, team)
 
 
 func send_chat(scope: String, msg: String) -> void:

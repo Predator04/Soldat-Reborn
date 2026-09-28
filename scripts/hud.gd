@@ -68,6 +68,9 @@ const ObjectiveHud = preload("res://scripts/objective_hud.gd")
 var objective_hud: Control = null
 
 
+var radio_menu: Node = null
+
+
 func _ready() -> void:
 	# Full-screen death desaturation overlay (behind all HUD text).
 	desat_overlay = ColorRect.new()
@@ -259,6 +262,9 @@ func _ready() -> void:
 	chat_feed.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	chat_feed.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(chat_feed)
+
+	radio_menu = preload("res://scripts/radio_menu.gd").new()
+	add_child(radio_menu)
 
 	# Weapon selection panel (#70) — death-triggered limbo menu: shows while the
 	# player is dead, hides once they pick a weapon. See weapon_menu.gd _process.
@@ -633,6 +639,24 @@ func _update_bonus_ui() -> void:
 	lbl_bonus.text = "%s  %ds" % [BonusPickup.kind_label(kind), int(ceil(t))]
 	lbl_bonus.add_theme_color_override("font_color", BonusPickup.kind_color(kind))
 	lbl_bonus.visible = true
+
+
+func toggle_radio() -> void:
+	if radio_menu == null or _command_visible:
+		return
+	radio_menu.player = player
+	radio_menu.toggle()
+
+
+# Radio line in the chat feed: amber, tagged, and team-only by construction.
+func post_radio(author: String, text: String) -> void:
+	if not is_instance_valid(chat_feed):
+		return
+	post_chat(author, text, true)
+	var last := chat_feed.get_child(chat_feed.get_child_count() - 1) as Label
+	if last != null:
+		last.text = "(RADIO) %s: %s" % [author, text]
+		last.add_theme_color_override("font_color", Color(1.0, 0.85, 0.45))
 
 
 func post_chat(author: String, msg: String, is_team: bool) -> void:

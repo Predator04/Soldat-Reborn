@@ -328,6 +328,52 @@ func objective(kind: String) -> void:
 	_play_key(str(e[0]), float(e[1]), float(e[2]))
 
 
+# Weather bed (v1.18): looping rain / snow-wind under the match. "" stops it.
+var _amb_player: AudioStreamPlayer = null
+var _amb_kind := ""
+
+
+func ambience(kind: String) -> void:
+	kind = kind.strip_edges().to_lower()
+	if kind == _amb_kind and _amb_player != null and _amb_player.playing:
+		return
+	_amb_kind = kind
+	if _amb_player == null:
+		_amb_player = AudioStreamPlayer.new()
+		add_child(_amb_player)
+	_amb_player.stop()
+	var key := ""
+	var vol := -18.0
+	match kind:
+		"rain":
+			key = "sfx_rain"
+		"snow":
+			key = "sfx_snow"
+			vol = -20.0
+		"wind":
+			key = "sfx_wind"
+			vol = -22.0
+	if key == "" or Settings.sfx_volume <= 0.0:
+		return
+	var src := _load(key)
+	if src == null:
+		return
+	var st: AudioStreamWAV = src.duplicate() as AudioStreamWAV
+	st.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	st.loop_begin = 0
+	var bps: int = (2 if st.format == AudioStreamWAV.FORMAT_16_BITS else 1) * (2 if st.stereo else 1)
+	st.loop_end = st.data.size() / bps
+	_amb_player.stream = st
+	_amb_player.volume_db = vol + _master_db()
+	_amb_player.play()
+	play_counts[key] = int(play_counts.get(key, 0)) + 1
+
+
+# Team radio voice line (assets/sfx/radio/<code>.wav, e.g. efcup).
+func radio(code: String) -> void:
+	_play_key("radio/" + code.replace("_", ""), -2.0, 1.0)
+
+
 func ui() -> void:
 	_play_key("menuclick", -8.0, 1.0)
 
