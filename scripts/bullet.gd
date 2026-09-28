@@ -17,6 +17,7 @@ var life := 0.0
 # Optional gravity — arrows sag slightly, standard bullets are 0.
 var grav := 0.0
 var _hit := false
+var _ray_exclude: Array[RID] = []
 var _velocity := Vector2.ZERO
 var _sprite: Texture2D = null
 var _sprite_size := Vector2.ZERO
@@ -39,12 +40,28 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	var step: Vector2
 	if grav > 0.0:
 		_velocity.y += grav * delta
-		position += _velocity * delta
+		step = _velocity * delta
 		direction = _velocity.normalized()
 	else:
-		position += direction * speed * delta
+		step = direction * speed * delta
+	# Swept hit test (v1.18): a Barrett round moves 40 px a frame and a soldier
+	# is ~14 px wide, so overlap checks alone let fast rounds pass straight
+	# through people (bots with the Barrett couldn't hit a standing target).
+	if not _hit and step.length() > 4.0 and is_inside_tree():
+		var q := PhysicsRayQueryParameters2D.create(global_position, global_position + step, collision_mask, _ray_exclude)
+		var hit := get_world_2d().direct_space_state.intersect_ray(q)
+		if not hit.is_empty():
+			global_position = hit["position"]
+			_on_body_entered(hit["collider"])
+			if _hit:
+				queue_redraw()
+				return
+			# Passed through (a teammate): don't test that body again.
+			_ray_exclude.append(hit["rid"])
+	position += step
 	_whizz_check()
 	queue_redraw()
 

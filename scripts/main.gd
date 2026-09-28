@@ -1524,6 +1524,11 @@ func _safe_spawn_near(pos: Vector2, team: int) -> Vector2:
 		# over a pit on the narrower ported maps.
 		if step > 0 and (not _spot_is_clear(candidate) or _geom_ground_y(candidate.x, candidate.y - 2.0) > minf(KILL_Y, GROUND_Y + 1.0)):
 			clear = false
+		# ...and in the same room, on ground you can stand on. HH's spawns
+		# slid 440 px left straight through the building wall onto the steep
+		# outside face, and bots slid off the map on every respawn.
+		if clear and step > 0 and not _spawn_slide_ok(pos, candidate):
+			clear = false
 		for s in get_tree().get_nodes_in_group("soldier"):
 			if not clear:
 				break
@@ -1541,6 +1546,20 @@ func _safe_spawn_near(pos: Vector2, team: int) -> Vector2:
 		candidate = Vector2(clampf(pos.x + offset, 80.0, MAP_W - 80.0), pos.y)
 	# Every shifted slot was blocked — the original (verified-free) slot wins.
 	return pos
+
+
+func _spawn_slide_ok(from: Vector2, to: Vector2) -> bool:
+	var space := get_world_2d().direct_space_state
+	var q := PhysicsRayQueryParameters2D.create(from + Vector2(0, -14), to + Vector2(0, -14), 1 | 4)
+	if not space.intersect_ray(q).is_empty():
+		return false
+	var g0: float = _geom_ground_y(to.x - 10.0, to.y - 2.0)
+	var g1: float = _geom_ground_y(to.x + 10.0, to.y - 2.0)
+	var gm: float = _geom_ground_y(to.x, to.y - 2.0)
+	if gm == INF or g0 == INF or g1 == INF:
+		return false
+	# Standing ground within a short drop, not a cliff face (> ~50° over 20 px).
+	return gm - to.y < 120.0 and absf(g1 - g0) < 24.0
 
 
 func _spawn_bots() -> void:
@@ -2379,9 +2398,7 @@ func net_despawn_player(peer_id: int) -> void:
 			if Net.is_networked() and p.has_method("_become_husk"):
 				p.dead = true
 				p._become_husk()
-				get_tree().create_timer(1.5).timeout.connect(func() -> void:
-					if is_instance_valid(p):
-						p.queue_free())
+				get_tree().create_timer(1.5).timeout.connect(p.queue_free)
 			else:
 				p.queue_free()
 		_players_by_id.erase(peer_id)
@@ -2470,11 +2487,16 @@ func _bot_radio_efc(robbed_team: int, carrier: Node) -> void:
 			callers.append(b)
 	if callers.is_empty():
 		return
-	var bot: Node = callers[randi() % callers.size()]
+	var bot_id: int = callers[randi() % callers.size()].get_instance_id()
+	var carrier_id: int = carrier.get_instance_id()
+	# Ids, not node captures: a lambda holding a node that's freed before the
+	# timer fires logs "Lambda capture ... was freed".
 	get_tree().create_timer(0.7).timeout.connect(func() -> void:
-		if not is_instance_valid(bot) or not is_instance_valid(carrier) or bot.get("dead") == true:
+		var bot: Object = instance_from_id(bot_id)
+		var carrier_n: Object = instance_from_id(carrier_id)
+		if bot == null or carrier_n == null or not is_instance_valid(bot) or not is_instance_valid(carrier_n) or bot.get("dead") == true:
 			return
-		var code := "efc_" + radio_dir((carrier as Node2D).global_position)
+		var code := "efc_" + radio_dir((carrier_n as Node2D).global_position)
 		bcast("net_radio", [str(bot.get("display_name")), code, robbed_team], true))
 
 

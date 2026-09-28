@@ -35,7 +35,10 @@ func _ready() -> void:
 	var cs := CircleShape2D.new()
 	cs.radius = 5.0
 	shape.shape = cs
-	add_child(shape)
+	# Deferred: grenades are often spawned from inside a physics callback (a
+	# soldier dying mid-cook, a cluster splitting on contact), where adding a
+	# shape errors with "Can't change this state while flushing queries".
+	add_child.call_deferred(shape)
 	# Soldat 2 tuning (#30): bouncier restitution + noticeably lower friction so
 	# grenades keep rolling instead of dying on their first bounce.
 	# Also nudge damping so a live grenade on a slope keeps sliding toward the target.

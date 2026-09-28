@@ -21,7 +21,18 @@ Content and sound pass, plus a Barrett fix. Gate run 23: 47/47 passed (CTF sweep
 ### Fixed
 - **The Barrett never fired.** It spun up, clicked and nothing came out: it's semi-auto with a 0.32 s wind-up, and the "release the trigger before the next shot" check was already tripped by the time the wind-up finished. A click now queues the shot, which goes off after the wind-up (even if you let go), one round per click.
 
+### Fixed (full audit: every map, every gun, graphics)
+- **Bots slid off HH (and similar maps) on respawn.** When an enemy stood on a spawn, the spawn was nudged sideways up to 440 px — straight through HH's building wall onto the steep outside face, and the bot slid off the map. Nudged spawns now have to be in the same room (no wall in between) on ground you can stand on.
+- **Bots walked off ledges with a full jet tank.** A bot falling toward the kill line now burns fuel and steers back over the last ground it stood on. Across all 102 maps (8 bots, 30 s each, deathmatch) falls went from 50 to 9, and kills rose ~10% because bots stay in the fight.
+- **Fast bullets passed through people.** A Barrett round travels 40 px a frame and a soldier is ~14 px wide; hits were checked by overlap only, so bots with the Barrett could empty a mag into a standing target without a hit. Bullets now sweep their whole path each frame.
+- **Bot M79 fired a straight bullet** (a slow 90-damage rifle with no blast). It now lobs a real grenade shell on a computed arc and only fires when the target is in reach.
+- **LAW / M79 bots that got close stood still and never fired** (too close to rocket safely). They now switch to the pistol up close and back to the launcher at range.
+- Engine errors in the logs: grenades spawned during a physics callback ("Can't change this state while flushing queries") and timers holding freed nodes ("Lambda capture ... was freed", from the bot radio call-out and player despawn). Both fixed, and the release gate now fails on either message.
+- The sky and horizon glow showed faint horizontal lines (stacked translucent strips); both are smooth gradients now.
+
 ### QA
+- `tools/weapon_test.gd` (gate stage F): on a test range the player fires every primary and secondary at a target — each must hit, use ammo and reload back to a full mag — then a bot armed with each bot weapon must hurt the player.
+- Full audit run: deathmatch sweep of all 102 maps with an autopiloted player (falls, stuck spots, player deaths), screenshots of all 102 maps, menus and HUD at 960×540 and 1920×1080. The sweep's player-death counter was stuck at 0 (single-player respawns reuse the body); it now counts properly.
 - `tools/fire_test.gd` (gate stage F): every primary must fire from a click; the Barrett exactly one round per click. Fails on 1.17.1.
 - `tools/label_test.gd` (gate stage F): every mode / weapon / pickup has text, the win numbers in it match the game rules, matches open with the banner, crates are tagged, pickups explain themselves.
 - Gate stage F gains four more checks: `tools/sound_test.gd` (every family of world sound fires in a bot match and every requested sample exists), `tools/radio_test.gd` (V → 2 → 3 posts "Friendly flag carrier — down" with its voice line and doesn't switch weapons; a bot calls out the flag carrier), `tools/kit_test.gd` (a full-health soldier leaves a medikit; hurt → healed; no grenades → refilled).

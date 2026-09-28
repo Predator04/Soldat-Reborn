@@ -45,7 +45,7 @@ if [ $FINAL = 1 ]; then
   echo "== $( [ "$n" = 0 ] && echo 'GATE PASSED' || echo "GATE FAILED ($n)" )  pass=$p  $(date -Is)" | tee -a "$SUM"
   exit "$n"
 fi
-ERR_RE='FEATURE-FAIL|No multiplayer peer is assigned|SCRIPT ERROR|Parse Error|Cannot load|Identifier not found|Invalid call|Cannot infer|Node not found|Invalid packet|Failed to get path|previously freed|Invalid access|Invalid get|Invalid set|Invalid assignment|Nonexistent function|out of bounds'
+ERR_RE='FEATURE-FAIL|No multiplayer peer is assigned|SCRIPT ERROR|Parse Error|Cannot load|Identifier not found|Invalid call|Cannot infer|Node not found|Invalid packet|Failed to get path|previously freed|Invalid access|Invalid get|Invalid set|Invalid assignment|Nonexistent function|out of bounds|Lambda capture|while flushing queries'
 pass() { echo "PASS  $1" | tee -a "$SUM"; }
 fail() { echo "FAIL  $1" | tee -a "$SUM"; FAILS=$((FAILS+1)); }
 info() { echo "INFO  $1" | tee -a "$SUM"; }
@@ -273,6 +273,10 @@ if has F; then
   timeout 100 "$G" --headless --fixed-fps 60 -s tools/fire_test.gd > "$f" 2>&1
   line=$(grep -m1 "FIRE-TEST" "$f")
   if echo "$line" | grep -q "FIRE-TEST ok" && [ "$(errs "$f")" = "0" ]; then pass "F every primary fires: $line"; else fail "F every primary fires: '${line:-no result}' errors=$(errs "$f")"; fi
+  f="$OUT/weapons.log"
+  timeout 175 "$G" --headless --fixed-fps 60 -s tools/weapon_test.gd > "$f" 2>&1
+  line=$(grep -m1 "WEAPON-TEST" "$f")
+  if echo "$line" | grep -q "WEAPON-TEST ok" && [ "$(errs "$f")" = "0" ]; then pass "F every weapon hits (player + bots): $(echo "$line" | cut -c1-80)"; else fail "F every weapon hits: '${line:-no result}' errors=$(errs "$f")"; fi
   f="$OUT/labels.log"
   timeout 100 "$G" --headless --fixed-fps 60 -s tools/label_test.gd > "$f" 2>&1
   line=$(grep -m1 "LABEL-TEST" "$f")

@@ -68,6 +68,7 @@ var _visible_check_t := 0.0
 var _last_seen_pos := Vector2.INF   # where the current target was last seen
 var _refuel_wait := false           # standing still to refill jets before a climb
 var _blocked_t := 0.0               # pushing into something without moving
+var _safe_floor_x := -INF              # last x we stood on solid (non-void) ground
 var _gap_ahead := false             # next path link crosses a bottomless gap
 
 # Ammo state (#36) — bots run dry and reload like players.
@@ -120,7 +121,7 @@ const WEAPON_STATS := {
 	"Steyr AUG":    {"damage": 18.0,  "rate": 0.15,  "speed": 1150.0, "kind": "bullet"},
 	"Spas-12":      {"damage": 9.0,   "rate": 0.9,   "speed": 850.0,  "kind": "bullet", "pellets": 8, "spread": 0.26},
 	"Ruger 77":     {"damage": 82.0,  "rate": 1.0,   "speed": 1450.0, "kind": "bullet"},
-	"M79":          {"damage": 90.0,  "rate": 3.0,   "speed": 470.0,  "kind": "bullet"},
+	"M79":          {"damage": 90.0,  "rate": 3.0,   "speed": 470.0,  "kind": "launcher", "gravity": 980.0},
 	"Barrett":      {"damage": 245.0, "rate": 2.2,   "speed": 2400.0, "kind": "bullet"},
 	"Minimi":       {"damage": 23.0,  "rate": 0.20,  "speed": 1180.0, "kind": "bullet"},
 	"Minigun":      {"damage": 13.0,  "rate": 0.066, "speed": 1275.0, "kind": "bullet"},
@@ -676,7 +677,22 @@ func _physics_process(delta: float) -> void:
 				velocity.y += JET_THRUST * MatchConfig.mod_jet() * MatchConfig.mod_gravity() * delta
 				fuel = maxf(0.0, fuel - (40.0 / maxf(0.1, MatchConfig.mod_jet())) * delta)
 				jet_on = true
-		# (Sfx.jet is the LOCAL player's single jet loop — bots toggling it made
+		# Void rescue: falling with nothing under us but the kill line (walked
+		# or got blasted off a ledge, or dove after a target) — burn fuel and
+		# steer back over the last ground we stood on. Before this, idle bots
+		# on Airpirates dropped off ledges with a full tank.
+		if on_floor:
+			if not _void_below():
+				_safe_floor_x = global_position.x
+		elif velocity.y > 40.0 and fuel > 0.0 and _void_below():
+			if not jet_on:
+				velocity.y += JET_THRUST * MatchConfig.mod_jet() * MatchConfig.mod_gravity() * delta
+				fuel = maxf(0.0, fuel - (40.0 / maxf(0.1, MatchConfig.mod_jet())) * delta)
+				jet_on = true
+			if _safe_floor_x > -1.0e8:
+				var back: float = signf(_safe_floor_x - global_position.x)
+				velocity.x = move_toward(velocity.x, back * RUN_SPEED * MatchConfig.mod_speed(), 1400.0 * delta)
+				# (Sfx.jet is the LOCAL player's single jet loop — bots toggling it made
 		# your jet hum start/stop from across the map.)
 		was_jet = jet_on
 		jet_particles.emitting = jet_on and not Settings.lofi
@@ -735,8 +751,17 @@ func _physics_process(delta: float) -> void:
 		var t_len: float = to_t.length()
 		# LAW bots refuse point-blank rocket shots — 130px splash would kill themselves.
 		# When they've swapped to the USSOCOM secondary (#79) the pistol is safe at any range.
-		if loadout == "LAW" and not using_secondary and t_len < ROCKET_MIN_RANGE:
-			pass
+		var lobber: bool = loadout == "LAW" or loadout == "M79"
+		if lobber and not using_secondary and t_len < ROCKET_MIN_RANGE:
+			# Too close to rocket without eating the blast: pull the pistol
+			# (v1.18 — before, a LAW bot that closed in just stood there).
+			if secondary_ammo > 0 and Settings.game_mode != Settings.MODE_GG:
+				using_secondary = true
+				fire_cd = 0.25
+		elif lobber and using_secondary and t_len > ROCKET_MIN_RANGE * 1.6 and ammo > 0 \
+				and Settings.game_mode != Settings.MODE_GG:
+			using_secondary = false   # back to the launcher at a safe distance
+			fire_cd = 0.3
 		elif _is_melee() and t_len > 70.0:
 			pass  # knife/chainsaw only swing when in reach
 		elif t_len < _skill_engage_range and _target_visible:
@@ -1063,11 +1088,22 @@ func _shoot(to_t: Vector2) -> void:
 	var active_weapon: String = "USSOCOM" if using_secondary else loadout
 	var stats: Dictionary = WEAPON_STATS.get(active_weapon, WEAPON_STATS["AK-74"])
 	var aim := to_t.normalized()
+	if String(stats["kind"]) == "launcher":
+		var lob := _lob_aim(to_t, float(stats["speed"]), float(stats.get("gravity", 980.0)) * MatchConfig.mod_gravity())
+		if lob == Vector2.ZERO:
+			# Out of the launcher's reach: give the round back and hold fire.
+			if using_secondary:
+				secondary_ammo += 1
+			else:
+				ammo += 1
+			fire_cd = 0.3
+			return
+		aim = lob
 	ceasefire_t = 0.0
 	# lead the target by its velocity (predictive aim) — use the actual bullet
 	# speed for this loadout so lead is calibrated to what we're about to fire.
 	var speed_est: float = float(stats["speed"])
-	if is_instance_valid(target) and target is CharacterBody2D:
+	if String(stats["kind"]) != "launcher" and is_instance_valid(target) and target is CharacterBody2D:
 		var t_est: float = to_t.length() / speed_est
 		var lead: Vector2 = target.global_position + target.velocity * t_est
 		aim = (lead - global_position).normalized()
@@ -1084,7 +1120,7 @@ func _shoot(to_t: Vector2) -> void:
 	# rockets additionally sync transform from the host as authority (#61).
 	if Net.is_networked() and multiplayer.has_multiplayer_peer():
 		var pid: int = 0
-		if String(stats["kind"]) == "rocket":
+		if String(stats["kind"]) == "rocket" or String(stats["kind"]) == "launcher":
 			pid = _next_proj_id
 			_next_proj_id += 1
 		# The weapon travels with the shot: a replica's loadout / secondary
@@ -1128,7 +1164,7 @@ func net_bot_shoot(muzzle: Vector2, aim: Vector2, proj_id: int = 0, weapon: Stri
 	if Net.is_client():
 		Net.bot_shots_seen += 1
 	var dmg_mul: float = MatchConfig.mod_damage()
-	if String(stats["kind"]) == "rocket":
+	if String(stats["kind"]) == "rocket" or String(stats["kind"]) == "launcher":
 		var r := rocket_scene.instantiate()
 		# #69: name by bot_id so two LAW bots can't collide their proj_id counters
 		# and shove a rocket into `@RigidBody2D@nnn`-style auto-name territory.
@@ -1141,6 +1177,10 @@ func net_bot_shoot(muzzle: Vector2, aim: Vector2, proj_id: int = 0, weapon: Stri
 		r.team = team
 		r.killer_name = display_name
 		r.weapon_name = active_weapon
+		# M79 lobs (v1.18): it used to fire a straight 470 px/s bullet — a
+		# slow 90-damage rifle with no blast.
+		if stats.has("gravity"):
+			r.grav = float(stats["gravity"])
 		get_parent().add_child(r)
 		if Net.is_networked() and proj_id > 0:
 			r.set_multiplayer_authority(get_multiplayer_authority())
@@ -1853,6 +1893,21 @@ func _pit_ahead(dir: float) -> bool:
 		if gy == INF or gy > kill_y:
 			return true
 	return false
+
+
+# Low-arc launch direction that lands a lobbed shell on `to` (relative), or
+# ZERO when it's beyond reach.
+func _lob_aim(to: Vector2, v: float, g: float) -> Vector2:
+	var x: float = absf(to.x)
+	var y: float = -to.y   # up is positive
+	if x < 1.0:
+		return Vector2(0, -1) if y > 0.0 else Vector2.ZERO
+	var v2 := v * v
+	var disc: float = v2 * v2 - g * (g * x * x + 2.0 * y * v2)
+	if disc < 0.0:
+		return Vector2.ZERO
+	var ang: float = atan((v2 - sqrt(disc)) / (g * x))
+	return Vector2(cos(ang) * signf(to.x), -sin(ang))
 
 
 func _void_below() -> bool:

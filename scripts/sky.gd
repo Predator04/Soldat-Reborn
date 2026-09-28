@@ -19,7 +19,6 @@ func _process(delta: float) -> void:
 func _draw() -> void:
 	var view := get_viewport_rect().size
 	# Sky gradient — deep indigo → warm dusk band near horizon (blends with parallax haze).
-	var steps := 64
 	var top := Color(0.03, 0.04, 0.11)
 	var mid := Color(0.10, 0.14, 0.26)
 	var bottom := Color(0.34, 0.24, 0.28)
@@ -28,10 +27,13 @@ func _draw() -> void:
 		top = Color(map_top, 1.0)
 		bottom = Color(map_bottom, 1.0)
 		mid = top.lerp(bottom, 0.5)
-	for i in steps:
-		var t := float(i) / float(steps)
-		var c := top.lerp(mid, minf(1.0, t * 2.0)) if t < 0.5 else mid.lerp(bottom, (t - 0.5) * 2.0)
-		draw_rect(Rect2(0.0, view.y * t, view.x, view.y / float(steps) + 1.0), c)
+	# Two vertex-coloured quads: a smooth gradient. (64 stacked 1 px-overlapping
+	# rects showed as faint horizontal lines across the sky.)
+	var hy := view.y * 0.5
+	draw_polygon(PackedVector2Array([Vector2(0, 0), Vector2(view.x, 0), Vector2(view.x, hy), Vector2(0, hy)]),
+		PackedColorArray([top, top, mid, mid]))
+	draw_polygon(PackedVector2Array([Vector2(0, hy), Vector2(view.x, hy), Vector2(view.x, view.y), Vector2(0, view.y)]),
+		PackedColorArray([mid, mid, bottom, bottom]))
 	# Stars — pinned to a seeded RNG so they don't twinkle-shift every frame.
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 1337

@@ -37,6 +37,7 @@ var _auto_held: Array = []
 var _auto_deaths := 0
 var _auto_shots := 0
 var _auto_last_player: Object = null
+var _auto_was_dead := false
 
 
 func _on_kill(_k: String, victim: String, _w: String, _kt: int, _vt: int) -> void:
@@ -184,10 +185,12 @@ func _autopilot(m: Node, delta: float) -> void:
 	var p = m.get("player")
 	if p == null or not is_instance_valid(p):
 		return
-	if p != _auto_last_player:
-		if _auto_last_player != null:
-			_auto_deaths += 1
-		_auto_last_player = p
+	# Single-player respawns reuse the same body, so count dead -> alive edges.
+	var dead_now: bool = p.get("dead") == true
+	if dead_now and not _auto_was_dead:
+		_auto_deaths += 1
+	_auto_was_dead = dead_now
+	_auto_last_player = p
 	# Aim at the nearest other soldier through the right stick actions.
 	var best: Node2D = null
 	var bd := INF

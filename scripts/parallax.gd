@@ -73,17 +73,15 @@ func _draw_horizon_glow(view: Vector2) -> void:
 	# so mountains stand out against a slightly lit sky (dusk mood).
 	var band_top := view.y * 0.35
 	var band_bot := view.y * 0.68
-	var steps := 16
 	var top := Color(0.10, 0.12, 0.20, 0.0)
 	var bottom := Color(0.62, 0.42, 0.34, 0.45)
 	if tint.a > 0.0:
 		top = Color(tint, 0.0)
 		bottom = Color(tint.lightened(0.25), 0.3)
-	for i in steps:
-		var t := float(i) / float(steps)
-		var y := lerpf(band_top, band_bot, t)
-		var h := (band_bot - band_top) / float(steps) + 1.0
-		draw_rect(Rect2(0.0, y, view.x, h), top.lerp(bottom, t))
+	# One vertex-coloured quad. Translucent strips overlapping by 1 px doubled
+	# their alpha along every seam — 16 visible lines across the horizon.
+	draw_polygon(PackedVector2Array([Vector2(0, band_top), Vector2(view.x, band_top), Vector2(view.x, band_bot), Vector2(0, band_bot)]),
+		PackedColorArray([top, top, bottom, bottom]))
 
 
 func _sample_ridge(wx: float, hs: Array[float], peaks: float) -> float:
