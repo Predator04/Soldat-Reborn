@@ -68,6 +68,10 @@ var _smoke_t := 0.0
 var _solo_fire_t := 0.0         # >0 while a lone driver is firing
 var _bot_hold := false          # bot gunner letting the barrel cool
 var _no_driver_t := 0.0
+var _bd_check := 0.0            # bot driver: stuck / progress tracking
+var _bd_last_x := 0.0
+var _bd_stuck_t := 0.0
+var _bd_hop := false
 
 const _BARREL_TEX := preload("res://assets/weapons-gfx/m2.png")
 const TouchControls = preload("res://scripts/touch_controls.gd")
@@ -272,6 +276,10 @@ func _simulate(delta: float) -> void:
 	if d != null and _owner_peer(d) == _local_id() and _is_local_human(d):
 		throttle = Input.get_axis("move_left", "move_right")
 		hop = Input.is_action_pressed("jump")
+	elif d != null and d.get("bot_id") != null and _is_host_side():
+		var bi := _bot_drive(delta)
+		throttle = bi.x
+		hop = bi.y > 0.5
 	var on_floor := is_on_floor()
 	if on_floor:
 		if throttle != 0.0:
@@ -451,6 +459,57 @@ func apply_fire(muzzle: Vector2, dir: Vector2) -> void:
 	if heat >= 1.0 and not overheated:
 		overheated = true
 		Sfx._play_key("m2overheat", -6.0, 1.0, muzzle)
+
+
+# A bot at the wheel (host / single-player): drive toward its goal, hop when
+# blocked, stop and get out at the destination, in front of a drop into the
+# void, when stuck, or when the buggy is nearly wrecked. Returns (throttle, hop).
+func _bot_drive(delta: float) -> Vector2:
+	var d := driver()
+	var goal: Vector2 = d.get("_goal")
+	var t = d.get("target")
+	if goal == Vector2.INF and t != null and is_instance_valid(t):
+		goal = (t as Node2D).global_position
+	var dx: float = goal.x - global_position.x if goal != Vector2.INF else 0.0
+	var leave := goal == Vector2.INF or absf(dx) < 260.0 or hp < MAX_HP * 0.25
+	var dir: float = signf(dx)
+	# Don't drive off into the void.
+	var main := get_parent()
+	if not leave and main != null and main.has_method("_geom_ground_y") and absf(velocity.x) > 20.0:
+		var ky: float = float(main.get("KILL_Y"))
+		var gy: float = main._geom_ground_y(global_position.x + dir * 70.0, global_position.y - 30.0)
+		if gy == INF or gy > ky:
+			leave = true
+	# Stuck: not getting anywhere for a while (hop once, then give up).
+	_bd_check += delta
+	if _bd_check > 1.0:
+		var moved: float = absf(global_position.x - _bd_last_x)
+		_bd_last_x = global_position.x
+		_bd_check = 0.0
+		if moved < 40.0:
+			_bd_stuck_t += 1.0
+			_bd_hop = true
+		else:
+			_bd_stuck_t = 0.0
+	if _bd_stuck_t >= 3.0:
+		leave = true
+	if leave and absf(velocity.x) < 60.0:
+		_bd_stuck_t = 0.0
+		if Net.is_networked() and main != null and main.has_method("net_vehicle_seat_bot"):
+			main.bcast("net_vehicle_seat_bot", [vehicle_id, 0, int(d.get("bot_id")), false], true)
+		else:
+			clear_seat_of(d)
+		return Vector2.ZERO
+	var hop := 1.0 if _bd_hop else 0.0
+	_bd_hop = false
+	# A bot driving alone shoots what it sees (with the solo penalty).
+	if gunner() == null and t != null and is_instance_valid(t) and d.get("_target_visible") == true:
+		var to: Vector2 = (t as Node2D).global_position - _gun_pivot()
+		if to.length() < BOT_GUN_RANGE * 0.8 and to.normalized().y < 0.55:
+			aim_dir = aim_dir.slerp(to.normalized(), clampf(delta * 6.0, 0.0, 1.0)).normalized()
+			if fire_cd <= 0.0 and not overheated and heat < 0.7 and absf(aim_dir.angle_to(to.normalized())) < 0.15:
+				_fire(d)
+	return Vector2(0.0 if leave else dir, hop)
 
 
 # A bot in the gun seat (host / single-player): aim at its target with lead,

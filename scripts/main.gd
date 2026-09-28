@@ -4416,13 +4416,14 @@ func _decide_seat(v: Node, s: Node, enter: bool) -> void:
 
 
 # Host / single-player: a bot takes a free seat (the gunner's, in practice).
-func vehicle_bot_board(v: Node, bot: Node) -> void:
+func vehicle_bot_board(v: Node, bot: Node, want_seat := 1) -> void:
 	if Net.is_networked() and not Net.is_host():
 		return
 	if not v.can_enter(bot):
 		return
-	var seat: int = v.free_seat()
-	if seat != 1:
+	var seat: int = want_seat
+	var cur: Array = v.get("seats")
+	if seat < 0 or seat >= cur.size() or is_instance_valid(cur[seat]):
 		return
 	if Net.is_networked():
 		bcast("net_vehicle_seat_bot", [int(v.get("vehicle_id")), seat, int(bot.get("bot_id")), true], true)

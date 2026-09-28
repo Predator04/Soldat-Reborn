@@ -298,6 +298,7 @@ if has F; then
   ft kits kit_test.gd 100 KIT-TEST "medikits / grenade kits"
   ft radio radio_test.gd 170 RADIO-TEST "team radio"
   ft vehicles vehicle_test.gd 100 VEHICLE-TEST "buggy: enter / drive / run over / gun / exit / wreck / respawn"
+  ft botdrive vehicle_drive_test.gd 100 DRIVE-TEST "bots drive buggies to far-off goals"
   ft crew vehicle_crew_test.gd 100 CREW-TEST "buggy crew: solo-fire slowdown / bot gunner boards, shoots, leaves"
   ft sound sound_test.gd 100 SOUND-TEST "sound wiring"
 fi

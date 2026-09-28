@@ -365,6 +365,10 @@ func _physics_process(delta: float) -> void:
 			velocity = Vector2.ZERO
 			jet_on = false
 			muzzle_t = maxf(0.0, muzzle_t - delta * 10.0)
+			_think_cd -= delta
+			if _think_cd <= 0.0:
+				_think_cd = THINK_INTERVAL * randf_range(0.8, 1.2)
+				_think()
 			queue_redraw()
 			return
 	_ride_cd = maxf(0.0, _ride_cd - delta)
@@ -1602,8 +1606,18 @@ func _set_goal(pos: Vector2, label: String) -> void:
 func _think() -> void:
 	_goal = Vector2.INF
 	_goal_label = ""
+	# Driving a buggy: keep working out where we're going (the buggy steers
+	# toward _goal), nothing else.
+	if mounted_m2 != null:
+		_think_goal()
+		return
 	if _think_ride():
 		return
+	_think_goal()
+	_think_drive()
+
+
+func _think_goal() -> void:
 	var mode: int = Settings.game_mode
 	var flags := _flags()
 	# Grabbing a close, useful pickup beats everything except flag duty.
@@ -1954,11 +1968,46 @@ func _think_ride() -> bool:
 		if dist > 480.0 or absf((v as CharacterBody2D).velocity.x) > 160.0:
 			continue
 		if dist < float(v.ENTER_RADIUS) - 6.0:
-			m.vehicle_bot_board(v, self)
+			m.vehicle_bot_board(v, self, 1)
 			return true
 		_set_goal((v as Node2D).global_position, "ride")
 		return true
 	return false
+
+
+# v1.20: a far-off goal and an empty buggy close by — drive there. Only
+# when the trip is long and roughly level (the buggy can't climb walls).
+const DRIVE_MIN_TRIP := 1100.0
+const DRIVE_PICKUP_RANGE := 340.0
+
+
+func _think_drive() -> void:
+	if _ride_cd > 0.0 or _goal == Vector2.INF:
+		return
+	var m := _main()
+	if m == null or not m.has_method("vehicle_bot_board"):
+		return
+	var trip: float = absf(_goal.x - global_position.x)
+	if trip < DRIVE_MIN_TRIP or absf(_goal.y - global_position.y) > trip * 0.6:
+		return
+	for v in get_tree().get_nodes_in_group("vehicle"):
+		if not is_instance_valid(v) or not v.get("alive") or v.driver() != null:
+			continue
+		var vg = v.gunner()
+		if vg != null and int(vg.get("team")) != team:
+			continue
+		var vpos: Vector2 = (v as Node2D).global_position
+		var dist: float = global_position.distance_to(vpos)
+		if dist > DRIVE_PICKUP_RANGE or absf(vpos.y - global_position.y) > 120.0:
+			continue
+		# Only worth it if the buggy is on the way (not behind us).
+		if signf(_goal.x - vpos.x) != signf(_goal.x - global_position.x) and absf(vpos.x - global_position.x) > 80.0:
+			continue
+		if dist < float(v.ENTER_RADIUS) - 6.0:
+			m.vehicle_bot_board(v, self, 0)
+		else:
+			_set_goal(vpos, "drive")
+		return
 
 
 func _void_below() -> bool:
