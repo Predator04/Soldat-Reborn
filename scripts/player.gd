@@ -148,6 +148,8 @@ const GG_LADDER := [
 var input_locked := false
 # Radio menu (v1.18) is up: number keys pick a callout, not a weapon.
 var radio_open := false
+# One queued semi-auto shot (see the fire block in _physics_process).
+var _semi_armed := false
 var _radio_cd := 0.0
 
 # Bonus pickup (#78). Applied/cleared via net_bonus_apply / net_bonus_clear
@@ -697,7 +699,17 @@ func _physics_process(delta: float) -> void:
 		# Wind-up trackers: Barrett/Minigun need to spin up before their first shot,
 		# then fire at their normal rate as long as LMB stays down.
 		var startup: float = float(w_active.get("startup", 0.0))
-		if lmb:
+		var is_auto: bool = bool(w_active.get("auto", false))
+		# Semi-auto: a fresh click arms one shot. The Barrett (semi-auto with a
+		# wind-up) keeps that shot queued through its wind-up even if you let go —
+		# before 1.18 the "wait for release" check was already true by the time
+		# the wind-up finished, so it clicked and never fired.
+		if lmb and not lmb_prev and not is_auto:
+			_semi_armed = true
+		if not lmb and startup <= 0.0:
+			_semi_armed = false
+		var want: bool = lmb if is_auto else _semi_armed
+		if want:
 			if startup > 0.0:
 				# Play the spin-up tell on the rising edge of the trigger (before ramping)
 				# and add a small wobble so the shake reads visually while ramping.
@@ -708,14 +720,14 @@ func _physics_process(delta: float) -> void:
 					_shake(1.2)
 		else:
 			spin_up_t = 0.0
-		if lmb and fire_cd <= 0.0:
+		if want and fire_cd <= 0.0:
 			var can_fire := true
 			if startup > 0.0 and spin_up_t < startup:
 				can_fire = false
-			# Semi-auto: don't refire until LMB is released and re-pressed.
-			if not bool(w_active.get("auto", false)) and lmb_prev:
-				can_fire = false
 			if can_fire:
+				if not is_auto:
+					_semi_armed = false
+					spin_up_t = 0.0   # every Barrett shot has its own wind-up
 				var kind_a := str(w_active.get("kind", "bullet"))
 				if kind_a == "melee":
 					_perform_melee()
@@ -975,6 +987,7 @@ func _switch_weapon(idx: int) -> void:
 		reload_t = 0.0
 		spin_up_t = 0.0
 		lmb_prev = true  # require a fresh click before firing after a slot swap
+		_semi_armed = false
 	if idx == weapon_index:
 		return
 	# Allow switching mid-reload to cancel it — otherwise the player is hard-locked
@@ -991,6 +1004,7 @@ func _switch_weapon(idx: int) -> void:
 	fire_cd = 0.15
 	spin_up_t = 0.0
 	lmb_prev = true
+	_semi_armed = false
 
 
 func _toggle_secondary() -> void:
@@ -1024,6 +1038,7 @@ func _toggle_secondary() -> void:
 	fire_cd = 0.15
 	spin_up_t = 0.0
 	lmb_prev = true
+	_semi_armed = false
 
 
 func _apply_gg_weapon() -> void:
@@ -1053,6 +1068,7 @@ func _apply_gg_weapon() -> void:
 	fire_cd = 0.15
 	spin_up_t = 0.0
 	lmb_prev = true
+	_semi_armed = false
 
 
 func _active_weapon() -> Dictionary:
@@ -1316,6 +1332,7 @@ func _switch_after_drop() -> void:
 			reload_t = 0.0
 			fire_cd = 0.15
 			lmb_prev = true
+			_semi_armed = false
 	else:
 		var si := _first_non_thrown_unlocked(secondary, true)
 		if si >= 0:
@@ -1325,6 +1342,7 @@ func _switch_after_drop() -> void:
 			reload_t = 0.0
 			fire_cd = 0.15
 			lmb_prev = true
+			_semi_armed = false
 			return
 		var pi := _first_non_thrown_unlocked(weapons, false)
 		if pi >= 0:
@@ -1653,6 +1671,7 @@ func restore_for_round() -> void:
 	fire_cd = 0.0
 	spin_up_t = 0.0
 	lmb_prev = true
+	_semi_armed = false
 	muzzle_t = 0.0
 	gesture_anim = ""
 	gesture_t = 0.0

@@ -13,8 +13,12 @@ Content and sound pass.
 - New sounds from the Soldat set that were sitting unused: footsteps (running and crouched), landing thuds (heavier after big drops), bullet ricochets off walls, bullet whizz-bys when an enemy round passes your head, death cries (plus a crunch on headshot kills), grenade pin pull when you start cooking, grenade bounces, weapon switch, weapon pickup and throw, roll, going prone / standing up, respawn, kit and bonus pickups.
 - Rain and snow maps play a looping rain / wind bed. Six more classic maps get the weather their `.pms` file asks for (April, Bigfalls, Biologic, Mossy: rain; B2B, Messner: snow).
 
+### Fixed
+- **The Barrett never fired.** It spun up, clicked and nothing came out: it's semi-auto with a 0.32 s wind-up, and the "release the trigger before the next shot" check was already tripped by the time the wind-up finished. A click now queues the shot, which goes off after the wind-up (even if you let go), one round per click.
+
 ### QA
-- Gate stage F gains four checks: `tools/sound_test.gd` (every family of world sound fires in a bot match and every requested sample exists), `tools/radio_test.gd` (V → 2 → 3 posts "Friendly flag carrier — down" with its voice line and doesn't switch weapons; a bot calls out the flag carrier), `tools/kit_test.gd` (a full-health soldier leaves a medikit; hurt → healed; no grenades → refilled).
+- `tools/fire_test.gd` (gate stage F): every primary must fire from a click; the Barrett exactly one round per click. Fails on 1.17.1.
+- Gate stage F gains four more checks: `tools/sound_test.gd` (every family of world sound fires in a bot match and every requested sample exists), `tools/radio_test.gd` (V → 2 → 3 posts "Friendly flag carrier — down" with its voice line and doesn't switch weapons; a bot calls out the flag carrier), `tools/kit_test.gd` (a full-health soldier leaves a medikit; hurt → healed; no grenades → refilled).
 
 ## [1.17.1] — 2026-09-28
 

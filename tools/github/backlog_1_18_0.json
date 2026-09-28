@@ -26,8 +26,18 @@
    "area: gameplay",
    "area: maps"
   ],
-  "commit": "",
+  "commit": "8e7bb49",
   "version": "1.18.0",
   "body": "The .pms spawn types 7 (grenade kit) and 8 (medikit) were dropped by the port. pms_to_map.py now exports them (settled on the ground) and all 99 bundled maps were re-merged from the .pms files (plus .pms weather where the JSON had none). Runtime reuses the host-authoritative bonus-box sync; kits heal / refill players and bots, only when useful, respawn after 25 s. Bots seek them when hurt / out of grenades. tools/kit_test.gd in gate stage F."
+ },
+ {
+  "title": "Barrett doesn't fire (spins up, no shot)",
+  "labels": [
+   "bug",
+   "area: gameplay"
+  ],
+  "commit": "",
+  "version": "1.18.0",
+  "body": "Reported in play: the Barrett has no shot coming out. Cause: semi-auto + startup 0.32 s; the semi-auto gate (lmb_prev) was true by the time spin_up_t reached startup, so can_fire was always false. Fix: a click arms one queued shot (_semi_armed) that fires after the wind-up; one round per click. tools/fire_test.gd in gate stage F fails on the old code."
  }
 ]

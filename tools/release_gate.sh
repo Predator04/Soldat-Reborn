@@ -269,6 +269,10 @@ if has F; then
   timeout 90 "$G" --headless --fixed-fps 60 -s tools/training_test.gd > "$f" 2>&1
   line=$(grep "TRAINING-TEST" "$f" | tail -1)
   if echo "$line" | grep -q "TRAINING-TEST ok" && [ "$(errs "$f")" = "0" ]; then pass "F training: $(grep -h TRAINING-TEST "$f" | tr '\n' ' ')"; else fail "F training: '${line:-no result}' errors=$(errs "$f")"; fi
+  f="$OUT/fire.log"
+  timeout 100 "$G" --headless --fixed-fps 60 -s tools/fire_test.gd > "$f" 2>&1
+  line=$(grep -m1 "FIRE-TEST" "$f")
+  if echo "$line" | grep -q "FIRE-TEST ok" && [ "$(errs "$f")" = "0" ]; then pass "F every primary fires: $line"; else fail "F every primary fires: '${line:-no result}' errors=$(errs "$f")"; fi
   f="$OUT/kits.log"
   timeout 100 "$G" --headless --fixed-fps 60 -s tools/kit_test.gd > "$f" 2>&1
   line=$(grep -m1 "KIT-TEST" "$f")
