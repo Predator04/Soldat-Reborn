@@ -218,6 +218,9 @@ const WeaponPickup = preload("res://scripts/weapon_pickup.gd")
 const TouchControls = preload("res://scripts/touch_controls.gd")
 
 
+const FootAudio = preload("res://scripts/foot_audio.gd")
+
+
 func _ready() -> void:
 	# Terrain layer 3 (bit 4) = ported "only players collide" polys.
 	# Soldiers live on their own layer 4 (bit 8) and don't collide with each
@@ -227,6 +230,7 @@ func _ready() -> void:
 	collision_layer = 8
 	collision_mask = 1 | 4
 	add_to_group("soldier")
+	add_child(FootAudio.new())
 	ceasefire_t = CEASEFIRE_SECS
 	if cosmetics.is_empty():
 		cosmetics = {
@@ -399,6 +403,7 @@ func _physics_process(delta: float) -> void:
 	var x_now := Input.is_action_pressed("prone")
 	if x_now and not x_prev:
 		prone = not prone
+		Sfx.prone(global_position, prone)
 		if prone:
 			crouching = false
 	x_prev = x_now
@@ -412,7 +417,7 @@ func _physics_process(delta: float) -> void:
 		roll_cd = ROLL_COOLDOWN
 		roll_dir = signf(velocity.x)
 		velocity.x = roll_dir * ROLL_SPEED
-		Sfx.jump()
+		Sfx.roll(global_position)
 	s_prev = s_now
 	crouching = s_now and roll_t <= 0.0 and not climbing
 	_apply_stance_shape()
@@ -457,7 +462,7 @@ func _physics_process(delta: float) -> void:
 				velocity.y = JUMP_VEL * 0.55 * mg_off
 				coyote_t = 0.0
 				jump_buffer_t = 0.0
-				Sfx.jump()
+				Sfx.jump(global_position)
 
 	var dir := 0.0
 	if left:
@@ -559,7 +564,7 @@ func _physics_process(delta: float) -> void:
 			velocity.x = clampf(velocity.x * 1.06, -hop_cap, hop_cap)
 			coyote_t = 0.0
 			jump_buffer_t = 0.0
-			Sfx.jump()
+			Sfx.jump(global_position)
 
 		if not on_floor:
 			velocity.y += GRAVITY * mg * delta
@@ -671,7 +676,7 @@ func _physics_process(delta: float) -> void:
 			and g_held and not _g_held_prev and grenade_cd <= 0.0 and grenades > 0:
 		_cook_t = 0.0
 		_cook_cluster = use_cluster
-		Sfx.empty()   # pin click
+		Sfx.grenade_pull()
 	_g_held_prev = g_held
 
 	# shooting
@@ -954,6 +959,8 @@ func _switch_weapon(idx: int) -> void:
 		reloading = false
 		reload_t = 0.0
 	weapon_index = idx
+	if _sfx_at() == Sfx.NOWHERE:
+		Sfx.weapon_switch()
 	# Your last hotkey pick is also what you respawn with (limbo menu shows it).
 	if idx < 10:
 		Settings.spawn_primary = idx
@@ -985,6 +992,8 @@ func _toggle_secondary() -> void:
 		if _is_thrown(str(secondary[secondary_index]["name"])):
 			return
 	using_secondary = not using_secondary
+	if _sfx_at() == Sfx.NOWHERE:
+		Sfx.weapon_switch()
 	if reloading:
 		reloading = false
 		reload_t = 0.0
@@ -1111,7 +1120,7 @@ func _start_reload() -> void:
 		return
 	reloading = true
 	reload_t = float(w["reload"])
-	Sfx.reload(str(w["name"]))
+	Sfx.reload(str(w["name"]), _sfx_at())
 
 
 func _shoot() -> void:
@@ -1235,6 +1244,7 @@ func _drop_active_weapon() -> void:
 	var wname := str(w["name"])
 	var wmag := _active_mag()
 	_thrown[wname] = true
+	Sfx.throw_gun(_sfx_at())
 	# Mirror _throw_grenade: throwing a weapon (esp. a Knife pickup that deals
 	# contact damage) is an offensive action — drop spawn protection and break
 	# Predator invisibility so the thrower can't remain invulnerable/hidden.
@@ -1453,7 +1463,7 @@ func _explode_in_hand() -> void:
 
 func _throw_grenade(cook: float = 0.0) -> void:
 	grenades -= 1
-	Sfx.grenade_throw()
+	Sfx.grenade_throw(_sfx_at())
 	ceasefire_t = 0.0
 	_break_predator_if_active()
 	var toss := (aim_dir + Vector2(0, -0.55)).normalized()
@@ -1486,6 +1496,14 @@ func _shake(amount: float) -> void:
 	if mag <= 0.001:
 		return
 	shake = maxf(shake, amount * mag)
+
+
+# Where this soldier's sounds come from: the local player's own sounds play
+# centred at full volume; everyone else's are positional.
+func _sfx_at() -> Vector2:
+	if not multiplayer.has_multiplayer_peer() or is_multiplayer_authority():
+		return Sfx.NOWHERE
+	return global_position
 
 
 func take_damage(amount: float, killer := "", weapon := "", killer_team := -1) -> void:
@@ -1535,7 +1553,8 @@ func _die() -> void:
 			_cast("net_grenade", [global_position + Vector2(0, -8), Vector2(0, -60), 0.0, _cook_cluster, pid, left])
 		elif not Net.is_networked():
 			net_grenade(global_position + Vector2(0, -8), Vector2(0, -60), 0.0, _cook_cluster, 0, left)
-	Sfx.gib()
+	Sfx.gib(global_position)
+	Sfx.death(global_position, last_weapon.ends_with("(headshot)"))
 	if Net.is_networked():
 		# Host emits (not victim) so the kill is not lost if the dying client disconnects
 		# between take_damage and the RPC flush.
@@ -1692,7 +1711,7 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_
 	var is_explosive := kind == "rocket" or kind == "launcher"
 	muzzle_t = 0.10 if is_explosive else 0.08
 	_shake(6.0 if is_explosive else 3.5)
-	Sfx.shoot(str(w["name"]))
+	Sfx.shoot(str(w["name"]), _sfx_at())
 	if kind == "melee" or kind == "melee_cont":
 		var swing: Vector2 = dirs[0] if dirs.size() > 0 else aim_dir
 		var reach: float = float(w.get("range", 32.0))

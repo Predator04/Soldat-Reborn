@@ -95,7 +95,7 @@ func net_apply_fire(muzzle: Vector2, dir: Vector2, shooter_team: int, shooter_na
 	b.killer_name = shooter_name
 	b.weapon_name = "M2"
 	get_parent().add_child(b)
-	Sfx.shoot("Minigun")
+	Sfx.shoot("Minigun", muzzle)
 	if is_instance_valid(operator) and operator.has_method("_shake"):
 		operator._shake(1.8)
 

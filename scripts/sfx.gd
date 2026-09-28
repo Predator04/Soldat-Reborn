@@ -5,6 +5,14 @@ extends Node
 
 const SFX_DIR := "res://assets/sfx/"
 const POOL_SIZE := 14
+# World sounds (v1.18): pass `at` (a global position) and the sample plays from
+# there — quieter with distance, panned left/right. Vector2.INF = "on the
+# listener" (UI, your own confirmation cues).
+const POOL2D_SIZE := 28
+const HEAR_DIST := 2400.0       # near samples fade out to silence here
+const DIST_GUN_FROM := 1150.0   # beyond this, gunfire swaps to the dist-gun* tails
+const DIST_GUN_HEAR := 5200.0
+const NOWHERE := Vector2.INF
 
 # Mapping of a "logical event" -> a single sample filename (no path, no extension).
 # Weapons resolve through _weapon_fire / _weapon_reload — kept out of this table.
@@ -69,6 +77,11 @@ var _players: Array[AudioStreamPlayer] = []
 var _idx := 0
 var _jet_player: AudioStreamPlayer
 var _last_weapon := ""
+var _players2d: Array[AudioStreamPlayer2D] = []
+var _idx2d := 0
+var _last_at: Dictionary = {}   # throttle key -> msec of last play
+# Sample key -> times requested (tools/sound_test.gd reads this).
+var play_counts: Dictionary = {}
 
 
 func _ready() -> void:
@@ -76,6 +89,12 @@ func _ready() -> void:
 		var p := AudioStreamPlayer.new()
 		add_child(p)
 		_players.append(p)
+	for _i in POOL2D_SIZE:
+		var p2 := AudioStreamPlayer2D.new()
+		p2.max_distance = HEAR_DIST
+		p2.attenuation = 1.6
+		add_child(p2)
+		_players2d.append(p2)
 
 	_jet_player = AudioStreamPlayer.new()
 	_jet_player.volume_db = -12.0
@@ -95,14 +114,22 @@ func _ready() -> void:
 
 # ── Public API ──────────────────────────────────────────
 
-func shoot(weapon_name := "") -> void:
-	_last_weapon = weapon_name
+func shoot(weapon_name := "", at := NOWHERE) -> void:
+	if at == NOWHERE:
+		_last_weapon = weapon_name
 	var key := _weapon_fire_key(weapon_name)
-	_play_key(key, -6.0, randf_range(0.97, 1.03))
+	if at != NOWHERE and at.distance_to(listener_pos()) > DIST_GUN_FROM:
+		# Far-off firefight: Soldat's muffled distance tails, not the crisp shot.
+		if not _throttle("distgun", 70):
+			return
+		var far := "dist-m79" if weapon_name in ["M79", "LAW"] else "dist-gun%d" % (randi() % 4 + 1)
+		_play_far(far, -10.0, randf_range(0.95, 1.05), at)
+		return
+	_play_key(key, -6.0, randf_range(0.97, 1.03), at)
 
 
-func jump() -> void:
-	_play_event("jump", -10.0, randf_range(0.95, 1.05))
+func jump(at := NOWHERE) -> void:
+	_play_event("jump", -10.0, randf_range(0.95, 1.05), at)
 
 
 func jet(on: bool) -> void:
@@ -116,20 +143,26 @@ func jet(on: bool) -> void:
 		_jet_player.stop()
 
 
-func gib() -> void:
-	_play_event("gib", -4.0, randf_range(0.9, 1.1))
+func gib(at := NOWHERE) -> void:
+	_play_event("gib", -4.0, randf_range(0.9, 1.1), at)
+	_play_key("bonecrack", -8.0, randf_range(0.9, 1.1), at)
 
 
-func explode() -> void:
-	_play_event("explode", -2.0, randf_range(0.97, 1.03))
+func explode(at := NOWHERE) -> void:
+	if not _throttle("boom", 35):
+		return
+	if at != NOWHERE and at.distance_to(listener_pos()) > HEAR_DIST * 0.8:
+		_play_far("dist-grenade", -6.0, randf_range(0.95, 1.05), at)
+		return
+	_play_event("explode", -2.0, randf_range(0.97, 1.03), at)
 
 
-func reload(weapon_name := "") -> void:
+func reload(weapon_name := "", at := NOWHERE) -> void:
 	# Fall back to the last fired weapon only if the caller didn't specify one;
 	# otherwise switching weapons before firing would play the wrong reload sample.
 	var wn := weapon_name if weapon_name != "" else _last_weapon
 	var key := _weapon_reload_key(wn)
-	_play_key(key, -8.0, 1.0)
+	_play_key(key, -8.0, 1.0, at)
 
 
 func empty() -> void:
@@ -157,18 +190,113 @@ func hit() -> void:
 
 
 # Grenade throw arm-swing.
-func grenade_throw() -> void:
-	_play_event("grenade_throw", -10.0, 1.0)
+func grenade_throw(at := NOWHERE) -> void:
+	_play_event("grenade_throw", -10.0, 1.0, at)
 
 
 # M79 grenade impact — distinct, thumpier than the generic frag explosion.
-func m79_thump() -> void:
-	_play_event("m79_thump", -2.0, 1.0)
+func m79_thump(at := NOWHERE) -> void:
+	if at != NOWHERE and at.distance_to(listener_pos()) > HEAR_DIST * 0.8:
+		_play_far("dist-m79", -6.0, 1.0, at)
+		return
+	_play_event("m79_thump", -2.0, 1.0, at)
 
 
 # Cluster grenade explosion + child fragment cascade.
-func cluster_explode() -> void:
-	_play_event("cluster_explode", -2.0, 1.0)
+func cluster_explode(at := NOWHERE) -> void:
+	if at != NOWHERE and at.distance_to(listener_pos()) > HEAR_DIST * 0.8:
+		_play_far("dist-grenade", -6.0, 0.9, at)
+		return
+	_play_event("cluster_explode", -2.0, 1.0, at)
+
+
+# ── World events (v1.18) ────────────────────────────────
+
+# Footstep while running. Throttled per soldier by the caller's own cadence.
+func footstep(at: Vector2, crouched := false) -> void:
+	if crouched:
+		_play_key("crouch-move", -20.0, randf_range(0.9, 1.1), at)
+		return
+	_play_key("step" if randi() % 8 == 0 else "step%d" % (randi() % 7 + 2), -17.0, randf_range(0.9, 1.1), at)
+
+
+# Touchdown after a fall. `hard` for big drops.
+func land(at: Vector2, hard := false) -> void:
+	_play_key("fall-hard" if hard else "fall", -12.0 if hard else -15.0, randf_range(0.95, 1.05), at)
+
+
+# Bullet hitting terrain.
+func ricochet(at: Vector2) -> void:
+	if not _throttle("ric", 45):
+		return
+	_play_key("ric" if randi() % 7 == 0 else "ric%d" % (randi() % 6 + 2), -16.0, randf_range(0.9, 1.1), at)
+
+
+# An enemy round zipping past the local player's head.
+func whizz(at: Vector2) -> void:
+	if not _throttle("whizz", 90):
+		return
+	_play_key("bulletby" if randi() % 5 == 0 else "bulletby%d" % (randi() % 4 + 2), -10.0, randf_range(0.9, 1.1), at)
+
+
+# Pin pulled — start of a grenade cook.
+func grenade_pull() -> void:
+	_play_key("grenade-pullout", -8.0, 1.0)
+
+
+func grenade_bounce(at: Vector2) -> void:
+	if not _throttle("gbounce", 60):
+		return
+	_play_key("grenade-bounce", -12.0, randf_range(0.95, 1.08), at)
+
+
+# Death cry; headshots get the Soldat head-chop crunch on top.
+func death(at: Vector2, headshot := false) -> void:
+	_play_key(["playerdeath", "death2", "death3", "death"][randi() % 4], -8.0, randf_range(0.93, 1.07), at)
+	if headshot:
+		_play_key("headchop", -6.0, 1.0, at)
+
+
+func weapon_switch() -> void:
+	_play_key("changeweapon", -12.0, 1.0)
+
+
+func pickup(at := NOWHERE) -> void:
+	_play_key("pickupgun", -8.0, 1.0, at)
+
+
+func throw_gun(at := NOWHERE) -> void:
+	_play_key("throwgun", -10.0, 1.0, at)
+
+
+func roll(at: Vector2) -> void:
+	_play_key("roll", -12.0, 1.0, at)
+
+
+func prone(at: Vector2, down: bool) -> void:
+	_play_key("goprone" if down else "standup", -14.0, 1.0, at)
+
+
+func spawn(at: Vector2) -> void:
+	_play_key("spawn", -10.0, 1.0, at)
+
+
+func shell(at: Vector2, shotgun := false) -> void:
+	if not _throttle("shell", 110):
+		return
+	_play_key("gaugeshell" if shotgun else ("shell" if randi() % 2 == 0 else "shell2"), -22.0, randf_range(0.9, 1.1), at)
+
+
+func minigun_stop(at := NOWHERE) -> void:
+	_play_key("minigun-end", -8.0, 1.0, at)
+
+
+# Where the ears are: centre of what the local screen shows.
+func listener_pos() -> Vector2:
+	var vp := get_viewport()
+	if vp == null:
+		return Vector2.ZERO
+	return vp.get_canvas_transform().affine_inverse() * (vp.get_visible_rect().size * 0.5)
 
 
 # Flame short-range spray tick (looped by weapon, one call per shot).
@@ -214,18 +342,44 @@ func _weapon_reload_key(weapon_name: String) -> String:
 	return WEAPON_RELOAD.get(weapon_name, "clipin")
 
 
-func _play_event(event: String, vol_db: float, pitch: float) -> void:
+func _play_event(event: String, vol_db: float, pitch: float, at := NOWHERE) -> void:
 	var key: String = EVENT_FILES.get(event, "")
 	if key == "":
 		return
-	_play_key(key, vol_db, pitch)
+	_play_key(key, vol_db, pitch, at)
 
 
-func _play_key(file_key: String, vol_db: float, pitch: float) -> void:
+# Rate limiter for sounds that can fire dozens of times a frame (sprays, bots).
+func _throttle(key: String, min_ms: int) -> bool:
+	var now := Time.get_ticks_msec()
+	if now - int(_last_at.get(key, -100000)) < min_ms:
+		return false
+	_last_at[key] = now
+	return true
+
+
+func _play_far(file_key: String, vol_db: float, pitch: float, at: Vector2) -> void:
+	_play_key(file_key, vol_db, pitch, at, DIST_GUN_HEAR)
+
+
+func _play_key(file_key: String, vol_db: float, pitch: float, at := NOWHERE, hear := HEAR_DIST) -> void:
+	play_counts[file_key] = int(play_counts.get(file_key, 0)) + 1
 	if Settings.sfx_volume <= 0.0:
+		return
+	if at != NOWHERE and at.distance_to(listener_pos()) > hear:
 		return
 	var stream := _load(file_key)
 	if stream == null:
+		return
+	if at != NOWHERE:
+		var q := _players2d[_idx2d]
+		_idx2d = (_idx2d + 1) % _players2d.size()
+		q.stream = stream
+		q.max_distance = hear
+		q.global_position = at
+		q.volume_db = vol_db + _master_db()
+		q.pitch_scale = pitch
+		q.play()
 		return
 	var p := _players[_idx]
 	_idx = (_idx + 1) % _players.size()

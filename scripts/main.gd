@@ -1367,6 +1367,7 @@ func _spawn_player() -> void:
 	# and the grey overlay up over the new life.
 	if hud and hud.has_method("_hide_death"):
 		hud._hide_death()
+	Sfx.spawn(p.global_position)
 
 
 func _on_player_died() -> void:

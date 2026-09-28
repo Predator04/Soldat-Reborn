@@ -93,7 +93,7 @@ func _on_body_entered(body: Node) -> void:
 				picked = true
 		if picked:
 			_consumed = true
-			Sfx.ui()
+			Sfx.pickup(global_position)
 			queue_free()
 
 

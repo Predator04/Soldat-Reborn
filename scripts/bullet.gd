@@ -45,6 +45,7 @@ func _physics_process(delta: float) -> void:
 		direction = _velocity.normalized()
 	else:
 		position += direction * speed * delta
+	_whizz_check()
 	queue_redraw()
 
 
@@ -90,6 +91,7 @@ func _on_body_entered(body: Node) -> void:
 	_hit = true
 	if visual != "flame":
 		ImpactFx.spawn(get_parent(), global_position - direction * 3.0, -direction, "wall")
+		Sfx.ricochet(global_position)
 	queue_free()
 
 
@@ -178,3 +180,27 @@ func _load_sprite() -> void:
 	_sprite = _BULLET_TEX.get(stem, _BULLET_TEX.get("bullet"))
 	if _sprite != null:
 		_sprite_size = _sprite.get_size() * (1.0 / 3.0)
+
+
+# v1.18: an enemy round passing close to the local player's head zips by.
+var _whizz_done := false
+
+
+func _whizz_check() -> void:
+	if _whizz_done or visual == "flame":
+		return
+	var m := get_tree().current_scene
+	var pl = m.get("player") if m != null else null
+	if pl == null or not is_instance_valid(pl) or pl.get("dead") == true:
+		_whizz_done = true
+		return
+	if str(pl.get("display_name")) == killer_name:
+		_whizz_done = true
+		return
+	if int(pl.get("team")) == team and not MatchConfig.friendly_fire_on():
+		_whizz_done = true
+		return
+	var head: Vector2 = pl.global_position + Vector2(0, -14)
+	if global_position.distance_to(head) < 70.0:
+		_whizz_done = true
+		Sfx.whizz(global_position)

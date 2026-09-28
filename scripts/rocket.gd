@@ -152,9 +152,9 @@ func _explode() -> void:
 	if multiplayer.multiplayer_peer != null and is_multiplayer_authority():
 		_net_send("net_explode", [global_position])
 	if weapon_name == "M79":
-		Sfx.m79_thump()
+		Sfx.m79_thump(global_position)
 	else:
-		Sfx.explode()
+		Sfx.explode(global_position)
 	for s in get_tree().get_nodes_in_group("soldier"):
 		if not is_instance_valid(s):
 			continue

@@ -70,6 +70,7 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	queue_redraw()
+	_bounce_sfx(delta)
 	if multiplayer.multiplayer_peer == null:
 		return
 	if is_multiplayer_authority():
@@ -124,9 +125,9 @@ func _explode() -> void:
 	if multiplayer.multiplayer_peer != null and is_multiplayer_authority() and not is_fragment:
 		_net_send("net_explode", [global_position])
 	if cluster:
-		Sfx.cluster_explode()
+		Sfx.cluster_explode(global_position)
 	else:
-		Sfx.explode()
+		Sfx.explode(global_position)
 	var wname: String = "Cluster" if (cluster or is_fragment) else "Grenade"
 	for s in get_tree().get_nodes_in_group("soldier"):
 		if not is_instance_valid(s):
@@ -225,3 +226,22 @@ func _net_send(method: StringName, args: Array) -> void:
 				callv("rpc_id", [int(pid), method] + args)
 	else:
 		callv("rpc", [method] + args)
+
+
+# Clink on impact (v1.18): judged from how sharply the on-screen velocity turns,
+# so it also works on clients where the body is a kinematic replica.
+var _snd_prev := Vector2.INF
+var _snd_vel := Vector2.ZERO
+
+
+func _bounce_sfx(delta: float) -> void:
+	if delta <= 0.0 or _exploded:
+		return
+	if _snd_prev == Vector2.INF:
+		_snd_prev = global_position
+		return
+	var v := (global_position - _snd_prev) / delta
+	_snd_prev = global_position
+	if (v - _snd_vel).length() > 260.0 and _snd_vel.length() > 140.0:
+		Sfx.grenade_bounce(global_position)
+	_snd_vel = v

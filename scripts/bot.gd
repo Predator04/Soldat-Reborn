@@ -246,6 +246,9 @@ const Gostek = preload("res://scripts/gostek.gd")
 var jet_particles: CPUParticles2D
 
 
+const FootAudio = preload("res://scripts/foot_audio.gd")
+
+
 func _ready() -> void:
 	# Terrain layer 3 (bit 4) = ported "only players collide" polys.
 	# Soldiers live on their own layer 4 (bit 8) and don't collide with each
@@ -254,6 +257,7 @@ func _ready() -> void:
 	# mask bit 8 to keep hitting them.
 	collision_layer = 8
 	collision_mask = 1 | 4
+	add_child(FootAudio.new())
 	add_to_group("soldier")
 	tree_exited.connect(func() -> void: Gostek.forget(self))
 	_apply_skill()
@@ -599,7 +603,7 @@ func _physics_process(delta: float) -> void:
 			if not _refuel_wait and _bullet_incoming():
 				if on_floor:
 					velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
-					Sfx.jump()
+					Sfx.jump(global_position)
 				dodge_cd = 0.5
 
 		# jump / jet toward the target when it's above us
@@ -631,7 +635,7 @@ func _physics_process(delta: float) -> void:
 				if on_floor and jump_cd <= 0.0:
 					velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
 					jump_cd = 0.3
-					Sfx.jump()
+					Sfx.jump(global_position)
 				elif not on_floor and not falling_to_land and fuel > 0.0 and velocity.y > -330.0:
 					velocity.y += JET_THRUST * MatchConfig.mod_jet() * MatchConfig.mod_gravity() * delta
 					fuel = maxf(0.0, fuel - (40.0 / maxf(0.1, MatchConfig.mod_jet())) * delta)
@@ -643,7 +647,7 @@ func _physics_process(delta: float) -> void:
 				velocity.x = dir * maxf(RUN_SPEED * MatchConfig.mod_speed(), absf(velocity.x) * 1.08)
 				jump_cd = 0.35
 				_hop_cd = HOP_COOLDOWN
-				Sfx.jump()
+				Sfx.jump(global_position)
 		elif is_instance_valid(target) and seek_lad == null:
 			# Bunny-hop toward a distant target: on floor, target > 260 away, hop
 			# with a small horizontal boost so bots can actually close the gap.
@@ -651,13 +655,13 @@ func _physics_process(delta: float) -> void:
 			if dy < -50.0 and on_floor and jump_cd <= 0.0:
 				velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
 				jump_cd = 0.9
-				Sfx.jump()
+				Sfx.jump(global_position)
 			elif on_floor and jump_cd <= 0.0 and dist_h > 260.0 and _hop_cd <= 0.0:
 				velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
 				velocity.x = signf(dx) * maxf(RUN_SPEED * MatchConfig.mod_speed(), absf(velocity.x) * 1.08)
 				jump_cd = 0.35
 				_hop_cd = HOP_COOLDOWN
-				Sfx.jump()
+				Sfx.jump(global_position)
 			elif dy < -80.0 and not on_floor and fuel > 0.0:
 				velocity.y += JET_THRUST * MatchConfig.mod_jet() * MatchConfig.mod_gravity() * delta
 				fuel = maxf(0.0, fuel - (40.0 / maxf(0.1, MatchConfig.mod_jet())) * delta)
@@ -1019,7 +1023,7 @@ func _start_reload() -> void:
 	# Reload the ACTIVE weapon — the secondary has its own mag + reload time (#79).
 	var wname: String = "USSOCOM" if using_secondary else loadout
 	reload_t = float(AMMO_STATS.get(wname, AMMO_STATS["AK-74"])["reload"])
-	Sfx.reload(wname)
+	Sfx.reload(wname, global_position)
 
 
 func _shoot(to_t: Vector2) -> void:
@@ -1097,7 +1101,7 @@ func net_bot_shoot(muzzle: Vector2, aim: Vector2, proj_id: int = 0, weapon: Stri
 	# non-LAW bot fired AK-74 damage at BULLET_SPEED regardless of loadout.
 	var active_weapon: String = weapon if weapon != "" else ("USSOCOM" if using_secondary else loadout)
 	var stats: Dictionary = WEAPON_STATS.get(active_weapon, WEAPON_STATS["AK-74"])
-	Sfx.shoot(active_weapon)
+	Sfx.shoot(active_weapon, muzzle)
 	muzzle_t = 0.08
 	# Debug counter so --smoke-botfire can confirm the RPC reached the client.
 	if Net.is_client():
@@ -1148,7 +1152,7 @@ func net_bot_shoot(muzzle: Vector2, aim: Vector2, proj_id: int = 0, weapon: Stri
 
 @rpc("authority", "call_local", "reliable")
 func net_bot_grenade(g_pos: Vector2, g_vel: Vector2, g_ang: float, proj_id: int = 0) -> void:
-	Sfx.grenade_throw()
+	Sfx.grenade_throw(global_position)
 	if Net.is_client():
 		Net.bot_shots_seen += 1
 	var g := grenade_scene.instantiate()
@@ -1241,7 +1245,8 @@ func _die() -> void:
 	if dead:
 		return
 	dead = true
-	Sfx.gib()
+	Sfx.gib(global_position)
+	Sfx.death(global_position, last_weapon.ends_with("(headshot)"))
 	# MP host: route the kill through net_kill_feed (call_local) so clients get
 	# the feed line / streak banners too; SP emits locally.
 	if Net.is_networked() and Net.is_host() and last_killer != "" and multiplayer.has_multiplayer_peer():
@@ -1274,7 +1279,8 @@ func die_replica() -> void:
 		queue_free()
 		return
 	dead = true
-	Sfx.gib()
+	Sfx.gib(global_position)
+	Sfx.death(global_position, last_weapon.ends_with("(headshot)"))
 	if not Settings.lofi:
 		_spawn_gibs.call_deferred()
 		_spawn_ragdoll.call_deferred()
