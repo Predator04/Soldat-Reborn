@@ -1,0 +1,12 @@
+[
+ {
+  "title": "Grenade can't be held / cooked; should explode in hand if held too long",
+  "labels": [
+   "enhancement",
+   "area: gameplay"
+  ],
+  "commit": "dc4060e",
+  "version": "1.17.1",
+  "body": "Reported in play: the grenade was thrown the instant the key was pressed. Soldat lets you hold it (throw power builds) and kills you if you hold it past the fuse. Implemented: press = pin pulled + fuse starts, hold = harder throw, release = throw with remaining fuse, held past 2.2 s (cluster 1.9 s) = explodes in hand; fuse ring over the head; dropped live if you die holding it. tools/grenade_test.gd in gate stage F."
+ }
+]
