@@ -304,27 +304,7 @@ func _smoke_join() -> void:
 	# drive right for 2.5 s. SMOKE-DRIVE reports the seat the host granted and
 	# how far the buggy moved on this (the driving) peer.
 	if "--smoke-drive" in OS.get_cmdline_user_args():
-		get_tree().create_timer(4.0).timeout.connect(func() -> void:
-			var mn = get_tree().current_scene
-			var vs: Array = get_tree().get_nodes_in_group("vehicle")
-			if mn == null or mn.get("player") == null or vs.is_empty():
-				print("SMOKE-DRIVE none vehicles=%d" % vs.size())
-				return
-			var pl = mn.player
-			var v = vs[0]
-			pl.global_position = v.global_position + Vector2(-16, -12)
-			pl.velocity = Vector2.ZERO
-			var x0: float = v.global_position.x
-			get_tree().create_timer(0.3).timeout.connect(func() -> void:
-				if is_instance_valid(v) and is_instance_valid(pl):
-					v.request_enter(pl))
-			get_tree().create_timer(1.3).timeout.connect(func() -> void:
-				Input.action_press("move_right"))
-			get_tree().create_timer(3.8).timeout.connect(func() -> void:
-				Input.action_release("move_right")
-				if is_instance_valid(v) and is_instance_valid(pl):
-					print("SMOKE-DRIVE seat=%d moved=%d vehicles=%d hp=%d" % [v.seat_of(pl), int(v.global_position.x - x0), vs.size(), int(v.hp)])
-					v.request_exit(pl)))
+		get_tree().create_timer(3.0).timeout.connect(_smoke_drive.bind(0))
 	if "--smoke-die" in OS.get_cmdline_user_args():
 		get_tree().create_timer(4.0).timeout.connect(func() -> void:
 			var mn = get_tree().current_scene
@@ -872,3 +852,41 @@ func lan_ips() -> Array:
 			out.append(ip)
 	out.sort()
 	return out
+
+
+# (--smoke-drive) The join can take a few seconds on a busy machine: wait for
+# the buggies and our body before starting.
+func _smoke_drive(tries: int) -> void:
+	var mn = get_tree().current_scene
+	var vs: Array = get_tree().get_nodes_in_group("vehicle")
+	if mn == null or mn.get("player") == null or not is_instance_valid(mn.player) or vs.is_empty():
+		if tries < 16:
+			get_tree().create_timer(0.5).timeout.connect(_smoke_drive.bind(tries + 1))
+		else:
+			print("SMOKE-DRIVE none vehicles=%d" % vs.size())
+		return
+	var pl = mn.player
+	var v = vs[0]
+	pl.global_position = v.global_position + Vector2(-16, -12)
+	pl.velocity = Vector2.ZERO
+	var x0: float = v.global_position.x
+	var nv: int = vs.size()
+	# Instance ids, not node captures (a freed capture logs an engine error).
+	var vid: int = v.get_instance_id()
+	var pid: int = pl.get_instance_id()
+	get_tree().create_timer(0.3).timeout.connect(func() -> void:
+		var v2 = instance_from_id(vid)
+		var p2 = instance_from_id(pid)
+		if v2 != null and p2 != null:
+			v2.request_enter(p2))
+	get_tree().create_timer(1.3).timeout.connect(func() -> void:
+		Input.action_press("move_right"))
+	get_tree().create_timer(3.8).timeout.connect(func() -> void:
+		Input.action_release("move_right")
+		var v2 = instance_from_id(vid)
+		var p2 = instance_from_id(pid)
+		if v2 != null and p2 != null:
+			print("SMOKE-DRIVE seat=%d moved=%d vehicles=%d hp=%d" % [v2.seat_of(p2), int(v2.global_position.x - x0), nv, int(v2.hp)])
+			v2.request_exit(p2)
+		else:
+			print("SMOKE-DRIVE lost body (killed during the drive) vehicles=%d" % nv))

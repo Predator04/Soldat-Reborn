@@ -2154,26 +2154,26 @@ func _handle_client_ready(sender_id: int, joiner_name: String = "", client_versi
 		rpc_id(sender, "net_gg_state_sync", _gg_levels)
 	# tell the new peer about all currently living players
 	for existing_id in _players_by_id.keys():
-		var p: Node = _players_by_id[existing_id]
+		var p = _players_by_id[existing_id]
 		if not is_instance_valid(p) or bool(p.get("dead")):
 			continue   # dead husks respawn through the normal broadcast
 		rpc_id(sender, "net_spawn_player", existing_id, p.position, p.display_name, int(p.team))
 	# Mirror every live bot to the joining peer so they see the current roster
 	# (dedicated server pre-populates before any client connects — issue #55).
 	for bid in _bots_by_id.keys():
-		var b: Node = _bots_by_id[bid]
+		var b = _bots_by_id[bid]
 		if not is_instance_valid(b):
 			continue
 		rpc_id(sender, "net_spawn_bot", int(bid), b.position, int(b.team), str(b.display_name), str(b.loadout), b.cosmetics)
 	# Mirror every live bonus box (#78) so the joiner sees the same crates.
 	for bid in _bonus_boxes.keys():
-		var box: Node = _bonus_boxes[bid]
+		var box = _bonus_boxes[bid]
 		if not is_instance_valid(box):
 			continue
 		rpc_id(sender, "net_bonus_spawn", int(bid), box.position, str(box.get("bonus_kind")))
 	# Buggies (v1.19): where they are, their health, who's in them.
 	for vid in _vehicles.keys():
-		var v: Node = _vehicles[vid]
+		var v = _vehicles[vid]
 		if not is_instance_valid(v):
 			continue
 		rpc_id(sender, "net_vehicle_spawn", int(vid), v.get("spawn_pos"), (v as Node2D).global_position, float(v.get("hp")), bool(v.get("alive")))
@@ -3577,7 +3577,7 @@ func cancel_vote() -> void:
 
 func _peer_display_name(peer_id: int) -> String:
 	if _players_by_id.has(peer_id):
-		var p: Node = _players_by_id[peer_id]
+		var p = _players_by_id[peer_id]
 		if is_instance_valid(p):
 			return str(p.display_name)
 	if peer_id == 1:
@@ -3627,14 +3627,14 @@ func _resolve_vote_kick_arg(arg: String) -> int:
 		return 0
 	var needle := s.to_lower()
 	for pid in _players_by_id.keys():
-		var p: Node = _players_by_id[pid]
+		var p = _players_by_id[pid]
 		if not is_instance_valid(p):
 			continue
 		if str(p.display_name).to_lower() == needle:
 			return int(pid)
 	# Partial contains-match as a fallback (typing /votekick red matches "Red 3").
 	for pid in _players_by_id.keys():
-		var p: Node = _players_by_id[pid]
+		var p = _players_by_id[pid]
 		if not is_instance_valid(p):
 			continue
 		if str(p.display_name).to_lower().find(needle) >= 0:
@@ -3877,7 +3877,7 @@ func _make_bonus_box_local(bid: int, pos: Vector2, kind: String, slot_idx: int) 
 	# Idempotent: if a box with this id already exists (e.g., late client spawn
 	# arrived after we joined), free it before mounting the replacement.
 	if _bonus_boxes.has(bid):
-		var old: Node = _bonus_boxes[bid]
+		var old = _bonus_boxes[bid]
 		if is_instance_valid(old):
 			old.queue_free()
 	var box: Area2D = BonusPickup.new()
@@ -3922,7 +3922,7 @@ func _on_bonus_touched(body: Node, bid: int, slot_idx: int) -> void:
 	# Apply the effect via the target player's call_local RPC so every peer's
 	# replica of that soldier ticks the same effect state.
 	if _players_by_id.has(peer_id):
-		var p: Node = _players_by_id[peer_id]
+		var p = _players_by_id[peer_id]
 		if is_instance_valid(p) and p.has_method("apply_bonus"):
 			p.apply_bonus(kind, BONUS_EFFECT_DURATION)
 	elif not Net.is_networked() and is_instance_valid(player):
@@ -4154,7 +4154,7 @@ func _broadcast_bot_state() -> void:
 	#         reloading, muzzle_t, ceasefire, using_secondary, secondary_ammo]
 	var arr: Array = []
 	for bid in _bots_by_id.keys():
-		var b: Node = _bots_by_id[bid]
+		var b = _bots_by_id[bid]
 		if not is_instance_valid(b):
 			continue
 		arr.append([
@@ -4261,7 +4261,7 @@ func net_bot_state(arr: Array) -> void:
 		var id: int = int(entry[0])
 		if not _bots_by_id.has(id):
 			continue
-		var b: Node = _bots_by_id[id]
+		var b = _bots_by_id[id]
 		if not is_instance_valid(b):
 			continue
 		var pos_v: Variant = entry[1]

@@ -4,7 +4,7 @@ All notable changes to Soldat Reborn.
 
 ## [1.19.0] — 2026-09-28
 
-Gate run 25: 49/49 passed (CTF sweep with buggies on the maps: 206 grabs, 30 captures, 645 kills, 2 falls, 0 errors).
+Gate run 26: all stages passed (CTF sweep with buggies on the maps: 218 grabs, 30 captures, 608 kills, 7 falls, 0 errors).
 
 ### Added
 - **Buggies.** A two-seat ground vehicle on 87 of the 99 classic maps (on long stretches of open ground near each team's base, found by `tools/place_vehicles.py`) and on the three built-in arenas.
@@ -24,6 +24,7 @@ Gate run 25: 49/49 passed (CTF sweep with buggies on the maps: 206 grabs, 30 cap
 - A probe of every map with buggies (0–101): every buggy spawns on the ground and stays put until someone drives it.
 
 ### Fixed
+- A listen host could log "Trying to assign invalid previously freed instance" when someone joined right as the host's own body was being replaced (typed dictionary reads in Main); those reads are untyped and checked now.
 - Pickups crashed ("Nonexistent 'bool' constructor") when something that isn't a soldier drove through them.
 
 ## [1.18.0] — 2026-09-28
