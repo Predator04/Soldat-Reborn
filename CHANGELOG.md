@@ -4,7 +4,7 @@ All notable changes to Soldat Reborn.
 
 ## [1.18.0] — 2026-09-28
 
-Content and sound pass, plus a Barrett fix. Gate run 22: 46/46 passed (CTF sweep 208 grabs, 34 captures, 599 kills, 5 falls, 0 errors).
+Content and sound pass, plus a Barrett fix. Gate run 23: 47/47 passed (CTF sweep 206 grabs, 34 captures, 606 kills, 6 falls, 0 errors).
 
 ### Added
 - **Medikits and grenade kits** on all 99 classic maps, at the spots the original map makers placed them (read from the Soldat `.pms` files). A medikit heals you to full, a grenade kit refills you to 3 grenades; each comes back 25 s after it's taken. You can't waste one: at full health you walk past a medikit. Bots use them too and head for one when they're hurt or out of grenades. Bonus crates now use Soldat's own kit sprites.
