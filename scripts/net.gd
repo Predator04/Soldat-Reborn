@@ -364,7 +364,7 @@ func _smoke_join() -> void:
 		if _mn != null:
 			var _names := []
 			for _c in _mn.get_children():
-				if _c is CharacterBody2D and _c.get("loadout") == null:
+				if _c is CharacterBody2D and _c.get("loadout") == null and not _c.is_in_group("vehicle"):
 					_names.append(str(_c.name))
 			print("SMOKE-JOIN-PLAYERS ", _names)
 			var lp = _mn.get("player")

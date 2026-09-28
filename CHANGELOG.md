@@ -4,6 +4,8 @@ All notable changes to Soldat Reborn.
 
 ## [1.19.0] — 2026-09-28
 
+Gate run 25: 49/49 passed (CTF sweep with buggies on the maps: 206 grabs, 30 captures, 645 kills, 2 falls, 0 errors).
+
 ### Added
 - **Buggies.** A two-seat ground vehicle on 87 of the 99 classic maps (on long stretches of open ground near each team's base, found by `tools/place_vehicles.py`) and on the three built-in arenas.
   - Walk up and press **F**: the first person in drives (A/D, W hops over bumps), the second mans the machine gun on the roll bar. A driver on their own can also fire the gun (mouse / right stick / touch aim). **F** again gets you out.
