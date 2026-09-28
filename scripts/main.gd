@@ -332,7 +332,7 @@ var MAPS := [
 		"bot_spawns": [Vector2(3688, 1340), Vector2(3835, 1160), Vector2(2500, 1130), Vector2(3578, 1540)],
 		"m2_mounts": [Vector2(2500, 1380), Vector2(700, 1040), Vector2(4120, 1040)],
 		"ctf_flags": [Vector2(710, 1900), Vector2(4090, 1900)],
-		"vehicle_spawns": [Vector2(710, 1900), Vector2(4090, 1900)],
+		"vehicle_spawns": [Vector2(710, 1900), Vector2(4090, 1900)], "tank_spawns": [Vector2(308, 1900), Vector2(3688, 1900)],
 		"inf_flag": Vector2(2400, 1710), "htf_flag": Vector2(2400, 1710),
 		"dom_points": [Vector2(700, 1870), Vector2(2500, 1360), Vector2(4100, 1870)],
 		# (Flat texture-square "scenery" decals removed in 1.13 — they read as
@@ -408,6 +408,7 @@ var kits_taken := 0
 
 
 const Buggy = preload("res://scripts/buggy.gd")
+const Tank = preload("res://scripts/tank.gd")
 var _vehicles: Dictionary = {}   # vehicle_id -> buggy node (every peer)
 
 
@@ -2176,7 +2177,7 @@ func _handle_client_ready(sender_id: int, joiner_name: String = "", client_versi
 		var v = _vehicles[vid]
 		if not is_instance_valid(v):
 			continue
-		rpc_id(sender, "net_vehicle_spawn", int(vid), v.get("spawn_pos"), (v as Node2D).global_position, float(v.get("hp")), bool(v.get("alive")))
+		rpc_id(sender, "net_vehicle_spawn", int(vid), v.get("spawn_pos"), (v as Node2D).global_position, float(v.get("hp")), bool(v.get("alive")), str(v.get("kind")))
 		var seats: Array = v.get("seats")
 		for i in seats.size():
 			if not is_instance_valid(seats[i]):
@@ -4312,25 +4313,26 @@ func _spawn_vehicles() -> void:
 		return
 	if not Settings.vehicles or Settings.game_mode == Settings.MODE_GG:
 		return
-	var spots: Array = _map.get("vehicle_spawns", [])
 	var vid := 0
-	for v in spots:
-		var p: Vector2 = v if v is Vector2 else Vector2(float(v[0]), float(v[1]))
-		_make_vehicle(vid, p + Vector2(0, -4), p + Vector2(0, -4), Buggy.MAX_HP, true)
-		vid += 1
+	for pair in [["vehicle_spawns", "buggy"], ["tank_spawns", "tank"]]:
+		for v in _map.get(pair[0], []):
+			var p: Vector2 = v if v is Vector2 else Vector2(float(v[0]), float(v[1]))
+			_make_vehicle(vid, p + Vector2(0, -4), p + Vector2(0, -4), -1.0, true, pair[1])
+			vid += 1
 
 
-func _make_vehicle(vid: int, spawn: Vector2, pos: Vector2, hp_v: float, alive_v: bool) -> Node:
+func _make_vehicle(vid: int, spawn: Vector2, pos: Vector2, hp_v: float, alive_v: bool, kind := "buggy") -> Node:
 	if _vehicles.has(vid) and is_instance_valid(_vehicles[vid]):
 		_vehicles[vid].queue_free()
-	var b := Buggy.new()
-	b.name = "Buggy_%d" % vid
+	var b = Tank.new() if kind == "tank" else Buggy.new()
+	b.name = "%s_%d" % ["Tank" if kind == "tank" else "Buggy", vid]
 	b.vehicle_id = vid
 	b.position = spawn
 	add_child(b)
 	b.spawn_pos = spawn
 	b.global_position = pos
-	b.hp = hp_v
+	if hp_v >= 0.0:
+		b.hp = hp_v
 	if alive_v and spawn.distance_to(pos) < 1.0:
 		b.unstick()
 		b.spawn_pos = b.global_position
@@ -4474,10 +4476,10 @@ func net_vehicle_seat(vid: int, seat: int, peer: int, enter: bool) -> void:
 
 
 @rpc("any_peer", "call_remote", "reliable")
-func net_vehicle_spawn(vid: int, spawn: Vector2, pos: Vector2, hp_v: float, alive_v: bool) -> void:
+func net_vehicle_spawn(vid: int, spawn: Vector2, pos: Vector2, hp_v: float, alive_v: bool, kind: String = "buggy") -> void:
 	if not _from_host():
 		return
-	_make_vehicle(vid, spawn, pos, hp_v, alive_v)
+	_make_vehicle(vid, spawn, pos, hp_v, alive_v, kind)
 
 
 @rpc("any_peer", "call_remote", "unreliable_ordered")
@@ -4538,12 +4540,12 @@ func net_vehicle_respawn(vid: int) -> void:
 
 
 # Run-over damage, decided by the host; the victim's owner applies it.
-func vehicle_hit_soldier(s: Node, dmg: float, killer: String, killer_team: int, vel: Vector2) -> void:
+func vehicle_hit_soldier(s: Node, dmg: float, killer: String, killer_team: int, vel: Vector2, weapon := "Buggy") -> void:
 	if not Net.is_networked() or s.is_multiplayer_authority():
 		s.set("ceasefire_t", 0.0)
-		s.take_damage(dmg, killer, "Buggy", killer_team)
+		s.take_damage(dmg, killer, weapon, killer_team)
 		if s.get("dead") != true:
 			s.set("velocity", Vector2(vel.x * 0.9, -260.0))
 		return
 	if s.has_method("net_vehicle_hurt"):
-		s.rpc_id(int(s.get_multiplayer_authority()), "net_vehicle_hurt", dmg, killer, killer_team, vel)
+		s.rpc_id(int(s.get_multiplayer_authority()), "net_vehicle_hurt", dmg, killer, killer_team, vel, weapon)

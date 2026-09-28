@@ -67,7 +67,7 @@ func _ready() -> void:
 	pg.columns = 2
 	pg.add_theme_constant_override("h_separation", 14)
 	pg.add_theme_constant_override("v_separation", 1)
-	for k in ["medkit", "grenades", "vest", "predator", "berserker", "cluster", "buggy"]:
+	for k in ["medkit", "grenades", "vest", "predator", "berserker", "cluster", "buggy", "tank"]:
 		var n := Label.new()
 		n.text = GameInfo.item_label(k)
 		n.add_theme_color_override("font_color", BonusPickup.kind_color(k))

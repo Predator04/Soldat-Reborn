@@ -1271,13 +1271,13 @@ func _find_ladder_overlap() -> Node2D:
 	return closest
 
 
-# Run over by a buggy: the host decides, the victim's own peer applies it.
+# Run over by a buggy or tank: the host decides, the victim's own peer applies it.
 @rpc("any_peer", "call_remote", "reliable")
-func net_vehicle_hurt(dmg: float, killer: String, killer_team: int, vel: Vector2) -> void:
+func net_vehicle_hurt(dmg: float, killer: String, killer_team: int, vel: Vector2, weapon: String) -> void:
 	if multiplayer.get_remote_sender_id() != 1 or not is_multiplayer_authority():
 		return
 	ceasefire_t = 0.0
-	take_damage(dmg, killer, "Buggy", killer_team)
+	take_damage(dmg, killer, weapon if weapon in ["Buggy", "Tank"] else "Buggy", killer_team)
 	if not dead:
 		velocity = Vector2(vel.x * 0.9, -260.0)
 

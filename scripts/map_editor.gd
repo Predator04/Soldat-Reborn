@@ -33,6 +33,7 @@ enum Tool {
 	WEAPON_PICKUP, BONUS_BOX, POINT_PICKUP, RAMBO,
 	INF_FLAG, HTF_FLAG,
 	BUGGY,   # v1.19 vehicle spawn
+	TANK,    # v1.20 tank spawn
 }
 
 # Weapon names offered by the WEAPON_PICKUP tool. Order mirrors the Gun Game
@@ -119,6 +120,7 @@ const EDITOR_TIPS := {
 	"Flag Ctr": "The single neutral flag (Hold the Flag / Infiltration fallback).",
 	"Dom Pt": "A Domination control point.",
 	"M2": "A mounted M2 machine gun (press F next to it in game).",
+	"Tank": "A tank spawn. Wide maps only: it needs a long, flat run (1600px+) and room for its turret.",
 	"Buggy": "A buggy spawn. Put it on a long stretch of open ground (it needs room to drive).",
 	"Poly": "Click points to draw a free-form terrain shape; Enter closes it, Backspace removes the last point.",
 	"Scenery": "Place a decoration (no collision).",
@@ -275,6 +277,8 @@ func _draw() -> void:
 		_draw_marker(m, Color(0.6, 0.9, 0.9), "M2", 22.0)
 	for vb in _map.get("vehicle_spawns", []):
 		_draw_marker(vb, Color(0.95, 0.85, 0.5), "CAR", 30.0)
+	for tb in _map.get("tank_spawns", []):
+		_draw_marker(tb, Color(0.8, 0.85, 0.55), "TNK", 34.0)
 	# Pickups: weapon / bonus / point.
 	for wp in _map.get("weapon_pickups", []):
 		var pos_wp: Vector2 = wp.get("pos", Vector2.ZERO)
@@ -546,6 +550,10 @@ func _on_lmb_press(mp: Vector2) -> void:
 			var arrv: Array = _map.get("vehicle_spawns", [])
 			arrv.append(_snap(mp))
 			_map["vehicle_spawns"] = arrv
+		Tool.TANK:
+			var arrt: Array = _map.get("tank_spawns", [])
+			arrt.append(_snap(mp))
+			_map["tank_spawns"] = arrt
 		Tool.TERRAIN_POLY:
 			# Click adds a vertex; Enter commits, right-click deletes existing poly.
 			_poly_pts.append(_snap(mp))
@@ -687,6 +695,10 @@ func _find_at(mp: Vector2) -> Array:
 	for i in vsp.size():
 		if mp.distance_to(vsp[i]) < 36.0:
 			return ["vehicle_spawns", i]
+	var tsp: Array = _map.get("tank_spawns", [])
+	for i in tsp.size():
+		if mp.distance_to(tsp[i]) < 40.0:
+			return ["tank_spawns", i]
 	var wps: Array = _map.get("weapon_pickups", [])
 	for i in wps.size():
 		var pos_wp: Vector2 = wps[i].get("pos", Vector2.ZERO)
@@ -842,6 +854,7 @@ func _build_ui() -> void:
 		["Dom Pt", Tool.DOM_POINT],
 		["M2", Tool.M2_MOUNT],
 		["Buggy", Tool.BUGGY],
+		["Tank", Tool.TANK],
 		# #113 additions.
 		["Poly", Tool.TERRAIN_POLY],
 		["Scenery", Tool.SCENERY],
@@ -1185,6 +1198,7 @@ func _tool_name(t: int) -> String:
 		Tool.DOM_POINT: return "Dom Point"
 		Tool.M2_MOUNT: return "M2 Mount"
 		Tool.BUGGY: return "Buggy (place on long, open ground)"
+		Tool.TANK: return "Tank (wide maps: long, flat ground)"
 		Tool.TERRAIN_POLY: return "Terrain Poly (click verts, Enter to close)"
 		Tool.SCENERY: return "Scenery (from palette)"
 		Tool.WEAPON_PICKUP: return "Weapon Pickup (from palette)"

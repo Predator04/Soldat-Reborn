@@ -20,11 +20,13 @@ import map_audit as MA
 R = MA.R
 CAR_W, CAR_H = 64.0, 30.0
 MIN_RUN = 700.0          # px of continuous drivable ground
+TANK_W, TANK_H = 90.0, 32.0
+TANK_MIN_RUN = 1600.0    # tanks only on wide maps with a long ground stretch
 
 
-def runs(m):
+def runs(m, w=CAR_W, h=CAR_H):
     sp = MA.Space(m)
-    car = MA.fits(sp.solid, CAR_W, CAR_H)
+    car = MA.fits(sp.solid, w, h)
     # Real ground: solid terrain right under the box. ("The box doesn't fit one
     # row lower" was also true just above the kill-line cut-off, which put
     # buggies on thin air over the void on half the maps.)
@@ -58,7 +60,7 @@ def runs(m):
         Rr[:, x] = gi[:, x] * (1 + best)
     tot = (L + Rr - 1) * R
     # Stay a car length away from the ends of the stretch.
-    edge_ok = (np.minimum(L, Rr) * R) >= CAR_W * 1.5
+    edge_ok = (np.minimum(L, Rr) * R) >= w * 1.5
     return sp, tot, edge_ok
 
 
@@ -101,25 +103,63 @@ def pick(m):
     return out, float(score.max())
 
 
+def pick_tank(m, avoid):
+    """One tank per team base on team maps (else one), on a run of at least
+    TANK_MIN_RUN px, kept 400 px away from the buggy spots."""
+    sp, tot, edge_ok = runs(m, TANK_W, TANK_H)
+    ok = (tot >= TANK_MIN_RUN) & edge_ok
+    ys, xs = np.nonzero(ok)
+    if len(xs) == 0:
+        return []
+    pts = np.stack([xs * R, ys * R], 1)
+    score = tot[ys, xs]
+    keep = np.ones(len(xs), bool)
+    for a in avoid:
+        keep &= np.hypot(pts[:, 0] - a[0], pts[:, 1] - a[1]) > 400
+    if not keep.any():
+        return []
+    pts, score = pts[keep], score[keep]
+    out = []
+    bs = bases(m)
+    if len(bs) == 2:
+        for bx, by in bs:
+            d = np.hypot(pts[:, 0] - bx, pts[:, 1] - by)
+            i = int(np.argmin(d - score * 0.3))
+            out.append([round(float(pts[i, 0]), 1), round(float(pts[i, 1]), 1)])
+        if abs(out[0][0] - out[1][0]) + abs(out[0][1] - out[1][1]) < 600:
+            return []   # both bases would share one spot: unfair, skip
+    else:
+        i = int(np.argmax(score))
+        out.append([round(float(pts[i, 0]), 1), round(float(pts[i, 1]), 1)])
+    return out
+
+
 def main(argv):
     dry = "--dry" in argv
     if "--builtin" in argv:
         for m in MA.builtin_maps():
-            print(m["name"], pick(m))
+            sp_, _ = pick(m)
+            print(m["name"], sp_, "tank", pick_tank(m, sp_))
         return
-    n = 0
+    n = nt = 0
     for f in sorted(glob.glob(os.path.join(MA.GAME, "assets", "maps", "*.json"))):
         m = json.load(open(f, encoding="utf-8"))
         spots, best = pick(m)
+        tanks = pick_tank(m, spots) if spots else []
         n += 1 if spots else 0
-        print("%-12s best_run=%5dpx spots=%s" % (os.path.basename(f)[:-5], best, spots))
+        nt += 1 if tanks else 0
+        print("%-12s best_run=%5dpx spots=%s tanks=%s" % (os.path.basename(f)[:-5], best, spots, tanks))
         if not dry:
             if spots:
                 m["vehicle_spawns"] = spots
             else:
                 m.pop("vehicle_spawns", None)
+            if tanks:
+                m["tank_spawns"] = tanks
+            else:
+                m.pop("tank_spawns", None)
             json.dump(m, open(f, "w", encoding="utf-8"), indent=2)
-    print("maps with vehicles: %d" % n)
+    print("maps with vehicles: %d, with tanks: %d" % (n, nt))
 
 
 if __name__ == "__main__":

@@ -91,6 +91,7 @@ static func kind_color(k: String) -> Color:
 		"medkit": return Color(0.45, 1.0, 0.45)
 		"grenades": return Color(0.8, 0.9, 0.5)
 		"buggy": return Color(0.95, 0.85, 0.5)
+		"tank": return Color(0.8, 0.85, 0.55)
 	return Color(1, 1, 1)
 
 

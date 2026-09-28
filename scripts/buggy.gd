@@ -9,38 +9,46 @@ extends CharacterBody2D
 ## respawn). Movement is simulated by whoever is driving (the host when
 ## nobody is) and streamed to everyone else through Main's net_vehicle_* RPCs.
 
-const MAX_HP := 350.0
-const ACCEL := 820.0
-const MAX_SPEED := 520.0
-const REVERSE_SPEED := 260.0
-const BRAKE := 1100.0
-const ROLL_DRAG := 260.0
-const AIR_CONTROL := 0.25
-const GRAVITY := 1700.0
-const HOP_VEL := -430.0
-const ENTER_RADIUS := 56.0
-const RUNOVER_MIN_SPEED := 190.0
-const GUN_RATE := 0.075
-const GUN_DAMAGE := 14.0
-const GUN_SPEED := 1450.0
-const GUN_SPREAD := 0.035
-const HEAT_PER_SHOT := 0.035    # ~2 s of continuous fire to overheat
-const HEAT_COOL := 0.45         # per second
-const RESPAWN_TIME := 25.0
-const EXPLODE_RADIUS := 150.0
-const EXPLODE_DAMAGE := 120.0
-const EXPLOSIVE_MUL := 1.6      # rockets / grenades hurt it more than bullets
+var MAX_HP := 350.0
+var ACCEL := 820.0
+var MAX_SPEED := 520.0
+var REVERSE_SPEED := 260.0
+var BRAKE := 1100.0
+var ROLL_DRAG := 260.0
+var AIR_CONTROL := 0.25
+var GRAVITY := 1700.0
+var HOP_VEL := -430.0
+var ENTER_RADIUS := 56.0
+var RUNOVER_MIN_SPEED := 190.0
+var GUN_RATE := 0.075
+var GUN_DAMAGE := 14.0
+var GUN_SPEED := 1450.0
+var GUN_SPREAD := 0.035
+var HEAT_PER_SHOT := 0.035    # ~2 s of continuous fire to overheat
+var HEAT_COOL := 0.45         # per second
+var RESPAWN_TIME := 25.0
+var EXPLODE_RADIUS := 150.0
+var EXPLODE_DAMAGE := 120.0
+var EXPLOSIVE_MUL := 1.6      # rockets / grenades hurt it more than bullets
 # Driving and shooting at once (no gunner): slower and sloppier. A crew of
 # two is the strong way to run a buggy.
-const SOLO_FIRE_SPEED := 0.5    # top speed while the solo driver holds the trigger
-const SOLO_FIRE_SPREAD := 2.2   # spread multiplier for a solo driver
-const BOT_GUN_RANGE := 900.0
+var SOLO_FIRE_SPEED := 0.5    # top speed while the solo driver holds the trigger
+var SOLO_FIRE_SPREAD := 2.2   # spread multiplier for a solo driver
+var BOT_GUN_RANGE := 900.0
 
 # Seat offsets (local, facing right, before tilt). The soldier's origin sits
 # here; the body is drawn over their legs so they look seated.
-const SEATS := [Vector2(4, -30), Vector2(-24, -34)]
+var SEATS := [Vector2(4, -30), Vector2(-24, -34)]
 
 var vehicle_id := -1
+var kind := "buggy"             # "buggy" | "tank" (subclass)
+var LABEL := "BUGGY"
+var LABEL_LIFT := 44.0
+var SHAPE_R := 11.0
+var SHAPE_LEN := 62.0
+var ENGINE_PITCH := 0.55
+var RUNOVER_DMG_PER_SPEED := 0.3
+var BULLET_ARMOR := 1.0         # damage multiplier for non-explosive hits
 var spawn_pos := Vector2.ZERO
 var hp := MAX_HP
 var alive := true
@@ -73,6 +81,7 @@ var _bd_last_x := 0.0
 var _bd_stuck_t := 0.0
 var _bd_hop := false
 
+const EXPLOSIVE_WEAPONS := ["LAW", "M79", "Grenade", "Cluster", "Tank", "Buggy"]
 const _BARREL_TEX := preload("res://assets/weapons-gfx/m2.png")
 const TouchControls = preload("res://scripts/touch_controls.gd")
 
@@ -85,18 +94,18 @@ func _ready() -> void:
 	collision_mask = 1 | 4
 	var cs := CollisionShape2D.new()
 	var cap := CapsuleShape2D.new()
-	cap.radius = 11.0
-	cap.height = 62.0
+	cap.radius = SHAPE_R
+	cap.height = SHAPE_LEN
 	cs.shape = cap
 	cs.rotation = PI / 2.0
-	cs.position = Vector2(0, -11)
+	cs.position = Vector2(0, -SHAPE_R)
 	add_child(cs)
 	floor_max_angle = deg_to_rad(58.0)
 	floor_snap_length = 18.0
 	floor_constant_speed = false
 	z_index = 5
 	spawn_pos = global_position
-	preload("res://scripts/item_label.gd").attach(self, "BUGGY", Color(0.95, 0.85, 0.5), 44.0)
+	preload("res://scripts/item_label.gd").attach(self, LABEL, Color(0.95, 0.85, 0.5), LABEL_LIFT)
 	_engine = AudioStreamPlayer2D.new()
 	_engine.max_distance = 1400.0
 	add_child(_engine)
@@ -200,7 +209,7 @@ func _update_team() -> void:
 	var g := gunner()
 	var o: Node2D = d if d != null else g
 	team = int(o.get("team")) if o != null else -1
-	display_name = str(o.get("display_name")) if o != null else "Buggy"
+	display_name = str(o.get("display_name")) if o != null else LABEL.capitalize()
 
 
 # ── Simulation ────────────────────────────────────────
@@ -294,7 +303,7 @@ func _simulate(delta: float) -> void:
 				face = signf(throttle)
 		else:
 			velocity.x = move_toward(velocity.x, 0.0, ROLL_DRAG * delta)
-		if hop and _hop_cd <= 0.0:
+		if hop and _hop_cd <= 0.0 and HOP_VEL < 0.0:
 			velocity.y = HOP_VEL * MatchConfig.mod_gravity()
 			_hop_cd = 0.9
 			Sfx.jump(global_position)
@@ -505,9 +514,10 @@ func _bot_drive(delta: float) -> Vector2:
 	# A bot driving alone shoots what it sees (with the solo penalty).
 	if gunner() == null and t != null and is_instance_valid(t) and d.get("_target_visible") == true:
 		var to: Vector2 = (t as Node2D).global_position - _gun_pivot()
-		if to.length() < BOT_GUN_RANGE * 0.8 and to.normalized().y < 0.55:
-			aim_dir = aim_dir.slerp(to.normalized(), clampf(delta * 6.0, 0.0, 1.0)).normalized()
-			if fire_cd <= 0.0 and not overheated and heat < 0.7 and absf(aim_dir.angle_to(to.normalized())) < 0.15:
+		var want := _aim_solution(to)
+		if to.length() < BOT_GUN_RANGE * 0.8 and want != Vector2.ZERO and want.y < 0.55:
+			aim_dir = aim_dir.slerp(want, clampf(delta * 6.0, 0.0, 1.0)).normalized()
+			if fire_cd <= 0.0 and not overheated and heat < 0.7 and absf(aim_dir.angle_to(want)) < 0.15:
 				_fire(d)
 	return Vector2(0.0 if leave else dir, hop)
 
@@ -540,9 +550,9 @@ func _bot_gunner(delta: float) -> void:
 		return
 	if t is CharacterBody2D:
 		to += (t as CharacterBody2D).velocity * (to.length() / GUN_SPEED)
-	var want := to.normalized()
-	if want.y > 0.55:
-		return   # can't depress that far
+	var want := _aim_solution(to)
+	if want == Vector2.ZERO or want.y > 0.55:
+		return   # out of reach / can't depress that far
 	aim_dir = aim_dir.slerp(want, clampf(delta * 7.0, 0.0, 1.0)).normalized()
 	if heat > 0.85:
 		_bot_hold = true
@@ -550,6 +560,12 @@ func _bot_gunner(delta: float) -> void:
 		_bot_hold = false
 	if not overheated and not _bot_hold and fire_cd <= 0.0 and absf(aim_dir.angle_to(want)) < 0.12:
 		_fire(g)
+
+
+# Direction to fire to hit something at `to` (relative to the gun). Straight
+# for the machine gun; the tank overrides it with a lobbed-shell solution.
+func _aim_solution(to: Vector2) -> Vector2:
+	return to.normalized()
 
 
 # Run over enemies at speed (host / single-player decides).
@@ -569,10 +585,10 @@ func _runover() -> void:
 		if now - int(_runover_cd.get(s.get_instance_id(), 0)) < 500:
 			continue
 		_runover_cd[s.get_instance_id()] = now
-		var dmg: float = absf(velocity.x) * 0.3
+		var dmg: float = absf(velocity.x) * RUNOVER_DMG_PER_SPEED
 		var main := get_parent()
 		if main != null and main.has_method("vehicle_hit_soldier"):
-			main.vehicle_hit_soldier(s, dmg, str(d.get("display_name")), int(d.get("team")), velocity)
+			main.vehicle_hit_soldier(s, dmg, str(d.get("display_name")), int(d.get("team")), velocity, LABEL.capitalize())
 
 
 # ── Damage ────────────────────────────────────────────
@@ -583,6 +599,8 @@ func take_damage(amount: float, killer := "", weapon := "", killer_team := -1) -
 	# Occupants' own team can't wreck it (friendly fire off).
 	if killer_team >= 0 and killer_team == team and not MatchConfig.friendly_fire_on() and team >= 0:
 		return
+	if not (weapon in EXPLOSIVE_WEAPONS):
+		amount *= BULLET_ARMOR
 	hp -= amount
 	if killer != "":
 		last_hitter = killer
@@ -727,7 +745,7 @@ static func splash(tree: SceneTree, at: Vector2, radius: float, dmg: float, kill
 			continue
 		var d: float = (v as Node2D).global_position.distance_to(at)
 		if d < radius + 20.0:
-			v.take_damage(dmg * EXPLOSIVE_MUL * (1.0 - clampf(d - 20.0, 0.0, radius) / radius), killer, weapon, killer_team)
+			v.take_damage(dmg * float(v.get("EXPLOSIVE_MUL")) * (1.0 - clampf(d - 20.0, 0.0, radius) / radius), killer, weapon, killer_team)
 
 
 # ── Presentation ──────────────────────────────────────
@@ -743,7 +761,7 @@ func _engine_sound() -> void:
 	if not _engine.playing:
 		_engine.play()
 	var sp: float = clampf(absf(velocity.x) / MAX_SPEED, 0.0, 1.0)
-	_engine.pitch_scale = 0.55 + sp * 0.6
+	_engine.pitch_scale = ENGINE_PITCH + sp * 0.6
 	_engine.volume_db = -20.0 + sp * 6.0 + linear_to_db(clampf(Settings.sfx_volume, 0.0001, 1.0))
 
 

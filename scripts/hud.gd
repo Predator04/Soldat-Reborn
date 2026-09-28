@@ -738,7 +738,9 @@ func _tick_vehicle_label() -> void:
 		return
 	var hp_frac: float = float(v.hp) / float(v.MAX_HP)
 	var gun := "GUN OVERHEATED" if v.overheated else "GUN %d%%" % int(round(float(v.heat) * 100.0))
-	var t := "BUGGY  %d HP  ·  %s" % [int(v.hp), gun]
+	if str(v.kind) == "tank":
+		gun = "SHELL READY" if float(v.fire_cd) <= 0.0 else "RELOADING %.1fs" % float(v.fire_cd)
+	var t := "%s  %d HP  ·  %s" % [str(v.LABEL), int(v.hp), gun]
 	if v.driver() == player and v.gunner() == null:
 		t += "  ·  solo: slower while firing"
 	elif v.gunner() != null and v.gunner() != player and v.gunner().get("bot_id") != null:

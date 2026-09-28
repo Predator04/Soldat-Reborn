@@ -11,6 +11,10 @@ var weapon_name := "LAW"
 # Gravity acceleration applied per second — 0 keeps LAW's straight flight, ~980
 # gives the M79 grenade its characteristic arc.
 var grav := 0.0
+# Tank shells: every peer flies its own copy (no authority / state sync) and
+# explodes on its own contact; damage still lands only on bodies this peer owns.
+var local_only := false
+var ignore_bodies: Array = []
 
 var _life := 4.0
 var _smoke: CPUParticles2D
@@ -61,7 +65,7 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
+	if not local_only and multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
 		# Non-authority: lerp toward the shooter's broadcast transform so shooter
 		# and victim see the rocket + explosion at the same spot (#61). We used to
 		# self-destruct via _life so client-side cleanup fires if RPCs stop arriving,
@@ -95,7 +99,7 @@ func _physics_process(delta: float) -> void:
 	# Broadcast transform to non-authority peers (#61).
 	# #69: once we've exploded, stop broadcasting — the client has queue_freed
 	# via reliable net_explode and any trailing state RPC would print "Node not found".
-	if multiplayer.multiplayer_peer != null and not _exploded:
+	if not local_only and multiplayer.multiplayer_peer != null and not _exploded:
 		_broadcast_cd -= delta
 		if _broadcast_cd <= 0.0:
 			_broadcast_cd = 1.0 / BROADCAST_HZ
@@ -122,7 +126,9 @@ func _on_body_entered(body: Node) -> void:
 	# fly through and hit again elsewhere. Splash from the fuse path can still happen.
 	# #69: non-authority peers must NOT self-explode — they'd queue_free ahead of any
 	# trailing state RPC from the authority. Only the shooter decides when to blow.
-	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
+	if ignore_bodies.has(body):
+		return
+	if not local_only and multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
 		return
 	# Same-team direct impact used to always no-damage-consume the rocket. With FF
 	# on (#74) we let the rocket explode on a teammate too so the blast can splash.
@@ -130,7 +136,7 @@ func _on_body_entered(body: Node) -> void:
 		# Consume silently across peers — otherwise non-authority replicas keep
 		# flying and self-destruct via the _life fallback ~10s later at the wrong
 		# spot (phantom rocket). Only the authority peer decides when to blow.
-		if multiplayer.multiplayer_peer != null and is_multiplayer_authority():
+		if not local_only and multiplayer.multiplayer_peer != null and is_multiplayer_authority():
 			_net_send("net_consume", [])
 		queue_free()
 		return
@@ -149,14 +155,14 @@ func _explode() -> void:
 	# #61: authority tells remotes to explode at the same instant so shooter and
 	# victim see the impact fireball in the same spot. Local `_exploded` guard
 	# above keeps this idempotent.
-	if multiplayer.multiplayer_peer != null and is_multiplayer_authority():
+	if not local_only and multiplayer.multiplayer_peer != null and is_multiplayer_authority():
 		_net_send("net_explode", [global_position])
 	if weapon_name == "M79":
 		Sfx.m79_thump(global_position)
 	else:
 		Sfx.explode(global_position)
 	for s in get_tree().get_nodes_in_group("soldier"):
-		if not is_instance_valid(s):
+		if not is_instance_valid(s) or ignore_bodies.has(s):
 			continue
 		var d: float = global_position.distance_to(s.global_position)
 		if d >= blast_radius:

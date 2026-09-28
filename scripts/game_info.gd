@@ -39,6 +39,7 @@ const ITEMS := {
 	"grenades": ["GRENADE KIT", "Refills you to 3 grenades."],
 	"point": ["+1 POINT", "Pointmatch: worth one point to your team."],
 	"m2": ["M2 MACHINE GUN", "Mounted heavy gun — press F next to it to use it."],
+	"tank": ["TANK", "Heavy armor, two seats: F to get in. Slow, shrugs off bullets; the turret lobs explosive shells (aim high for range). Bring a LAW, M79 or grenades to kill one."],
 	"buggy": ["BUGGY", "Two seats: F to get in. Driver: A/D drive, W hop. Gunner (or a driver alone) fires the mounted gun. Runs people over; blows up when wrecked."],
 }
 
