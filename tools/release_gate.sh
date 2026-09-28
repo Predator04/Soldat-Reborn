@@ -27,7 +27,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 G="${GODOT_BIN:-$HOME/godot/Godot_v4.7.2-stable_linux.x86_64}"
 QUICK=0; OUT="build/gate"; ONLY="A B N C D R F E"; MODESEL="0 1 2 3 4 5 6 7 8 9"
-NETSEL="ctf dm two respawn host listen lan soak m3 m7 m9"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
+NETSEL="ctf dm two respawn drive host listen lan soak m3 m7 m9"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --quick) QUICK=1;; --out) OUT="$2"; shift;; --only) ONLY="$2"; shift;;
@@ -142,6 +142,24 @@ case " $NETSEL " in *" two "*)
     pass "C net two clients: $names errors=0"
   else
     fail "C net two clients: '$(grep -m1 SMOKE-JOIN "$OUT/net_two_c2.log")' $names errors=$e"
+  fi
+;; esac
+case " $NETSEL " in *" drive "*)
+  # A client gets into a buggy (the host grants the seat) and drives it.
+  port=$((7700 + RANDOM % 200))
+  timeout 60 "$G" --headless -- --dedicated --port $port --map 2 --mode 0 > "$OUT/net_drive_server.log" 2>&1 &
+  spid=$!
+  for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_drive_server.log" 2>/dev/null && break; sleep 0.5; done
+  sleep 3
+  timeout 40 "$G" --headless -- --smoke-join --port $port --smoke-secs=12 --smoke-drive > "$OUT/net_drive_client.log" 2>&1
+  wait $spid 2>/dev/null
+  e=$(( $(errs "$OUT/net_drive_server.log") + $(errs "$OUT/net_drive_client.log") ))
+  line=$(grep -m1 "SMOKE-DRIVE" "$OUT/net_drive_client.log")
+  mv=$(echo "$line" | sed -n 's/.*moved=\(-\?[0-9]*\).*/\1/p')
+  if echo "$line" | grep -q "seat=0" && [ "${mv:-0}" -gt 150 ] && [ "$e" = "0" ]; then
+    pass "C net buggy: $line"
+  else
+    fail "C net buggy: '${line:-no result}' errors=$e"
   fi
 ;; esac
 case " $NETSEL " in *" respawn "*)
@@ -279,6 +297,7 @@ if has F; then
   ft labels label_test.gd 100 LABEL-TEST "labels / explanations"
   ft kits kit_test.gd 100 KIT-TEST "medikits / grenade kits"
   ft radio radio_test.gd 170 RADIO-TEST "team radio"
+  ft vehicles vehicle_test.gd 100 VEHICLE-TEST "buggy: enter / drive / run over / gun / exit / wreck / respawn"
   ft sound sound_test.gd 100 SOUND-TEST "sound wiring"
 fi
 

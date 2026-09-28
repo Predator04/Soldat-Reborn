@@ -300,6 +300,31 @@ func _smoke_join() -> void:
 	_smoke_auto_start()
 	# --smoke-die: kill our own body mid-session so the MP respawn path runs;
 	# the SMOKE-JOIN-PLAYERS line then shows the respawned body's node name.
+	# --smoke-drive (v1.19): walk to the nearest buggy, ask the host for a seat,
+	# drive right for 2.5 s. SMOKE-DRIVE reports the seat the host granted and
+	# how far the buggy moved on this (the driving) peer.
+	if "--smoke-drive" in OS.get_cmdline_user_args():
+		get_tree().create_timer(4.0).timeout.connect(func() -> void:
+			var mn = get_tree().current_scene
+			var vs: Array = get_tree().get_nodes_in_group("vehicle")
+			if mn == null or mn.get("player") == null or vs.is_empty():
+				print("SMOKE-DRIVE none vehicles=%d" % vs.size())
+				return
+			var pl = mn.player
+			var v = vs[0]
+			pl.global_position = v.global_position + Vector2(-16, -12)
+			pl.velocity = Vector2.ZERO
+			var x0: float = v.global_position.x
+			get_tree().create_timer(0.3).timeout.connect(func() -> void:
+				if is_instance_valid(v) and is_instance_valid(pl):
+					v.request_enter(pl))
+			get_tree().create_timer(1.3).timeout.connect(func() -> void:
+				Input.action_press("move_right"))
+			get_tree().create_timer(3.8).timeout.connect(func() -> void:
+				Input.action_release("move_right")
+				if is_instance_valid(v) and is_instance_valid(pl):
+					print("SMOKE-DRIVE seat=%d moved=%d vehicles=%d hp=%d" % [v.seat_of(pl), int(v.global_position.x - x0), vs.size(), int(v.hp)])
+					v.request_exit(pl)))
 	if "--smoke-die" in OS.get_cmdline_user_args():
 		get_tree().create_timer(4.0).timeout.connect(func() -> void:
 			var mn = get_tree().current_scene
@@ -332,7 +357,7 @@ func _smoke_join() -> void:
 		for s in get_tree().get_nodes_in_group("soldier"):
 			if is_instance_valid(s) and s.get_script() != null and String(s.get_script().resource_path).ends_with("bot.gd"):
 				bots_visible += 1
-		print("SMOKE-JOIN id=%d mode=%d players=%d bots_visible=%d bot_shots_seen=%d" % [local_id(), mode, pcount, bots_visible, bot_shots_seen])
+		print("SMOKE-JOIN id=%d mode=%d players=%d bots_visible=%d bot_shots_seen=%d vehicles=%d" % [local_id(), mode, pcount, bots_visible, bot_shots_seen, get_tree().get_nodes_in_group("vehicle").size()])
 		var jm = get_tree().current_scene.get("_map") if get_tree().current_scene != null else null
 		print("SMOKE-JOIN-MAP %s custom=%s" % [str(jm.get("name", "?")) if jm is Dictionary else "?", str(custom_map_json != "")])
 		var _mn = get_tree().current_scene

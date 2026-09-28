@@ -29,6 +29,7 @@ var touch_swap := false
 var touch_btn_pos: Dictionary = {}
 var show_fps := false          # overlay FPS counter on the HUD
 var pause_on_focus_loss := true  # open the pause menu when the window / app loses focus
+var vehicles := true   # buggies on maps with room (host decides in multiplayer)
 var vsync := true
 var max_fps := 0                # 0 = unlimited (VSync still caps it)
 var damage_numbers := true     # floating damage numbers when you land a hit
@@ -165,6 +166,7 @@ func load_settings() -> void:
 	vsync = bool(cf.get_value("video", "vsync", true))
 	max_fps = clampi(int(cf.get_value("video", "max_fps", 0)), 0, 360)
 	pause_on_focus_loss = bool(cf.get_value("game", "pause_on_focus_loss", true))
+	vehicles = bool(cf.get_value("game", "vehicles", true))
 	bot_chatter = bool(cf.get_value("game", "bot_chatter", true))
 	camera_lead = bool(cf.get_value("controls", "camera_lead", true))
 	help_seen = int(cf.get_value("game", "help_seen", 0))
@@ -232,6 +234,7 @@ func save() -> void:
 	cf.set_value("video", "vsync", vsync)
 	cf.set_value("video", "max_fps", max_fps)
 	cf.set_value("game", "pause_on_focus_loss", pause_on_focus_loss)
+	cf.set_value("game", "vehicles", vehicles)
 	cf.set_value("game", "bot_chatter", bot_chatter)
 	cf.set_value("controls", "camera_lead", camera_lead)
 	cf.set_value("game", "help_seen", help_seen)

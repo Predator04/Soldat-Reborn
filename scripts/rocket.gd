@@ -170,6 +170,7 @@ func _explode() -> void:
 		var scaled: float = damage * (1.0 - d / blast_radius)
 		if s.has_method("take_damage") and (multiplayer.multiplayer_peer == null or s.is_multiplayer_authority()):
 			s.take_damage(scaled, killer_name, weapon_name, team)
+	preload("res://scripts/buggy.gd").splash(get_tree(), global_position, blast_radius, damage, killer_name, weapon_name, team)
 	if not Settings.lofi:
 		var p := CPUParticles2D.new()
 		p.amount = 70

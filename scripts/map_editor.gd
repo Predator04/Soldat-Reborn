@@ -32,6 +32,7 @@ enum Tool {
 	TERRAIN_POLY, SCENERY,
 	WEAPON_PICKUP, BONUS_BOX, POINT_PICKUP, RAMBO,
 	INF_FLAG, HTF_FLAG,
+	BUGGY,   # v1.19 vehicle spawn
 }
 
 # Weapon names offered by the WEAPON_PICKUP tool. Order mirrors the Gun Game
@@ -118,6 +119,7 @@ const EDITOR_TIPS := {
 	"Flag Ctr": "The single neutral flag (Hold the Flag / Infiltration fallback).",
 	"Dom Pt": "A Domination control point.",
 	"M2": "A mounted M2 machine gun (press F next to it in game).",
+	"Buggy": "A buggy spawn. Put it on a long stretch of open ground (it needs room to drive).",
 	"Poly": "Click points to draw a free-form terrain shape; Enter closes it, Backspace removes the last point.",
 	"Scenery": "Place a decoration (no collision).",
 	"Weapon": "A weapon lying on the ground to pick up.",
@@ -271,6 +273,8 @@ func _draw() -> void:
 		di += 1
 	for m in _map.get("m2_mounts", []):
 		_draw_marker(m, Color(0.6, 0.9, 0.9), "M2", 22.0)
+	for vb in _map.get("vehicle_spawns", []):
+		_draw_marker(vb, Color(0.95, 0.85, 0.5), "CAR", 30.0)
 	# Pickups: weapon / bonus / point.
 	for wp in _map.get("weapon_pickups", []):
 		var pos_wp: Vector2 = wp.get("pos", Vector2.ZERO)
@@ -538,6 +542,10 @@ func _on_lmb_press(mp: Vector2) -> void:
 			var arr: Array = _map.get("m2_mounts", [])
 			arr.append(_snap(mp))
 			_map["m2_mounts"] = arr
+		Tool.BUGGY:
+			var arrv: Array = _map.get("vehicle_spawns", [])
+			arrv.append(_snap(mp))
+			_map["vehicle_spawns"] = arrv
 		Tool.TERRAIN_POLY:
 			# Click adds a vertex; Enter commits, right-click deletes existing poly.
 			_poly_pts.append(_snap(mp))
@@ -675,6 +683,10 @@ func _find_at(mp: Vector2) -> Array:
 	for i in m2.size():
 		if mp.distance_to(m2[i]) < HIT_RADIUS:
 			return ["m2_mounts", i]
+	var vsp: Array = _map.get("vehicle_spawns", [])
+	for i in vsp.size():
+		if mp.distance_to(vsp[i]) < 36.0:
+			return ["vehicle_spawns", i]
 	var wps: Array = _map.get("weapon_pickups", [])
 	for i in wps.size():
 		var pos_wp: Vector2 = wps[i].get("pos", Vector2.ZERO)
@@ -829,6 +841,7 @@ func _build_ui() -> void:
 		["Flag Ctr", Tool.FLAG_NEUTRAL],
 		["Dom Pt", Tool.DOM_POINT],
 		["M2", Tool.M2_MOUNT],
+		["Buggy", Tool.BUGGY],
 		# #113 additions.
 		["Poly", Tool.TERRAIN_POLY],
 		["Scenery", Tool.SCENERY],
@@ -1171,6 +1184,7 @@ func _tool_name(t: int) -> String:
 		Tool.FLAG_NEUTRAL: return "Neutral Flag (INF/HTF/RM)"
 		Tool.DOM_POINT: return "Dom Point"
 		Tool.M2_MOUNT: return "M2 Mount"
+		Tool.BUGGY: return "Buggy (place on long, open ground)"
 		Tool.TERRAIN_POLY: return "Terrain Poly (click verts, Enter to close)"
 		Tool.SCENERY: return "Scenery (from palette)"
 		Tool.WEAPON_PICKUP: return "Weapon Pickup (from palette)"

@@ -2,6 +2,25 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.19.0] — 2026-09-28
+
+### Added
+- **Buggies.** A two-seat ground vehicle on 87 of the 99 classic maps (on long stretches of open ground near each team's base, found by `tools/place_vehicles.py`) and on the three built-in arenas.
+  - Walk up and press **F**: the first person in drives (A/D, W hops over bumps), the second mans the machine gun on the roll bar. A driver on their own can also fire the gun (mouse / right stick / touch aim). **F** again gets you out.
+  - It runs over enemies at speed (enough to kill at top speed), the gun overheats after about two seconds of continuous fire, and the engine note follows your speed.
+  - 350 HP. Bullets hurt it, rockets and grenades hurt it more; when it's wrecked it explodes, killing anyone still inside and hurting people nearby, then comes back at its spot 25 s later.
+  - Works online: the host decides who sits where and owns health / wrecks / respawns; the driver's machine drives it and everyone else follows. Late joiners see the buggies, their damage and who is in them.
+  - The map editor has a **Buggy** tool; Settings → Game has a Vehicles switch (the host's setting counts online). Not in Gun Game.
+- Bots don't drive yet, but they shoot the people in a buggy and get run over by it.
+
+### QA
+- `tools/vehicle_test.gd` (gate stage F): on a test range — F gets you in as driver, D drives it, it runs a bot over, the gun hits, F gets you out, a rocket blast damages it, wrecking it kills the driver, and it respawns at its spot.
+- Gate stage C: `drive` — a client joins a dedicated server, the host gives it the driver's seat, and it drives 1000+ px with no network errors on either side.
+- A probe of every map with buggies (0–101): every buggy spawns on the ground and stays put until someone drives it.
+
+### Fixed
+- Pickups crashed ("Nonexistent 'bool' constructor") when something that isn't a soldier drove through them.
+
 ## [1.18.0] — 2026-09-28
 
 Content and sound pass, plus a Barrett fix. Gate run 24: 48/48 passed (CTF sweep 224 grabs, 39 captures, 635 kills, 4 falls, 0 errors).

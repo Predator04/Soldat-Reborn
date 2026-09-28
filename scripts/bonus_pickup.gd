@@ -39,7 +39,7 @@ func _process(delta: float) -> void:
 func _on_body_entered(body: Node) -> void:
 	if not (body is CharacterBody2D):
 		return
-	if bool(body.get("dead")):
+	if body.is_in_group("vehicle") or body.get("dead") == true:
 		return
 	# Host is the sole source of truth for collection; client-side boxes only
 	# despawn when Main receives the authoritative net_bonus_despawn.
@@ -90,6 +90,7 @@ static func kind_color(k: String) -> Color:
 		"cluster": return Color(1.0, 0.75, 0.25)
 		"medkit": return Color(0.45, 1.0, 0.45)
 		"grenades": return Color(0.8, 0.9, 0.5)
+		"buggy": return Color(0.95, 0.85, 0.5)
 	return Color(1, 1, 1)
 
 

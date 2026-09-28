@@ -255,6 +255,10 @@ func _build_game(box: VBoxContainer) -> void:
 			var clean := t.strip_edges()
 			Settings.player_name = clean if clean != "" else "Player"
 			Settings.save()))
+	box.add_child(_check_button("Vehicles: buggies on maps with room (host decides online)", Settings.vehicles,
+		func(on: bool) -> void:
+			Settings.vehicles = on
+			Settings.save()))
 	box.add_child(_check_button("Pause when the game loses focus (alt-tab, phone home button)", Settings.pause_on_focus_loss,
 		func(on: bool) -> void:
 			Settings.pause_on_focus_loss = on

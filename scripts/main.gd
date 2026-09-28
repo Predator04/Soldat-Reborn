@@ -266,6 +266,7 @@ var MAPS := [
 		# Explicit objectives (the 4800-arena defaults put the RED flag and two
 		# DOM points inside the hills). BLUE holds the valley, RED the peak.
 		"ctf_flags": [Vector2(110, 1900), Vector2(4480, 1020)],
+		"vehicle_spawns": [Vector2(150, 1900), Vector2(4480, 1020)],
 		"inf_flag": Vector2(2230, 1900), "htf_flag": Vector2(2230, 1900),
 		"dom_points": [Vector2(720, 1640), Vector2(2260, 1210), Vector2(3850, 1141)],
 		# (Flat texture-square "scenery" decals removed in 1.13 — they read as
@@ -331,6 +332,7 @@ var MAPS := [
 		"bot_spawns": [Vector2(3688, 1340), Vector2(3835, 1160), Vector2(2500, 1130), Vector2(3578, 1540)],
 		"m2_mounts": [Vector2(2500, 1380), Vector2(700, 1040), Vector2(4120, 1040)],
 		"ctf_flags": [Vector2(710, 1900), Vector2(4090, 1900)],
+		"vehicle_spawns": [Vector2(710, 1900), Vector2(4090, 1900)],
 		"inf_flag": Vector2(2400, 1710), "htf_flag": Vector2(2400, 1710),
 		"dom_points": [Vector2(700, 1870), Vector2(2500, 1360), Vector2(4100, 1870)],
 		# (Flat texture-square "scenery" decals removed in 1.13 — they read as
@@ -388,6 +390,7 @@ var MAPS := [
 		"player_spawn": Vector2(200, 1775),
 		"bot_spawns": [Vector2(2400, 1110), Vector2(3620, 1530), Vector2(4000, 1390), Vector2(3300, 1210)],
 		"ctf_flags": [Vector2(110, 1900), Vector2(4700, 1900)],
+		"vehicle_spawns": [Vector2(150, 1900), Vector2(4650, 1900)],
 		"inf_flag": Vector2(2400, 1900), "htf_flag": Vector2(2400, 1900),
 		"dom_points": [Vector2(500, 1750), Vector2(2400, 1100), Vector2(4280, 1770)],
 		"m2_mounts": [Vector2(2400, 1120)],
@@ -402,6 +405,10 @@ const RadioMenu = preload("res://scripts/radio_menu.gd")
 var radio_count := 0
 # Kits picked up this match — tools/kit_test.gd reads it.
 var kits_taken := 0
+
+
+const Buggy = preload("res://scripts/buggy.gd")
+var _vehicles: Dictionary = {}   # vehicle_id -> buggy node (every peer)
 
 
 func _ready() -> void:
@@ -464,6 +471,7 @@ func _ready() -> void:
 	_maybe_build_touch_controls()
 	_spawn_mode_entities()
 	_spawn_bonus_boxes_init()
+	_spawn_vehicles()
 	kill.connect(_on_kill_scored)
 
 	if Net.is_networked():
@@ -2163,6 +2171,16 @@ func _handle_client_ready(sender_id: int, joiner_name: String = "", client_versi
 		if not is_instance_valid(box):
 			continue
 		rpc_id(sender, "net_bonus_spawn", int(bid), box.position, str(box.get("bonus_kind")))
+	# Buggies (v1.19): where they are, their health, who's in them.
+	for vid in _vehicles.keys():
+		var v: Node = _vehicles[vid]
+		if not is_instance_valid(v):
+			continue
+		rpc_id(sender, "net_vehicle_spawn", int(vid), v.get("spawn_pos"), (v as Node2D).global_position, float(v.get("hp")), bool(v.get("alive")))
+		var seats: Array = v.get("seats")
+		for i in seats.size():
+			if is_instance_valid(seats[i]):
+				rpc_id(sender, "net_vehicle_seat", int(vid), i, int(seats[i].get_multiplayer_authority()), true)
 	rpc_id(sender, "net_stats_sync", player_stats)
 	# then spawn a body for the new peer on everyone
 	_spawn_networked_player(sender)
@@ -4276,3 +4294,219 @@ func net_bot_state(arr: Array) -> void:
 		var sa_v: Variant = entry[13]
 		if typeof(sa_v) == TYPE_INT or typeof(sa_v) == TYPE_FLOAT:
 			b.secondary_ammo = int(sa_v)
+
+
+# ── Vehicles (v1.19) ──────────────────────────────────
+# Buggies spawn at the map's "vehicle_spawns" (tools/place_vehicles.py). The
+# host owns them (damage, wrecks, respawns, who sits where); the driver's peer
+# simulates movement and streams it. Every message goes through vehicle_send:
+# single-player applies it directly, the host broadcasts it (and runs it), a
+# client asks the host, which checks the sender and relays it.
+
+func _spawn_vehicles() -> void:
+	if Net.is_networked() and not Net.is_host():
+		return
+	if not Settings.vehicles or Settings.game_mode == Settings.MODE_GG:
+		return
+	var spots: Array = _map.get("vehicle_spawns", [])
+	var vid := 0
+	for v in spots:
+		var p: Vector2 = v if v is Vector2 else Vector2(float(v[0]), float(v[1]))
+		_make_vehicle(vid, p + Vector2(0, -4), p + Vector2(0, -4), Buggy.MAX_HP, true)
+		vid += 1
+
+
+func _make_vehicle(vid: int, spawn: Vector2, pos: Vector2, hp_v: float, alive_v: bool) -> Node:
+	if _vehicles.has(vid) and is_instance_valid(_vehicles[vid]):
+		_vehicles[vid].queue_free()
+	var b := Buggy.new()
+	b.name = "Buggy_%d" % vid
+	b.vehicle_id = vid
+	b.position = spawn
+	add_child(b)
+	b.spawn_pos = spawn
+	b.global_position = pos
+	b.hp = hp_v
+	if alive_v and spawn.distance_to(pos) < 1.0:
+		b.unstick()
+		b.spawn_pos = b.global_position
+	if not alive_v:
+		b.apply_destroy(pos, "", -1, true)
+	_vehicles[vid] = b
+	return b
+
+
+func find_vehicle(vid: int) -> Node:
+	var v = _vehicles.get(vid, null)
+	return v if is_instance_valid(v) else null
+
+
+func vehicle_send(method: StringName, args: Array, _reliable: bool) -> void:
+	if not Net.is_networked() or not multiplayer.has_multiplayer_peer():
+		callv(method, args)
+		return
+	if Net.is_host():
+		bcast(method, args, true)
+	else:
+		callv("rpc_id", [1, method] + args)
+
+
+# Host side, for a message a client sent us: reject it (return true) unless it
+# comes from the peer allowed to send it; otherwise pass it on to the other
+# peers and return false so the host applies it too. (Relaying with local=true
+# re-entered this handler with the client still as the RPC sender — endless.)
+func _vehicle_relay(method: StringName, args: Array, allowed_peer: int) -> bool:
+	if not Net.is_networked() or not Net.is_host():
+		return false
+	var sender := multiplayer.get_remote_sender_id()
+	if sender == 0 or sender == multiplayer.get_unique_id():
+		return false
+	if sender != allowed_peer:
+		return true
+	bcast(method, args, false)
+	return false
+
+
+# Clients only accept vehicle authority messages from the host.
+func _from_host() -> bool:
+	if not Net.is_networked() or Net.is_host():
+		return true
+	return multiplayer.get_remote_sender_id() == 1
+
+
+func vehicle_request_seat(v: Node, s: Node, enter: bool) -> void:
+	if not Net.is_networked():
+		_decide_seat(v, s, enter)
+		return
+	if Net.is_host():
+		_decide_seat(v, s, enter)
+	else:
+		rpc_id(1, "net_vehicle_seat_req", int(v.get("vehicle_id")), enter)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func net_vehicle_seat_req(vid: int, enter: bool) -> void:
+	if not Net.is_host():
+		return
+	var v := find_vehicle(vid)
+	var sender := multiplayer.get_remote_sender_id()
+	var s = _players_by_id.get(sender, null)
+	if v == null or not is_instance_valid(s):
+		return
+	_decide_seat(v, s, enter)
+
+
+func _decide_seat(v: Node, s: Node, enter: bool) -> void:
+	if enter:
+		if not v.can_enter(s):
+			return
+		var seat: int = v.free_seat()
+		if seat < 0:
+			return
+		vehicle_send("net_vehicle_seat", [int(v.get("vehicle_id")), seat, _peer_of(s), true], true)
+	else:
+		var seat2: int = v.seat_of(s)
+		if seat2 < 0:
+			return
+		vehicle_send("net_vehicle_seat", [int(v.get("vehicle_id")), seat2, _peer_of(s), false], true)
+
+
+func _peer_of(s: Node) -> int:
+	return int(s.get_multiplayer_authority()) if Net.is_networked() else 1
+
+
+func _soldier_for_peer(peer: int) -> Node:
+	if not Net.is_networked():
+		return player
+	var s = _players_by_id.get(peer, null)
+	return s if is_instance_valid(s) else null
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func net_vehicle_seat(vid: int, seat: int, peer: int, enter: bool) -> void:
+	if not _from_host():
+		return
+	var v := find_vehicle(vid)
+	var s := _soldier_for_peer(peer)
+	if v == null or s == null:
+		return
+	if enter:
+		v.set_seat(seat, s)
+	else:
+		v.clear_seat_of(s)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func net_vehicle_spawn(vid: int, spawn: Vector2, pos: Vector2, hp_v: float, alive_v: bool) -> void:
+	if not _from_host():
+		return
+	_make_vehicle(vid, spawn, pos, hp_v, alive_v)
+
+
+@rpc("any_peer", "call_remote", "unreliable_ordered")
+func net_vehicle_state(vid: int, pos: Vector2, vel: Vector2, tilt: float, f: float, aim: Vector2) -> void:
+	var v := find_vehicle(vid)
+	if v == null:
+		return
+	if _vehicle_relay("net_vehicle_state", [vid, pos, vel, tilt, f, aim], int(v.sim_peer())):
+		return
+	if Net.is_networked() and not Net.is_host() and multiplayer.get_remote_sender_id() != 1:
+		return
+	v.apply_state(pos, vel, tilt, f, aim)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func net_vehicle_fire(vid: int, muzzle: Vector2, dir: Vector2) -> void:
+	var v := find_vehicle(vid)
+	if v == null:
+		return
+	var shooter: Node = v.gunner() if v.gunner() != null else v.driver()
+	if shooter == null:
+		return
+	if _vehicle_relay("net_vehicle_fire", [vid, muzzle, dir], _peer_of(shooter)):
+		return
+	if Net.is_networked() and not Net.is_host() and multiplayer.get_remote_sender_id() != 1:
+		return
+	# The muzzle must be on the buggy (no firing from across the map).
+	if muzzle.distance_to((v as Node2D).global_position) > 90.0:
+		return
+	v.apply_fire(muzzle, dir.normalized())
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func net_vehicle_hp(vid: int, hp_v: float) -> void:
+	if not _from_host():
+		return
+	var v := find_vehicle(vid)
+	if v != null:
+		v.apply_hp(hp_v)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func net_vehicle_destroy(vid: int, at: Vector2, killer: String, killer_team: int) -> void:
+	if not _from_host():
+		return
+	var v := find_vehicle(vid)
+	if v != null:
+		v.apply_destroy(at, killer, killer_team)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func net_vehicle_respawn(vid: int) -> void:
+	if not _from_host():
+		return
+	var v := find_vehicle(vid)
+	if v != null:
+		v.apply_respawn()
+
+
+# Run-over damage, decided by the host; the victim's owner applies it.
+func vehicle_hit_soldier(s: Node, dmg: float, killer: String, killer_team: int, vel: Vector2) -> void:
+	if not Net.is_networked() or s.is_multiplayer_authority():
+		s.set("ceasefire_t", 0.0)
+		s.take_damage(dmg, killer, "Buggy", killer_team)
+		if s.get("dead") != true:
+			s.set("velocity", Vector2(vel.x * 0.9, -260.0))
+		return
+	if s.has_method("net_vehicle_hurt"):
+		s.rpc_id(int(s.get_multiplayer_authority()), "net_vehicle_hurt", dmg, killer, killer_team, vel)

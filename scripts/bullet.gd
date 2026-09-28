@@ -18,6 +18,8 @@ var life := 0.0
 var grav := 0.0
 var _hit := false
 var _ray_exclude: Array[RID] = []
+# Bodies this round passes through (a buggy and its crew for the buggy gun).
+var ignore_bodies: Array = []
 var _velocity := Vector2.ZERO
 var _sprite: Texture2D = null
 var _sprite_size := Vector2.ZERO
@@ -51,6 +53,10 @@ func _physics_process(delta: float) -> void:
 	# is ~14 px wide, so overlap checks alone let fast rounds pass straight
 	# through people (bots with the Barrett couldn't hit a standing target).
 	if not _hit and step.length() > 4.0 and is_inside_tree():
+		if _ray_exclude.is_empty() and not ignore_bodies.is_empty():
+			for ib in ignore_bodies:
+				if is_instance_valid(ib) and ib is CollisionObject2D:
+					_ray_exclude.append((ib as CollisionObject2D).get_rid())
 		var q := PhysicsRayQueryParameters2D.create(global_position, global_position + step, collision_mask, _ray_exclude)
 		var hit := get_world_2d().direct_space_state.intersect_ray(q)
 		if not hit.is_empty():
@@ -70,6 +76,8 @@ func _on_body_entered(body: Node) -> void:
 	# queue_free() is deferred; a second body_entered in the same physics flush would
 	# otherwise apply damage to a second soldier stacked on the first.
 	if _hit:
+		return
+	if body in ignore_bodies:
 		return
 	if body is CharacterBody2D:
 		if body.has_method("take_damage"):

@@ -1228,6 +1228,10 @@ func _perform_melee() -> void:
 
 
 func _find_nearby_m2() -> Node2D:
+	# Buggies first (v1.19) — they share the F-to-mount path with the M2.
+	for v in get_tree().get_nodes_in_group("vehicle"):
+		if is_instance_valid(v) and v.can_enter(self):
+			return v
 	for m in get_tree().get_nodes_in_group("m2_gun"):
 		if not is_instance_valid(m):
 			continue
@@ -1265,6 +1269,17 @@ func _find_ladder_overlap() -> Node2D:
 			best_dx = dx
 			closest = lad
 	return closest
+
+
+# Run over by a buggy: the host decides, the victim's own peer applies it.
+@rpc("any_peer", "call_remote", "reliable")
+func net_vehicle_hurt(dmg: float, killer: String, killer_team: int, vel: Vector2) -> void:
+	if multiplayer.get_remote_sender_id() != 1 or not is_multiplayer_authority():
+		return
+	ceasefire_t = 0.0
+	take_damage(dmg, killer, "Buggy", killer_team)
+	if not dead:
+		velocity = Vector2(vel.x * 0.9, -260.0)
 
 
 func mount_m2(m2: Node2D) -> void:

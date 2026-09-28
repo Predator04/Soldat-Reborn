@@ -59,7 +59,7 @@ func _on_body_entered(body: Node) -> void:
 		return
 	if not (body is CharacterBody2D):
 		return
-	if bool(body.get("dead")):
+	if body.is_in_group("vehicle") or body.get("dead") == true:
 		return
 	# In MP the host is the single source of truth for contacts; clients would
 	# otherwise pick up ghosts that got frozen at slightly different positions.

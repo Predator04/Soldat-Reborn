@@ -143,6 +143,7 @@ func _explode() -> void:
 				continue
 			if multiplayer.multiplayer_peer == null or s.is_multiplayer_authority():
 				s.take_damage(damage * MatchConfig.mod_damage() * (1.0 - d / blast_radius), killer_name, wname, team)
+	preload("res://scripts/buggy.gd").splash(get_tree(), global_position, blast_radius, damage * MatchConfig.mod_damage(), killer_name, wname, team)
 	# Lo-fi (#25): skip the CPUParticles2D flame burst. The Sfx call above still fires.
 	if not Settings.lofi:
 		var p := CPUParticles2D.new()

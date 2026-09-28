@@ -15,6 +15,7 @@ past the classic, with most of Soldat 2's feature list folded in.
 - **Classic maps** — 99 original Soldat levels ported from `.pms` with scenery, textured terrain, weather and baked bot navigation (bots play every objective mode on every map)
 - **Polish** — gestures/taunts, chat, weapon throw/pickup, ceasefire, bink, game modifiers, character customization, lo-fi mode, local stats, GIF recording, improved grenade physics
 - **Multiplayer** — host-authoritative ENet (host / join), replicated bots that shoot and damage clients, dedicated headless server mode, LAN-scale sync, authority-owned grenade/rocket transforms so shooter + victim see the same trajectory and impact spot
+- **Vehicles** — two-seat buggies (driver + gunner on a mounted machine gun) on 87 of the classic maps and the built-in arenas: run people over, get wrecked by rockets and grenades, respawn at their spot. Toggle in Settings → Game
 - **Pickups** — medikits and grenade kits where the original maps put them (bots use them too), plus timed bonus crates (Predator, Berserker, Vest, Cluster)
 - **Sound** — positional audio (distance + stereo), footsteps, landings, ricochets, bullet whizz-bys, distant-gunfire tails, death cries, rain / snow ambience, Soldat radio voice lines
 - **Round hygiene** — clean-slate reset (full HP/ammo, spawn-slot teleport) in every mode, not just Survival
@@ -35,7 +36,7 @@ past the classic, with most of Soldat 2's feature list folded in.
 | R | Reload |
 | E | Throw grenade |
 | G | Toggle grenade type (frag / cluster) |
-| F | Throw away current weapon |
+| F | Throw away current weapon · get in / out of a buggy · mount an M2 |
 | / | Gesture console — `/victory /smoke /tabac /takeoff /kill /brutalkill /mercy` |
 | T / Y | Chat (global / team); ALT+keys for taunts |
 | V | Team radio: enemy / friendly flag carrier, enemy spotted — up / mid / down |
