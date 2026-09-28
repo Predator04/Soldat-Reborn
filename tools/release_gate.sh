@@ -27,16 +27,17 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 G="${GODOT_BIN:-$HOME/godot/Godot_v4.7.2-stable_linux.x86_64}"
 QUICK=0; OUT="build/gate"; ONLY="A B N C D R F E"; MODESEL="0 1 2 3 4 5 6 7 8 9"
-NETSEL="ctf dm two respawn host listen lan soak m3 m7 m9"; SWEEP=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
+NETSEL="ctf dm two respawn host listen lan soak m3 m7 m9"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --quick) QUICK=1;; --out) OUT="$2"; shift;; --only) ONLY="$2"; shift;;
-    --modes) MODESEL="$2"; shift;; --net) NETSEL="$2"; shift;;
+    --modes) MODESEL="$2"; shift;; --net) NETSEL="$2"; shift;; --ftests) FSEL="$2"; shift;;
     --sweep) SWEEP="$2"; shift;;
     --msweep) MSWEEP="$2"; shift;; --mode-verdict) MVERDICT=1;; --keep) KEEP=1;; --final) FINAL=1;;
   esac; shift
 done
 mkdir -p "$OUT"
+fon() { [ -z "$FSEL" ] || [[ " $FSEL " == *" $1 "* ]]; }
 SUM="$OUT/summary.txt"; [ $KEEP = 1 ] || [ $FINAL = 1 ] || : > "$SUM"
 FAILS=0
 has() { case " $ONLY " in *" $1 "*) return 0;; esac; return 1; }
@@ -241,7 +242,7 @@ if has R; then
 fi
 
 # ── F feature exercise ───────────────────────────────────────────────────────
-if has F; then
+if has F && fon features; then
   for spec in "19 1" "11 2" "7 7"; do
     set -- $spec
     f="$OUT/feature_$1_$2.log"
@@ -251,7 +252,7 @@ if has F; then
   done
 fi
 
-if has F; then
+if has F && fon editor; then
   f="$OUT/editor.log"
   timeout 60 "$G" --headless --fixed-fps 60 -s tools/editor_test.gd > "$f" 2>&1
   if grep -q "EDITOR-TEST roundtrip ok" "$f" && grep -q "EDITOR-TEST undo ok" "$f" && grep -q "EDITOR-TEST playtest ok.*player=true" "$f" && [ "$(errs "$f")" = "0" ]; then
@@ -260,39 +261,25 @@ if has F; then
     fail "F map editor: $(grep -h 'EDITOR-TEST' "$f" | tr '\n' ' ') errors=$(errs "$f")"
   fi
 fi
+# F tests run one after another; pass --ftests "grenade weapons ..." to run a
+# subset (each device call has a time limit), with --keep to append.
+ft() {  # key script timeout TAG label
+  fon "$1" || return 0
+  local f="$OUT/$1.log"
+  timeout "$3" "$G" --headless --fixed-fps 60 -s "tools/$2" > "$f" 2>&1
+  local line
+  line=$(grep "$4" "$f" | tail -1)
+  if echo "$line" | grep -q "$4 ok" && [ "$(errs "$f")" = "0" ]; then pass "F $5: $(echo "$line" | cut -c1-110)"; else fail "F $5: '${line:-no result}' errors=$(errs "$f")"; fi
+}
 if has F; then
-  f="$OUT/grenade.log"
-  timeout 90 "$G" --headless --fixed-fps 60 -s tools/grenade_test.gd > "$f" 2>&1
-  line=$(grep -m1 "GRENADE-TEST" "$f")
-  if echo "$line" | grep -q "GRENADE-TEST ok" && [ "$(errs "$f")" = "0" ]; then pass "F grenade cooking: $line"; else fail "F grenade cooking: '${line:-no result}' errors=$(errs "$f")"; fi
-  f="$OUT/training.log"
-  timeout 90 "$G" --headless --fixed-fps 60 -s tools/training_test.gd > "$f" 2>&1
-  line=$(grep "TRAINING-TEST" "$f" | tail -1)
-  if echo "$line" | grep -q "TRAINING-TEST ok" && [ "$(errs "$f")" = "0" ]; then pass "F training: $(grep -h TRAINING-TEST "$f" | tr '\n' ' ')"; else fail "F training: '${line:-no result}' errors=$(errs "$f")"; fi
-  f="$OUT/fire.log"
-  timeout 100 "$G" --headless --fixed-fps 60 -s tools/fire_test.gd > "$f" 2>&1
-  line=$(grep -m1 "FIRE-TEST" "$f")
-  if echo "$line" | grep -q "FIRE-TEST ok" && [ "$(errs "$f")" = "0" ]; then pass "F every primary fires: $line"; else fail "F every primary fires: '${line:-no result}' errors=$(errs "$f")"; fi
-  f="$OUT/weapons.log"
-  timeout 175 "$G" --headless --fixed-fps 60 -s tools/weapon_test.gd > "$f" 2>&1
-  line=$(grep -m1 "WEAPON-TEST" "$f")
-  if echo "$line" | grep -q "WEAPON-TEST ok" && [ "$(errs "$f")" = "0" ]; then pass "F every weapon hits (player + bots): $(echo "$line" | cut -c1-80)"; else fail "F every weapon hits: '${line:-no result}' errors=$(errs "$f")"; fi
-  f="$OUT/labels.log"
-  timeout 100 "$G" --headless --fixed-fps 60 -s tools/label_test.gd > "$f" 2>&1
-  line=$(grep -m1 "LABEL-TEST" "$f")
-  if echo "$line" | grep -q "LABEL-TEST ok" && [ "$(errs "$f")" = "0" ]; then pass "F labels / explanations: $line"; else fail "F labels / explanations: '${line:-no result}' errors=$(errs "$f")"; fi
-  f="$OUT/kits.log"
-  timeout 100 "$G" --headless --fixed-fps 60 -s tools/kit_test.gd > "$f" 2>&1
-  line=$(grep -m1 "KIT-TEST" "$f")
-  if echo "$line" | grep -q "KIT-TEST ok" && [ "$(errs "$f")" = "0" ]; then pass "F medikits / grenade kits: $line"; else fail "F medikits / grenade kits: '${line:-no result}' errors=$(errs "$f")"; fi
-  f="$OUT/radio.log"
-  timeout 170 "$G" --headless --fixed-fps 60 -s tools/radio_test.gd > "$f" 2>&1
-  line=$(grep -m1 "RADIO-TEST" "$f")
-  if echo "$line" | grep -q "RADIO-TEST ok" && [ "$(errs "$f")" = "0" ]; then pass "F team radio: $line"; else fail "F team radio: '${line:-no result}' errors=$(errs "$f")"; fi
-  f="$OUT/sound.log"
-  timeout 100 "$G" --headless --fixed-fps 60 -s tools/sound_test.gd > "$f" 2>&1
-  line=$(grep -m1 "SOUND-TEST" "$f")
-  if echo "$line" | grep -q "SOUND-TEST ok" && [ "$(errs "$f")" = "0" ]; then pass "F sound wiring: $line"; else fail "F sound wiring: '${line:-no result}' errors=$(errs "$f")"; fi
+  ft grenade grenade_test.gd 90 GRENADE-TEST "grenade cooking"
+  ft training training_test.gd 90 TRAINING-TEST "training"
+  ft fire fire_test.gd 100 FIRE-TEST "every primary fires"
+  ft weapons weapon_test.gd 175 WEAPON-TEST "every weapon hits (player + bots)"
+  ft labels label_test.gd 100 LABEL-TEST "labels / explanations"
+  ft kits kit_test.gd 100 KIT-TEST "medikits / grenade kits"
+  ft radio radio_test.gd 170 RADIO-TEST "team radio"
+  ft sound sound_test.gd 100 SOUND-TEST "sound wiring"
 fi
 
 # ── E sweep ─────────────────────────────────────────────────────────────────
