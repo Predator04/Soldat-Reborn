@@ -273,6 +273,10 @@ if has F; then
   timeout 100 "$G" --headless --fixed-fps 60 -s tools/fire_test.gd > "$f" 2>&1
   line=$(grep -m1 "FIRE-TEST" "$f")
   if echo "$line" | grep -q "FIRE-TEST ok" && [ "$(errs "$f")" = "0" ]; then pass "F every primary fires: $line"; else fail "F every primary fires: '${line:-no result}' errors=$(errs "$f")"; fi
+  f="$OUT/labels.log"
+  timeout 100 "$G" --headless --fixed-fps 60 -s tools/label_test.gd > "$f" 2>&1
+  line=$(grep -m1 "LABEL-TEST" "$f")
+  if echo "$line" | grep -q "LABEL-TEST ok" && [ "$(errs "$f")" = "0" ]; then pass "F labels / explanations: $line"; else fail "F labels / explanations: '${line:-no result}' errors=$(errs "$f")"; fi
   f="$OUT/kits.log"
   timeout 100 "$G" --headless --fixed-fps 60 -s tools/kit_test.gd > "$f" 2>&1
   line=$(grep -m1 "KIT-TEST" "$f")

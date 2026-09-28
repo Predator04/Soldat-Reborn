@@ -8,6 +8,11 @@ Content and sound pass, plus a Barrett fix. Gate run 22: 46/46 passed (CTF sweep
 
 ### Added
 - **Medikits and grenade kits** on all 99 classic maps, at the spots the original map makers placed them (read from the Soldat `.pms` files). A medikit heals you to full, a grenade kit refills you to 3 grenades; each comes back 25 s after it's taken. You can't waste one: at full health you walk past a medikit. Bots use them too and head for one when they're hurt or out of grenades. Bonus crates now use Soldat's own kit sprites.
+- **Everything is labelled and explained.**
+  - Modes: the main-menu and Host pickers show how to win under the picker, and each entry has a hover tooltip with the details. Every match opens with a banner (mode + how to win + any Realistic / Survival / Advance rules), the top bar spells out the mode name, and the pause menu repeats the goal.
+  - Items: power-up crates, medikits, grenade kits, weapons lying on the ground, Pointmatch diamonds and M2 guns carry a name tag that fades in as you get close. Picking one up explains it at the bottom of the screen ("BULLETPROOF VEST — you take half damage for 30 s", "AK-74 — assault rifle, all-rounder"), and the power-up countdown keeps a short reminder ("VEST 24s · half damage").
+  - The H card shows the current mode's goal and a PICKUPS list; weapon-menu tooltips open with what the gun is for.
+  - Tooltips on the main-menu buttons (Generate + Play explains it makes a new random map each time and where it's saved) and on every Map Editor button.
 - **Team radio** (V, rebindable): pick what — enemy flag carrier, friendly flag carrier, enemy spotted — then where — up / mid / down — with 1–3. Your team hears Soldat's radio voice line and sees an amber "(RADIO)" chat line. Bots call out the enemy flag carrier when someone steals their flag.
 - **Positional sound**: other soldiers' gunfire, reloads, jumps, explosions and deaths come from where they happen — quieter with distance and panned left/right. Far-off fights use Soldat's muffled distant-gunfire / distant-explosion samples.
 - New sounds from the Soldat set that were sitting unused: footsteps (running and crouched), landing thuds (heavier after big drops), bullet ricochets off walls, bullet whizz-bys when an enemy round passes your head, death cries (plus a crunch on headshot kills), grenade pin pull when you start cooking, grenade bounces, weapon switch, weapon pickup and throw, roll, going prone / standing up, respawn, kit and bonus pickups.
@@ -18,6 +23,7 @@ Content and sound pass, plus a Barrett fix. Gate run 22: 46/46 passed (CTF sweep
 
 ### QA
 - `tools/fire_test.gd` (gate stage F): every primary must fire from a click; the Barrett exactly one round per click. Fails on 1.17.1.
+- `tools/label_test.gd` (gate stage F): every mode / weapon / pickup has text, the win numbers in it match the game rules, matches open with the banner, crates are tagged, pickups explain themselves.
 - Gate stage F gains four more checks: `tools/sound_test.gd` (every family of world sound fires in a bot match and every requested sample exists), `tools/radio_test.gd` (V → 2 → 3 posts "Friendly flag carrier — down" with its voice line and doesn't switch weapons; a bot calls out the flag carrier), `tools/kit_test.gd` (a full-health soldier leaves a medikit; hurt → healed; no grenades → refilled).
 
 ## [1.17.1] — 2026-09-28

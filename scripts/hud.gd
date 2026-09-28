@@ -69,6 +69,7 @@ var objective_hud: Control = null
 
 
 var radio_menu: Node = null
+const GameInfo = preload("res://scripts/game_info.gd")
 
 
 func _ready() -> void:
@@ -401,6 +402,8 @@ func _ready() -> void:
 	lbl_bonus.visible = false
 	add_child(lbl_bonus)
 
+	_build_info_labels()
+
 	# Objective status line, announcements and off-screen markers.
 	objective_hud = ObjectiveHud.new()
 	objective_hud.main = get_parent()
@@ -636,9 +639,93 @@ func _update_bonus_ui() -> void:
 		lbl_bonus.visible = false
 		return
 	var t: float = float(player.get("bonus_t"))
-	lbl_bonus.text = "%s  %ds" % [BonusPickup.kind_label(kind), int(ceil(t))]
+	var hint: String = GameInfo.item_short(kind)
+	lbl_bonus.text = "%s  %ds%s" % [BonusPickup.kind_label(kind), int(ceil(t)), ("  ·  " + hint) if hint != "" else ""]
 	lbl_bonus.add_theme_color_override("font_color", BonusPickup.kind_color(kind))
 	lbl_bonus.visible = true
+
+
+# ── Mode banner + pickup toasts (v1.18) ──────────────────
+var lbl_mode_banner: Label
+var lbl_toast: Label
+var _banner_t := 0.0
+var _toast_t := 0.0
+const BANNER_HOLD := 7.0
+const TOAST_HOLD := 3.5
+
+
+func _build_info_labels() -> void:
+	lbl_mode_banner = Label.new()
+	lbl_mode_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl_mode_banner.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lbl_mode_banner.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	lbl_mode_banner.offset_left = 220
+	lbl_mode_banner.offset_right = -220
+	lbl_mode_banner.offset_top = 150
+	lbl_mode_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lbl_mode_banner.add_theme_font_size_override("font_size", 18)
+	lbl_mode_banner.add_theme_color_override("font_color", Color(1.0, 0.92, 0.6))
+	lbl_mode_banner.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	lbl_mode_banner.add_theme_constant_override("outline_size", 6)
+	add_child(lbl_mode_banner)
+	lbl_toast = Label.new()
+	lbl_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl_toast.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lbl_toast.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	lbl_toast.offset_left = 200
+	lbl_toast.offset_right = -200
+	lbl_toast.offset_top = -120
+	lbl_toast.offset_bottom = -66
+	lbl_toast.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	lbl_toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lbl_toast.add_theme_font_size_override("font_size", 17)
+	lbl_toast.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	lbl_toast.add_theme_constant_override("outline_size", 6)
+	lbl_toast.visible = false
+	add_child(lbl_toast)
+	show_mode_banner()
+
+
+# "CAPTURE THE FLAG — grab the enemy flag…" for the first seconds of a match.
+func show_mode_banner() -> void:
+	if lbl_mode_banner == null:
+		return
+	var gm: int = Settings.game_mode
+	var t := "%s\n%s" % [GameInfo.mode_title(gm), GameInfo.mode_goal(gm)]
+	var subs: PackedStringArray = PackedStringArray()
+	for k in ["realistic", "survival", "advance"]:
+		if bool(Settings.get(k)):
+			subs.append(str(GameInfo.SUBMODES[k]))
+	if not subs.is_empty():
+		t += "\n" + "  ".join(subs)
+	lbl_mode_banner.text = t
+	lbl_mode_banner.modulate.a = 1.0
+	lbl_mode_banner.visible = true
+	_banner_t = BANNER_HOLD
+
+
+# Pickup explainer: "VEST — you take half damage for 30 s."
+func toast(title: String, desc: String, col: Color = Color(1, 1, 1)) -> void:
+	if lbl_toast == null:
+		return
+	lbl_toast.text = title if desc == "" else "%s — %s" % [title, desc]
+	lbl_toast.add_theme_color_override("font_color", col)
+	lbl_toast.modulate.a = 1.0
+	lbl_toast.visible = true
+	_toast_t = TOAST_HOLD
+
+
+func _tick_info_labels(delta: float) -> void:
+	if lbl_mode_banner != null and lbl_mode_banner.visible:
+		_banner_t -= delta
+		lbl_mode_banner.modulate.a = clampf(_banner_t, 0.0, 1.0)
+		if _banner_t <= 0.0:
+			lbl_mode_banner.visible = false
+	if lbl_toast != null and lbl_toast.visible:
+		_toast_t -= delta
+		lbl_toast.modulate.a = clampf(_toast_t / 0.6, 0.0, 1.0)
+		if _toast_t <= 0.0:
+			lbl_toast.visible = false
 
 
 func toggle_radio() -> void:
@@ -927,6 +1014,7 @@ func _process(delta: float) -> void:
 			lbl_fps.text = "%d FPS" % int(round(Engine.get_frames_per_second()))
 	_update_vote_ui()
 	_update_bonus_ui()
+	_tick_info_labels(delta)
 	# The round-end banner owns the middle of the screen; the death lines
 	# printed over "BLUE WINS" / the MVP line (Survival especially).
 	var winner_up: bool = lbl_winner != null and lbl_winner.visible
@@ -943,18 +1031,8 @@ func _process(delta: float) -> void:
 			lbl_respawn.text = "Respawning in %d" % maxi(0, int(ceil(_death_remaining)))
 			if _death_remaining <= 0.0:
 				_hide_death()
-	# Prefix the mode so users know which rules are live.
-	var mode_str: String = ""
-	match Settings.game_mode:
-		Settings.MODE_TDM: mode_str = "TDM · "
-		Settings.MODE_CTF: mode_str = "CTF · "
-		Settings.MODE_INF: mode_str = "INF · "
-		Settings.MODE_HTF: mode_str = "HTF · "
-		Settings.MODE_RM:  mode_str = "RM · "
-		Settings.MODE_PM:  mode_str = "PM · "
-		Settings.MODE_DOM: mode_str = "DOM · "
-		Settings.MODE_BR:  mode_str = "BR · "
-		Settings.MODE_GG:  mode_str = "GG · "
+	# Prefix the mode (full name) so users know which rules are live.
+	var mode_str: String = GameInfo.mode_title(Settings.game_mode).capitalize() + " · "
 	# Sub-modes append to the tag so players notice.
 	var tags: PackedStringArray = PackedStringArray()
 	if Settings.realistic:
@@ -970,7 +1048,7 @@ func _process(delta: float) -> void:
 		var main2 := get_parent()
 		if main2 != null and main2.has_method("br_zone"):
 			var z: Dictionary = main2.br_zone()
-			mode_str = "BR · zone %dm · " % int(z.get("radius", 0.0) / 10.0)
+			mode_str = "Battle Royale · zone %dm · " % int(z.get("radius", 0.0) / 10.0)
 	lbl_map.text = mode_str + map_name
 	lbl_status.text = Net.status if Net.is_networked() else ""
 	_update_match_ui()

@@ -258,6 +258,7 @@ func open() -> void:
 		var gm: int = Settings.game_mode
 		var mode_name: String = str(Net.MODE_NAMES[gm]) if gm >= 0 and gm < Net.MODE_NAMES.size() else "?"
 		var txt := "%s · %s" % [str(mp.get("name", "?")), mode_name]
+		txt += "\n" + preload("res://scripts/game_info.gd").mode_goal(gm)
 		if Net.is_networked():
 			txt += "\n" + Net.status
 			if Net.is_host():

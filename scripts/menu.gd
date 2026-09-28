@@ -131,6 +131,9 @@ var _ip_edit: LineEdit
 var _port_edit: LineEdit
 var _host_port_edit: LineEdit
 var _mode_pick: OptionButton
+var _mode_desc: Label = null
+var _mode_desc_labels: Array = []
+const GameInfo = preload("res://scripts/game_info.gd")
 var _host_custom_paths: Array = []
 var _host_pub_cb: CheckBox
 var _host_mode_pick: OptionButton
@@ -291,9 +294,13 @@ func _build_menu() -> void:
 	mode_pick.item_selected.connect(func(idx: int) -> void:
 		Settings.game_mode = idx
 		Settings.save()
+		_refresh_mode_desc()
 		if _host_mode_pick != null:
 			_host_mode_pick.selected = idx)
 	_menu_box.add_child(mode_pick)
+	_mode_desc = _make_mode_desc()
+	_menu_box.add_child(_mode_desc)
+	_tooltip_modes(mode_pick)
 
 	# Sub-mode toggles — three quick chips under the main mode picker.
 	var subs := HBoxContainer.new()
@@ -302,7 +309,7 @@ func _build_menu() -> void:
 	_menu_box.add_child(subs)
 	var real_cb := CheckBox.new()
 	real_cb.text = "Realistic"
-	real_cb.tooltip_text = "Realistic: headshots kill in one hit, no jet boots, and no ammo or fuel readouts."
+	real_cb.tooltip_text = GameInfo.SUBMODES["realistic"]
 	real_cb.button_pressed = Settings.realistic
 	UITheme.style_checkbox(real_cb)
 	real_cb.toggled.connect(func(on: bool) -> void:
@@ -311,7 +318,7 @@ func _build_menu() -> void:
 	subs.add_child(real_cb)
 	var surv_cb := CheckBox.new()
 	surv_cb.text = "Survival"
-	surv_cb.tooltip_text = "Survival: no respawns — when you die you wait (spectating) until one side is wiped out and the next round starts."
+	surv_cb.tooltip_text = GameInfo.SUBMODES["survival"]
 	surv_cb.button_pressed = Settings.survival
 	UITheme.style_checkbox(surv_cb)
 	surv_cb.toggled.connect(func(on: bool) -> void:
@@ -320,7 +327,7 @@ func _build_menu() -> void:
 	subs.add_child(surv_cb)
 	var adv_cb := CheckBox.new()
 	adv_cb.text = "Advance"
-	adv_cb.tooltip_text = "Advance: start with a knife and unlock better guns as you score kills."
+	adv_cb.tooltip_text = GameInfo.SUBMODES["advance"]
 	adv_cb.button_pressed = Settings.advance
 	UITheme.style_checkbox(adv_cb)
 	adv_cb.toggled.connect(func(on: bool) -> void:
@@ -340,6 +347,7 @@ func _build_menu() -> void:
 	_menu_box.add_child(UITheme.make_section_header("Deploy"))
 
 	var play := _make_button("PLAY vs BOTS", true)
+	play.tooltip_text = "Single-player match against bots with the mode, map and options above."
 	play.pressed.connect(func() -> void:
 		Net.set_singleplayer()
 		get_tree().change_scene_to_file("res://scenes/main.tscn"))
@@ -347,10 +355,12 @@ func _build_menu() -> void:
 	_menu_first_focus = play
 
 	var editor := _make_button("MAP EDITOR")
+	editor.tooltip_text = "Build your own map: platforms, spawns, flags, kits. Save it, then play or host it."
 	editor.pressed.connect(func() -> void:
 		Net.set_singleplayer()
 		get_tree().change_scene_to_file("res://scenes/map_editor.tscn"))
 	var train := _make_button("TRAINING")
+	train.tooltip_text = "Guided first match: learn to move, jet, shoot, reload, switch and throw grenades."
 	train.pressed.connect(start_training_match)
 	var deploy_row := HBoxContainer.new()
 	deploy_row.add_theme_constant_override("separation", 8)
@@ -361,16 +371,19 @@ func _build_menu() -> void:
 	_menu_box.add_child(deploy_row)
 
 	var gen := _make_button("GENERATE + PLAY")
+	gen.tooltip_text = "Builds a brand-new random map and starts a bot match on it with your current mode. Saved as \"generated\" (the next press replaces it) — open it in the Map Editor to keep it."
 	gen.pressed.connect(_on_generate_and_play)
 	_menu_box.add_child(gen)
 
 	_menu_box2.add_child(UITheme.make_section_header("Network"))
 
 	var host := _make_button("HOST GAME")
+	host.tooltip_text = "Start an online / LAN server that friends can join."
 	host.pressed.connect(_open_host)
 	_menu_box2.add_child(host)
 
 	var join := _make_button("JOIN GAME")
+	join.tooltip_text = "Find a LAN or online game, or type an address."
 	join.pressed.connect(func() -> void:
 		_menu_root.visible = false
 		_join_root.visible = true
@@ -391,6 +404,7 @@ func _build_menu() -> void:
 	sys_row.add_child(settings)
 
 	var stats := _make_button("STATS")
+	stats.tooltip_text = "Your career totals: kills, deaths, K/D and accuracy."
 	stats.pressed.connect(func() -> void:
 		_refresh_stats_labels()
 		_menu_root.visible = false
@@ -655,6 +669,7 @@ func _build_host() -> void:
 	var pick_row := HBoxContainer.new()
 	pick_row.add_theme_constant_override("separation", 8)
 	_host_panel.add_child(pick_row)
+	_host_panel.add_child(_make_mode_desc())
 	_host_mode_pick = OptionButton.new()
 	for mname in MODE_NAMES:
 		_host_mode_pick.add_item(mname)
@@ -665,9 +680,11 @@ func _build_host() -> void:
 	_host_mode_pick.item_selected.connect(func(idx: int) -> void:
 		Settings.game_mode = idx
 		Settings.save()
+		_refresh_mode_desc()
 		if _mode_pick != null:
 			_mode_pick.selected = idx)
 	pick_row.add_child(_host_mode_pick)
+	_tooltip_modes(_host_mode_pick)
 
 	_map_pick = OptionButton.new()
 	for name in MAP_NAMES:
@@ -1143,6 +1160,29 @@ func _refresh_sp_map_pick() -> void:
 		# from "rotating" — keep slot 0 selected by default.
 		sel = 0
 	_sp_map_pick.selected = sel
+
+
+# ── Mode descriptions (v1.18) ────────────────────────────
+func _make_mode_desc() -> Label:
+	var l := Label.new()
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size = Vector2(320, 0)
+	UITheme.style_body(l, 13, Color(0.78, 0.82, 0.88))
+	l.text = GameInfo.mode_goal(Settings.game_mode)
+	_mode_desc_labels.append(l)
+	return l
+
+
+func _refresh_mode_desc() -> void:
+	for l in _mode_desc_labels:
+		if is_instance_valid(l):
+			l.text = GameInfo.mode_goal(Settings.game_mode)
+
+
+func _tooltip_modes(ob: OptionButton) -> void:
+	var pop := ob.get_popup()
+	for i in pop.item_count:
+		pop.set_item_tooltip(i, "%s\n%s" % [GameInfo.mode_goal(i), GameInfo.mode_detail(i)])
 
 
 func _on_generate_and_play() -> void:

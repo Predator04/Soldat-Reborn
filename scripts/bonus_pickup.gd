@@ -6,6 +6,9 @@ extends Area2D
 
 signal touched(body)
 
+const GameInfo = preload("res://scripts/game_info.gd")
+const ItemLabel = preload("res://scripts/item_label.gd")
+
 # Class-static list is convenient for Main to pick a random kind at spawn time.
 const KINDS := ["predator", "berserker", "vest", "cluster"]
 
@@ -25,6 +28,7 @@ func _ready() -> void:
 	add_child(col)
 	body_entered.connect(_on_body_entered)
 	z_index = 1
+	ItemLabel.attach(self, GameInfo.item_label(bonus_kind), kind_color(bonus_kind), 24.0)
 
 
 func _process(delta: float) -> void:

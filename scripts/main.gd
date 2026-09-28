@@ -2978,6 +2978,7 @@ func _spawn_point_pickup(pos: Vector2) -> void:
 	poly.polygon = PackedVector2Array([Vector2(0, -10), Vector2(10, 0), Vector2(0, 10), Vector2(-10, 0)])
 	poly.color = Color(1.0, 0.85, 0.25)
 	a.add_child(poly)
+	preload("res://scripts/item_label.gd").attach(a, "+1 POINT", Color(1.0, 0.85, 0.25), 16.0)
 	add_child(a)
 
 

@@ -24,6 +24,7 @@ func _ready() -> void:
 	# Detect soldiers (layer bit 8) as well as resting on terrain (bit 1).
 	collision_mask = 1 | 8
 	add_to_group("weapon_pickup")
+	preload("res://scripts/item_label.gd").attach(self, weapon_name.to_upper(), Color(0.95, 0.9, 0.6), 16.0)
 	var shape := CollisionShape2D.new()
 	var cs := CircleShape2D.new()
 	cs.radius = 6.0

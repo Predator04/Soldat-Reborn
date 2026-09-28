@@ -224,6 +224,8 @@ const TouchControls = preload("res://scripts/touch_controls.gd")
 
 
 const FootAudio = preload("res://scripts/foot_audio.gd")
+const GameInfo = preload("res://scripts/game_info.gd")
+const BonusPickup = preload("res://scripts/bonus_pickup.gd")
 
 
 func _ready() -> void:
@@ -1448,6 +1450,8 @@ func try_pickup_weapon(weapon_name: String, mag: int = -1) -> bool:
 				break
 	if picked and was_thrown_by_me:
 		_thrown.erase(weapon_name)
+	if picked and not was_thrown_by_me:
+		_pickup_toast(weapon_name.to_upper(), GameInfo.weapon_desc(weapon_name), Color(0.95, 0.9, 0.6))
 	# Gun Game: keep the rung/weapon coupling intact — re-snap to the current
 	# gg_level's weapon so a stray pickup can't force us out of our rung slot.
 	if picked and Settings.game_mode == Settings.MODE_GG:
@@ -2063,9 +2067,22 @@ func net_kit_apply(kind: String) -> void:
 	_apply_kit_local(kind)
 
 
+# Explain a pickup on the local player's HUD (never for other soldiers).
+func _pickup_toast(title: String, desc: String, col: Color) -> void:
+	if multiplayer.has_multiplayer_peer() and not is_multiplayer_authority():
+		return
+	var m := get_parent()
+	if m == null or m.get("player") != self or m.get("hud") == null:
+		return
+	if m.hud.has_method("toast"):
+		m.hud.toast(title, desc, col)
+
+
 func _apply_kit_local(kind: String) -> void:
 	if dead:
 		return
+	_pickup_toast(GameInfo.item_label(kind), "healed to full" if kind == "medkit" else "grenades refilled to 3",
+		Color(0.55, 1.0, 0.55) if kind == "medkit" else Color(0.85, 0.95, 0.55))
 	if kind == "medkit":
 		health = 100.0
 	elif kind == "grenades":
@@ -2088,6 +2105,7 @@ func _apply_bonus_local(kind: String, duration: float) -> void:
 		_clear_bonus_local()
 	bonus_kind = kind
 	bonus_t = duration
+	_pickup_toast(GameInfo.item_label(kind), GameInfo.item_desc(kind), BonusPickup.kind_color(kind))
 	match kind:
 		"berserker":
 			_bonus_saved_using_secondary = using_secondary

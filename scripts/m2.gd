@@ -28,6 +28,7 @@ var m2_id: int = -1
 
 
 func _ready() -> void:
+	preload("res://scripts/item_label.gd").attach(self, "M2 MACHINE GUN", Color(0.95, 0.9, 0.5), 62.0)
 	add_to_group("m2_gun")
 	z_index = 1
 

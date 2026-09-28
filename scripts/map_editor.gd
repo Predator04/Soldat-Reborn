@@ -104,6 +104,38 @@ var _load_panel: Panel = null
 var _load_list: VBoxContainer = null
 
 
+
+# Hover help for every editor button (v1.18).
+const EDITOR_TIPS := {
+	"Platform": "Drag to draw a solid rectangle soldiers stand on.",
+	"Ladder": "Place a ladder soldiers can climb.",
+	"Move": "Drag anything to move it.",
+	"Delete": "Click anything to remove it.",
+	"Player": "Where you spawn (and the blue team in team modes).",
+	"Bot": "A spawn spot for bots (and the red team).",
+	"Flag B": "Blue team's flag base (Capture the Flag).",
+	"Flag R": "Red team's flag base (Capture the Flag).",
+	"Flag Ctr": "The single neutral flag (Hold the Flag / Infiltration fallback).",
+	"Dom Pt": "A Domination control point.",
+	"M2": "A mounted M2 machine gun (press F next to it in game).",
+	"Poly": "Click points to draw a free-form terrain shape; Enter closes it, Backspace removes the last point.",
+	"Scenery": "Place a decoration (no collision).",
+	"Weapon": "A weapon lying on the ground to pick up.",
+	"Bonus": "A power-up crate spot (Predator / Berserker / Vest / Cluster, random).",
+	"Point": "A Pointmatch diamond (+1 point).",
+	"INF": "Infiltration flag (red carries it to blue's base).",
+	"HTF": "Hold the Flag flag.",
+	"Rambo": "Where the Rambo Bow appears (Rambomatch).",
+	"New": "Start an empty map.",
+	"Save": "Save under the name on the right (your maps folder).",
+	"Load": "Open one of your saved maps.",
+	"Generate": "Replace the map with a random one from the seed on the right; tweak it and Save.",
+	"Play-test": "Save a test copy and play the map right now against bots.",
+	"Undo": "Undo the last change (Ctrl+Z).",
+	"Redo": "Redo (Ctrl+Y).",
+	"Exit": "Back to the main menu.",
+}
+
 func _fresh_map() -> Dictionary:
 	return {
 		"name": "Untitled",
@@ -810,6 +842,7 @@ func _build_ui() -> void:
 	for spec in tool_specs:
 		var b := Button.new()
 		b.text = String(spec[0])
+		b.tooltip_text = str(EDITOR_TIPS.get(b.text, ""))
 		b.custom_minimum_size = Vector2(72, 30)
 		var tid: int = int(spec[1])
 		b.pressed.connect(func() -> void: _set_tool(tid))
@@ -831,6 +864,7 @@ func _build_ui() -> void:
 	for spec in op_specs:
 		var b := Button.new()
 		b.text = String(spec[0])
+		b.tooltip_text = str(EDITOR_TIPS.get(b.text, ""))
 		b.custom_minimum_size = Vector2(88, 32)
 		b.pressed.connect(Callable(self, String(spec[1])))
 		top.add_child(b)

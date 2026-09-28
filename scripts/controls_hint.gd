@@ -32,6 +32,9 @@ var _t := 0.0
 var _auto := false
 var _help_down := false
 var _grid: GridContainer
+var _goal: Label
+const GameInfo = preload("res://scripts/game_info.gd")
+const BonusPickup = preload("res://scripts/bonus_pickup.gd")
 
 
 func _ready() -> void:
@@ -45,11 +48,38 @@ func _ready() -> void:
 	title.add_theme_color_override("font_color", UITheme.COL_ACCENT)
 	title.add_theme_font_size_override("font_size", 13)
 	box.add_child(title)
+	_goal = Label.new()
+	_goal.add_theme_color_override("font_color", Color(1.0, 0.92, 0.6))
+	_goal.add_theme_font_size_override("font_size", 12)
+	box.add_child(_goal)
 	_grid = GridContainer.new()
 	_grid.columns = 4
 	_grid.add_theme_constant_override("h_separation", 14)
 	_grid.add_theme_constant_override("v_separation", 1)
 	box.add_child(_grid)
+	# What the things lying around the map do.
+	var ph := Label.new()
+	ph.text = "PICKUPS"
+	ph.add_theme_color_override("font_color", UITheme.COL_ACCENT)
+	ph.add_theme_font_size_override("font_size", 13)
+	box.add_child(ph)
+	var pg := GridContainer.new()
+	pg.columns = 2
+	pg.add_theme_constant_override("h_separation", 14)
+	pg.add_theme_constant_override("v_separation", 1)
+	for k in ["medkit", "grenades", "vest", "predator", "berserker", "cluster"]:
+		var n := Label.new()
+		n.text = GameInfo.item_label(k)
+		n.add_theme_color_override("font_color", BonusPickup.kind_color(k))
+		n.add_theme_font_size_override("font_size", 12)
+		n.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		var dsc := Label.new()
+		dsc.text = GameInfo.item_desc(k)
+		dsc.add_theme_color_override("font_color", UITheme.COL_TEXT)
+		dsc.add_theme_font_size_override("font_size", 12)
+		pg.add_child(n)
+		pg.add_child(dsc)
+	box.add_child(pg)
 	_fill()
 	visible = false
 	if _touch() or Net.is_dedicated or DisplayServer.get_name() == "headless":
@@ -78,6 +108,8 @@ func _label_for(action: String) -> String:
 
 
 func _fill() -> void:
+	if _goal != null:
+		_goal.text = "%s — %s" % [GameInfo.mode_title(Settings.game_mode), GameInfo.mode_goal(Settings.game_mode)]
 	for c in _grid.get_children():
 		c.queue_free()
 	for row in ROWS:

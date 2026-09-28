@@ -239,6 +239,9 @@ func _draw_tooltip(w: Dictionary, near: Vector2) -> void:
 	var kind := str(w.get("kind", "bullet"))
 	var lines: PackedStringArray = PackedStringArray()
 	lines.append("[ %s ]" % str(w["name"]))
+	var role: String = preload("res://scripts/game_info.gd").weapon_desc(str(w["name"]))
+	if role != "":
+		lines.append(role)
 	lines.append("kind: %s" % kind)
 	lines.append("damage: %.0f" % float(w.get("damage", 0.0)))
 	lines.append("fire rate: %.2fs" % float(w.get("rate", 0.0)))
