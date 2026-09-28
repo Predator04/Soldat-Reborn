@@ -5,7 +5,7 @@
    "enhancement",
    "area: gameplay"
   ],
-  "commit": "",
+  "commit": "0f2d43f",
   "version": "1.19.0",
   "body": "Requested: add vehicles. scripts/buggy.gd: CharacterBody2D buggy, F to enter/exit (shares the M2 mount path), A/D drive, W hop, mounted MG with overheat, run-over damage, 350 HP, explosive damage x1.6, wreck kills occupants + blast, respawn after 25 s. MP: host owns seats/HP/wrecks/respawn, the driver's peer simulates and streams state through Main.net_vehicle_* with sender checks; late-join mirror. tools/place_vehicles.py finds long drivable stretches (87/99 classic maps + built-ins). Map editor Buggy tool, Settings -> Game toggle. Tests: tools/vehicle_test.gd (gate F), gate C 'drive'."
  },
@@ -15,7 +15,7 @@
    "bug",
    "area: gameplay"
   ],
-  "commit": "",
+  "commit": "0f2d43f",
   "version": "1.19.0",
   "body": "bonus_pickup.gd / weapon_pickup.gd called bool(body.get('dead')) on any CharacterBody2D; a buggy has no 'dead' -> 'Nonexistent bool constructor'. Vehicles are now ignored."
  }
