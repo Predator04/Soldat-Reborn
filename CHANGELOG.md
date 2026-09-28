@@ -5,7 +5,7 @@ All notable changes to Soldat Reborn.
 ## [1.17.1] — 2026-09-28
 
 ### Changed
-- **Grenades cook like in Soldat.** Pressing the grenade key pulls the pin and starts the fuse; holding winds up a harder throw (a tap lobs it, ~0.9 s gives the full throw); letting go throws it with whatever fuse is left. Hold it past the fuse (2.2 s frag, 1.9 s cluster) and it goes off in your hand. A ring over your head shows the fuse and flashes red near the end. Die while holding one and it drops live at your feet. The touch GRENADE button now works as a hold button. Gate stage F checks tap / wind-up / in-hand.
+- **Grenades cook like in Soldat.** Pressing the grenade key pulls the pin and starts the fuse; holding winds up a harder throw (a tap lobs it, ~0.9 s gives the full throw); letting go throws it with whatever fuse is left. Hold it past the fuse (2.2 s frag, 1.9 s cluster) and it goes off in your hand. A ring over your head shows the fuse and flashes red near the end. Die while holding one and it drops live at your feet. The touch GRENADE button now works as a hold button. Gate stage F checks tap / wind-up / in-hand. Gate run 20: all stages passed.
 
 ## [1.17.0] — 2026-09-28
 
