@@ -25,7 +25,7 @@
    "enhancement",
    "area: gameplay"
   ],
-  "commit": "",
+  "commit": "f37a75a",
   "version": "1.19.0",
   "body": "Feedback: a lone driver who can also shoot is too strong. Solo firing now caps speed at 50% and doubles spread. Team-mode teammate bots board a nearby buggy as gunner (bot.gd _think_ride, Main.vehicle_bot_board/net_vehicle_seat_bot), aim with lead, burst-fire under the overheat threshold and leave when the driver does. HUD shows buggy HP, gun heat, gunner, solo note. tools/vehicle_crew_test.gd in gate F."
  }
