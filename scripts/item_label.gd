@@ -12,9 +12,36 @@ var lift := 26.0
 var _a := -1.0
 
 
+var _dup := false        # an identical tag right next to this one already shows the name
+var _nudge := 0.0        # lifted a bit so two different tags don't overlap
+
+
 func _ready() -> void:
 	z_index = 60
 	top_level = false
+	add_to_group("item_label")
+	_settle.call_deferred()
+
+
+# Two kits side by side (Voland) used to print GRENADE KIT twice on top of each
+# other: identical tags close together show once; different ones stack.
+func _settle() -> void:
+	if not is_inside_tree():
+		return
+	for o in get_tree().get_nodes_in_group("item_label"):
+		if o == self or not is_instance_valid(o) or o.get_instance_id() > get_instance_id():
+			continue
+		var d: Vector2 = (o as Node2D).global_position - global_position
+		var font := ThemeDB.fallback_font
+		var half: float = (font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x \
+				+ font.get_string_size(str(o.get("text")), HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x) * 0.5 + 6.0
+		var dy: float = (d.y - float(o.get("lift")) - float(o.get("_nudge"))) - (-lift)
+		if absf(d.x) > half or absf(dy) > 16.0:
+			continue
+		if str(o.get("text")) == text and absf(d.x) < 110.0:
+			_dup = true
+		else:
+			_nudge = maxf(_nudge, 16.0 - dy)
 
 
 func _process(_d: float) -> void:
@@ -37,12 +64,12 @@ func _alpha() -> float:
 
 
 func _draw() -> void:
-	if _a <= 0.0 or text == "":
+	if _a <= 0.0 or text == "" or _dup:
 		return
 	var font := ThemeDB.fallback_font
 	var fs := 11
 	var sz := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
-	var at := Vector2(-sz.x * 0.5, -lift)
+	var at := Vector2(-sz.x * 0.5, -lift - _nudge)
 	draw_string_outline(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 4, Color(0, 0, 0, 0.85 * _a))
 	draw_string(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(color.r, color.g, color.b, _a))
 

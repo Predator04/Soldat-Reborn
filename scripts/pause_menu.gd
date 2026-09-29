@@ -210,7 +210,9 @@ func _input(event: InputEvent) -> void:
 	if InputMap.has_action("pause") and event.is_action_pressed("pause"):
 		triggered = true
 	elif event is InputEventKey and event.pressed and not event.echo \
-			and event.physical_keycode == KEY_ESCAPE:
+			and (event.physical_keycode == KEY_ESCAPE or event.keycode == KEY_ESCAPE):
+		# keycode too: remote-play / streaming / automation tools often send
+		# virtual keys without a scancode, which the physical binding misses.
 		triggered = true
 	if triggered:
 		# Don't hijack while the HUD's chat / command LineEdit is focused —
