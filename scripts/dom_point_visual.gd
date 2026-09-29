@@ -67,6 +67,6 @@ func _ellipse(c: Vector2, r: Vector2, color: Color, filled: bool) -> void:
 
 func _team_color(team: int) -> Color:
 	match team:
-		1: return Color(0.35, 0.55, 1.0)
-		2: return Color(0.85, 0.3, 0.25)
+		1: return preload("res://scripts/team_colors.gd").blue()
+		2: return preload("res://scripts/team_colors.gd").red()
 		_: return Color(0.6, 0.6, 0.6)

@@ -1279,13 +1279,13 @@ func _team_display_info(team_id: int) -> Dictionary:
 			if team_id == 1:
 				return {"name": "DEFENDERS", "color": Color(0.4, 0.6, 1.0)}
 			if team_id == 2:
-				return {"name": "ATTACKERS", "color": Color(0.95, 0.35, 0.3)}
+				return {"name": "ATTACKERS", "color": preload("res://scripts/team_colors.gd").red(true)}
 		# Team modes generally: fixed BLUE/RED colors + labels.
 		if Settings.game_mode != Settings.MODE_DM and Settings.game_mode != Settings.MODE_RM:
 			if team_id == 1:
 				return {"name": "BLUE", "color": Color(0.4, 0.6, 1.0)}
 			if team_id == 2:
-				return {"name": "RED", "color": Color(0.95, 0.35, 0.3)}
+				return {"name": "RED", "color": preload("res://scripts/team_colors.gd").red(true)}
 		if team_id == 0:
 			return {"name": "YOU", "color": Color(0.35, 0.85, 0.5)}
 		# FFA bots: each is its own team — label with the bot's name/colour.

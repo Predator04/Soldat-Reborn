@@ -62,9 +62,9 @@ const FFA_BOT_TEAM_BASE := 1000
 
 static func bot_color_for_team(t: int) -> Color:
 	if t == TEAM_BLUE:
-		return Color(0.35, 0.55, 1.0)
+		return preload("res://scripts/team_colors.gd").blue()
 	if t == TEAM_RED:
-		return Color(0.85, 0.3, 0.25)
+		return preload("res://scripts/team_colors.gd").red()
 	if t >= FFA_BOT_TEAM_BASE:
 		# Distinct, readable hues per FFA bot (golden-angle spacing).
 		var h := fposmod(float(t - FFA_BOT_TEAM_BASE) * 0.618034 + 0.05, 1.0)
@@ -2453,7 +2453,7 @@ func net_spawn_player(peer_id: int, spawn_pos: Vector2, display_name: String, as
 	if t == TEAM_BLUE:
 		p.color = Color(0.35, 0.55, 1.0)
 	elif t == TEAM_RED:
-		p.color = Color(0.85, 0.3, 0.25)
+		p.color = preload("res://scripts/team_colors.gd").red()
 	p.set_multiplayer_authority(peer_id)
 	# Gun Game: restore persisted rung on respawn so death doesn't reset progress.
 	if Settings.game_mode == Settings.MODE_GG:

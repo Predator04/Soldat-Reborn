@@ -30,6 +30,7 @@ var touch_btn_pos: Dictionary = {}
 var show_fps := false          # overlay FPS counter on the HUD
 var pause_on_focus_loss := true  # open the pause menu when the window / app loses focus
 var check_updates := true      # look for a newer release on GitHub at startup
+var colorblind := false        # red team drawn orange (blue / orange)
 var vehicles := true   # buggies on maps with room (host decides in multiplayer)
 var vsync := true
 var max_fps := 0                # 0 = unlimited (VSync still caps it)
@@ -169,6 +170,7 @@ func load_settings() -> void:
 	max_fps = clampi(int(cf.get_value("video", "max_fps", 0)), 0, 360)
 	pause_on_focus_loss = bool(cf.get_value("game", "pause_on_focus_loss", true))
 	check_updates = bool(cf.get_value("game", "check_updates", true))
+	colorblind = bool(cf.get_value("video", "colorblind", false))
 	vehicles = bool(cf.get_value("game", "vehicles", true))
 	bot_chatter = bool(cf.get_value("game", "bot_chatter", true))
 	camera_lead = bool(cf.get_value("controls", "camera_lead", true))
@@ -239,6 +241,7 @@ func save() -> void:
 	cf.set_value("video", "max_fps", max_fps)
 	cf.set_value("game", "pause_on_focus_loss", pause_on_focus_loss)
 	cf.set_value("game", "check_updates", check_updates)
+	cf.set_value("video", "colorblind", colorblind)
 	cf.set_value("game", "vehicles", vehicles)
 	cf.set_value("game", "bot_chatter", bot_chatter)
 	cf.set_value("controls", "camera_lead", camera_lead)

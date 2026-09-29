@@ -168,6 +168,10 @@ func _build_video(box: VBoxContainer) -> void:
 			Settings.fullscreen = on
 			Settings.save()
 			Settings.apply_display()))
+	box.add_child(_check_button("Colour-blind friendly teams (red team shows orange; next match)", Settings.colorblind,
+		func(on: bool) -> void:
+			Settings.colorblind = on
+			Settings.save()))
 	box.add_child(_check_button("Lo-fi mode (no particles/gibs — low-end PCs)", Settings.lofi,
 		func(on: bool) -> void:
 			Settings.lofi = on
