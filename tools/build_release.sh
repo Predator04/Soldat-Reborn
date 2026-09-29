@@ -13,11 +13,25 @@ G="${GODOT_BIN:-$HOME/godot/Godot_v4.7.2-stable_linux.x86_64}"
 WHAT="${1:-all}"
 KEYDIR="$(cd .. && pwd)/keys"
 UBER="${UBER_APK_SIGNER:-$HOME/tools/uber.jar}"
-mkdir -p build
+mkdir -p build build/old
+
+# Move a previous build to build/old/SoldatReborn-<time>.<ext> (unique name, so
+# a copy that's still running is never overwritten); drop copies over a day old.
+retire() {
+  [ -f "$1" ] || return 0
+  mv "$1" "build/old/SoldatReborn-$(date +%Y%m%d-%H%M%S).$2"
+  find build/old -name "SoldatReborn-*.$2" -mmin +1440 -delete 2>/dev/null || true
+}
 
 if [ "$WHAT" = all ] || [ "$WHAT" = win ]; then
-  [ -f build/SoldatReborn.exe ] && mv -f build/SoldatReborn.exe build/SoldatReborn.old.exe
-  "$G" --headless --export-release "Windows Desktop" build/SoldatReborn.exe >/dev/null 2>&1
+  # Never overwrite an exe in place: if the game is running from it, the new
+  # build replaces the pack under the running process and it can no longer
+  # load scenes ("Cannot open file res://scenes/main.tscn" on Start Hosting).
+  # Rename the current build out of the way (allowed while it runs), export to
+  # a temp file, then move the new one in.
+  retire build/SoldatReborn.exe exe
+  "$G" --headless --export-release "Windows Desktop" /tmp/SoldatReborn.exe >/dev/null 2>&1
+  mv /tmp/SoldatReborn.exe build/SoldatReborn.exe
   ls -la build/SoldatReborn.exe
 fi
 
@@ -46,7 +60,7 @@ PY
   PW="$(sed -n 's/^password: //p' "$KEYDIR/KEYSTORE_INFO.txt")"
   java -jar "$UBER" -a /tmp/SoldatReborn.apk --ks "$KEYDIR/soldat-reborn.keystore" --ksAlias soldatreborn \
     --ksPass "$PW" --ksKeyPass "$PW" --overwrite 2>&1 | grep -E "verified|Successfully|ERROR" || true
-  [ -f build/SoldatReborn.apk ] && mv -f build/SoldatReborn.apk build/SoldatReborn.old.apk
+  retire build/SoldatReborn.apk apk
   cp /tmp/SoldatReborn.apk build/SoldatReborn.apk
   ls -la build/SoldatReborn.apk
 fi
