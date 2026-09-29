@@ -260,6 +260,10 @@ func _build_game(box: VBoxContainer) -> void:
 		func(on: bool) -> void:
 			Settings.vehicles = on
 			Settings.save()))
+	box.add_child(_check_button("Check for updates when the game starts", Settings.check_updates,
+		func(on: bool) -> void:
+			Settings.check_updates = on
+			Settings.save()))
 	box.add_child(_check_button("Pause when the game loses focus (alt-tab, phone home button)", Settings.pause_on_focus_loss,
 		func(on: bool) -> void:
 			Settings.pause_on_focus_loss = on

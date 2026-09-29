@@ -1,0 +1,4 @@
+[
+ {"title": "Auto-updater", "labels": ["enhancement", "area: platform"], "commit": "HEAD", "version": "1.22.0",
+  "body": "Requested: an auto updater. scripts/updater.gd (kept on the tree root so downloads survive a match) checks GitHub releases/latest at startup; the menu shows UPDATE AVAILABLE with the release notes. Windows: background download next to the exe, size check, then a batch file waits for the game to exit, swaps the exe (keeping SoldatReborn.previous.exe, restoring it if the swap fails) and restarts. Android: opens the .apk in the browser. Settings toggle; never checks in the editor or dedicated servers. tools/updater_test.gd against a local fake GitHub in gate F. build_release.sh no longer overwrites a possibly running build."}
+]

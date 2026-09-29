@@ -301,7 +301,7 @@ fi
 ft() {  # key script timeout TAG label
   fon "$1" || return 0
   local f="$OUT/$1.log"
-  timeout "$3" "$G" --headless --fixed-fps 60 -s "tools/$2" > "$f" 2>&1
+  timeout "$3" "$G" --headless --fixed-fps 60 -s "tools/$2" ${6:+-- $6} > "$f" 2>&1
   local line
   line=$(grep "$4" "$f" | tail -1)
   if echo "$line" | grep -q "$4 ok" && [ "$(errs "$f")" = "0" ]; then pass "F $5: $(echo "$line" | cut -c1-110)"; else fail "F $5: '${line:-no result}' errors=$(errs "$f")"; fi
@@ -320,6 +320,16 @@ if has F; then
   ft tank tank_test.gd 100 TANK-TEST "tank: drive / lobbed shell / armor / wreck / respawn / wide-map spawns"
   ft joincode join_code_test.gd 60 JOINCODE-TEST "join codes: round trip, typos, garbage, host shows its code"
   ft name name_test.gd 60 NAME-TEST "name required before Training / online, easy rename"
+  if fon updater; then
+    # Fake GitHub: a releases/latest JSON one version ahead + a 1 MB "exe".
+    ud="$OUT/updsrv"; mkdir -p "$ud"; head -c 1048576 /dev/urandom > "$ud/SoldatReborn.exe"
+    uport=$((8100 + RANDOM % 400))
+    printf '{"tag_name":"v99.0.0","body":"test","html_url":"x","assets":[{"name":"SoldatReborn.exe","size":1048576,"browser_download_url":"http://127.0.0.1:%d/SoldatReborn.exe"}]}' $uport > "$ud/latest.json"
+    python3 -m http.server $uport --bind 127.0.0.1 --directory "$ud" > /dev/null 2>&1 &
+    upid=$!; sleep 1
+  fi
+  ft updater updater_test.gd 60 UPDATER-TEST "auto-updater: version compare, release check, download + size check, swap script" "--update-url=http://127.0.0.1:${uport:-1}/latest.json"
+  if fon updater; then kill $upid 2>/dev/null; wait $upid 2>/dev/null; fi
   ft sound sound_test.gd 100 SOUND-TEST "sound wiring"
 fi
 

@@ -252,6 +252,7 @@ func _build_title() -> void:
 	add_child(_name_btn)
 	_title_nodes.append(_name_btn)
 	_refresh_name_btn()
+	_build_update_button()
 
 
 func _build_number() -> int:
@@ -625,6 +626,119 @@ func _build_name_prompt(then: Callable = Callable(), changing := false) -> void:
 		cancel.pressed.connect(close)
 	_name_prompt_root = root
 	UITheme.safe_grab_focus_deferred(edit)
+
+
+# ── Updates (scripts/updater.gd lives on the tree root so a download survives
+# going into a match) ─────────────────────────────────────────────────────
+const Updater = preload("res://scripts/updater.gd")
+var _upd_btn: Button = null
+var _upd_panel: PanelContainer = null
+
+
+static func updater(tree: SceneTree) -> Node:
+	var u := tree.root.get_node_or_null("Updater")
+	if u == null:
+		u = Updater.new()
+		u.name = "Updater"
+		tree.root.add_child.call_deferred(u)
+	return u
+
+
+func _build_update_button() -> void:
+	_upd_btn = Button.new()
+	UITheme.style_button(_upd_btn, 16, true)
+	_upd_btn.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	_upd_btn.offset_top = 16
+	_upd_btn.offset_left = 16
+	_upd_btn.custom_minimum_size = Vector2(0, 38)
+	_upd_btn.visible = false
+	_upd_btn.pressed.connect(_on_update_pressed)
+	add_child(_upd_btn)
+	var u := updater(get_tree())
+	u.state_changed.connect(_refresh_update_ui)
+	_refresh_update_ui.call_deferred()
+	var forced := str(OS.get_cmdline_user_args()).contains("--update-url=")
+	if Settings.check_updates and DisplayServer.get_name() != "headless" and (forced or not OS.has_feature("editor")) \
+			and not Net.is_dedicated and str(u.get("state")) == "idle":
+		u.check.call_deferred()
+
+
+func _refresh_update_ui() -> void:
+	if _upd_btn == null or not is_inside_tree():
+		return
+	var u := updater(get_tree())
+	var st := str(u.get("state"))
+	_upd_btn.disabled = false
+	match st:
+		"available":
+			_upd_btn.text = "  UPDATE AVAILABLE: v%s  " % str(u.get("latest"))
+		"downloading":
+			_upd_btn.text = "  DOWNLOADING UPDATE %d%%  " % int(float(u.get("progress")) * 100.0)
+			_upd_btn.disabled = true
+		"ready":
+			_upd_btn.text = "  RESTART TO UPDATE TO v%s  " % str(u.get("latest"))
+		"failed":
+			_upd_btn.text = "  UPDATE FAILED · RETRY  " if str(u.get("latest")) != "" else ""
+			_upd_btn.tooltip_text = str(u.get("error"))
+	_upd_btn.visible = st in ["available", "downloading", "ready"] or (st == "failed" and str(u.get("latest")) != "")
+
+
+func _on_update_pressed() -> void:
+	var u := updater(get_tree())
+	var st := str(u.get("state"))
+	if st == "ready":
+		u.apply_and_restart()
+		return
+	if st == "failed":
+		u.start()
+		return
+	if _upd_panel != null:
+		_upd_panel.queue_free()
+	_upd_panel = PanelContainer.new()
+	_upd_panel.add_theme_stylebox_override("panel", UITheme.panel_style())
+	_upd_panel.set_anchors_preset(Control.PRESET_CENTER, true)
+	_upd_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_upd_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	add_child(_upd_panel)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 10)
+	box.custom_minimum_size = Vector2(560, 0)
+	_upd_panel.add_child(box)
+	box.add_child(UITheme.make_screen_title("UPDATE TO v%s" % str(u.get("latest"))))
+	var sub := Label.new()
+	sub.text = "You have v%s." % Updater.current_version()
+	UITheme.style_body(sub)
+	box.add_child(sub)
+	var notes := RichTextLabel.new()
+	notes.bbcode_enabled = false
+	var txt := str(u.get("notes"))
+	notes.text = txt.left(1600) + ("..." if txt.length() > 1600 else "")
+	notes.custom_minimum_size = Vector2(540, 260)
+	notes.add_theme_font_size_override("normal_font_size", 13)
+	notes.add_theme_color_override("default_color", UITheme.COL_TEXT)
+	box.add_child(notes)
+	var how := Label.new()
+	how.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	how.add_theme_font_size_override("font_size", 13)
+	how.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)
+	how.text = "The new version downloads in the background (you can keep playing). Then press RESTART TO UPDATE: the game closes, swaps itself and starts again. Your settings, stats and maps are kept." \
+			if Updater.can_self_update() else "This opens the download in your browser. Install the downloaded file to update; your settings, stats and maps are kept."
+	box.add_child(how)
+	var go := _make_button("UPDATE NOW" if Updater.can_self_update() else "DOWNLOAD", true)
+	go.pressed.connect(func() -> void:
+		_upd_panel.queue_free()
+		_upd_panel = null
+		_menu_root.visible = true
+		u.start())
+	box.add_child(go)
+	var later := _make_button("LATER")
+	later.pressed.connect(func() -> void:
+		_upd_panel.queue_free()
+		_upd_panel = null
+		_menu_root.visible = true)
+	box.add_child(later)
+	_menu_root.visible = false
+	UITheme.safe_grab_focus_deferred(go)
 
 
 var _name_prompt_root: Control = null

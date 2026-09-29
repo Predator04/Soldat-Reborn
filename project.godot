@@ -6,7 +6,7 @@ config_version=5
 [application]
 
 config/name="Soldat Reborn"
-config/version="1.21.1"
+config/version="1.22.0"
 config/quit_on_go_back=false
 run/main_scene="res://scenes/menu.tscn"
 config/icon="res://icon.png"

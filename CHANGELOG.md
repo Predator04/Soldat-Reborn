@@ -2,6 +2,17 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.22.0] — 2026-09-29
+
+### Added
+- **Auto-updater.** When the game starts it asks GitHub for the latest release. If there's a newer version, an **UPDATE AVAILABLE** button appears in the top-left corner of the main menu; it shows what's new and offers **UPDATE NOW**.
+  - Windows: the new version downloads in the background (you can keep playing; the button shows the progress), its size is checked, and **RESTART TO UPDATE** closes the game, swaps the exe (the old one is kept as `SoldatReborn.previous.exe`) and starts the new version. If the swap fails, the old exe is put back.
+  - Android: an app can't replace itself, so **DOWNLOAD** opens the new .apk in the browser; install it over the old one.
+  - Settings, stats and maps are kept (they live in your user folder, not next to the exe). Settings → Game → "Check for updates when the game starts" turns it off. It never checks in dedicated servers or the editor.
+
+### QA
+- `tools/updater_test.gd` (gate stage F) against a local fake GitHub: version comparison, the release check, the download with its size check, and the Windows swap script.
+
 ## [1.21.1] — 2026-09-29
 
 ### Changed
