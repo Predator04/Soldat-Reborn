@@ -54,6 +54,7 @@ var bot_shots_seen: int = 0
 # after ~3s of flight) so smoke tests can distinguish "bullet was spawned but
 # already expired" from "no bullet was ever created".
 var bot_bullets_seen: int = 0
+var proj_msgs_seen: int = 0   # rocket / grenade sync messages applied (Main.net_proj)
 # Master-server heartbeat (dedicated mode). Owned by _start_master_heartbeat /
 # _stop_master_heartbeat so leave() can tear them down instead of leaking.
 var _heartbeat_http: HTTPRequest = null
@@ -450,7 +451,7 @@ func _smoke_botfire() -> void:
 		var local_hp: float = -1.0
 		if main != null and main.get("player") != null and is_instance_valid(main.player):
 			local_hp = float(main.player.health)
-		print("SMOKE-BOTFIRE id=%d mode=%d gm=%d players=%d bots_visible=%d bot_shots_seen=%d bot_bullets_seen=%d bot_bullets_max=%d bot_bullets_visible=%d local_hp=%.1f min_hp=%.1f deaths=%d status=\"%s\" left=\"%s\" stats=%d auto_shots=%d" % [local_id(), mode, Settings.game_mode, pcount, bots_visible, bot_shots_seen, bot_bullets_seen, max_bullets_ref[0], bot_bullets_visible, local_hp, min_hp_ref[0], deaths_ref[0], status, last_disconnect_reason, (main.player_stats.size() if main != null and main.get("player_stats") != null else -1), smoke_auto_shots])
+		print("SMOKE-BOTFIRE id=%d mode=%d gm=%d players=%d bots_visible=%d bot_shots_seen=%d bot_bullets_seen=%d bot_bullets_max=%d bot_bullets_visible=%d local_hp=%.1f min_hp=%.1f deaths=%d status=\"%s\" left=\"%s\" stats=%d auto_shots=%d proj_msgs=%d" % [local_id(), mode, Settings.game_mode, pcount, bots_visible, bot_shots_seen, bot_bullets_seen, max_bullets_ref[0], bot_bullets_visible, local_hp, min_hp_ref[0], deaths_ref[0], status, last_disconnect_reason, (main.player_stats.size() if main != null and main.get("player_stats") != null else -1), smoke_auto_shots, proj_msgs_seen])
 		leave()
 		get_tree().quit())
 

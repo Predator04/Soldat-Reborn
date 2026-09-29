@@ -242,10 +242,17 @@ func _snapshot_net_peers() -> void:
 		_net_peers_set = true
 
 
+# Sent through Main.net_proj (by name) instead of an RPC on this node: a
+# packet for a projectile that's already gone, or never spawned on that peer
+# (joined mid-flight), is dropped quietly there instead of logging
+# "Node not found".
 func _net_send(method: StringName, args: Array) -> void:
+	var m := get_parent()
+	if m == null or not m.has_method("net_proj"):
+		return
 	if _net_peers_set:
 		for pid in _net_peers:
 			if multiplayer.get_peers().has(int(pid)):
-				callv("rpc_id", [int(pid), method] + args)
+				m.rpc_id(int(pid), "net_proj", str(name), String(method), args)
 	else:
-		callv("rpc", [method] + args)
+		m.rpc("net_proj", str(name), String(method), args)

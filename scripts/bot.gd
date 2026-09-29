@@ -1132,7 +1132,10 @@ func _shoot(to_t: Vector2) -> void:
 	# #67: bake per-shot aim jitter from bot skill on TOP of bink. Low skill
 	# widens the cone so shots miss; high skill barely wavers.
 	if _skill_aim_spread > 0.0:
-		aim = aim.rotated(randf_range(-1.0, 1.0) * _skill_aim_spread)
+		# Slow single-shot rifles take careful aim (a Barrett bot that sprays
+		# like an AK hits almost nothing with one shot every 2.2 s).
+		var careful: float = 0.4 if (loadout == "Barrett" or loadout == "Ruger 77") and not using_secondary else 1.0
+		aim = aim.rotated(randf_range(-1.0, 1.0) * _skill_aim_spread * careful)
 	var muzzle: Vector2 = global_position + SoldierArt.muzzle_local(self, aim, facing, active_weapon) + aim * 4.0
 	# MP: broadcast so clients spawn the tracer/rocket + play sfx (mirrors player.net_shoot).
 	# Damage is gated per-victim in bullet.gd/rocket.gd via is_multiplayer_authority();

@@ -2085,6 +2085,25 @@ func net_stats_sync(stats: Dictionary) -> void:
 		player_stats = stats.duplicate(true)
 
 
+# Rocket / grenade sync (see rocket.gd _net_send). Only the projectile's
+# authority may drive it; unknown names (already exploded here, or spawned
+# before we loaded) are ignored.
+const _PROJ_METHODS := ["net_projectile_state", "net_explode", "net_consume"]
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func net_proj(node_name: String, method: String, args: Array) -> void:
+	if not (method in _PROJ_METHODS) or node_name.contains("/") or node_name.contains(".."):
+		return
+	var n := get_node_or_null(NodePath(node_name))
+	if n == null or not n.has_method(method):
+		return
+	if multiplayer.get_remote_sender_id() != n.get_multiplayer_authority():
+		return
+	Net.proj_msgs_seen += 1
+	n.callv(method, args)
+
+
 func ready_peer_ids() -> Array:
 	return _ready_peers.keys()
 
