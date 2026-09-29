@@ -375,8 +375,20 @@ func _build_menu() -> void:
 	play.pressed.connect(func() -> void:
 		Net.set_singleplayer()
 		get_tree().change_scene_to_file("res://scenes/main.tscn"))
-	_menu_box.add_child(play)
 	_menu_first_focus = play
+	# PLAY vs BOTS | RANDOM MAP, then TRAINING | MAP EDITOR (two rows, so the
+	# whole column fits without scrolling).
+	var gen := _make_button("RANDOM MAP")
+	gen.tooltip_text = "Builds a brand-new random map and starts a bot match on it with your current mode. Saved as \"generated\" (the next press replaces it) — open it in the Map Editor to keep it."
+	gen.pressed.connect(_on_generate_and_play)
+	var play_row := HBoxContainer.new()
+	play_row.add_theme_constant_override("separation", 8)
+	for b in [play, gen]:
+		b.custom_minimum_size = Vector2(0, b.custom_minimum_size.y)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		play_row.add_child(b)
+	play.size_flags_stretch_ratio = 1.3
+	_menu_box.add_child(play_row)
 
 	var editor := _make_button("MAP EDITOR")
 	editor.tooltip_text = "Build your own map: platforms, spawns, flags, kits. Save it, then play or host it."
@@ -394,10 +406,6 @@ func _build_menu() -> void:
 		deploy_row.add_child(b)
 	_menu_box.add_child(deploy_row)
 
-	var gen := _make_button("GENERATE + PLAY")
-	gen.tooltip_text = "Builds a brand-new random map and starts a bot match on it with your current mode. Saved as \"generated\" (the next press replaces it) — open it in the Map Editor to keep it."
-	gen.pressed.connect(_on_generate_and_play)
-	_menu_box.add_child(gen)
 
 	_menu_box2.add_child(UITheme.make_section_header("Network"))
 

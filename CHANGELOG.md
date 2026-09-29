@@ -2,6 +2,12 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.22.1] — 2026-09-29
+
+### Changed
+- Main menu fits without scrolling: PLAY vs BOTS and RANDOM MAP (was "Generate + Play", same button) share a row above TRAINING and MAP EDITOR, so nothing is hidden below the fold any more.
+- First release delivered through the auto-updater: players on 1.22.0 get it from the UPDATE AVAILABLE button.
+
 ## [1.22.0] — 2026-09-29
 
 ### Added
