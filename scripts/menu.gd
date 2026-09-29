@@ -678,7 +678,9 @@ func _refresh_update_ui() -> void:
 		return
 	var u := updater(get_tree())
 	var st := str(u.get("state"))
+	var ver := Updater.current_version()
 	_upd_btn.disabled = false
+	_upd_btn.tooltip_text = "Checks GitHub for a newer version of the game."
 	match st:
 		"available":
 			_upd_btn.text = "  UPDATE AVAILABLE: v%s  " % str(u.get("latest"))
@@ -687,10 +689,21 @@ func _refresh_update_ui() -> void:
 			_upd_btn.disabled = true
 		"ready":
 			_upd_btn.text = "  RESTART TO UPDATE TO v%s  " % str(u.get("latest"))
+		"checking":
+			_upd_btn.text = "  v%s · CHECKING FOR UPDATES...  " % ver
+			_upd_btn.disabled = true
+		"none":
+			_upd_btn.text = "  v%s · UP TO DATE  " % ver
 		"failed":
-			_upd_btn.text = "  UPDATE FAILED · RETRY  " if str(u.get("latest")) != "" else ""
+			if str(u.get("latest")) != "":
+				_upd_btn.text = "  UPDATE FAILED · RETRY  "
+			else:
+				_upd_btn.text = "  v%s · CHECK FOR UPDATES  " % ver
 			_upd_btn.tooltip_text = str(u.get("error"))
-	_upd_btn.visible = st in ["available", "downloading", "ready"] or (st == "failed" and str(u.get("latest")) != "")
+		_:
+			_upd_btn.text = "  v%s · CHECK FOR UPDATES  " % ver
+	# Always shown: the current version, and one click to check again.
+	_upd_btn.visible = true
 
 
 func _on_update_pressed() -> void:
@@ -699,8 +712,11 @@ func _on_update_pressed() -> void:
 	if st == "ready":
 		u.apply_and_restart()
 		return
-	if st == "failed":
+	if st == "failed" and str(u.get("latest")) != "":
 		u.start()
+		return
+	if st in ["idle", "none", "failed"]:
+		u.check()
 		return
 	if _upd_panel != null:
 		_upd_panel.queue_free()

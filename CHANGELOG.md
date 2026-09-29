@@ -11,6 +11,7 @@ Polish pass: ten rounds of fix → test. Gate run 37: all 57 checks passed (CTF 
 - **PING column** on the scoreboard in online games (the host measures everyone's round trip and shares it every 2 s; colour-coded).
 - **What's new** panel: the first time you start a new version, the menu shows that version's changes once. The update panel formats release notes the same way.
 - **REPORT A BUG** and **OPEN LOG FOLDER** buttons (Settings → Game): opens a GitHub issue with your version, OS and graphics card filled in, and the folder with the game's logs to attach.
+- The top-left corner of the main menu always shows your version and update status: "v1.23.0 · UP TO DATE", CHECKING..., CHECK FOR UPDATES (click to check again), or UPDATE AVAILABLE when there's a newer one. The pause menu shows the version too.
 - On touch screens the THROW button says what a tap does right now: DRIVE, GUNNER, MOUNT, GET OUT or DISMOUNT near vehicles and M2 guns.
 
 ### Fixed
