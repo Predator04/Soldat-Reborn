@@ -1,4 +1,4 @@
 [
- {"title": "Require a player name before Training / online; one-click rename", "labels": ["enhancement", "area: ui"], "commit": "HEAD", "version": "1.21.1",
+ {"title": "Require a player name before Training / online; one-click rename", "labels": ["enhancement", "area: ui"], "commit": "a413dc8", "version": "1.21.1",
   "body": "Requested: make sure players enter a name before Training and make it easy to change. menu.gd: the first-run prompt has no Skip and its buttons stay disabled until a real name (not empty / 'Player') is typed; _with_name() gates Training, Host, Join and Quick Join; a top-right 'Name · CHANGE NAME' button on the main menu opens the prompt prefilled. settings_panel sets name_set. tools/name_test.gd in gate F."}
 ]
