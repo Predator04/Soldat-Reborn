@@ -252,8 +252,9 @@ func _build_game(box: VBoxContainer) -> void:
 	# Player name — used as your in-game display_name (SP + MP). Persisted.
 	box.add_child(_text_field("Player Name", Settings.player_name,
 		func(t: String) -> void:
-			var clean := t.strip_edges()
+			var clean := t.strip_edges().left(24)
 			Settings.player_name = clean if clean != "" else "Player"
+			Settings.name_set = clean != "" and clean.to_lower() != "player"
 			Settings.save()))
 	box.add_child(_check_button("Vehicles: buggies on maps with room (host decides online)", Settings.vehicles,
 		func(on: bool) -> void:

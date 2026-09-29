@@ -2,6 +2,15 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.21.1] — 2026-09-29
+
+### Changed
+- **A name is required before Training and online play.** The first-launch prompt no longer has a Skip; Start with Training and To the Menu stay greyed out until you type a name (not "Player"). Training, Host, Join and Quick Join ask for a name first if you still don't have one, then carry on where you were going.
+- **Changing your name is one click:** your name sits in the top-right corner of the main menu ("William · CHANGE NAME"). Settings → Game still has the field too.
+
+### QA
+- `tools/name_test.gd` (gate stage F): buttons stay disabled with no name or "Player", the action runs after saving a name, renaming from the menu works and updates the corner button, and a named player isn't asked again.
+
 ## [1.21.0] — 2026-09-29
 
 Easy joining. Gate 28 (A, B, all C network cases, F join codes / labels / editor / training) passed.

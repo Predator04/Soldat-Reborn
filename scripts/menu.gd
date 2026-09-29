@@ -52,6 +52,8 @@ var _title_nodes: Array = []    # wordmark / tagline / version — main list onl
 # the title stack only while the main list is up.
 func _process(_delta: float) -> void:
 	_tick_rejoin(_delta)
+	if _menu_root != null and _menu_root.visible:
+		_refresh_name_btn()   # picks up a rename from Settings too
 	var show_title: bool = _menu_root != null and _menu_root.visible
 	for n in _title_nodes:
 		if is_instance_valid(n) and n.visible != show_title:
@@ -176,7 +178,7 @@ func _ready() -> void:
 	_build_browse()
 	_build_status()
 	_build_footer()
-	if not Settings.name_set and DisplayServer.get_name() != "headless":
+	if not has_real_name() and DisplayServer.get_name() != "headless":
 		_build_name_prompt()
 	# Kicked / host lost / version mismatch: say why we're back at the menu.
 	if Net.last_disconnect_reason != "" and _status_label != null:
@@ -237,6 +239,19 @@ func _build_title() -> void:
 	ver.add_theme_color_override("font_color", UITheme.COL_TEXT_MUTED)
 	add_child(ver)
 	_title_nodes.append(ver)
+	# Your name, top right: click to change it.
+	_name_btn = Button.new()
+	_name_btn.tooltip_text = "Change the name shown in the kill feed, scoreboard and online."
+	UITheme.style_button(_name_btn, 16, false)
+	_name_btn.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_name_btn.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_name_btn.offset_top = 16
+	_name_btn.offset_right = -16
+	_name_btn.custom_minimum_size = Vector2(0, 38)
+	_name_btn.pressed.connect(func() -> void: _build_name_prompt(Callable(), true))
+	add_child(_name_btn)
+	_title_nodes.append(_name_btn)
+	_refresh_name_btn()
 
 
 func _build_number() -> int:
@@ -369,7 +384,7 @@ func _build_menu() -> void:
 		get_tree().change_scene_to_file("res://scenes/map_editor.tscn"))
 	var train := _make_button("TRAINING")
 	train.tooltip_text = "Guided first match: learn to move, jet, shoot, reload, switch and throw grenades."
-	train.pressed.connect(start_training_match)
+	train.pressed.connect(func() -> void: _with_name(start_training_match))
 	var deploy_row := HBoxContainer.new()
 	deploy_row.add_theme_constant_override("separation", 8)
 	for b in [train, editor]:
@@ -387,22 +402,22 @@ func _build_menu() -> void:
 
 	var host := _make_button("HOST GAME")
 	host.tooltip_text = "Start an online / LAN server that friends can join."
-	host.pressed.connect(_open_host)
+	host.pressed.connect(func() -> void: _with_name(_open_host))
 	_menu_box2.add_child(host)
 
 	var join := _make_button("JOIN GAME")
 	join.tooltip_text = "Find a LAN or online game, or type an address."
-	join.pressed.connect(func() -> void:
+	join.pressed.connect(func() -> void: _with_name(func() -> void:
 		_menu_root.visible = false
 		_join_root.visible = true
-		UITheme.safe_grab_focus_deferred(_join_first_focus))
+		UITheme.safe_grab_focus_deferred(_join_first_focus)))
 	_menu_box2.add_child(join)
 
 	var qj := _make_button("QUICK JOIN")
 	qj.tooltip_text = "Jump into the best open game: same version, not full, lowest ping (LAN and master server)."
-	qj.pressed.connect(func() -> void:
+	qj.pressed.connect(func() -> void: _with_name(func() -> void:
 		_menu_root.visible = false
-		_quick_join())
+		_quick_join()))
 	_menu_box2.add_child(qj)
 
 	_menu_box2.add_child(UITheme.spacer(4))
@@ -526,7 +541,15 @@ func _build_credits() -> void:
 
 ## First launch: ask what to call the player (used in kill feed, scoreboard,
 ## multiplayer). Skippable; Settings -> Game changes it later.
-func _build_name_prompt() -> void:
+static func has_real_name() -> bool:
+	var n := Settings.player_name.strip_edges()
+	return Settings.name_set and n != "" and n != "Player"
+
+
+# Name prompt. First launch: pick a name, then Training or the menu (no skip).
+# Later: CHANGE NAME on the menu, or any Training / online button while the
+# name is still the default, opens it with `then` run after saving.
+func _build_name_prompt(then: Callable = Callable(), changing := false) -> void:
 	var root := PanelContainer.new()
 	root.add_theme_stylebox_override("panel", UITheme.panel_style())
 	root.set_anchors_preset(Control.PRESET_CENTER, true)
@@ -537,7 +560,7 @@ func _build_name_prompt() -> void:
 	box.add_theme_constant_override("separation", 12)
 	box.custom_minimum_size = Vector2(440, 0)
 	root.add_child(box)
-	box.add_child(UITheme.make_screen_title("WELCOME, SOLDIER"))
+	box.add_child(UITheme.make_screen_title("YOUR NAME" if changing else "WELCOME, SOLDIER"))
 	var lbl := Label.new()
 	lbl.text = "What should we call you? It shows in the kill feed, the scoreboard and online."
 	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -545,37 +568,82 @@ func _build_name_prompt() -> void:
 	box.add_child(lbl)
 	var edit := LineEdit.new()
 	edit.max_length = 24
-	edit.placeholder_text = "Your name"
+	edit.placeholder_text = "Type your name"
+	edit.text = Settings.player_name if has_real_name() else ""
 	edit.custom_minimum_size = Vector2(0, 38)
 	UITheme.style_lineedit(edit)
 	box.add_child(edit)
-	var train := _make_button("START WITH TRAINING", true)
-	box.add_child(train)
-	var go := _make_button("TO THE MENU")
+	var hint := Label.new()
+	hint.add_theme_font_size_override("font_size", 13)
+	hint.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)
+	box.add_child(hint)
+	var buttons: Array = []
+	var first := not changing and then.is_null()
+	var train: Button = null
+	if first:
+		train = _make_button("START WITH TRAINING", true)
+		box.add_child(train)
+		buttons.append(train)
+	var go := _make_button("TO THE MENU" if first else ("SAVE" if then.is_null() else "SAVE AND CONTINUE"), not first)
 	box.add_child(go)
-	var skip := Button.new()
-	skip.text = "Skip (you can change it in Settings)"
-	skip.flat = true
-	skip.add_theme_font_size_override("font_size", 13)
-	skip.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)
-	box.add_child(skip)
+	buttons.append(go)
+	var cancel: Button = null
+	if not first:
+		cancel = _make_button("CANCEL")
+		box.add_child(cancel)
 	_menu_root.visible = false
-	var finish := func(name: String) -> void:
-		var clean := name.strip_edges().left(24)
-		if clean != "":
-			Settings.player_name = clean
-		Settings.name_set = true
-		Settings.save()
+	var valid := func(t: String) -> bool:
+		var c := t.strip_edges()
+		return c != "" and c.to_lower() != "player"
+	var refresh := func(t: String) -> void:
+		var ok: bool = valid.call(t)
+		for b in buttons:
+			(b as Button).disabled = not ok
+		hint.text = "" if ok else ("Pick something other than \"Player\"." if t.strip_edges().to_lower() == "player" else "Type a name to continue.")
+	edit.text_changed.connect(refresh)
+	refresh.call(edit.text)
+	var close := func() -> void:
 		root.queue_free()
 		_menu_root.visible = true
+		_refresh_name_btn()
 		UITheme.safe_grab_focus_deferred(_menu_first_focus)
-	go.pressed.connect(func() -> void: finish.call(edit.text))
-	train.pressed.connect(func() -> void:
-		finish.call(edit.text)
-		start_training_match())
-	edit.text_submitted.connect(func(t: String) -> void: finish.call(t))
-	skip.pressed.connect(func() -> void: finish.call(""))
+	var finish := func(after: Callable) -> void:
+		if not valid.call(edit.text):
+			refresh.call(edit.text)
+			return
+		Settings.player_name = edit.text.strip_edges().left(24)
+		Settings.name_set = true
+		Settings.save()
+		close.call()
+		if not after.is_null():
+			after.call()
+	go.pressed.connect(func() -> void: finish.call(then))
+	if train != null:
+		train.pressed.connect(func() -> void: finish.call(start_training_match))
+	edit.text_submitted.connect(func(_t: String) -> void: finish.call(then))
+	if cancel != null:
+		cancel.pressed.connect(close)
+	_name_prompt_root = root
 	UITheme.safe_grab_focus_deferred(edit)
+
+
+var _name_prompt_root: Control = null
+var _name_btn: Button = null
+
+
+func _refresh_name_btn() -> void:
+	if _name_btn != null:
+		var t := "  %s  ·  CHANGE NAME  " % (Settings.player_name if has_real_name() else "No name yet")
+		if _name_btn.text != t:
+			_name_btn.text = t
+
+
+## Run `action` once the player has a real name (asks first if not).
+func _with_name(action: Callable) -> void:
+	if has_real_name():
+		action.call()
+	else:
+		_build_name_prompt(action, false)
 
 
 func start_training_match() -> void:
