@@ -2,6 +2,12 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.22.2] — 2026-09-29
+
+### Fixed
+- Starting a match (Play vs Bots, Host, Join, Training, Random Map) no longer looks like it does nothing: the menu shows LOADING MATCH... while the match builds, and if the match can't be loaded it says so and what to do (restart the game) instead of silently staying on the menu.
+- Builds are flushed to disk before the build script reports them done (starting a build that was still being written could fail to load the match).
+
 ## [1.22.1] — 2026-09-29
 
 ### Changed

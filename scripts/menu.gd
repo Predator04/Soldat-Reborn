@@ -374,7 +374,7 @@ func _build_menu() -> void:
 	play.tooltip_text = "Single-player match against bots with the mode, map and options above."
 	play.pressed.connect(func() -> void:
 		Net.set_singleplayer()
-		get_tree().change_scene_to_file("res://scenes/main.tscn"))
+		_go_to_match())
 	_menu_first_focus = play
 	# PLAY vs BOTS | RANDOM MAP, then TRAINING | MAP EDITOR (two rows, so the
 	# whole column fits without scrolling).
@@ -768,10 +768,48 @@ func _with_name(action: Callable) -> void:
 		_build_name_prompt(action, false)
 
 
+# Show LOADING first (the match can take a few seconds to build), then switch
+# scenes; if the switch fails, say so instead of silently staying here.
+var _loading_lbl: Label = null
+
+
+func _go_to_match() -> void:
+	if _loading_lbl == null:
+		_loading_lbl = Label.new()
+		_loading_lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
+		_loading_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_loading_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		_loading_lbl.add_theme_font_size_override("font_size", 40)
+		_loading_lbl.add_theme_color_override("font_color", UITheme.COL_ACCENT)
+		var bg := ColorRect.new()
+		bg.color = Color(0, 0, 0, 0.65)
+		bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+		bg.mouse_filter = Control.MOUSE_FILTER_STOP
+		_loading_lbl.add_child(bg)
+		bg.show_behind_parent = true
+		add_child(_loading_lbl)
+	_loading_lbl.text = "LOADING MATCH..."
+	_loading_lbl.visible = true
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var err := get_tree().change_scene_to_file("res://scenes/main.tscn")
+	if err != OK:
+		_loading_lbl.visible = false
+		if Net.is_networked():
+			Net.leave()
+		_status_label.text = "Couldn't load the match (%s). If you just rebuilt or updated the game, close it and start it again." % error_string(err)
+		if _menu_root != null:
+			_menu_root.visible = true
+		if _host_root != null:
+			_host_root.visible = false
+		if _join_root != null:
+			_join_root.visible = false
+
+
 func start_training_match() -> void:
 	preload("res://scripts/training.gd").start_training()
 	Net.set_singleplayer()
-	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	_go_to_match()
 
 
 func _open_credits() -> void:
@@ -997,7 +1035,7 @@ func _build_host() -> void:
 			if Settings.host_public and Settings.master_url.strip_edges() != "":
 				Net.register_url = Settings.master_url.strip_edges()
 				Net._start_master_heartbeat(port)
-			get_tree().change_scene_to_file("res://scenes/main.tscn")
+			_go_to_match()
 		else:
 			# Net.host_game already set the status text; re-enable so the user can retry.
 			start.disabled = false
@@ -1484,7 +1522,7 @@ func _on_net_connected() -> void:
 func _on_map_received() -> void:
 	if Net.is_client() and _connecting:
 		_connecting = false
-		get_tree().change_scene_to_file("res://scenes/main.tscn")
+		_go_to_match()
 
 
 func _on_net_disconnected() -> void:
@@ -1619,7 +1657,7 @@ func _on_generate_and_play() -> void:
 	Settings.custom_map_path = path
 	Settings.save()
 	Net.set_singleplayer()
-	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	_go_to_match()
 
 
 func _update_map_thumb() -> void:

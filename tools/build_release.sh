@@ -32,7 +32,7 @@ if [ "$WHAT" = all ] || [ "$WHAT" = win ]; then
   retire build/SoldatReborn.exe exe
   "$G" --headless --export-release "Windows Desktop" /tmp/SoldatReborn.exe >/dev/null 2>&1
   mv /tmp/SoldatReborn.exe build/SoldatReborn.exe
-  ls -la build/SoldatReborn.exe
+  sync; ls -la build/SoldatReborn.exe
 fi
 
 if [ "$WHAT" = all ] || [ "$WHAT" = android ]; then
@@ -62,5 +62,5 @@ PY
     --ksPass "$PW" --ksKeyPass "$PW" --overwrite 2>&1 | grep -E "verified|Successfully|ERROR" || true
   retire build/SoldatReborn.apk apk
   cp /tmp/SoldatReborn.apk build/SoldatReborn.apk
-  ls -la build/SoldatReborn.apk
+  sync; ls -la build/SoldatReborn.apk
 fi
