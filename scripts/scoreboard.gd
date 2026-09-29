@@ -99,6 +99,8 @@ func _draw() -> void:
 		me = str(p.get("display_name"))
 	var y := y0 + 58.0
 	var cols := [W - 200.0, W - 140.0, W - 80.0]
+	var online: bool = Net.is_networked()
+	var pings: Dictionary = main.get("peer_pings") if main.get("peer_pings") != null else {}
 	for g in groups:
 		var t: int = g[0]
 		var list: Array = g[1]
@@ -114,6 +116,8 @@ func _draw() -> void:
 		_text(font, Vector2(x0 + cols[1], y), "D", 14, Color(0.7, 0.72, 0.8))
 		if show_caps:
 			_text(font, Vector2(x0 + cols[2], y), "CAPS", 14, Color(0.7, 0.72, 0.8))
+		if online:
+			_text(font, Vector2(x0 + cols[0] - 80.0, y), "PING", 14, Color(0.7, 0.72, 0.8))
 		draw_line(Vector2(x0 + 14, y + 6), Vector2(x0 + W - 14, y + 6), Color(head_col, 0.5), 1.0)
 		y += ROW_H
 		for r in list:
@@ -123,7 +127,12 @@ func _draw() -> void:
 			if str(r["name"]) == me:
 				draw_rect(Rect2(x0 + 10, y - ROW_H + 7, W - 20, ROW_H), Color(1, 1, 1, 0.08))
 				col = Color(1.0, 0.9, 0.5)
-			_text(font, Vector2(x0 + 24, y), str(r["name"]).left(26), 15, col)
+			_text(font, Vector2(x0 + 24, y), str(r["name"]).left(20 if online else 26), 15, col)
+			if online:
+				var pg = pings.get(str(r["name"]), null)
+				var ptxt := "BOT" if pg == null else ("HOST" if int(pg) == 0 else "%d" % int(pg))
+				var pcol := Color(0.6, 0.62, 0.7) if pg == null or int(pg) == 0 else (Color(0.55, 0.95, 0.5) if int(pg) < 80 else (Color(0.95, 0.85, 0.4) if int(pg) < 160 else Color(0.95, 0.45, 0.35)))
+				_text(font, Vector2(x0 + cols[0] - 80.0, y), ptxt, 14, pcol)
 			_text(font, Vector2(x0 + cols[0], y), str(r["k"]), 15, col)
 			_text(font, Vector2(x0 + cols[1], y), str(r["d"]), 15, col)
 			if show_caps:

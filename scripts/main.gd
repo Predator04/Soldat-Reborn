@@ -2656,7 +2656,39 @@ func _tick_perf_watch(delta: float) -> void:
 		hud.post_chat("SYSTEM", "Low frame rate (%d fps): Lo-fi mode is on now. Settings → Video to turn it off." % int(fps), false)
 
 
+# Online: the host measures each client's round trip (ENet) and shares the
+# table every 2 s so everyone's scoreboard has a PING column.
+var peer_pings: Dictionary = {}   # display name -> ms
+var _ping_t := 0.0
+
+
+func _tick_pings(delta: float) -> void:
+	if not Net.is_networked() or not Net.is_host():
+		return
+	_ping_t -= delta
+	if _ping_t > 0.0:
+		return
+	_ping_t = 2.0
+	var enet := multiplayer.multiplayer_peer as ENetMultiplayerPeer
+	if enet == null:
+		return
+	var out := {}
+	if is_instance_valid(player):
+		out[str(player.display_name)] = 0
+	for pid in _peer_names.keys():
+		var pc := enet.get_peer(int(pid))
+		if pc != null:
+			out[str(_peer_names[pid])] = int(pc.get_statistic(ENetPacketPeer.PEER_ROUND_TRIP_TIME))
+	bcast("net_pings", [out], true)
+
+
+@rpc("authority", "call_remote", "unreliable")
+func net_pings(table: Dictionary) -> void:
+	peer_pings = table
+
+
 func _process(delta: float) -> void:
+	_tick_pings(delta)
 	# Vote timer + cooldown ticks — before the client early-return so the vote
 	# countdown reads smoothly on every peer between host state broadcasts (#77).
 	_tick_vote(delta)

@@ -359,7 +359,7 @@ func _smoke_join() -> void:
 					_names.append(str(_c.name))
 			print("SMOKE-JOIN-PLAYERS ", _names)
 			var lp = _mn.get("player")
-			print("SMOKE-JOIN-LOCAL alive=%s" % str(lp != null and is_instance_valid(lp) and not bool(lp.get("dead"))))
+			print("SMOKE-JOIN-LOCAL alive=%s pings=%s" % [str(lp != null and is_instance_valid(lp) and not bool(lp.get("dead"))), str(_mn.get("peer_pings"))])
 		leave()
 		get_tree().quit())
 

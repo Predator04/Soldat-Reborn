@@ -57,7 +57,12 @@ func _draw() -> void:
 			var ridge: float = _sample_ridge(wx, hs, float(l["peaks"]))
 			# Layered noise adds crag detail so ridges don't look interpolated.
 			var detail: float = 0.06 * sin(wx * 0.011 + float(i) * 1.7) + 0.035 * sin(wx * 0.033 + float(i) * 3.1)
-			pts.append(Vector2(sx, view.y - max_h * (0.30 + 0.65 * ridge + detail)))
+			# Keep the ridge above the bottom edge: a point on / below it folds the
+			# polygon over itself ("triangulation failed").
+			var ry: float = view.y - max_h * maxf(0.02, 0.30 + 0.65 * ridge + detail)
+			if is_nan(ry):
+				ry = view.y * 0.7
+			pts.append(Vector2(sx, minf(ry, view.y - 2.0)))
 		pts.append(Vector2(view.x, view.y))
 		pts.append(Vector2(0.0, view.y))
 		var lc: Color = l["col"]
