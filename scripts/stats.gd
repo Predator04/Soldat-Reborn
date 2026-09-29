@@ -22,6 +22,34 @@ func _ready() -> void:
 	load_stats()
 
 
+# Writing the stats file on every kill / death stalled a frame (worst on
+# Windows with antivirus scanning each write) — right when you land a kill.
+# Changes are marked dirty and flushed a few seconds later, at match end, and
+# when the game closes.
+var _dirty := false
+var _flush_t := 0.0
+const FLUSH_DELAY := 8.0
+
+
+func _mark() -> void:
+	if not _dirty:
+		_dirty = true
+		_flush_t = FLUSH_DELAY
+
+
+func _process(delta: float) -> void:
+	if _dirty:
+		_flush_t -= delta
+		if _flush_t <= 0.0:
+			save()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_PREDELETE or what == NOTIFICATION_APPLICATION_PAUSED:
+		if _dirty:
+			save()
+
+
 func load_stats() -> void:
 	var cf := ConfigFile.new()
 	if cf.load(PATH) != OK:
@@ -40,6 +68,7 @@ func load_stats() -> void:
 
 
 func save() -> void:
+	_dirty = false
 	var cf := ConfigFile.new()
 	cf.set_value("totals", "kills", kills)
 	cf.set_value("totals", "deaths", deaths)
@@ -81,31 +110,29 @@ func kd() -> float:
 func record_kill(weapon_name: String) -> void:
 	kills += 1
 	kills_by_weapon[weapon_name] = int(kills_by_weapon.get(weapon_name, 0)) + 1
-	save()
+	_mark()
 
 
 func record_death() -> void:
 	deaths += 1
-	save()
+	_mark()
 
 
 func record_suicide() -> void:
 	suicides += 1
-	save()
+	_mark()
 
 
 func record_shot() -> void:
 	shots += 1
 	# Cheap batch-write: only flush every 20 shots so we don't hammer the file.
-	if shots % 20 == 0:
-		save()
+	_mark()
 
 
 func record_hit() -> void:
 	hits += 1
 	# Flush every 5 — hits are rarer than shots.
-	if hits % 5 == 0:
-		save()
+	_mark()
 
 
 func record_match_end(won: bool) -> void:
