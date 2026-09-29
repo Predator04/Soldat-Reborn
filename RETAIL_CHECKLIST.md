@@ -1,6 +1,6 @@
 # Retail readiness checklist
 
-Status as of v1.17.0. ✅ done · ⚠️ needs you (accounts, legal, real hardware) · ❌ not done yet.
+Status as of v1.20.0. ✅ done · ⚠️ needs you (accounts, legal, real hardware) · ❌ not done yet.
 
 ## Game
 - ✅ Every mode playable vs bots on all 99 classic maps + 3 built-ins; release gate (static checks, boots, MP smokes, every mode, every map) passes.
@@ -16,8 +16,8 @@ Status as of v1.17.0. ✅ done · ⚠️ needs you (accounts, legal, real hardwa
 
 ## Multiplayer
 - ✅ Listen host and dedicated server, bots on both, 10 modes, two-client soak tests with zero errors.
-- ✅ LAN discovery; optional master-server listing (Go server in `../server/master-server`).
-- ⚠️ **Internet play needs the host to forward a UDP port.** There is no NAT punch-through or relay service. For a retail online game you'd want a relay / hosted dedicated servers (e.g. run the dedicated server on a VPS) or Steam networking.
+- ✅ LAN discovery; optional master-server listing (Go server in `../server/master-server`); live ping + player counts (UDP query on game port + 1), Quick Join, rejoin after a drop.
+- ⚠️ **Internet play needs the host to forward UDP ports** (game port, plus port + 1 for the browser's ping). There is no NAT punch-through or relay service. For a retail online game you'd want a relay / hosted dedicated servers (e.g. run the dedicated server on a VPS) or Steam networking.
 - ⚠️ Not tested over real internet latency / packet loss — only on one machine and LAN-style loopback.
 
 ## Legal — check before selling
@@ -29,7 +29,8 @@ Status as of v1.17.0. ✅ done · ⚠️ needs you (accounts, legal, real hardwa
 ## Store packaging
 - ✅ Windows .exe (icon + version info) and signed Android .apk, built by `tools/build_release.sh`; GitHub releases carry both.
 - ⚠️ **Google Play needs an .aab** built with the real Android SDK (Godot gradle build, target SDK 34+). This build machine can't reach Google's SDK downloads; install Android Studio on your PC, set the SDK path in Godot → Editor Settings → Export → Android, turn on "Use Gradle Build" and export AAB. Play also needs a developer account, content rating (violence / blood), data-safety form, screenshots and a feature graphic.
-- ⚠️ **Steam**: Steamworks account and app fee, store page art (capsules, screenshots, trailer). Steam overlay / achievements are not integrated.
+- ✅ Store copy, trailer shot list and placeholder screenshots in `store/`.
+- ⚠️ **Steam**: Steamworks account and app fee, store page art (capsules; reshoot screenshots on a real GPU; cut the trailer from the shot list). Steam overlay / achievements are not integrated.
 - ⚠️ Windows code signing (otherwise SmartScreen warns on first run).
 
 ## QA still needed from people

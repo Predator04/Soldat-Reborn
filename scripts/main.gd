@@ -485,7 +485,7 @@ func _ready() -> void:
 				# Drain any net_client_ready calls that arrived before main.tscn
 				# finished loading (#118 — race between ENet accept and scene load).
 				for _pending in Net.consume_pending_clients():
-					_handle_client_ready(_pending.id, _pending.name, _pending.version)
+					_handle_client_ready(_pending.id, _pending.name, _pending.version, str(_pending.get("token", "")))
 			else:
 				_spawn_networked_player(1)  # host is peer 1
 				# Listen host: same bot roster as single player (Bots setting;
@@ -496,7 +496,7 @@ func _ready() -> void:
 			# Send to Net autoload (always present) — it forwards to Main or buffers
 			# if the host's main.tscn is still loading (#118).
 			Net.disconnected.connect(_on_lost_host)
-			Net.rpc_id(1, "net_client_ready", Settings.player_name, str(ProjectSettings.get_setting("application/config/version", "")))
+			Net.rpc_id(1, "net_client_ready", Settings.player_name, str(ProjectSettings.get_setting("application/config/version", "")), Net.session_token)
 	else:
 		_spawn_player()
 		_spawn_bots()
@@ -2006,6 +2006,7 @@ func _on_net_peer_disconnected(id: int) -> void:
 		if lp != null and is_instance_valid(lp) and _peer_names.has(id):
 			_left_team[str(_peer_names[id])] = int(lp.team)
 		_peer_names.erase(id)
+		_peer_tokens.erase(id)
 		_ready_peers.erase(id)
 		_connected_peers.erase(id)
 		_push_ready_list()
@@ -2136,7 +2137,7 @@ func bcast(method: StringName, args: Array = [], local: bool = false) -> void:
 			callv("rpc_id", [int(pid), method] + args)
 
 
-func _handle_client_ready(sender_id: int, joiner_name: String = "", client_version: String = "") -> void:
+func _handle_client_ready(sender_id: int, joiner_name: String = "", client_version: String = "", token: String = "") -> void:
 	if not Net.is_host():
 		return
 	var sender := sender_id
@@ -2161,7 +2162,9 @@ func _handle_client_ready(sender_id: int, joiner_name: String = "", client_versi
 	# Rejoin after a drop: the host may not have timed the old connection out
 	# yet. Same name from the same address = the same player coming back, so
 	# retire the stale peer now (keeps their name, score and team).
-	var stale := _stale_peer_for(sender, clean_name)
+	var stale := _stale_peer_for(sender, clean_name, token)
+	if token != "":
+		_peer_tokens[sender] = token
 	if stale > 0:
 		_on_net_peer_disconnected(stale)
 		if multiplayer.multiplayer_peer is ENetMultiplayerPeer:
@@ -2223,12 +2226,16 @@ func _peer_address(id: int) -> String:
 	return pc.get_remote_address() if pc != null else ""
 
 
-func _stale_peer_for(sender: int, want: String) -> int:
+var _peer_tokens: Dictionary = {}   # host: peer id -> the client's session token
+
+
+func _stale_peer_for(sender: int, want: String, token: String) -> int:
 	var addr := _peer_address(sender)
-	if addr == "":
+	if addr == "" or token == "":
 		return 0
 	for pid in _peer_names.keys():
-		if int(pid) != sender and str(_peer_names[pid]) == want and _peer_address(int(pid)) == addr:
+		if int(pid) != sender and str(_peer_names[pid]) == want and _peer_address(int(pid)) == addr \
+				and str(_peer_tokens.get(pid, "")) == token:
 			return int(pid)
 	return 0
 

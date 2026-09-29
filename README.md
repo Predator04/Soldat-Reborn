@@ -14,8 +14,8 @@ past the classic, with most of Soldat 2's feature list folded in.
 - **Procedural maps** — seeded generator with re-roll, produces playable layouts for every mode
 - **Classic maps** — 99 original Soldat levels ported from `.pms` with scenery, textured terrain, weather and baked bot navigation (bots play every objective mode on every map)
 - **Polish** — gestures/taunts, chat, weapon throw/pickup, ceasefire, bink, game modifiers, character customization, lo-fi mode, local stats, GIF recording, improved grenade physics
-- **Multiplayer** — host-authoritative ENet (host / join), replicated bots that shoot and damage clients, dedicated headless server mode, LAN-scale sync, authority-owned grenade/rocket transforms so shooter + victim see the same trajectory and impact spot
-- **Vehicles** — two-seat buggies (driver + gunner on a mounted machine gun) on 87 of the classic maps and the built-in arenas: run people over, get wrecked by rockets and grenades, respawn at their spot. Toggle in Settings → Game
+- **Multiplayer** — host-authoritative ENet (host / join), replicated bots that shoot and damage clients, dedicated headless server mode, server browser with live ping and player counts, Quick Join, automatic rejoin after a dropped connection, LAN-scale sync, authority-owned grenade/rocket transforms so shooter + victim see the same trajectory and impact spot
+- **Vehicles** — two-seat buggies (driver + gunner on a mounted machine gun) on 87 of the classic maps and the built-in arenas, and armored tanks with a lobbed-shell turret on the 13 widest maps: run people over, get wrecked by rockets and grenades, respawn at their spot. Bots drive and crew both. Toggle in Settings → Game
 - **Pickups** — medikits and grenade kits where the original maps put them (bots use them too), plus timed bonus crates (Predator, Berserker, Vest, Cluster)
 - **Sound** — positional audio (distance + stereo), footsteps, landings, ricochets, bullet whizz-bys, distant-gunfire tails, death cries, rain / snow ambience, Soldat radio voice lines
 - **Round hygiene** — clean-slate reset (full HP/ammo, spawn-slot teleport) in every mode, not just Survival

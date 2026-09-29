@@ -9,6 +9,7 @@ var _out := "user://shot.png"
 var _at := Vector2.INF
 var _n := 0
 var _moved := false
+var _at_frame := 5
 var _flagdemo := false
 var _flagdrop := false
 var _scene := "res://scenes/main.tscn"
@@ -24,6 +25,8 @@ func _initialize() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--frames="):
 			_frames = int(a.substr(9))
+		elif a.begins_with("--at-frame="):
+			_at_frame = int(a.substr(11))
 		elif a.begins_with("--out="):
 			_out = a.substr(6)
 		elif a == "--flagdemo":
@@ -56,7 +59,13 @@ func _process(_delta: float) -> bool:
 		# Software-rendered captures run slowly; keep the low-FPS guard from
 		# flipping Lo-fi on in this machine's settings.
 		root.get_node("Settings").set("lofi_auto_done", true)
-	if _at != Vector2.INF and not _moved and _n > 5 and current_scene != null:
+	if _at != Vector2.INF and _moved and _n < _at_frame + 200 and current_scene != null:
+		# The first body can be replaced (limbo pick / respawn): keep putting
+		# the player back for a while.
+		var p2 = current_scene.get("player")
+		if p2 != null and is_instance_valid(p2) and p2.global_position.distance_to(_at) > 400.0:
+			_moved = false
+	if _at != Vector2.INF and not _moved and _n > _at_frame and current_scene != null:
 		var p = current_scene.get("player")
 		if p != null and is_instance_valid(p):
 			p.global_position = _at

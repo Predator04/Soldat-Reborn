@@ -31,6 +31,9 @@ var last_disconnect_reason := ""   # shown by the menu after a kick / lost host
 var last_server_ip := ""           # the game we last joined (rejoin after a drop)
 var last_server_port := 0
 var rejoin_offer := false          # set when the host connection dropped (not a kick)
+# Random per run of the game: a rejoin from this process sends the same token,
+# so the host can tell "same player back" from "another player with that name".
+var session_token := "%08x%08x" % [randi(), randi()]
 var chosen_map_index := 0     # host's picked map; clients receive it via net_set_map
 var _map_synced := false      # client-side: true once host has told us the map
 # #99: custom-map broadcast. Host stashes the full JSON so joining peers can
@@ -519,15 +522,15 @@ func leave() -> void:
 # Main so calls that arrive before main.tscn finishes loading are buffered here
 # instead of silently dropped. Main drains the buffer in _ready() (#118).
 @rpc("any_peer", "reliable")
-func net_client_ready(joiner_name: String = "", client_version: String = "") -> void:
+func net_client_ready(joiner_name: String = "", client_version: String = "", token: String = "") -> void:
 	if not is_host():
 		return
 	var sender := multiplayer.get_remote_sender_id()
 	var main := _get_main()
 	if main != null:
-		main._handle_client_ready(sender, joiner_name, client_version)
+		main._handle_client_ready(sender, joiner_name, client_version, token)
 	else:
-		_pending_clients.append({id = sender, name = joiner_name, version = client_version})
+		_pending_clients.append({id = sender, name = joiner_name, version = client_version, token = token})
 
 
 func consume_pending_clients() -> Array:

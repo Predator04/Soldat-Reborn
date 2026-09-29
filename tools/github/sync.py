@@ -112,6 +112,10 @@ def backlog(path):
             print("exists #%d %s" % (have[it["title"]], it["title"]))
             continue
         sha = it.get("commit", "")
+        if it.get("open"):
+            iss = call("POST", "/repos/%s/issues" % REPO, {"title": it["title"], "body": it["body"] + "\n\n_Seen in v%s; still open._" % it.get("version", "?"), "labels": it.get("labels", [])})
+            print("filed (open) #%d %s" % (iss["number"], it["title"]))
+            continue
         body = it["body"] + "\n\n_Filed after the fact to keep the tracker complete; fixed in %s (v%s)._" % (sha, it.get("version", "?"))
         iss = call("POST", "/repos/%s/issues" % REPO, {"title": it["title"], "body": body, "labels": it.get("labels", [])})
         n = iss["number"]

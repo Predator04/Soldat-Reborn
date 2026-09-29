@@ -2,6 +2,26 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.20.0] — 2026-09-28
+
+Gate run 27: 54/54 passed (CTF sweep with buggies and tanks on the maps: 225 grabs, 32 captures, 683 kills, 3 falls, 0 errors). Two cases (a bot rocket packet racing a fresh join, and a bot Barrett missing its one test shot) failed once and passed on re-run; both are filed.
+
+### Added
+- **Bots drive.** A bot heading somewhere far (1100+ px) takes an empty buggy or tank on the way, drives toward its goal, hops over bumps, and gets out at the destination, in front of a drop into the void, when it's stuck, or when the vehicle is nearly wrecked. A bot driving alone fires the gun at targets in reach.
+- **Tanks** on the 13 widest classic maps (one per team base on team maps) and the Towers arena. Two seats like the buggy, but slow (230 top speed), 900 HP and armored: bullets do a fifth of their damage, so bring a LAW, M79 or grenades. The turret lobs a high-explosive shell every 2.4 s (aim high for range; the HUD shows SHELL READY / RELOADING); its own shells never hurt the tank or its crew. It crushes people it rolls over and respawns 40 s after it's wrecked. Bots drive and gun tanks too (they work out the shell arc). Map editor **Tank** tool; listed on the H card.
+- **Server browser: live ping and player counts.** Every host answers a small UDP query on its game port + 1, so LAN and master-server rows show ping (green / yellow / red), the current players and map, and grey out full servers and other versions. Joinable, busy, low-ping servers sort first. REFRESH button.
+- **Quick Join** (main menu, Join screen and Browse): looks at LAN and master-server games for a couple of seconds and joins the best open one on your version (people in it beats empty, then lowest ping).
+- **Rejoin after a drop.** If the connection to the host is lost (not a kick), the menu shows CONNECTION LOST and rejoins by itself after 5 s (or press REJOIN). The host recognises the same player coming back from the same address, retires the stale connection, and gives you back your name, score and team.
+- Store kit in `store/`: store page copy (short / long description, features, tags, rating notes, requirements), a trailer shot list, and placeholder 1920×1080 screenshots.
+
+### Changed
+- Run-over kills by a tank are credited as "Tank".
+
+### QA
+- `tools/tank_test.gd` (gate stage F): tank spawns with 900 HP, drives slower than a buggy, a lobbed shell hits a bot 650 px away without hurting the tank or crew, bullets do 20% and rockets full damage, a wreck kills the crew, and it respawns at full health; 13 classic maps carry tank spawns.
+- Gate stage C: `rejoin` — a client drops hard, the menu's countdown rejoins it, same name and team, no errors on either side; the `lan` case also checks the server query (ping + players).
+- `tools/vehicle_drive_test.gd` (stage F): a bot boards a buggy and drives 3000+ px to a far goal, getting out near it.
+
 ## [1.19.0] — 2026-09-28
 
 Gate run 26: all stages passed (CTF sweep with buggies on the maps: 218 grabs, 30 captures, 608 kills, 7 falls, 0 errors).
