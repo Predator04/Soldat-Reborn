@@ -78,7 +78,7 @@ AV=$(sed -n 's/^version\/name="\(.*\)"/\1/p' export_presets.cfg)
 WV=$(sed -n 's/^application\/file_version="\(.*\)"/\1/p' export_presets.cfg)
 CV=$(grep -m1 -oE '^## \[[0-9.]+\]' CHANGELOG.md | tr -d '#[] ')
 if [ "$V" = "$AV" ] && [ "$WV" = "$V.0" ] && [ "$CV" = "$V" ]; then pass "A versions agree: $V (android $AV, windows $WV, changelog $CV)"; else fail "A versions: project=$V android=$AV windows=$WV changelog=$CV"; fi
-if grep -q 'include_filter="\*.poa, \*.json"' export_presets.cfg && [ "$(grep -c 'include_filter="\*.poa, \*.json"' export_presets.cfg)" -ge 2 ]; then pass "A exports ship map JSON (Windows + Android)"; else fail "A export include_filter missing *.json"; fi
+if [ "$(grep -c 'include_filter="\*.poa, \*.json' export_presets.cfg)" -ge 2 ]; then pass "A exports ship map JSON (Windows + Android)"; else fail "A export include_filter missing *.json"; fi
 
 fi
 

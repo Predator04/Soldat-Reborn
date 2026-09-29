@@ -1,0 +1,14 @@
+[
+ {"title": "Polish loop: colour-blind teams, scoreboard ping, what's new, bug report button", "labels": ["enhancement", "area: ui"], "commit": "HEAD", "version": "1.23.0",
+  "body": "scripts/team_colors.gd centralises team colours with a colour-blind (blue/orange) option in Settings -> Video; scoreboard PING column online (host shares ENet RTT every 2 s via net_pings); What's new panel on first start of a new version (CHANGELOG.md now exported); REPORT A BUG (pre-filled GitHub issue) and OPEN LOG FOLDER in Settings -> Game; touch THROW button relabels to DRIVE/GUNNER/MOUNT/GET OUT."},
+ {"title": "Frame hitch: stats file written on every kill/death", "labels": ["bug", "area: gameplay"], "commit": "HEAD", "version": "1.23.0",
+  "body": "stats.gd saved user://stats.cfg synchronously on every kill, death and every 5 hits. Now marked dirty and flushed after 8 s, at match end, and on close/pause (verified the value survives a quit)."},
+ {"title": "Flaky: client logs Node not found Main/BotRocket_* right after joining", "labels": ["bug", "area: multiplayer"], "commit": "HEAD", "version": "1.23.0",
+  "body": "Rocket/grenade state, explode and consume messages now go through Main.net_proj(name, method, args): authority-checked, whitelisted methods, and unknown names are dropped quietly. Verified sync still flows (proj_msgs=370 in a 3-mode smoke) and no errors across all C cases."},
+ {"title": "Flaky: weapon test bot Barrett sometimes misses its single shot", "labels": ["bug", "area: bots"], "commit": "HEAD", "version": "1.23.0",
+  "body": "Barrett/Ruger bots now aim with 40% of their skill wobble; at skill 3 a Barrett bot was ~40% per shot at 320 px."},
+ {"title": "Two pickup name tags overlap when kits sit next to each other", "labels": ["bug", "area: graphics"], "commit": "HEAD", "version": "1.23.0",
+  "body": "item_label.gd: identical tags within 110 px show once; different overlapping tags stack 16 px apart."},
+ {"title": "Parallax: triangulation failed when a ridge touches the screen bottom", "labels": ["bug", "area: graphics"], "commit": "HEAD", "version": "1.23.0",
+  "body": "Seen twice in gate 27 logs (parallax.gd _draw). Ridge points are clamped above the bottom edge."}
+]

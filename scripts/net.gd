@@ -1054,10 +1054,10 @@ func _smoke_rejoin() -> void:
 			print("SMOKE-REJOIN dropped as %s" % before[0])
 		elif stage[0] == 1 and is_client() and p != null and is_instance_valid(p) and mn.has_method("_handle_client_ready"):
 			stage[0] = 2
+			# Read name/team the moment the new body exists (bots may kill it
+			# a second later); stay one more second to catch late errors.
+			var after: String = "%s/%d" % [str(p.display_name), int(p.team)]
 			get_tree().create_timer(1.0).timeout.connect(func() -> void:
-				var m2 = get_tree().current_scene
-				var p2 = m2.get("player") if m2 != null else null
-				var after: String = ("%s/%d" % [str(p2.display_name), int(p2.team)]) if p2 != null and is_instance_valid(p2) else "none"
 				print("SMOKE-REJOIN %s before=%s after=%s" % ["ok" if after == before[0] else "FAIL", before[0], after])
 				leave()
 				get_tree().quit())

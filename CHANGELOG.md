@@ -2,6 +2,26 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.23.0] — 2026-09-29
+
+Polish pass: ten rounds of fix → test. Gate run 37: all 57 checks passed (CTF sweep with buggies and tanks: 220 grabs, 32 captures, 688 kills, 3 falls, 0 errors).
+
+### Added
+- **Colour-blind friendly teams** (Settings → Video): the red team is drawn orange everywhere (soldiers, flags, domination points, HUD, scoreboard, kill feed). Team colours now come from one place.
+- **PING column** on the scoreboard in online games (the host measures everyone's round trip and shares it every 2 s; colour-coded).
+- **What's new** panel: the first time you start a new version, the menu shows that version's changes once. The update panel formats release notes the same way.
+- **REPORT A BUG** and **OPEN LOG FOLDER** buttons (Settings → Game): opens a GitHub issue with your version, OS and graphics card filled in, and the folder with the game's logs to attach.
+- On touch screens the THROW button says what a tap does right now: DRIVE, GUNNER, MOUNT, GET OUT or DISMOUNT near vehicles and M2 guns.
+
+### Fixed
+- Frame hitch on kills and deaths: the stats file was rewritten on every kill / death (and every 5 hits); changes are now saved a few seconds later, at match end and when the game closes.
+- Online: rocket and grenade sync messages go through one handler that drops messages for projectiles that already exploded or were fired before you joined, instead of logging "Node not found" (the one flaky network case in the last full test run).
+- Bots with the Barrett or Ruger take careful aim (60% less aim wobble); with one shot every 2.2 s a Barrett bot used to miss almost everything.
+- Two identical pickups side by side (e.g. two grenade kits on Voland) print one name tag; different tags that would overlap are stacked.
+- Esc opens the pause menu for input tools that send virtual keys without a scancode (remote play / streaming / automation).
+- The mountain backdrop could log "triangulation failed" when a ridge dipped to the bottom edge of the screen.
+- The rejoin network test read the player's name a second after rejoining, when a bot had sometimes already killed them (false failure); it now reads it the moment the new body exists.
+
 ## [1.22.2] — 2026-09-29
 
 ### Fixed
