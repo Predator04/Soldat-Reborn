@@ -1086,7 +1086,7 @@ func _process(delta: float) -> void:
 			var z: Dictionary = main2.br_zone()
 			mode_str = "Battle Royale · zone %dm · " % int(z.get("radius", 0.0) / 10.0)
 	lbl_map.text = mode_str + map_name
-	lbl_status.text = Net.status if Net.is_networked() else ""
+	lbl_status.text = Net.status.get_slice("\n", 0) if Net.is_networked() else ""
 	_update_match_ui()
 	# No body (dead / spectating): hide the empty vitals box; the limbo
 	# weapon menu takes that corner.

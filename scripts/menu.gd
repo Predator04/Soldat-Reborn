@@ -733,25 +733,45 @@ func _build_host() -> void:
 
 	_host_panel.add_child(UITheme.make_section_header("Network"))
 
+	var port_row := HBoxContainer.new()
+	port_row.add_theme_constant_override("separation", 8)
 	var port_lbl := Label.new()
 	port_lbl.text = "Port"
 	UITheme.style_body(port_lbl)
-	_host_panel.add_child(port_lbl)
-
+	port_row.add_child(port_lbl)
 	_host_port_edit = LineEdit.new()
 	_host_port_edit.text = str(Net.DEFAULT_PORT)
 	_host_port_edit.placeholder_text = str(Net.DEFAULT_PORT)
-	_host_port_edit.custom_minimum_size = Vector2(0, 34)
+	_host_port_edit.custom_minimum_size = Vector2(110, 34)
 	UITheme.style_lineedit(_host_port_edit)
-	_host_panel.add_child(_host_port_edit)
+	port_row.add_child(_host_port_edit)
+	if OS.get_name() == "Windows":
+		var fw := _make_button("FIX FIREWALL")
+		fw.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		fw.tooltip_text = "If friends on your Wi-Fi can't see or join your game, Windows Firewall is usually blocking it. This adds a rule for Soldat Reborn (Windows asks for permission once)."
+		fw.pressed.connect(func() -> void:
+			_status_label.text = "Approve the Windows prompt to allow Soldat Reborn through the firewall." if Net.allow_through_firewall() \
+					else "Couldn't start the firewall helper.")
+		port_row.add_child(fw)
+	_host_panel.add_child(port_row)
 	var ips: Array = Net.lan_ips()
 	var ip_note := Label.new()
-	ip_note.text = ("LAN players see your game under Join → Find Games, or connect to %s" % " / ".join(ips)) if not ips.is_empty() \
-			else "LAN players see your game under Join → Find Games."
+	ip_note.text = "Same network: no setup, friends find it under Join → Find Games / Quick Join. Elsewhere: the router port opens itself (UPnP) and the pause menu has a join code to copy."
+	if not ips.is_empty():
+		ip_note.text += "  LAN address: %s" % " / ".join(ips)
 	ip_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	ip_note.add_theme_font_size_override("font_size", 13)
 	ip_note.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)
 	_host_panel.add_child(ip_note)
+	var upnp_cb := CheckBox.new()
+	upnp_cb.text = "Open the port on my router automatically (UPnP)"
+	upnp_cb.tooltip_text = "Lets friends outside your network join with a code. Turn off if your router or network admin doesn't allow it."
+	upnp_cb.button_pressed = Settings.upnp
+	UITheme.style_checkbox(upnp_cb)
+	upnp_cb.toggled.connect(func(on: bool) -> void:
+		Settings.upnp = on
+		Settings.save())
+	_host_panel.add_child(upnp_cb)
 	# Optional internet listing through the master server (URL lives on the
 	# Join screen). Players outside your LAN still need the port forwarded.
 	var pub_cb := CheckBox.new()
@@ -822,7 +842,7 @@ func _build_join() -> void:
 	_join_panel.add_child(UITheme.make_section_header("Direct Connect"))
 
 	var ip_lbl := Label.new()
-	ip_lbl.text = "Host IP"
+	ip_lbl.text = "Join code or host IP"
 	UITheme.style_body(ip_lbl)
 	_join_panel.add_child(ip_lbl)
 
@@ -1238,6 +1258,11 @@ func _on_connect_pressed() -> void:
 	if ip == "":
 		ip = "127.0.0.1"
 	var port := int(_port_edit.text) if _port_edit.text.is_valid_int() else Net.DEFAULT_PORT
+	var code: Array = Net.parse_join_code(ip) if not ip.contains(".") else []
+	if not code.is_empty():
+		ip = str(code[0])
+		port = int(code[1])
+		_port_edit.text = str(port)
 	Settings.last_join_ip = ip
 	Settings.last_join_port = port
 	Settings.save()

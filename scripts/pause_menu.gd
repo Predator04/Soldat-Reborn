@@ -99,6 +99,16 @@ func _build_main_menu() -> void:
 	# HOST SETTINGS — only visible to the host (or SP, which is functionally the
 	# local host). Clients can't tweak match rules. Visibility is refreshed on
 	# open() so the button appears/disappears if Net mode changes mid-session.
+	_copy_code_btn = _make_button("COPY JOIN CODE")
+	_copy_code_btn.tooltip_text = "Copies a message with your join code to paste to friends."
+	_copy_code_btn.pressed.connect(func() -> void:
+		DisplayServer.clipboard_set(Net.share_text())
+		_copy_code_btn.text = "COPIED!"
+		get_tree().create_timer(1.5).timeout.connect(func() -> void:
+			if is_instance_valid(_copy_code_btn):
+				_copy_code_btn.text = "COPY JOIN CODE"))
+	_menu_box.add_child(_copy_code_btn)
+
 	_host_admin_btn = _make_button("HOST SETTINGS")
 	_host_admin_btn.pressed.connect(_open_host_admin)
 	_menu_box.add_child(_host_admin_btn)
@@ -240,6 +250,7 @@ func _input(event: InputEvent) -> void:
 
 
 var _info_lbl: Label
+var _copy_code_btn: Button = null
 
 
 func open() -> void:
@@ -267,6 +278,8 @@ func open() -> void:
 	# Host admin button only makes sense on host or SP. Clients get nothing.
 	if _host_admin_btn != null:
 		_host_admin_btn.visible = not Net.is_client()
+	if _copy_code_btn != null:
+		_copy_code_btn.visible = Net.is_host() and Net.share_text() != ""
 	# Free the OS cursor so mouse buttons work reliably on the pause menu.
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	_set_frozen(true)

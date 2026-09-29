@@ -17,7 +17,8 @@ Status as of v1.20.0. ✅ done · ⚠️ needs you (accounts, legal, real hardwa
 ## Multiplayer
 - ✅ Listen host and dedicated server, bots on both, 10 modes, two-client soak tests with zero errors.
 - ✅ LAN discovery; optional master-server listing (Go server in `../server/master-server`); live ping + player counts (UDP query on game port + 1), Quick Join, rejoin after a drop.
-- ⚠️ **Internet play needs the host to forward UDP ports** (game port, plus port + 1 for the browser's ping). There is no NAT punch-through or relay service. For a retail online game you'd want a relay / hosted dedicated servers (e.g. run the dedicated server on a VPS) or Steam networking.
+- ✅ LAN needs no setup; join codes; UPnP opens the router port automatically on most home routers; Windows Firewall fix button.
+- ⚠️ **Internet play without UPnP** (router refuses, CGNAT, mobile hotspots) still needs a manual port forward or a VPN (Tailscale / ZeroTier). A relay server would remove this entirely. There is no NAT punch-through or relay service. For a retail online game you'd want a relay / hosted dedicated servers (e.g. run the dedicated server on a VPS) or Steam networking.
 - ⚠️ Not tested over real internet latency / packet loss — only on one machine and LAN-style loopback.
 
 ## Legal — check before selling

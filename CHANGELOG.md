@@ -2,6 +2,20 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.21.0] — 2026-09-29
+
+Easy joining. Gate 28 (A, B, all C network cases, F join codes / labels / editor / training) passed.
+
+### Added
+- **Join codes.** A host's address and port packed into a 10-character code like `60N00-HE7K1`. Type or paste it into Join Game (the box takes a code or an IP); lower case, spaces and O/0 or I/1 mix-ups still work.
+- **Automatic router setup (UPnP).** When you host, the game asks your router to open the game port (and port + 1 for pings), finds your public address and gives you an internet join code; the ports close again when you stop hosting. If the router refuses, or your provider shares one IP between customers (CGNAT), the pause menu says so and what to do instead. Host screen checkbox to turn it off.
+- **COPY JOIN CODE** in the pause menu for the host: copies a ready-to-paste message ("Join Game > code ... (same Wi-Fi: ...)").
+- **FIX FIREWALL** on the Host screen (Windows): adds an inbound Windows Firewall rule for the game after one admin prompt, the usual reason friends on the same Wi-Fi can't see or join a game.
+- The pause menu and status line show the LAN code and internet status while hosting.
+
+### QA
+- `tools/join_code_test.gd` (gate stage F): codes round-trip for five addresses, tolerate sloppy typing, reject garbage, and a host's status carries its LAN code.
+
 ## [1.20.0] — 2026-09-28
 
 Gate run 27: 54/54 passed (CTF sweep with buggies and tanks on the maps: 225 grabs, 32 captures, 683 kills, 3 falls, 0 errors). Two cases (a bot rocket packet racing a fresh join, and a bot Barrett missing its one test shot) failed once and passed on re-run; both are filed.

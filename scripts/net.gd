@@ -475,6 +475,11 @@ func host_game(port: int = DEFAULT_PORT, map_index: int = 0) -> bool:
 	_set_status(("Hosting on %s:%d" % [ips[0], port]) if not ips.is_empty() else ("Hosting on port %d" % port))
 	_lan_advertise_start(port)
 	_query_listen(port)
+	_host_port = port
+	upnp_state = ""
+	public_ip = ""
+	_upnp_start(port)
+	_refresh_host_status()
 	return true
 
 
@@ -516,6 +521,7 @@ func leave() -> void:
 	_stop_master_heartbeat()
 	_lan_advertise_stop()
 	_query_stop()
+	_upnp_stop()
 
 
 # RPC entry point for joining clients. Hosted on Net (always loaded) rather than
@@ -575,7 +581,7 @@ func _set_status(s: String) -> void:
 
 func _on_peer_connected(id: int) -> void:
 	if is_host():
-		_set_status("Peer %d joined · hosting" % id)
+		_refresh_host_status()
 		# #119: extend the ENet timeout on the host → client peer so the host
 		# doesn't drop clients that go silent while their main.tscn is loading.
 		var peer := multiplayer.multiplayer_peer as ENetMultiplayerPeer
@@ -594,7 +600,7 @@ func _on_peer_connected(id: int) -> void:
 
 func _on_peer_disconnected(id: int) -> void:
 	if is_host():
-		_set_status("Peer %d left · hosting" % id)
+		_refresh_host_status()
 
 
 func _on_connected() -> void:
@@ -1057,3 +1063,173 @@ func _smoke_rejoin() -> void:
 		elif el > 30.0:
 			print("SMOKE-REJOIN FAIL stage=%d" % stage[0])
 			get_tree().quit())
+
+
+
+# ── Easy joining: join codes, UPnP, host status ─────────────────────────────
+# A join code is the host's IPv4 + port packed into 10 characters (Crockford
+# base32, "ABCDE-FGHJK"), so nobody has to read out an IP address. The LAN code
+# works on the same network with no setup. For friends elsewhere the host asks
+# its router to open the ports with UPnP (most home routers allow it) and gets
+# an internet code; if the router says no, the host has to forward UDP
+# <port> and <port>+1 by hand (or everyone uses a VPN like Tailscale / ZeroTier,
+# whose addresses also turn into codes).
+const CODE_ALPHA := "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+var upnp_state := ""          # "" | "trying" | "open" | "failed" | "shared"
+var public_ip := ""
+var _upnp: UPNP = null
+var _upnp_thread: Thread = null
+var _host_port := DEFAULT_PORT
+
+
+static func join_code(ip: String, port: int) -> String:
+	var parts := ip.split(".")
+	if parts.size() != 4:
+		return ""
+	var n := 0
+	for p in parts:
+		if not p.is_valid_int() or int(p) < 0 or int(p) > 255:
+			return ""
+		n = (n << 8) | int(p)
+	n = (n << 16) | (port & 0xFFFF)
+	var out := ""
+	for i in 10:
+		out = CODE_ALPHA[n & 31] + out
+		n >>= 5
+	return out.substr(0, 5) + "-" + out.substr(5)
+
+
+## [ip, port] for a join code, or [] if it isn't one.
+static func parse_join_code(code: String) -> Array:
+	var c := code.strip_edges().to_upper().replace("-", "").replace(" ", "")
+	c = c.replace("O", "0").replace("I", "1").replace("L", "1")
+	if c.length() != 10:
+		return []
+	var n := 0
+	for ch in c:
+		var v := CODE_ALPHA.find(ch)
+		if v < 0:
+			return []
+		n = (n << 5) | v
+	if n >> 48 != 0:
+		return []
+	var port := n & 0xFFFF
+	var ipn := (n >> 16) & 0xFFFFFFFF
+	if port == 0 or ipn == 0:
+		return []
+	return ["%d.%d.%d.%d" % [(ipn >> 24) & 255, (ipn >> 16) & 255, (ipn >> 8) & 255, ipn & 255], port]
+
+
+static func _is_private_ip(ip: String) -> bool:
+	var p := ip.split(".")
+	if p.size() != 4:
+		return true
+	var a := int(p[0])
+	var b := int(p[1])
+	return a == 10 or a == 127 or (a == 192 and b == 168) or (a == 172 and b >= 16 and b <= 31) \
+			or (a == 100 and b >= 64 and b <= 127) or a == 0
+
+
+func lan_code() -> String:
+	var ips := lan_ips()
+	return join_code(str(ips[0]), _host_port) if not ips.is_empty() else ""
+
+
+func internet_code() -> String:
+	return join_code(public_ip, _host_port) if upnp_state == "open" and public_ip != "" else ""
+
+
+## What to paste to a friend.
+func share_text() -> String:
+	var t := ""
+	if internet_code() != "":
+		t = "Soldat Reborn: Join Game > code %s" % internet_code()
+		if lan_code() != "":
+			t += " (same Wi-Fi: %s)" % lan_code()
+	elif lan_code() != "":
+		t = "Soldat Reborn: Join Game > code %s (same network)" % lan_code()
+	return t
+
+
+func _refresh_host_status() -> void:
+	if mode != Mode.HOST:
+		return
+	var lines: Array = []
+	var lc := lan_code()
+	lines.append(("Hosting · LAN join code %s" % lc) if lc != "" else "Hosting on port %d" % _host_port)
+	match upnp_state:
+		"trying":
+			lines.append("Internet: asking your router to open the port...")
+		"open":
+			lines.append("Internet join code %s (router opened the port)" % internet_code())
+		"shared":
+			lines.append("Internet: your provider shares your IP (CGNAT); friends outside your network need a VPN such as Tailscale or ZeroTier")
+		"failed":
+			lines.append("Internet: router didn't allow UPnP; forward UDP %d and %d for friends outside your network" % [_host_port, _host_port + 1])
+	_set_status("\n".join(lines))
+
+
+func _upnp_start(port: int) -> void:
+	if not Settings.upnp or is_dedicated and "--no-upnp" in OS.get_cmdline_user_args():
+		return
+	if _upnp_thread != null:
+		return   # a lookup is still running; its result is checked against mode
+	upnp_state = "trying"
+	_upnp_thread = Thread.new()
+	_upnp_thread.start(_upnp_work.bind(port))
+
+
+func _upnp_work(port: int) -> void:
+	var u := UPNP.new()
+	var ok := false
+	var ip := ""
+	if u.discover(2000, 2, "InternetGatewayDevice") == UPNP.UPNP_RESULT_SUCCESS \
+			and u.get_gateway() != null and u.get_gateway().is_valid_gateway():
+		ok = u.add_port_mapping(port, port, "Soldat Reborn", "UDP", 0) == UPNP.UPNP_RESULT_SUCCESS
+		if ok:
+			u.add_port_mapping(port + 1, port + 1, "Soldat Reborn query", "UDP", 0)
+			ip = u.query_external_address()
+	call_deferred("_upnp_done", u, ok, ip, port)
+
+
+func _upnp_done(u: UPNP, ok: bool, ip: String, port: int) -> void:
+	if _upnp_thread != null:
+		_upnp_thread.wait_to_finish()
+		_upnp_thread = null
+	if mode != Mode.HOST or port != _host_port:
+		if ok:
+			u.delete_port_mapping(port, "UDP")
+			u.delete_port_mapping(port + 1, "UDP")
+		return
+	if ok:
+		_upnp = u
+		public_ip = ip
+		upnp_state = "shared" if _is_private_ip(ip) else "open"
+	else:
+		upnp_state = "failed"
+	_refresh_host_status()
+
+
+func _upnp_stop() -> void:
+	if _upnp != null:
+		_upnp.delete_port_mapping(_host_port, "UDP")
+		_upnp.delete_port_mapping(_host_port + 1, "UDP")
+	_upnp = null
+	upnp_state = ""
+	public_ip = ""
+
+
+func _exit_tree() -> void:
+	_upnp_stop()
+	if _upnp_thread != null:
+		_upnp_thread.wait_to_finish()
+
+
+## Windows: add an inbound firewall rule for this exe (asks for admin once).
+func allow_through_firewall() -> bool:
+	if OS.get_name() != "Windows":
+		return false
+	var exe := OS.get_executable_path().replace("/", "\\")
+	var cmd := "/c netsh advfirewall firewall delete rule name=\"Soldat Reborn\" & netsh advfirewall firewall add rule name=\"Soldat Reborn\" dir=in action=allow program=\"%s\" enable=yes profile=any" % exe
+	var ps := "Start-Process cmd -Verb RunAs -WindowStyle Hidden -ArgumentList '%s'" % cmd.replace("'", "''")
+	return OS.create_process("powershell.exe", ["-NoProfile", "-WindowStyle", "Hidden", "-Command", ps]) > 0
