@@ -1,0 +1,18 @@
+[
+ {"title": "Bots drive buggies", "labels": ["enhancement", "area: bots"], "commit": "e3a08e6", "version": "1.20.0",
+  "body": "bot.gd _think_drive: a bot with a far goal (1100+ px) boards an empty vehicle within 340 px, buggy.gd _bot_drive steers to the goal, hops when blocked, gets out at the goal / before a void / when stuck 3 s / below 25% HP, and fires solo at targets. tools/vehicle_drive_test.gd (gate F)."},
+ {"title": "Tank: second vehicle for wide maps", "labels": ["enhancement", "area: gameplay"], "commit": "dece777", "version": "1.20.0",
+  "body": "scripts/tank.gd extends the buggy: 900 HP, 230 top speed, bullets x0.2, turret lobs an HE shell every 2.4 s (rocket.gd local_only + ignore_bodies so each peer flies its own copy and the tank/crew are never hit by their own shell), ballistic bot aim, crush damage, 40 s respawn. place_vehicles.py writes tank_spawns on 13 wide maps (+ Towers). Editor Tank tool, GameInfo entry, HUD reload readout, run-over credited as Tank. tools/tank_test.gd (gate F)."},
+ {"title": "Server browser: ping, live player counts, quick join", "labels": ["enhancement", "area: multiplayer"], "commit": "d80259d", "version": "1.20.0",
+  "body": "Hosts answer a UDP query on game port + 1 with server_info() (Net.query_send / query_poll / ping_of). Browse rows show ping with colour, live players/map, grey out full servers and other versions, sort joinable/busy/low-ping first, REFRESH. QUICK JOIN on the main menu, Join and Browse screens picks the best open game. Gate C lan case checks SMOKE-QUERY."},
+ {"title": "Rejoin after a dropped connection", "labels": ["enhancement", "area: multiplayer"], "commit": "8a6a20f", "version": "1.20.0",
+  "body": "On a lost host (not a kick) the menu shows CONNECTION LOST with a 5 s auto-rejoin. Clients send a per-run session token in net_client_ready; the host retires a stale peer with the same name, address and token, frees the husk's name, and restores the leaver's team (_left_team). Score was already name-keyed. Gate C 'rejoin' (--smoke-rejoin). First version matched name+address only, which kicked a second client with the same default name from the same machine; the token fixes that."},
+ {"title": "Store kit: page copy, trailer shot list, screenshots", "labels": ["area: qa"], "commit": "8a6a20f", "version": "1.20.0",
+  "body": "store/STORE_PAGE.md, store/TRAILER_SHOTLIST.md, placeholder 1920x1080 screenshots (store/.gdignore keeps them out of exports). tools/shot.gd gained --at-frame and re-teleports after a respawn."},
+ {"title": "Flaky: client logs Node not found Main/BotRocket_* right after joining", "labels": ["bug", "area: multiplayer"], "version": "1.20.0", "open": true,
+  "body": "Gate run 27, C net ctf_arena: once in a run the joining client logged 'Node not found: Main/BotRocket_6_4' + 'Invalid packet received' just after join (a bot rocket state packet arrived before its spawn RPC). Passed on re-run. Likely the peer turning ready between a bot rocket's spawn broadcast and its _snapshot_net_peers."},
+ {"title": "Flaky: weapon test bot Barrett sometimes misses its single shot", "labels": ["bug", "area: qa"], "version": "1.20.0", "open": true,
+  "body": "Gate run 27, F weapons: 'bot Barrett never hurt the player' once; passed on re-run. The Barrett fires once per test window; give the bot a second shot or a longer window."},
+ {"title": "Two pickup name tags overlap when kits sit next to each other", "labels": ["bug", "area: graphics"], "version": "1.20.0", "open": true,
+  "body": "Seen on Voland (two grenade kits ~60 px apart): the GRENADE KIT labels overlap. item_label.gd could nudge a label up when another label is within ~40 px."}
+]
