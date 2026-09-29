@@ -187,6 +187,8 @@ func _ready() -> void:
 	if Net.rejoin_offer and Net.last_server_ip != "":
 		Net.rejoin_offer = false
 		_build_rejoin()
+	elif has_real_name() and DisplayServer.get_name() != "headless":
+		_maybe_whats_new()
 	Net.status_changed.connect(_on_net_status_changed)
 	Net.connected.connect(_on_net_connected)
 	Net.disconnected.connect(_on_net_disconnected)
@@ -718,9 +720,9 @@ func _on_update_pressed() -> void:
 	UITheme.style_body(sub)
 	box.add_child(sub)
 	var notes := RichTextLabel.new()
-	notes.bbcode_enabled = false
+	notes.bbcode_enabled = true
 	var txt := str(u.get("notes"))
-	notes.text = txt.left(1600) + ("..." if txt.length() > 1600 else "")
+	notes.text = md_to_bb(txt.left(2400)) + ("..." if txt.length() > 2400 else "")
 	notes.custom_minimum_size = Vector2(540, 260)
 	notes.add_theme_font_size_override("normal_font_size", 13)
 	notes.add_theme_color_override("default_color", UITheme.COL_TEXT)
@@ -1246,6 +1248,77 @@ func _do_rejoin() -> void:
 	_rejoin_t = 0.0
 	_rejoin_root.visible = false
 	_join_server(Net.last_server_ip, Net.last_server_port)
+
+
+# After an update (auto-updater or a new download): show this version's
+# changelog section once. First-ever launch just records the version.
+static func changelog_section(version: String) -> String:
+	var f := FileAccess.open("res://CHANGELOG.md", FileAccess.READ)
+	if f == null:
+		return ""
+	var txt := f.get_as_text()
+	var head := "## [%s]" % version
+	var i := txt.find(head)
+	if i < 0:
+		return ""
+	var j := txt.find("\n## [", i + head.length())
+	var sec := txt.substr(i, (j - i) if j > 0 else -1)
+	sec = sec.substr(sec.find("\n") + 1).strip_edges()
+	return md_to_bb(sec)
+
+
+## Changelog markdown -> RichTextLabel bbcode (headers, bullets).
+static func md_to_bb(sec: String) -> String:
+	var out := PackedStringArray()
+	for line in sec.replace("**", "").replace("`", "").split("\n"):
+		var l := line.strip_edges(false, true)
+		if l.begins_with("### "):
+			out.append("\n[b][color=#f5a623]%s[/color][/b]" % l.substr(4).to_upper())
+		elif l.strip_edges().begins_with("- "):
+			var ind := l.length() - l.strip_edges(true, false).length()
+			out.append("%s• %s" % ["    ".repeat(ind / 2), l.strip_edges().substr(2)])
+		else:
+			out.append(l)
+	return "\n".join(out).strip_edges()
+
+
+func _maybe_whats_new() -> void:
+	var v := str(ProjectSettings.get_setting("application/config/version", ""))
+	if Settings.last_seen_version == v:
+		return
+	var first := Settings.last_seen_version == ""
+	Settings.last_seen_version = v
+	Settings.save()
+	if first:
+		return
+	var sec := changelog_section(v)
+	if sec == "":
+		return
+	var root := PanelContainer.new()
+	root.add_theme_stylebox_override("panel", UITheme.panel_style())
+	root.set_anchors_preset(Control.PRESET_CENTER, true)
+	root.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	root.grow_vertical = Control.GROW_DIRECTION_BOTH
+	add_child(root)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 10)
+	box.custom_minimum_size = Vector2(600, 0)
+	root.add_child(box)
+	box.add_child(UITheme.make_screen_title("WHAT'S NEW IN v%s" % v))
+	var notes := RichTextLabel.new()
+	notes.bbcode_enabled = true
+	notes.text = sec.left(2400)
+	notes.custom_minimum_size = Vector2(580, 320)
+	notes.add_theme_font_size_override("normal_font_size", 13)
+	notes.add_theme_color_override("default_color", UITheme.COL_TEXT)
+	box.add_child(notes)
+	var ok := _make_button("GOT IT", true)
+	ok.pressed.connect(func() -> void:
+		root.queue_free()
+		_menu_root.visible = true)
+	box.add_child(ok)
+	_menu_root.visible = false
+	UITheme.safe_grab_focus_deferred(ok)
 
 
 func _on_browse_pressed() -> void:
