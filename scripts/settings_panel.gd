@@ -312,6 +312,24 @@ func _build_game(box: VBoxContainer) -> void:
 		func(on: bool) -> void:
 			Settings.bot_chatter = on
 			Settings.save()))
+	# Bug reports: the log folder + a pre-filled GitHub issue.
+	var help_row := HBoxContainer.new()
+	help_row.add_theme_constant_override("separation", 8)
+	var logs := _make_button("OPEN LOG FOLDER")
+	logs.tooltip_text = "The game's log files. Attach the newest one to a bug report."
+	logs.pressed.connect(func() -> void:
+		DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("user://logs"))
+		OS.shell_open(ProjectSettings.globalize_path("user://logs")))
+	help_row.add_child(logs)
+	var bug := _make_button("REPORT A BUG")
+	bug.tooltip_text = "Opens a new GitHub issue with your version and system filled in."
+	bug.pressed.connect(func() -> void:
+		var body := "**What happened:**\n\n**What you expected:**\n\n**Steps:**\n1.\n\n---\nVersion %s · %s · %s · %s" % [
+			str(ProjectSettings.get_setting("application/config/version", "?")), OS.get_name(), OS.get_model_name(),
+			RenderingServer.get_video_adapter_name()]
+		OS.shell_open("https://github.com/Predator04/Soldat-Reborn/issues/new?labels=bug&body=" + body.uri_encode()))
+	help_row.add_child(bug)
+	box.add_child(help_row)
 
 
 func _build_mods(box: VBoxContainer) -> void:

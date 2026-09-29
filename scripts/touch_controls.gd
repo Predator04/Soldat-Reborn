@@ -575,6 +575,8 @@ func _draw_button(i: int) -> void:
 	var f: Font = get_theme_default_font()
 	var fs: int = 13
 	var lbl: String = str(b["label"])
+	if str(b["action"]) == "weapon_throw" and not edit_mode:
+		lbl = _throw_label()
 	var sz: Vector2 = f.get_string_size(lbl, HORIZONTAL_ALIGNMENT_CENTER, -1, fs)
 	var c: Vector2 = r.position + r.size * 0.5
 	draw_string(f, c + Vector2(-sz.x * 0.5, sz.y * 0.30), lbl,
@@ -650,3 +652,30 @@ func _draw() -> void:
 	if edit_mode:
 		_draw_edit_pills()
 		_draw_edit_banner()
+
+
+
+# The THROW button is also the "F" key: get in / out of vehicles, mount M2s.
+# Say which one a tap will do right now.
+var _throw_lbl_t := 0.0
+var _throw_lbl := "THROW"
+
+
+func _throw_label() -> String:
+	var now := Time.get_ticks_msec() / 1000.0
+	if now - _throw_lbl_t < 0.2:
+		return _throw_lbl
+	_throw_lbl_t = now
+	_throw_lbl = "THROW"
+	var main := get_tree().current_scene
+	var p = main.get("player") if main != null else null
+	if p == null or not is_instance_valid(p) or p.get("dead") == true:
+		return _throw_lbl
+	var m = p.get("mounted_m2")
+	if m != null and is_instance_valid(m):
+		_throw_lbl = "GET OUT" if m.is_in_group("vehicle") else "DISMOUNT"
+	elif p.has_method("_find_nearby_m2"):
+		var n = p._find_nearby_m2()
+		if n != null:
+			_throw_lbl = ("DRIVE" if n.driver() == null else "GUNNER") if n.is_in_group("vehicle") else "MOUNT"
+	return _throw_lbl
