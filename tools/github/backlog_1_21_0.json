@@ -1,5 +1,5 @@
 [
- {"title": "Easy joining: join codes, UPnP port opening, copy code, firewall fix", "labels": ["enhancement", "area: multiplayer"], "commit": "HEAD", "version": "1.21.0",
+ {"title": "Easy joining: join codes, UPnP port opening, copy code, firewall fix", "labels": ["enhancement", "area: multiplayer"], "commit": "2204b55", "version": "1.21.0",
   "body": "Requested: make LAN games easy to join without opening ports. Net.join_code / parse_join_code (IPv4+port, Crockford base32, typo tolerant); Join box accepts a code. Hosts run UPnP discovery in a thread, map UDP port and port+1, read the public IP (CGNAT detected), remove the mappings on leave; status lines explain the result. Pause menu COPY JOIN CODE; Host screen UPnP checkbox and FIX FIREWALL (Windows, elevated netsh rule). tools/join_code_test.gd in gate F."},
  {"title": "Relay server so internet games work without UPnP or port forwarding", "labels": ["enhancement", "area: multiplayer"], "version": "1.21.0", "open": true,
   "body": "UPnP covers most home routers but not CGNAT, mobile hotspots or routers with UPnP off. A small relay (or Steam networking / a hosted dedicated server) would make internet play zero-setup for everyone."}
