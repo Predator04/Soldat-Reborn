@@ -51,6 +51,43 @@ const ACHIEVEMENTS := [
 ]
 
 
+# ── Rank (v1.24): XP from kills, captures, wins and finished matches ─────────
+signal level_up(level: int)
+const XP_KILL := 10
+const XP_HEADSHOT := 5
+const XP_CAPTURE := 50
+const XP_MATCH := 20
+const XP_WIN := 80
+
+
+func xp() -> int:
+	return int(counters.get("xp", 0))
+
+
+## Level from total XP: level n needs 100 * n * (n + 1) / 2 in total
+## (100 for level 2, 300 for 3, 600 for 4 ...).
+static func level_for(total: int) -> int:
+	var n := 1
+	while 100 * n * (n + 1) / 2 <= total:
+		n += 1
+	return n
+
+
+## [xp into this level, xp this level needs]
+func level_progress() -> Array:
+	var lv := level_for(xp())
+	var start := 100 * (lv - 1) * lv / 2
+	return [xp() - start, 100 * lv]
+
+
+func _add_xp(n: int) -> void:
+	var before := level_for(xp())
+	counters["xp"] = xp() + n
+	var after := level_for(xp())
+	if after > before:
+		level_up.emit(after)
+
+
 func counter(key: String) -> int:
 	match key:
 		"kills": return kills
@@ -90,12 +127,27 @@ func record_event(kind: String) -> void:
 			counters[kind] = 1
 		"capture":
 			_bump("captures")
+			_add_xp(XP_CAPTURE)
 	_mark()
 	_check_achievements()
 
 
 func _ready() -> void:
 	load_stats()
+	# Older builds tallied "AK-74 (headshot)" separately: fold those into the
+	# weapon and count them as headshots.
+	for k in kills_by_weapon.keys():
+		if str(k).contains("(headshot)"):
+			var base := str(k).replace("(headshot)", "").strip_edges()
+			var n := int(kills_by_weapon[k])
+			kills_by_weapon[base] = int(kills_by_weapon.get(base, 0)) + n
+			kills_by_weapon.erase(k)
+			if not counters.has("headshots_seeded"):
+				_bump("headshots", n)
+	counters["headshots_seeded"] = 1
+	if not counters.has("xp"):
+		counters["xp"] = kills * XP_KILL + int(counters.get("headshots", 0)) * XP_HEADSHOT \
+				+ matches_played * XP_MATCH + wins * XP_WIN
 	# Category counters started in v1.24: seed them from the per-weapon tallies
 	# a long-time player already has.
 	for pair in [["rockets", ["LAW", "M79"]], ["grenades", ["Grenade", "Cluster"]], ["melee", ["Knife", "Chainsaw"]]]:
@@ -211,6 +263,7 @@ func record_kill(weapon_name: String) -> void:
 	var head := weapon_name.contains("(headshot)")
 	var w := weapon_name.replace("(headshot)", "").strip_edges()
 	kills_by_weapon[w] = int(kills_by_weapon.get(w, 0)) + 1
+	_add_xp(XP_KILL + (XP_HEADSHOT if head else 0))
 	if head:
 		_bump("headshots")
 	if w in ["LAW", "M79"]:
@@ -256,6 +309,7 @@ func record_hit() -> void:
 
 func record_match_end(won: bool) -> void:
 	matches_played += 1
+	_add_xp(XP_MATCH + (XP_WIN if won else 0))
 	if won:
 		wins += 1
 		var modes: Array = counters.get("modes_won", [])

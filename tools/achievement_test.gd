@@ -42,6 +42,9 @@ func _process(_d: float) -> bool:
 		S.record_match_end(true)
 	if not ("winner" in got and "all_rounder" in got and "survivor" in got):
 		bad.append("win achievements missing")
+	for c in [[0, 1], [99, 1], [100, 2], [299, 2], [300, 3], [600, 4]]:
+		if S.level_for(c[0]) != c[1]:
+			bad.append("level_for(%d)=%d" % [c[0], S.level_for(c[0])])
 	var n_before := got.size()
 	S.record_kill("Barrett")
 	for id in got.slice(n_before):

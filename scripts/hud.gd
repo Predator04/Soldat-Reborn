@@ -74,6 +74,7 @@ const GameInfo = preload("res://scripts/game_info.gd")
 
 func _ready() -> void:
 	Stats.achievement_unlocked.connect(_on_achievement)
+	Stats.level_up.connect(func(lv: int) -> void: _ach_queue.append(["RANK UP", "you reached level %d" % lv]))
 	if Net.is_networked():
 		Stats.record_event.call_deferred("online")
 	# Full-screen death desaturation overlay (behind all HUD text).
@@ -1320,5 +1321,6 @@ func _tick_achievements() -> void:
 	if _ach_queue.is_empty() or (lbl_toast != null and lbl_toast.visible):
 		return
 	var a: Array = _ach_queue.pop_front()
-	toast("ACHIEVEMENT: %s" % str(a[0]).to_upper(), str(a[1]), Color(1.0, 0.82, 0.3))
+	var head := str(a[0]).to_upper()
+	toast(head if head == "RANK UP" else "ACHIEVEMENT: %s" % head, str(a[1]), Color(1.0, 0.82, 0.3))
 	Sfx.objective("point")

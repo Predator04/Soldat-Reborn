@@ -773,7 +773,7 @@ var _name_btn: Button = null
 
 func _refresh_name_btn() -> void:
 	if _name_btn != null:
-		var t := "  %s  ·  CHANGE NAME  " % (Settings.player_name if has_real_name() else "No name yet")
+		var t := "  %s  ·  LV %d  ·  CHANGE NAME  " % [Settings.player_name if has_real_name() else "No name yet", Stats.level_for(Stats.xp())]
 		if _name_btn.text != t:
 			_name_btn.text = t
 
@@ -890,6 +890,8 @@ func _refresh_stats_labels() -> void:
 	lines.append("[b]Suicides[/b] %d" % Stats.suicides)
 	lines.append("[b]Shots[/b] %d  ·  [b]Hits[/b] %d  ·  [b]Accuracy[/b] %.1f%%" % [Stats.shots, Stats.hits, acc])
 	lines.append("[b]Matches[/b] %d  ·  [b]Wins[/b] %d  ·  [b]Losses[/b] %d" % [Stats.matches_played, Stats.wins, Stats.losses])
+	var lp: Array = Stats.level_progress()
+	lines.append("[b]Rank[/b] level %d  ·  %d / %d XP to level %d  ·  [color=#a8b0bc]kill +10, headshot +5, capture +50, match +20, win +80[/color]" % [Stats.level_for(Stats.xp()), lp[0], lp[1], Stats.level_for(Stats.xp()) + 1])
 	lines.append("")
 	lines.append("[b][color=#f5a623]ACHIEVEMENTS  %d / %d[/color][/b]" % [Stats.unlocked.size(), Stats.ACHIEVEMENTS.size()])
 	for a in Stats.ACHIEVEMENTS:
