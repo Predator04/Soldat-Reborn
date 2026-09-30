@@ -50,8 +50,24 @@ var _title_nodes: Array = []    # wordmark / tagline / version — main list onl
 
 # Taller sub-panels (Host, Join, Settings, Stats) sit over the wordmark; show
 # the title stack only while the main list is up.
+# Any centred panel taller than the window (small window, big UI text) is
+# scaled down to fit instead of running off the bottom of the screen.
+func _fit_panels() -> void:
+	var avail: float = get_viewport_rect().size.y - 24.0
+	for c in get_children():
+		if not (c is PanelContainer) or not (c as Control).visible:
+			continue
+		var pc := c as PanelContainer
+		var need: float = pc.get_combined_minimum_size().y
+		var sc: float = clampf(avail / need, 0.5, 1.0) if need > 0.0 else 1.0
+		if absf(pc.scale.x - sc) > 0.005:
+			pc.pivot_offset = pc.size * 0.5
+			pc.scale = Vector2(sc, sc)
+
+
 func _process(_delta: float) -> void:
 	_tick_rejoin(_delta)
+	_fit_panels()
 	if _menu_root != null and _menu_root.visible:
 		_refresh_name_btn()   # picks up a rename from Settings too
 	var show_title: bool = _menu_root != null and _menu_root.visible
@@ -72,8 +88,11 @@ func _process(_delta: float) -> void:
 				targets.append([str(d.get("ip")), int(d.get("port"))])
 			for d in _master_rows:
 				targets.append([str(d.get("ip")), int(d.get("port"))])
+			for d in _recent_rows():
+				targets.append([str(d.get("ip")), int(d.get("port"))])
 			Net.query_send(targets)
 			_render_master()
+			_render_recent()
 		if _qj_active:
 			_qj_t -= _delta
 			if _qj_t <= 0.0:
@@ -360,6 +379,9 @@ func _build_menu() -> void:
 		Settings.advance = on
 		Settings.save())
 	subs.add_child(adv_cb)
+	_surv_cb = surv_cb
+	_adv_cb = adv_cb
+	_refresh_submode_boxes()
 
 	# Map picker (SP): built-in rotation + specific built-in + custom maps.
 	_sp_map_pick = OptionButton.new()
@@ -1073,13 +1095,19 @@ func _build_host() -> void:
 			# Net.host_game already set the status text; re-enable so the user can retry.
 			start.disabled = false
 			_status_label.text = Net.status)
-	_host_panel.add_child(start)
-
 	var back := _make_button("BACK")
 	back.pressed.connect(func() -> void:
 		_host_root.visible = false
 		_menu_root.visible = true)
-	_host_panel.add_child(back)
+	# One row (START wider) so the panel stays short enough for small windows.
+	var host_btns := HBoxContainer.new()
+	host_btns.add_theme_constant_override("separation", 8)
+	back.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	start.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	start.size_flags_stretch_ratio = 2.0
+	host_btns.add_child(back)
+	host_btns.add_child(start)
+	_host_panel.add_child(host_btns)
 
 
 var _join_root: PanelContainer = null
@@ -1196,6 +1224,10 @@ func _build_browse() -> void:
 	_lan_list = VBoxContainer.new()
 	_lan_list.add_theme_constant_override("separation", 4)
 	_browse_panel.add_child(_lan_list)
+	_browse_panel.add_child(UITheme.make_section_header("Recent"))
+	_recent_list = VBoxContainer.new()
+	_recent_list.add_theme_constant_override("separation", 4)
+	_browse_panel.add_child(_recent_list)
 	_browse_panel.add_child(UITheme.make_section_header("Master Server"))
 
 	_browse_list = VBoxContainer.new()
@@ -1363,6 +1395,8 @@ func _on_browse_pressed() -> void:
 func _refresh_browse() -> void:
 	_master_rows.clear()
 	_master_sig = ""
+	_recent_sig = ""
+	_render_recent()
 	for c in _browse_list.get_children():
 		c.queue_free()
 	var wait := Label.new()
@@ -1423,6 +1457,47 @@ func _on_browse_http_done(_result: int, _code: int, _headers: PackedStringArray,
 		_browse_list.add_child(empty)
 		return
 	_render_master()
+
+
+var _recent_list: VBoxContainer
+var _recent_sig := ""
+
+
+func _recent_rows() -> Array:
+	var out: Array = []
+	for k in Settings.recent_servers:
+		var parts := str(k).rsplit(":", true, 1)
+		if parts.size() == 2 and parts[1].is_valid_int():
+			out.append({"ip": parts[0], "port": int(parts[1]), "name": str(k), "map": "?", "mode": "?", "players": 0, "max": 0, "v": ""})
+	return out
+
+
+# Games you joined before, with a live ping when they're up.
+func _render_recent() -> void:
+	if _recent_list == null:
+		return
+	var rows := _recent_rows()
+	var sig := str(rows.map(func(d): return [d.get("ip"), d.get("port"), _ping_bucket(str(d.get("ip")), int(d.get("port"))), str(_live(d).get("players"))]))
+	if sig == _recent_sig and _recent_list.get_child_count() > 0:
+		return
+	_recent_sig = sig
+	for c in _recent_list.get_children():
+		c.queue_free()
+	if rows.is_empty():
+		var l := Label.new()
+		l.text = "Games you join show up here."
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		l.add_theme_font_size_override("font_size", 14)
+		l.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)
+		_recent_list.add_child(l)
+		return
+	for d in rows:
+		var up := Net.ping_of(str(d.get("ip")), int(d.get("port"))) >= 0
+		var b := _server_row(d)
+		if not up:
+			b.text = "  %s   — offline or not answering   " % str(d.get("name"))
+			b.disabled = false   # still let people try (hosts behind a firewall don't answer pings)
+		_recent_list.add_child(b)
 
 
 var _master_rows: Array = []
@@ -1579,6 +1654,8 @@ func _build_footer() -> void:
 	foot.add_theme_font_size_override("font_size", 12)
 	foot.add_theme_color_override("font_color", UITheme.COL_TEXT_MUTED)
 	add_child(foot)
+	# Only on the main list: sub-panels (Host, Join, Stats ...) reach down there.
+	_title_nodes.append(foot)
 
 
 func _make_button(text: String, primary: bool = false) -> Button:
@@ -1626,6 +1703,11 @@ func _on_net_connected() -> void:
 func _on_map_received() -> void:
 	if Net.is_client() and _connecting:
 		_connecting = false
+		var key := "%s:%d" % [Net.last_server_ip, Net.last_server_port]
+		Settings.recent_servers.erase(key)
+		Settings.recent_servers.push_front(key)
+		Settings.recent_servers = Settings.recent_servers.slice(0, 5)
+		Settings.save()
 		_go_to_match()
 
 
@@ -1737,7 +1819,24 @@ func _make_mode_desc() -> Label:
 	return l
 
 
+var _surv_cb: CheckBox = null
+var _adv_cb: CheckBox = null
+
+
+# Gun Game ignores Survival / Advance (see Settings.survival): show that.
+func _refresh_submode_boxes() -> void:
+	var gg := Settings.game_mode == Settings.MODE_GG
+	for pair in [[_surv_cb, "survival"], [_adv_cb, "advance"]]:
+		var cb: CheckBox = pair[0]
+		if cb == null:
+			continue
+		cb.disabled = gg
+		cb.set_pressed_no_signal(Settings.get(pair[1] + "_pref") and not gg)
+		cb.tooltip_text = "Not used in Gun Game (it's a free-for-all: climb the whole weapon ladder to win)." if gg else GameInfo.SUBMODES[pair[1]]
+
+
 func _refresh_mode_desc() -> void:
+	_refresh_submode_boxes()
 	for l in _mode_desc_labels:
 		if is_instance_valid(l):
 			l.text = GameInfo.mode_goal(Settings.game_mode)

@@ -76,8 +76,21 @@ var game_mode := MODE_DM
 
 # Sub-mode overlays — toggle-able flags applied on top of the base mode.
 var realistic := false   # no jet, no HUD ammo, head-shot 1HK (issue #19)
-var survival := false    # no respawn until round end (issue #20)
-var advance := false     # weapon unlock ladder (issue #21)
+# Survival / Advance don't apply to Gun Game (it's a free-for-all won by
+# climbing the whole weapon ladder; Survival ended it after one kill and
+# Advance fought the ladder). The stored choice is kept for other modes.
+var survival_pref := false
+var survival: bool:    # no respawn until round end (issue #20)
+	get:
+		return survival_pref and game_mode != MODE_GG
+	set(v):
+		survival_pref = v
+var advance_pref := false
+var advance: bool:
+	get:
+		return advance_pref and game_mode != MODE_GG
+	set(v):
+		advance_pref = v     # weapon unlock ladder (issue #21)
 
 # Modifiers (#24) — scale the base rules without changing the game mode.
 # 1.0 = stock Soldat. Menu clamps the visible range; code should treat these as
@@ -104,6 +117,7 @@ var name_set := false
 var training := false          # runtime only: the Training match is running
 var training_saved: Dictionary = {}   # the match settings Training replaced          # first-launch name prompt answered
 var master_url := ""
+var recent_servers: Array = []   # "ip:port", newest first (Browse -> Recent)
 
 # Convenience: DM / Rambo / Battle Royale / Gun Game are FFA (friendly-fire on), teams disable friendly damage.
 func friendly_fire_on() -> bool:
@@ -201,6 +215,8 @@ func load_settings() -> void:
 	# Players from before the prompt existed who already picked a name keep it.
 	name_set = bool(cf.get_value("net", "name_set", player_name != "Player"))
 	master_url = str(cf.get_value("net", "master_url", ""))
+	var rs = cf.get_value("net", "recent_servers", [])
+	recent_servers = (rs as Array).duplicate() if rs is Array else []
 
 
 func save() -> void:
@@ -230,8 +246,8 @@ func save() -> void:
 	cf.set_value("game", "custom_map_path", custom_map_path)
 	cf.set_value("game", "game_mode", game_mode)
 	cf.set_value("game", "realistic", realistic)
-	cf.set_value("game", "survival", survival)
-	cf.set_value("game", "advance", advance)
+	cf.set_value("game", "survival", survival_pref)
+	cf.set_value("game", "advance", advance_pref)
 	cf.set_value("video", "lofi", lofi)
 	cf.set_value("video", "lofi_auto_done", lofi_auto_done)
 	cf.set_value("controls", "mouse_sensitivity", mouse_sensitivity)
@@ -272,6 +288,7 @@ func save() -> void:
 	cf.set_value("net", "player_name", player_name)
 	cf.set_value("net", "name_set", name_set)
 	cf.set_value("net", "master_url", master_url)
+	cf.set_value("net", "recent_servers", recent_servers)
 	cf.save(PATH)
 
 

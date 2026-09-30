@@ -1,0 +1,10 @@
+[
+ {"title": "Achievements and rank / XP levels", "labels": ["enhancement", "area: gameplay"], "commit": "HEAD", "version": "1.24.0",
+  "body": "21 achievements tracked in stats.gd (counters, unlock signal, retroactive quiet unlock, backfill of rocket/grenade/melee/headshot tallies), HUD toast queue, Stats screen list with progress. XP levels (kill 10, headshot 5, capture 50, match 20, win 80) shown by the name button and on Stats, RANK UP toast. tools/achievement_test.gd in gate F."},
+ {"title": "Recent games in Find Games", "labels": ["enhancement", "area: multiplayer"], "commit": "HEAD", "version": "1.24.0",
+  "body": "Last 5 servers joined (Settings.recent_servers) listed in Browse with live ping via the server query."},
+ {"title": "Menu footer overlaps BACK on the Host screen", "labels": ["bug", "area: ui"], "commit": "HEAD", "version": "1.24.0",
+  "body": "Reported with a screenshot. Footer now only shows with the main list, Host buttons share a row, and _fit_panels() scales any centred panel taller than the window."},
+ {"title": "Gun Game ends after one kill with Survival on", "labels": ["bug", "area: gameplay"], "commit": "HEAD", "version": "1.24.0",
+  "body": "Reported: GG should be a free-for-all that only ends when someone really wins. Settings.survival / advance are now getters that are false in Gun Game (stored prefs kept); menu greys the boxes out for GG. Verified a GG match with Survival+Advance prefs on keeps going past kills."}
+]

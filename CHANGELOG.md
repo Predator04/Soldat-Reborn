@@ -2,6 +2,17 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.24.0] — 2026-09-30
+
+### Added
+- **Achievements**: 21 goals (First Blood to Veteran, Sharpshooter, Long Shot, Rocket Man, Grenadier, Roadkill, Tank Ace, Double Trouble, Massacre, Unstoppable, Flag Runner, Winner, Champion, All-Rounder, Last One Standing, Marathon, Recruit, online play). A gold toast pops when you unlock one, and the Stats screen lists them all with progress (e.g. 12/25). Ones your past play already earned unlock quietly; rocket, grenade, melee and headshot tallies are filled in from your existing stats.
+- **Rank**: XP for kills (+10, headshot +5), captures (+50), finished matches (+20) and wins (+80) raises your level; it shows next to your name in the menu corner ("William · LV 12"), on the Stats screen with progress to the next level, and a RANK UP toast in game. Your level starts from your career so far.
+- **Recent games** in Find Games: the last 5 servers you joined, with live ping, one click to rejoin.
+
+### Fixed
+- Gun Game is always a free-for-all won by climbing the whole weapon ladder (or the top rung when time runs out). With Survival switched on it used to end the round and declare a winner after the first kill (reported); Survival and Advance are now ignored in Gun Game and their checkboxes are greyed out while it's selected (your choice is kept for the other modes).
+- The controls line at the bottom of the menu overlapped the BACK button on the Host screen (reported). It now only shows on the main menu list; START HOSTING and BACK share a row; and any menu panel taller than the window scales down to fit instead of running off the bottom.
+
 ## [1.23.0] — 2026-09-29
 
 Polish pass: ten rounds of fix → test. Gate run 37: all 57 checks passed (CTF sweep with buggies and tanks: 220 grabs, 32 captures, 688 kills, 3 falls, 0 errors).
