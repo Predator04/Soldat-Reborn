@@ -213,6 +213,7 @@ func _hold_fire(delta: float) -> bool:
 
 
 func _finish() -> void:
+	Stats.record_event("trained")
 	_prog.text = "TRAINING COMPLETE"
 	_title.text = "YOU'RE READY"
 	_body.text = "That's the basics. Press %s for the pause menu to go back and pick a real match — try Capture the Flag. %s shows the controls any time." % [_key("pause") if not _touch() else "Back", _key("help") if not _touch() else "The pause menu"]

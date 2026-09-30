@@ -2519,6 +2519,8 @@ func net_objective_event(kind: String, team: int, who: String) -> void:
 	objective.emit(kind, team, who)
 	if kind == "capture" or kind == "point":
 		_stat_add(who, "c", 1)
+	if kind == "capture" and is_instance_valid(player) and who == str(player.display_name):
+		Stats.record_event("capture")
 	if hud != null and hud.has_method("announce_objective"):
 		hud.announce_objective(kind, team, who)
 	Sfx.objective(kind)

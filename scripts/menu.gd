@@ -854,9 +854,9 @@ func _build_stats() -> void:
 
 	_stats_body = RichTextLabel.new()
 	_stats_body.bbcode_enabled = true
-	_stats_body.fit_content = true
-	_stats_body.scroll_active = false
-	_stats_body.custom_minimum_size = Vector2(0, 260)
+	_stats_body.fit_content = false
+	_stats_body.scroll_active = true
+	_stats_body.custom_minimum_size = Vector2(0, 400)
 	_stats_body.add_theme_font_size_override("normal_font_size", 15)
 	_stats_body.add_theme_font_size_override("bold_font_size", 15)
 	_stats_body.add_theme_color_override("default_color", UITheme.COL_TEXT)
@@ -891,13 +891,26 @@ func _refresh_stats_labels() -> void:
 	lines.append("[b]Shots[/b] %d  ·  [b]Hits[/b] %d  ·  [b]Accuracy[/b] %.1f%%" % [Stats.shots, Stats.hits, acc])
 	lines.append("[b]Matches[/b] %d  ·  [b]Wins[/b] %d  ·  [b]Losses[/b] %d" % [Stats.matches_played, Stats.wins, Stats.losses])
 	lines.append("")
+	lines.append("[b][color=#f5a623]ACHIEVEMENTS  %d / %d[/color][/b]" % [Stats.unlocked.size(), Stats.ACHIEVEMENTS.size()])
+	for a in Stats.ACHIEVEMENTS:
+		var pr: Array = Stats.achievement_progress(a)
+		if Stats.unlocked.has(a[0]):
+			lines.append("[color=#8ce07a]✔ %s[/color]  [color=#a8b0bc]%s[/color]" % [a[1], a[2]])
+		else:
+			lines.append("[color=#8a8f99]○ %s  %s  (%d/%d)[/color]" % [a[1], a[2], pr[0], pr[1]])
+	lines.append("")
 	lines.append("[i]Kills by weapon[/i]")
 	var pairs: Array = []
 	for k in Stats.kills_by_weapon.keys():
 		pairs.append([str(k), int(Stats.kills_by_weapon[k])])
 	pairs.sort_custom(func(a, b): return int(a[1]) > int(b[1]))
-	for pair in pairs:
-		lines.append("  %s: %d" % [pair[0], pair[1]])
+	var row := ""
+	for pi in pairs.size():
+		var cell := "%s: %d" % [pairs[pi][0], pairs[pi][1]]
+		row += ("  " + cell) if pi % 3 == 0 else ("   ·   " + cell)
+		if pi % 3 == 2 or pi == pairs.size() - 1:
+			lines.append(row)
+			row = ""
 	_stats_body.text = "\n".join(lines)
 
 

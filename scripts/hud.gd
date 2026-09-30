@@ -73,6 +73,9 @@ const GameInfo = preload("res://scripts/game_info.gd")
 
 
 func _ready() -> void:
+	Stats.achievement_unlocked.connect(_on_achievement)
+	if Net.is_networked():
+		Stats.record_event.call_deferred("online")
 	# Full-screen death desaturation overlay (behind all HUD text).
 	desat_overlay = ColorRect.new()
 	desat_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -752,6 +755,7 @@ func _tick_vehicle_label() -> void:
 
 func _tick_info_labels(delta: float) -> void:
 	_tick_vehicle_label()
+	_tick_achievements()
 	if lbl_mode_banner != null and lbl_mode_banner.visible:
 		_banner_t -= delta
 		lbl_mode_banner.modulate.a = clampf(_banner_t, 0.0, 1.0)
@@ -1301,3 +1305,20 @@ func _team_display_info(team_id: int) -> Dictionary:
 			return {"name": str(s.display_name).to_upper(), "color": s.color}
 	# Fallback for teams whose only soldier already left / died mid-round.
 	return {"name": "P%d" % team_id, "color": Color(0.7, 0.7, 0.75)}
+
+
+
+var _ach_queue: Array = []
+
+
+# Achievements queue up so two at once (or a pickup toast) don't hide one.
+func _on_achievement(_id: String, title: String, desc: String) -> void:
+	_ach_queue.append([title, desc])
+
+
+func _tick_achievements() -> void:
+	if _ach_queue.is_empty() or (lbl_toast != null and lbl_toast.visible):
+		return
+	var a: Array = _ach_queue.pop_front()
+	toast("ACHIEVEMENT: %s" % str(a[0]).to_upper(), str(a[1]), Color(1.0, 0.82, 0.3))
+	Sfx.objective("point")

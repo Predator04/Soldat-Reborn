@@ -329,6 +329,7 @@ if has F; then
     upid=$!; sleep 1
   fi
   ft updater updater_test.gd 60 UPDATER-TEST "auto-updater: version compare, release check, download + size check, swap script" "--update-url=http://127.0.0.1:${uport:-1}/latest.json"
+  ft achievements achievement_test.gd 60 ACH-TEST "achievements: unlock once, counters, multi-kill, streak, wins"
   if fon updater; then kill $upid 2>/dev/null; wait $upid 2>/dev/null; fi
   ft sound sound_test.gd 100 SOUND-TEST "sound wiring"
 fi
