@@ -1,0 +1,10 @@
+[
+ {"title": "Relay hosting through the master server (no port forwarding)", "labels": ["enhancement", "area: multiplayer"], "commit": "45a2a28", "version": "1.25.0",
+  "body": "master-server gains a stdlib WebSocket /relay with 6-char rooms (max 16 clients). scripts/relay_peer.gd is a MultiplayerPeerExtension over WebSocketPeer; Net.host_game_relay / join_relay, R- codes, RELAY rows in Browse. Gate C relay case runs host + client through the relay binary."},
+ {"title": "Menu translations: es, pt_BR, de, fr", "labels": ["enhancement", "area: ui"], "commit": "3e67175", "version": "1.25.0",
+  "body": "assets/i18n/ui.csv (155 keys) imported as Godot translations; Settings.language + apply_language(), picker in Settings. Host panel verified by screenshots in fr and de."},
+ {"title": "Translate in-match HUD strings", "labels": ["enhancement", "area: ui"], "version": "1.25.0", "open": true,
+  "body": "Kill feed, status lines, scoreboard headers and toasts are still English; many are built with format strings and need tr() with placeholders."},
+ {"title": "Deploy a public master server so relay and listing work out of the box", "labels": ["enhancement", "area: multiplayer"], "version": "1.25.0", "open": true,
+  "body": "Relay and internet listing need a master server on a public host (Docker image or the dist binaries, see server/master-server/README.md). Ship its URL as the default once it's running."}
+]

@@ -2,6 +2,12 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.25.0] — 2026-09-30
+
+### Added
+- **Host through the relay** (Host screen checkbox): play online with friends anywhere with no port forwarding or router setup at all. Everyone connects out to the master server, which passes the game along, and you get a short **R-** code (like R-7K2QXM) to share; friends type it in Join → Connect. Relay games show as RELAY in Find Games. It needs a master server URL set under Join (the master server now includes the relay; see server/master-server/README.md to run one).
+- **Languages**: the menus, settings and host/join screens come in **Español, Português (Brasil), Deutsch and Français** (Settings → Game → Language; default follows your system). In-match HUD text is still English for now.
+
 ## [1.24.0] — 2026-09-30
 
 ### Added
