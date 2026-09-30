@@ -112,6 +112,7 @@ var last_join_ip := "127.0.0.1"   # Join panel remembers the last address
 var last_join_port := 7777
 var host_public := false        # listen host registers with the master server
 var upnp := true                # host asks the router to open its ports (UPnP)
+var host_relay := false         # host through the master server's relay
 var player_name := "Player"
 var name_set := false
 var training := false          # runtime only: the Training match is running
@@ -210,6 +211,7 @@ func load_settings() -> void:
 	last_join_ip = str(cf.get_value("net", "last_join_ip", "127.0.0.1"))
 	host_public = bool(cf.get_value("net", "host_public", false))
 	upnp = bool(cf.get_value("net", "upnp", true))
+	host_relay = bool(cf.get_value("net", "host_relay", false))
 	last_join_port = clampi(int(cf.get_value("net", "last_join_port", 7777)), 1, 65535)
 	player_name = str(cf.get_value("net", "player_name", "Player"))
 	# Players from before the prompt existed who already picked a name keep it.
@@ -284,6 +286,7 @@ func save() -> void:
 	cf.set_value("net", "last_join_ip", last_join_ip)
 	cf.set_value("net", "host_public", host_public)
 	cf.set_value("net", "upnp", upnp)
+	cf.set_value("net", "host_relay", host_relay)
 	cf.set_value("net", "last_join_port", last_join_port)
 	cf.set_value("net", "player_name", player_name)
 	cf.set_value("net", "name_set", name_set)

@@ -115,6 +115,12 @@ func _open_host() -> void:
 		_host_pub_cb.disabled = not has_url
 		_host_pub_cb.tooltip_text = "" if has_url else "Set a master server URL on the Join screen first."
 		_host_pub_cb.text = "List on the master server" if has_url else "List on the master server (set its URL under Join first)"
+	if _host_relay_cb != null:
+		var has_url2: bool = Settings.master_url.strip_edges() != ""
+		_host_relay_cb.disabled = not has_url2
+		if not has_url2:
+			_host_relay_cb.set_pressed_no_signal(false)
+		_host_relay_cb.text = "Host through the relay (works through any router)" if has_url2 else "Host through the relay (set the master server URL under Join first)"
 	UITheme.safe_grab_focus_deferred(_host_first_focus)
 
 
@@ -939,6 +945,7 @@ func _refresh_stats_labels() -> void:
 
 
 var _host_root: PanelContainer = null
+var _host_relay_cb: CheckBox = null
 
 
 func _build_host() -> void:
@@ -1055,6 +1062,16 @@ func _build_host() -> void:
 		Settings.upnp = on
 		Settings.save())
 	_host_panel.add_child(upnp_cb)
+	var relay_cb := CheckBox.new()
+	relay_cb.text = "Host through the relay (works through any router; needs the master server)"
+	relay_cb.tooltip_text = "Everyone connects out to the master server (set its URL under Join), which passes the game along. No port or router setup at all; adds a little lag. You get an R- join code."
+	relay_cb.button_pressed = Settings.host_relay
+	UITheme.style_checkbox(relay_cb)
+	relay_cb.toggled.connect(func(on: bool) -> void:
+		Settings.host_relay = on
+		Settings.save())
+	_host_panel.add_child(relay_cb)
+	_host_relay_cb = relay_cb
 	# Optional internet listing through the master server (URL lives on the
 	# Join screen). Players outside your LAN still need the port forwarded.
 	var pub_cb := CheckBox.new()
@@ -1086,6 +1103,24 @@ func _build_host() -> void:
 		Settings.save()
 		start.disabled = true
 		var port := int(_host_port_edit.text) if _host_port_edit.text.is_valid_int() else Net.DEFAULT_PORT
+		if Settings.host_relay and Settings.master_url.strip_edges() != "":
+			# Relay: wait for the room code before loading the match.
+			if not Net.host_game_relay(Settings.master_url.strip_edges(), idx):
+				start.disabled = false
+				return
+			_status_label.text = "Connecting to the relay..."
+			var ok_cb := func() -> void:
+				if Settings.host_public:
+					Net.register_url = Settings.master_url.strip_edges()
+					Net._start_master_heartbeat(0)
+				_go_to_match()
+			var fail_cb := func(_m: String) -> void:
+				start.disabled = false
+				_status_label.text = Net.status
+				Net.leave()
+			Net.relay_ready.connect(ok_cb, CONNECT_ONE_SHOT)
+			Net.relay_failed.connect(fail_cb, CONNECT_ONE_SHOT)
+			return
 		if Net.host_game(port, idx):
 			if Settings.host_public and Settings.master_url.strip_edges() != "":
 				Net.register_url = Settings.master_url.strip_edges()
@@ -1552,7 +1587,13 @@ func _server_row(d0: Dictionary) -> Button:
 	btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	UITheme.style_button(btn, 15, false)
 	btn.disabled = not _row_ok(d)   # the host would refuse a different build / no room
-	btn.pressed.connect(_join_server.bind(str(d.get("ip")), int(d.get("port"))))
+	var relay := str(d.get("relay", ""))
+	if relay != "":
+		btn.text = btn.text.replace("— ms", "RELAY")
+		btn.tooltip_text = "Joins through the relay with code %s" % relay
+		btn.pressed.connect(_join_server.bind(relay, 0))
+	else:
+		btn.pressed.connect(_join_server.bind(str(d.get("ip")), int(d.get("port"))))
 	if ping >= 0 and not btn.disabled:
 		btn.add_theme_color_override("font_color", Color(0.55, 0.95, 0.5) if ping < 80 else (Color(0.95, 0.85, 0.4) if ping < 160 else Color(0.95, 0.45, 0.35)))
 	return btn
@@ -1617,7 +1658,10 @@ func _quick_join_pick() -> void:
 		_status_label.text = "No open games found. Host one with HOST GAME, or try again."
 		return
 	_status_label.text = "Quick join: %s" % str(best.get("name", "?"))
-	_join_server(str(best.get("ip")), int(best.get("port")))
+	if str(best.get("relay", "")) != "":
+		_join_server(str(best.get("relay")), 0)
+	else:
+		_join_server(str(best.get("ip")), int(best.get("port")))
 
 
 func _join_server(ip: String, port: int) -> void:
@@ -1667,6 +1711,29 @@ func _on_connect_pressed() -> void:
 	if ip == "":
 		ip = "127.0.0.1"
 	var port := int(_port_edit.text) if _port_edit.text.is_valid_int() else Net.DEFAULT_PORT
+	if Net.is_relay_code(ip):
+		if Settings.master_url.strip_edges() == "" and _master_edit != null:
+			Settings.master_url = _master_edit.text.strip_edges()
+		if Settings.master_url.strip_edges() == "":
+			_status_label.text = "Relay codes (R-...) need the master server URL below."
+			return
+		_connecting = true
+		_connect_btn.disabled = true
+		if not Net.join_relay(Settings.master_url.strip_edges(), ip):
+			_connecting = false
+			_connect_btn.disabled = false
+			return
+		Net.relay_failed.connect(func(_m: String) -> void:
+			_connecting = false
+			if is_instance_valid(_connect_btn):
+				_connect_btn.disabled = false, CONNECT_ONE_SHOT)
+		get_tree().create_timer(12.0).timeout.connect(func() -> void:
+			if _connecting and is_instance_valid(_connect_btn):
+				_connecting = false
+				_connect_btn.disabled = false
+				Net.leave()
+				_status_label.text = "Couldn't join through the relay (timed out)")
+		return
 	var code: Array = Net.parse_join_code(ip) if not ip.contains(".") else []
 	if not code.is_empty():
 		ip = str(code[0])

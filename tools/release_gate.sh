@@ -27,7 +27,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 G="${GODOT_BIN:-$HOME/godot/Godot_v4.7.2-stable_linux.x86_64}"
 QUICK=0; OUT="build/gate"; ONLY="A B N C D R F E"; MODESEL="0 1 2 3 4 5 6 7 8 9"
-NETSEL="ctf dm two respawn drive rejoin host listen lan soak m3 m7 m9"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
+NETSEL="ctf dm two respawn drive rejoin relay host listen lan soak m3 m7 m9"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --quick) QUICK=1;; --out) OUT="$2"; shift;; --only) ONLY="$2"; shift;;
@@ -142,6 +142,27 @@ case " $NETSEL " in *" two "*)
     pass "C net two clients: $names errors=0"
   else
     fail "C net two clients: '$(grep -m1 SMOKE-JOIN "$OUT/net_two_c2.log")' $names errors=$e"
+  fi
+;; esac
+case " $NETSEL " in *" relay "*)
+  # Host and client both go through the WebSocket relay on the master server.
+  RB="../server/master-server/dist/soldat-master-linux-amd64"
+  if [ -x "$RB" ]; then
+    rport=$((8300 + RANDOM % 400))
+    timeout 70 "$RB" -port $rport > "$OUT/net_relay_server.log" 2>&1 &
+    rpid=$!; sleep 1
+    cf="$OUT/relay_code.txt"; rm -f "$cf"
+    timeout 60 "$G" --headless -- --smoke-host --relay-host=http://127.0.0.1:$rport --code-file="$cf" --smoke-secs=28 > "$OUT/net_relay_host.log" 2>&1 &
+    hpid=$!
+    for _ in $(seq 1 40); do [ -s "$cf" ] && break; sleep 0.5; done
+    sleep 3
+    timeout 40 "$G" --headless -- --smoke-join --relay-join=http://127.0.0.1:$rport --code-file="$cf" --smoke-secs=12 > "$OUT/net_relay_client.log" 2>&1
+    wait $hpid 2>/dev/null; kill $rpid 2>/dev/null; wait $rpid 2>/dev/null
+    e=$(( $(errs "$OUT/net_relay_host.log") + $(errs "$OUT/net_relay_client.log") ))
+    line=$(grep -m1 "SMOKE-JOIN " "$OUT/net_relay_client.log")
+    if echo "$line" | grep -q "players=2" && [ "$e" = "0" ]; then pass "C net relay: code $(cat "$cf" 2>/dev/null) | $line"; else fail "C net relay: '${line:-no result}' errors=$e"; fi
+  else
+    fail "C net relay: relay binary missing ($RB)"
   fi
 ;; esac
 case " $NETSEL " in *" rejoin "*)

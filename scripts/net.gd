@@ -251,6 +251,7 @@ func _send_master_heartbeat(http: HTTPRequest, port: int) -> void:
 		"max": MAX_PEERS,
 		"password": false,
 		"version": str(ProjectSettings.get_setting("application/config/version", "dev")),
+		"relay": relay_code if via_relay else "",
 	})
 	var err := http.request(register_url.rstrip("/") + "/register", PackedStringArray(["Content-Type: application/json"]), HTTPClient.METHOD_POST, body)
 	if err != OK:
@@ -291,8 +292,27 @@ func _smoke_dedicated(port: int, map_index: int, mode_index: int) -> void:
 		get_tree().quit())
 
 
+func _smoke_arg(key: String) -> String:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with(key + "="):
+			return a.substr(key.length() + 1)
+	return ""
+
+
 func _smoke_host() -> void:
-	host_game(_smoke_port())
+	# --relay-host=<master url>: host through the relay and write the code to
+	# user://relay_code.txt for the joining smoke client.
+	var rh := _smoke_arg("--relay-host")
+	if rh != "":
+		host_game_relay(rh)
+		await relay_ready
+		print("SMOKE-RELAY-CODE %s" % relay_code)
+		var f := FileAccess.open(_smoke_arg("--code-file"), FileAccess.WRITE)
+		if f != null:
+			f.store_string(relay_code)
+			f.close()
+	else:
+		host_game(_smoke_port())
 	get_tree().change_scene_to_file("res://scenes/main.tscn")
 	get_tree().create_timer(_smoke_secs(8.0)).timeout.connect(func() -> void:
 		var main := get_tree().current_scene
@@ -307,7 +327,12 @@ func _smoke_host() -> void:
 func _smoke_join() -> void:
 	map_received.connect(func() -> void:
 		get_tree().change_scene_to_file("res://scenes/main.tscn"))
-	join_game("127.0.0.1", _smoke_port())
+	var rj := _smoke_arg("--relay-join")
+	if rj != "":
+		var cf := FileAccess.open(_smoke_arg("--code-file"), FileAccess.READ)
+		join_relay(rj, cf.get_as_text().strip_edges() if cf != null else "")
+	else:
+		join_game("127.0.0.1", _smoke_port())
 	_smoke_auto_start()
 	# --smoke-die: kill our own body mid-session so the MP respawn path runs;
 	# the SMOKE-JOIN-PLAYERS line then shows the respawned body's node name.
@@ -484,6 +509,67 @@ func host_game(port: int = DEFAULT_PORT, map_index: int = 0) -> bool:
 	return true
 
 
+# ── Relay (v1.25): play through the master server, no open ports needed ─────
+const RelayPeer = preload("res://scripts/relay_peer.gd")
+signal relay_ready          # host: the relay gave us a room code
+signal relay_failed(msg: String)
+var relay_code := ""        # "R-XXXXXX" while hosting / after joining via relay
+var via_relay := false
+
+
+## Host through the relay at `master_url`. Wait for relay_ready (code in
+## relay_code) or relay_failed before loading the match.
+func host_game_relay(master_url: String, map_index: int = 0) -> bool:
+	leave()
+	var peer = RelayPeer.new()
+	if peer.start_host(master_url, "%s's game" % Settings.player_name) != OK:
+		_set_status("Relay: bad server address")
+		return false
+	peer.hosted.connect(func(c: String) -> void:
+		relay_code = "R-" + c
+		_refresh_host_status()
+		relay_ready.emit())
+	peer.failed.connect(func(msg: String) -> void:
+		_set_status("Relay: " + msg)
+		relay_failed.emit(msg))
+	multiplayer.multiplayer_peer = peer
+	mode = Mode.HOST
+	via_relay = true
+	chosen_map_index = map_index
+	if Settings.custom_map_path == "":
+		custom_map_json = ""
+	_map_synced = true
+	_set_status("Connecting to the relay...")
+	return true
+
+
+func join_relay(master_url: String, code: String) -> bool:
+	leave()
+	var room := code.strip_edges().to_upper().trim_prefix("R-").trim_prefix("R")
+	var peer = RelayPeer.new()
+	if peer.start_join(master_url, room) != OK:
+		_set_status("Relay: bad server address")
+		return false
+	peer.failed.connect(func(msg: String) -> void:
+		_set_status("Relay: " + msg)
+		relay_failed.emit(msg))
+	multiplayer.multiplayer_peer = peer
+	mode = Mode.CLIENT
+	via_relay = true
+	relay_code = "R-" + room
+	_map_synced = false
+	custom_map_json = ""
+	last_server_ip = relay_code
+	last_server_port = 0
+	_set_status("Joining %s through the relay..." % relay_code)
+	return true
+
+
+static func is_relay_code(s: String) -> bool:
+	var c := s.strip_edges().to_upper()
+	return c.begins_with("R-") and c.length() == 8
+
+
 func join_game(ip: String, port: int = DEFAULT_PORT) -> bool:
 	leave()
 	var peer := ENetMultiplayerPeer.new()
@@ -516,6 +602,8 @@ func leave() -> void:
 	mode = Mode.SINGLEPLAYER
 	_map_synced = false
 	custom_map_json = ""
+	via_relay = false
+	relay_code = ""
 	_pending_clients.clear()
 	_set_status("")
 	# Stop the dedicated-mode master heartbeat — no session to advertise.
@@ -1143,6 +1231,8 @@ func internet_code() -> String:
 ## What to paste to a friend.
 func share_text() -> String:
 	var t := ""
+	if via_relay and relay_code != "":
+		return "Soldat Reborn: Join Game > code %s (works from anywhere)" % relay_code
 	if internet_code() != "":
 		t = "Soldat Reborn: Join Game > code %s" % internet_code()
 		if lan_code() != "":
@@ -1156,6 +1246,9 @@ func _refresh_host_status() -> void:
 	if mode != Mode.HOST:
 		return
 	var lines: Array = []
+	if via_relay:
+		_set_status(("Hosting through the relay · join code %s (works from anywhere)" % relay_code) if relay_code != "" else "Connecting to the relay...")
+		return
 	var lc := lan_code()
 	lines.append(("Hosting · LAN join code %s" % lc) if lc != "" else "Hosting on port %d" % _host_port)
 	match upnp_state:
