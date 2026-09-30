@@ -711,25 +711,25 @@ func _refresh_update_ui() -> void:
 	_upd_btn.tooltip_text = "Checks GitHub for a newer version of the game."
 	match st:
 		"available":
-			_upd_btn.text = "  UPDATE AVAILABLE: v%s  " % str(u.get("latest"))
+			_upd_btn.text = "  %s v%s  " % [tr("UPDATE AVAILABLE:"), str(u.get("latest"))]
 		"downloading":
-			_upd_btn.text = "  DOWNLOADING UPDATE %d%%  " % int(float(u.get("progress")) * 100.0)
+			_upd_btn.text = "  %s %d%%  " % [tr("DOWNLOADING UPDATE"), int(float(u.get("progress")) * 100.0)]
 			_upd_btn.disabled = true
 		"ready":
-			_upd_btn.text = "  RESTART TO UPDATE TO v%s  " % str(u.get("latest"))
+			_upd_btn.text = "  %s v%s  " % [tr("RESTART TO UPDATE TO"), str(u.get("latest"))]
 		"checking":
-			_upd_btn.text = "  v%s · CHECKING FOR UPDATES...  " % ver
+			_upd_btn.text = "  v%s · %s  " % [ver, tr("CHECKING FOR UPDATES...")]
 			_upd_btn.disabled = true
 		"none":
-			_upd_btn.text = "  v%s · UP TO DATE  " % ver
+			_upd_btn.text = "  v%s · %s  " % [ver, tr("UP TO DATE")]
 		"failed":
 			if str(u.get("latest")) != "":
 				_upd_btn.text = "  UPDATE FAILED · RETRY  "
 			else:
-				_upd_btn.text = "  v%s · CHECK FOR UPDATES  " % ver
+				_upd_btn.text = "  v%s · %s  " % [ver, tr("CHECK FOR UPDATES")]
 			_upd_btn.tooltip_text = str(u.get("error"))
 		_:
-			_upd_btn.text = "  v%s · CHECK FOR UPDATES  " % ver
+			_upd_btn.text = "  v%s · %s  " % [ver, tr("CHECK FOR UPDATES")]
 	# Always shown: the current version, and one click to check again.
 	_upd_btn.visible = true
 
@@ -801,7 +801,7 @@ var _name_btn: Button = null
 
 func _refresh_name_btn() -> void:
 	if _name_btn != null:
-		var t := "  %s  ·  LV %d  ·  CHANGE NAME  " % [Settings.player_name if has_real_name() else "No name yet", Stats.level_for(Stats.xp())]
+		var t := "  %s  ·  LV %d  ·  %s  " % [Settings.player_name if has_real_name() else tr("No name yet"), Stats.level_for(Stats.xp()), tr("CHANGE NAME")]
 		if _name_btn.text != t:
 			_name_btn.text = t
 
@@ -1046,9 +1046,9 @@ func _build_host() -> void:
 	_host_panel.add_child(port_row)
 	var ips: Array = Net.lan_ips()
 	var ip_note := Label.new()
-	ip_note.text = "Same network: no setup, friends find it under Join → Find Games / Quick Join. Elsewhere: the router port opens itself (UPnP) and the pause menu has a join code to copy."
+	ip_note.text = tr("Same network: no setup, friends find it under Join → Find Games / Quick Join. Elsewhere: the router port opens itself (UPnP) and the pause menu has a join code to copy.")
 	if not ips.is_empty():
-		ip_note.text += "  LAN address: %s" % " / ".join(ips)
+		ip_note.text += "  " + tr("LAN address: %s") % " / ".join(ips)
 	ip_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	ip_note.add_theme_font_size_override("font_size", 13)
 	ip_note.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)

@@ -1,0 +1,19 @@
+[remap]
+
+importer="csv_translation"
+type="Translation"
+uid="uid://cc73ebmkovkn"
+
+[deps]
+
+files=["res://assets/i18n/ui.es.translation", "res://assets/i18n/ui.pt_BR.translation", "res://assets/i18n/ui.de.translation", "res://assets/i18n/ui.fr.translation"]
+
+source_file="res://assets/i18n/ui.csv"
+dest_files=["res://assets/i18n/ui.es.translation", "res://assets/i18n/ui.pt_BR.translation", "res://assets/i18n/ui.de.translation", "res://assets/i18n/ui.fr.translation"]
+
+[params]
+
+compress=1
+delimiter=0
+unescape_keys=false
+unescape_translations=true

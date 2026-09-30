@@ -253,6 +253,25 @@ func _build_controls_card(box: VBoxContainer) -> void:
 
 
 func _build_game(box: VBoxContainer) -> void:
+	# Language — menus follow it (next time a screen opens).
+	var lang_row := HBoxContainer.new()
+	var lang_lbl := Label.new()
+	lang_lbl.text = "Language"
+	lang_lbl.custom_minimum_size = Vector2(160, 0)
+	lang_row.add_child(lang_lbl)
+	var lang_pick := OptionButton.new()
+	lang_pick.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	for i in Settings.LANGUAGES.size():
+		lang_pick.add_item(str(Settings.LANGUAGES[i][1]), i)
+		if str(Settings.LANGUAGES[i][0]) == Settings.language:
+			lang_pick.select(i)
+	lang_pick.item_selected.connect(func(i: int) -> void:
+		Settings.language = str(Settings.LANGUAGES[i][0])
+		Settings.save()
+		Settings.apply_language())
+	lang_pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lang_row.add_child(lang_pick)
+	box.add_child(lang_row)
 	# Player name — used as your in-game display_name (SP + MP). Persisted.
 	box.add_child(_text_field("Player Name", Settings.player_name,
 		func(t: String) -> void:

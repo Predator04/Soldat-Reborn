@@ -1,0 +1,155 @@
+keys,es,pt_BR,de,fr
+MATCH,PARTIDA,PARTIDA,MATCH,PARTIE
+DEPLOY,DESPLIEGUE,IMPLANTAR,EINSATZ,DÉPLOIEMENT
+NETWORK,RED,REDE,NETZWERK,RÉSEAU
+SYSTEM,SISTEMA,SISTEMA,SYSTEM,SYSTÈME
+PLAY vs BOTS,JUGAR vs BOTS,JOGAR vs BOTS,GEGEN BOTS,JOUER vs BOTS
+RANDOM MAP,MAPA ALEATORIO,MAPA ALEATÓRIO,ZUFALLSKARTE,CARTE ALÉATOIRE
+TRAINING,ENTRENAMIENTO,TREINO,TRAINING,ENTRAÎNEMENT
+MAP EDITOR,EDITOR DE MAPAS,EDITOR DE MAPAS,KARTENEDITOR,ÉDITEUR DE CARTES
+HOST GAME,CREAR PARTIDA,HOSPEDAR,SPIEL HOSTEN,HÉBERGER
+JOIN GAME,UNIRSE,ENTRAR,BEITRETEN,REJOINDRE
+QUICK JOIN,UNIRSE RÁPIDO,ENTRADA RÁPIDA,SCHNELL BEITRETEN,PARTIE RAPIDE
+SETTINGS,AJUSTES,CONFIGURAÇÕES,EINSTELLUNGEN,PARAMÈTRES
+STATS,ESTADÍSTICAS,ESTATÍSTICAS,STATISTIK,STATS
+QUIT,SALIR,SAIR,BEENDEN,QUITTER
+BACK,ATRÁS,VOLTAR,ZURÜCK,RETOUR
+Credits & licenses,Créditos y licencias,Créditos e licenças,Credits & Lizenzen,Crédits et licences
+Realistic,Realista,Realista,Realistisch,Réaliste
+Survival,Supervivencia,Sobrevivência,Überleben,Survie
+Advance,Avance,Avanço,Aufstieg,Progression
+Map: Rotate built-in,Mapa: rotar incluidos,Mapa: alternar embutidos,Karte: eingebaute rotieren,Carte : rotation intégrée
+Capture the Flag,Captura la bandera,Capture a bandeira,Capture the Flag,Capture du drapeau
+Deathmatch,Todos contra todos,Mata-mata,Deathmatch,Match à mort
+Teammatch,Por equipos,Por equipes,Team-Deathmatch,Match par équipes
+Infiltration,Infiltración,Infiltração,Infiltration,Infiltration
+Hold the Flag,Mantén la bandera,Segure a bandeira,Flagge halten,Garder le drapeau
+Rambomatch,Rambomatch,Rambomatch,Rambomatch,Rambomatch
+Pointmatch,Por puntos,Por pontos,Punktejagd,Chasse aux points
+Domination,Dominación,Dominação,Herrschaft,Domination
+Battle Royale,Battle Royale,Battle Royale,Battle Royale,Battle Royale
+Gun Game,Gun Game,Gun Game,Gun Game,Gun Game
+Everyone for themselves. First to 20 kills wins.,Todos contra todos. Gana el primero en llegar a 20 bajas.,Cada um por si. Vence quem fizer 20 abates primeiro.,"Jeder gegen jeden. Wer zuerst 20 Kills hat, gewinnt.",Chacun pour soi. Le premier à 20 éliminations gagne.
+Blue vs red. First team to 20 kills wins.,Azul contra rojo. Gana el primer equipo en llegar a 20 bajas.,Azul contra vermelho. Vence a primeira equipe com 20 abates.,Blau gegen Rot. Das erste Team mit 20 Kills gewinnt.,Bleus contre rouges. La première équipe à 20 éliminations gagne.
+Grab the enemy flag and carry it to your own. First to 3 captures wins.,Toma la bandera enemiga y llévala a la tuya. Gana quien capture 3.,Pegue a bandeira inimiga e leve até a sua. Vence quem capturar 3.,Schnapp dir die feindliche Flagge und bring sie zu deiner. 3 Eroberungen gewinnen.,Prends le drapeau ennemi et ramène-le au tien. 3 captures pour gagner.
+"Red attacks, blue defends. Red scores by bringing the flag to blue's base — 3 wins.","Rojo ataca, azul defiende. Rojo puntúa llevando la bandera a la base azul: 3 para ganar.","Vermelho ataca, azul defende. Vermelho pontua levando a bandeira à base azul — 3 vencem.","Rot greift an, Blau verteidigt. Rot punktet, indem es die Flagge zur blauen Basis bringt — 3 gewinnen.","Les rouges attaquent, les bleus défendent. Les rouges marquent en apportant le drapeau à la base bleue — 3 pour gagner."
+Keep the single flag. 1 point per second while your team carries it — 60 wins.,Quédate con la única bandera. 1 punto por segundo mientras tu equipo la lleva: 60 para ganar.,Fique com a única bandeira. 1 ponto por segundo enquanto sua equipe a carrega — 60 vencem.,"Behalte die einzige Flagge. 1 Punkt pro Sekunde, solange dein Team sie trägt — 60 gewinnen.",Garde l'unique drapeau. 1 point par seconde tant que ton équipe le porte — 60 pour gagner.
+Grab the Rambo Bow. Only whoever holds the bow scores kills.,Toma el arco de Rambo. Solo quien lo tiene puntúa bajas.,Pegue o arco do Rambo. Só quem está com o arco pontua abates.,"Schnapp dir den Rambo-Bogen. Nur wer ihn hält, bekommt Punkte für Kills.",Prends l'arc de Rambo. Seul celui qui le tient marque des points.
+Collect the gold diamonds — each is +1. First to 20 wins.,Recoge los diamantes dorados: cada uno vale +1. Gana el primero en llegar a 20.,Colete os diamantes dourados — cada um vale +1. Vence quem chegar a 20.,"Sammle die goldenen Diamanten — jeder ist +1. Wer zuerst 20 hat, gewinnt.",Ramasse les diamants dorés — chacun vaut +1. Le premier à 20 gagne.
+Stand on control points to take them. Each point you hold scores every second — 90 wins.,Quédate en los puntos de control para tomarlos. Cada punto que tienes suma cada segundo: 90 para ganar.,Fique nos pontos de controle para tomá-los. Cada ponto seu pontua a cada segundo — 90 vencem.,"Stell dich auf Kontrollpunkte, um sie einzunehmen. Jeder gehaltene Punkt zählt jede Sekunde — 90 gewinnen.",Tiens-toi sur les points de contrôle pour les prendre. Chaque point tenu rapporte chaque seconde — 90 pour gagner.
+Stay inside the shrinking ring and be the last one standing.,Quédate dentro del círculo que se encoge y sé el último en pie.,Fique dentro do círculo que encolhe e seja o último de pé.,"Bleib im schrumpfenden Ring und sei der Letzte, der steht.",Reste dans le cercle qui rétrécit et sois le dernier debout.
+Every kill moves you up to the next weapon. Get a knife kill on the last rung to win.,Cada baja te sube a la siguiente arma. Consigue una baja con cuchillo en el último nivel para ganar.,Cada abate te leva à próxima arma. Faça um abate com faca no último nível para vencer.,Jeder Kill bringt dich zur nächsten Waffe. Ein Messer-Kill auf der letzten Stufe gewinnt.,Chaque élimination te fait passer à l'arme suivante. Une élimination au couteau au dernier palier pour gagner.
+"Single-player match against bots with the mode, map and options above.","Partida de un jugador contra bots con el modo, mapa y opciones de arriba.","Partida solo contra bots com o modo, mapa e opções acima.","Einzelspieler-Match gegen Bots mit Modus, Karte und Optionen oben.","Partie solo contre des bots avec le mode, la carte et les options ci-dessus."
+"Guided first match: learn to move, jet, shoot, reload, switch and throw grenades.","Primera partida guiada: aprende a moverte, volar, disparar, recargar, cambiar y lanzar granadas.","Primeira partida guiada: aprenda a se mover, voar, atirar, recarregar, trocar e lançar granadas.","Geführtes erstes Match: Bewegen, Jetpack, Schießen, Nachladen, Wechseln und Granaten werfen lernen.","Première partie guidée : apprends à bouger, voler, tirer, recharger, changer d'arme et lancer des grenades."
+Start an online / LAN server that friends can join.,Crea un servidor en línea / LAN al que puedan unirse tus amigos.,Crie um servidor online / LAN para seus amigos entrarem.,"Starte einen Online-/LAN-Server, dem Freunde beitreten können.",Lance un serveur en ligne / LAN que tes amis peuvent rejoindre.
+"Find a LAN or online game, or type an address.","Busca una partida LAN o en línea, o escribe una dirección.","Encontre uma partida LAN ou online, ou digite um endereço.",Finde ein LAN- oder Online-Spiel oder gib eine Adresse ein.,"Trouve une partie LAN ou en ligne, ou saisis une adresse."
+"Change the name shown in the kill feed, scoreboard and online.","Cambia el nombre que aparece en las bajas, el marcador y en línea.","Mude o nome mostrado nos abates, no placar e online.","Ändere den Namen im Kill-Feed, auf der Punktetafel und online.","Change le nom affiché dans le fil des éliminations, le tableau des scores et en ligne."
+Checks GitHub for a newer version of the game.,Busca en GitHub una versión más nueva del juego.,Procura no GitHub uma versão mais nova do jogo.,Sucht auf GitHub nach einer neueren Spielversion.,Cherche sur GitHub une version plus récente du jeu.
+Mode  ·  Map,Modo  ·  Mapa,Modo  ·  Mapa,Modus  ·  Karte,Mode  ·  Carte
+Port,Puerto,Porta,Port,Port
+START HOSTING,EMPEZAR,INICIAR SERVIDOR,HOSTEN STARTEN,LANCER LE SERVEUR
+FIX FIREWALL,ARREGLAR FIREWALL,CORRIGIR FIREWALL,FIREWALL FREIGEBEN,CORRIGER LE PARE-FEU
+Open the port on my router automatically (UPnP),Abrir el puerto en mi router automáticamente (UPnP),Abrir a porta no meu roteador automaticamente (UPnP),Port am Router automatisch öffnen (UPnP),Ouvrir le port de ma box automatiquement (UPnP)
+List on the master server,Publicar en el servidor maestro,Listar no servidor mestre,Auf dem Master-Server listen,Lister sur le serveur maître
+Host through the relay (works through any router),Crear a través del relay (funciona con cualquier router),Hospedar pelo relay (funciona com qualquer roteador),Über das Relay hosten (klappt mit jedem Router),Héberger via le relais (marche avec n'importe quelle box)
+DIRECT CONNECT,CONEXIÓN DIRECTA,CONEXÃO DIRETA,DIREKT VERBINDEN,CONNEXION DIRECTE
+Join code or host IP,Código o IP del anfitrión,Código ou IP do host,Beitrittscode oder Host-IP,Code ou IP de l'hôte
+MASTER SERVER,SERVIDOR MAESTRO,SERVIDOR MESTRE,MASTER-SERVER,SERVEUR MAÎTRE
+Master Server URL (for Browse),URL del servidor maestro (para buscar),URL do servidor mestre (para procurar),Master-Server-URL (für die Suche),URL du serveur maître (pour la recherche)
+FIND GAMES  (LAN / ONLINE),BUSCAR PARTIDAS  (LAN / EN LÍNEA),PROCURAR PARTIDAS  (LAN / ONLINE),SPIELE SUCHEN  (LAN / ONLINE),TROUVER DES PARTIES  (LAN / EN LIGNE)
+Join the best open game automatically.,Únete automáticamente a la mejor partida abierta.,Entre automaticamente na melhor partida aberta.,Automatisch dem besten offenen Spiel beitreten.,Rejoins automatiquement la meilleure partie ouverte.
+CONNECT,CONECTAR,CONECTAR,VERBINDEN,SE CONNECTER
+BROWSE SERVERS,BUSCAR SERVIDORES,PROCURAR SERVIDORES,SERVER SUCHEN,PARCOURIR LES SERVEURS
+LOCAL NETWORK,RED LOCAL,REDE LOCAL,LOKALES NETZWERK,RÉSEAU LOCAL
+RECENT,RECIENTES,RECENTES,ZULETZT,RÉCENTS
+REFRESH,ACTUALIZAR,ATUALIZAR,AKTUALISIEREN,ACTUALISER
+CONTROLS,CONTROLES,CONTROLES,STEUERUNG,COMMANDES
+MOVEMENT,MOVIMIENTO,MOVIMENTO,BEWEGUNG,DÉPLACEMENT
+COMBAT,COMBATE,COMBATE,KAMPF,COMBAT
+WEAPONS,ARMAS,ARMAS,WAFFEN,ARMES
+CHAT,CHAT,CHAT,CHAT,CHAT
+UTILITY,UTILIDAD,UTILIDADE,SONSTIGES,DIVERS
+RESET TO DEFAULTS,RESTABLECER,RESTAURAR PADRÃO,STANDARD WIEDERHERSTELLEN,RÉTABLIR PAR DÉFAUT
+Move Left,Mover a la izquierda,Mover para a esquerda,Nach links,Aller à gauche
+Move Right,Mover a la derecha,Mover para a direita,Nach rechts,Aller à droite
+Jump,Saltar,Pular,Springen,Sauter
+Jet Boots,Botas propulsoras,Botas a jato,Jetstiefel,Bottes à réaction
+Crouch,Agacharse,Agachar,Ducken,S'accroupir
+Prone,Tumbarse,Deitar,Hinlegen,Se coucher
+Fire,Disparar,Atirar,Feuer,Tirer
+Reload,Recargar,Recarregar,Nachladen,Recharger
+Throw Grenade,Lanzar granada,Lançar granada,Granate werfen,Lancer une grenade
+Grenade Type,Tipo de granada,Tipo de granada,Granatentyp,Type de grenade
+Swap Weapon,Cambiar arma,Trocar arma,Waffe wechseln,Changer d'arme
+Chat,Chat,Chat,Chat,Chat
+Team Chat,Chat de equipo,Chat da equipe,Team-Chat,Chat d'équipe
+Radio Callouts,Radio,Rádio,Funksprüche,Radio
+Pause Menu,Menú de pausa,Menu de pausa,Pausenmenü,Menu pause
+Scoreboard (hold),Marcador (mantener),Placar (segurar),Punktetafel (halten),Scores (maintenir)
+Controls Help,Ayuda de controles,Ajuda de controles,Steuerungshilfe,Aide des commandes
+CAREER,CARRERA,CARREIRA,KARRIERE,CARRIÈRE
+RESET STATS,BORRAR ESTADÍSTICAS,ZERAR ESTATÍSTICAS,STATISTIK ZURÜCKSETZEN,RÉINITIALISER LES STATS
+CREDITS,CRÉDITOS,CRÉDITOS,CREDITS,CRÉDITS
+RESUME,CONTINUAR,CONTINUAR,WEITER,REPRENDRE
+HOST SETTINGS,AJUSTES DEL ANFITRIÓN,CONFIG. DO HOST,HOST-EINSTELLUNGEN,RÉGLAGES DE L'HÔTE
+EXIT TO MENU,SALIR AL MENÚ,SAIR PARA O MENU,ZUM MENÜ,RETOUR AU MENU
+EXIT GAME,SALIR DEL JUEGO,SAIR DO JOGO,SPIEL BEENDEN,QUITTER LE JEU
+QUIT GAME?,¿SALIR DEL JUEGO?,SAIR DO JOGO?,SPIEL BEENDEN?,QUITTER LE JEU ?
+CANCEL,CANCELAR,CANCELAR,ABBRECHEN,ANNULER
+RESTART MATCH,REINICIAR PARTIDA,REINICIAR PARTIDA,MATCH NEU STARTEN,RECOMMENCER LA PARTIE
+COPY JOIN CODE,COPIAR CÓDIGO,COPIAR CÓDIGO,BEITRITTSCODE KOPIEREN,COPIER LE CODE
+COPIED!,¡COPIADO!,COPIADO!,KOPIERT!,COPIÉ !
+Fullscreen,Pantalla completa,Tela cheia,Vollbild,Plein écran
+VSync (no tearing; caps FPS to the monitor),VSync (sin tearing; limita los FPS al monitor),VSync (sem tearing; limita o FPS ao monitor),VSync (kein Tearing; FPS auf Monitor begrenzt),VSync (pas de déchirement ; FPS limités à l'écran)
+Show FPS overlay,Mostrar FPS,Mostrar FPS,FPS anzeigen,Afficher les FPS
+Damage numbers on hits,Números de daño al acertar,Números de dano ao acertar,Schadenszahlen bei Treffern,Chiffres de dégâts
+Screen Shake,Temblor de pantalla,Tremor de tela,Bildschirmwackeln,Tremblement d'écran
+SFX Volume,Volumen de efectos,Volume dos efeitos,Effektlautstärke,Volume des effets
+Music Volume,Volumen de música,Volume da música,Musiklautstärke,Volume de la musique
+Mute music,Silenciar música,Silenciar música,Musik stumm,Couper la musique
+Mouse Sensitivity,Sensibilidad del ratón,Sensibilidade do mouse,Mausempfindlichkeit,Sensibilité de la souris
+Player Name,Nombre del jugador,Nome do jogador,Spielername,Nom du joueur
+Bot skill,Habilidad de los bots,Habilidade dos bots,Bot-Stärke,Niveau des bots
+Check for updates when the game starts,Buscar actualizaciones al iniciar,Procurar atualizações ao iniciar,Beim Start nach Updates suchen,Chercher des mises à jour au démarrage
+"Pause when the game loses focus (alt-tab, phone home button)","Pausar al perder el foco (alt-tab, botón de inicio)","Pausar ao perder o foco (alt-tab, botão início)","Pausieren, wenn das Spiel den Fokus verliert (Alt-Tab, Home-Taste)","Pause quand le jeu perd le focus (alt-tab, bouton accueil)"
+Colour-blind friendly teams (red team shows orange; next match),Equipos para daltónicos (el rojo se ve naranja; próxima partida),Equipes para daltônicos (vermelho vira laranja; próxima partida),Farbenblind-freundliche Teams (Rot wird Orange; nächstes Match),Équipes pour daltoniens (le rouge devient orange ; prochaine partie)
+Bot chatter (bots taunt in chat),Charla de bots (se burlan en el chat),Conversa dos bots (provocam no chat),Bot-Gerede (Bots sticheln im Chat),Bavardage des bots (ils chambrent dans le chat)
+Vehicles: buggies on maps with room (host decides online),Vehículos: buggies en mapas con espacio (el anfitrión decide en línea),Veículos: buggies em mapas com espaço (o host decide online),Fahrzeuge: Buggys auf Karten mit Platz (online entscheidet der Host),Véhicules : buggys sur les cartes assez grandes (l'hôte décide en ligne)
+REPORT A BUG,REPORTAR UN ERROR,REPORTAR UM BUG,FEHLER MELDEN,SIGNALER UN BUG
+OPEN LOG FOLDER,ABRIR CARPETA DE REGISTROS,ABRIR PASTA DE LOGS,LOG-ORDNER ÖFFNEN,OUVRIR LE DOSSIER DES LOGS
+REBIND KEYS…,CAMBIAR TECLAS…,REDEFINIR TECLAS…,TASTEN BELEGEN…,RÉASSIGNER LES TOUCHES…
+Language,Idioma,Idioma,Sprache,Langue
+SAVE,GUARDAR,SALVAR,SPEICHERN,ENREGISTRER
+SAVE AND CONTINUE,GUARDAR Y SEGUIR,SALVAR E CONTINUAR,SPEICHERN & WEITER,ENREGISTRER ET CONTINUER
+START WITH TRAINING,EMPEZAR CON EL ENTRENAMIENTO,COMEÇAR COM O TREINO,MIT TRAINING BEGINNEN,COMMENCER PAR L'ENTRAÎNEMENT
+TO THE MENU,AL MENÚ,IR PARA O MENU,ZUM MENÜ,AU MENU
+"WELCOME, SOLDIER","BIENVENIDO, SOLDADO","BEM-VINDO, SOLDADO","WILLKOMMEN, SOLDAT","BIENVENUE, SOLDAT"
+YOUR NAME,TU NOMBRE,SEU NOME,DEIN NAME,TON NOM
+"What should we call you? It shows in the kill feed, the scoreboard and online.","¿Cómo te llamamos? Aparece en las bajas, el marcador y en línea.","Como devemos te chamar? Aparece nos abates, no placar e online.","Wie sollen wir dich nennen? Der Name erscheint im Kill-Feed, auf der Punktetafel und online.","Comment t'appeler ? Ça s'affiche dans le fil des éliminations, les scores et en ligne."
+Type your name,Escribe tu nombre,Digite seu nome,Namen eingeben,Tape ton nom
+Type a name to continue.,Escribe un nombre para seguir.,Digite um nome para continuar.,"Gib einen Namen ein, um fortzufahren.",Tape un nom pour continuer.
+UPDATE NOW,ACTUALIZAR AHORA,ATUALIZAR AGORA,JETZT AKTUALISIEREN,METTRE À JOUR
+DOWNLOAD,DESCARGAR,BAIXAR,HERUNTERLADEN,TÉLÉCHARGER
+LATER,MÁS TARDE,DEPOIS,SPÄTER,PLUS TARD
+GOT IT,ENTENDIDO,ENTENDI,VERSTANDEN,COMPRIS
+CONNECTION LOST,CONEXIÓN PERDIDA,CONEXÃO PERDIDA,VERBINDUNG VERLOREN,CONNEXION PERDUE
+REJOIN,VOLVER A ENTRAR,VOLTAR,ERNEUT BEITRETEN,REJOINDRE À NOUVEAU
+BACK TO MENU,VOLVER AL MENÚ,VOLTAR AO MENU,ZURÜCK ZUM MENÜ,RETOUR AU MENU
+LOADING MATCH...,CARGANDO PARTIDA...,CARREGANDO PARTIDA...,MATCH WIRD GELADEN...,CHARGEMENT DE LA PARTIE...
+PAUSED,PAUSA,PAUSADO,PAUSIERT,PAUSE
+No name yet,Sin nombre,Sem nome,Noch kein Name,Pas encore de nom
+CHANGE NAME,CAMBIAR NOMBRE,MUDAR NOME,NAME ÄNDERN,CHANGER DE NOM
+UPDATE AVAILABLE:,ACTUALIZACIÓN:,ATUALIZAÇÃO:,UPDATE VERFÜGBAR:,MISE À JOUR :
+DOWNLOADING UPDATE,DESCARGANDO,BAIXANDO,LADE UPDATE,TÉLÉCHARGEMENT
+RESTART TO UPDATE TO,REINICIAR PARA ACTUALIZAR A,REINICIAR PARA ATUALIZAR PARA,NEU STARTEN FÜR,REDÉMARRER POUR LA
+CHECKING FOR UPDATES...,BUSCANDO ACTUALIZACIONES...,PROCURANDO ATUALIZAÇÕES...,SUCHE NACH UPDATES...,RECHERCHE DE MISES À JOUR...
+UP TO DATE,ACTUALIZADO,ATUALIZADO,AKTUELL,À JOUR
+CHECK FOR UPDATES,ACTUALIZACIONES,ATUALIZAÇÕES,UPDATES,MISES À JOUR
+Host through the relay (works through any router; needs the master server),Crear a través del relay (funciona con cualquier router; requiere el servidor maestro),Hospedar pelo relay (funciona com qualquer roteador; precisa do servidor mestre),Über das Relay hosten (klappt mit jedem Router; braucht den Master-Server),Héberger via le relais (marche avec n'importe quelle box ; nécessite le serveur maître)
+Host through the relay (set the master server URL under Join first),Crear a través del relay (pon primero la URL del servidor maestro en Unirse),Hospedar pelo relay (defina antes a URL do servidor mestre em Entrar),Über das Relay hosten (zuerst unter Beitreten die Master-Server-URL eintragen),Héberger via le relais (indique d'abord l'URL du serveur maître dans Rejoindre)
+"Same network: no setup, friends find it under Join → Find Games / Quick Join. Elsewhere: the router port opens itself (UPnP) and the pause menu has a join code to copy.","Misma red: sin configurar, tus amigos la encuentran en Unirse → Buscar partidas / Unión rápida. Fuera de ella: el puerto del router se abre solo (UPnP) y el menú de pausa tiene un código para copiar.","Mesma rede: sem configuração, os amigos encontram em Entrar → Procurar partidas / Entrada rápida. Fora dela: a porta do roteador abre sozinha (UPnP) e o menu de pausa tem um código para copiar.","Gleiches Netzwerk: keine Einrichtung, Freunde finden das Spiel unter Beitreten → Spiele suchen / Schnell beitreten. Anderswo: der Router-Port öffnet sich selbst (UPnP) und im Pausenmenü gibt es einen Beitrittscode zum Kopieren.","Même réseau : rien à régler, tes amis la trouvent dans Rejoindre → Chercher des parties / Partie rapide. Ailleurs : le port du routeur s'ouvre tout seul (UPnP) et le menu pause donne un code à copier."
+LAN address: %s,Dirección LAN: %s,Endereço LAN: %s,LAN-Adresse: %s,Adresse LAN : %s
+List on the master server (set its URL under Join first),Publicar en el servidor maestro (pon primero su URL en Unirse),Listar no servidor mestre (defina antes a URL em Entrar),Auf dem Master-Server listen (zuerst die URL unter Beitreten eintragen),Lister sur le serveur maître (indique d'abord l'URL dans Rejoindre)
+No master server set (Join screen) — LAN games show above.,No hay servidor maestro (pantalla Unirse): las partidas LAN aparecen arriba.,Sem servidor mestre (tela Entrar): as partidas LAN aparecem acima.,Kein Master-Server eingestellt (Beitreten) – LAN-Spiele stehen oben.,Aucun serveur maître (écran Rejoindre) : les parties LAN sont au-dessus.
+No response from master server.,El servidor maestro no responde.,O servidor mestre não respondeu.,Keine Antwort vom Master-Server.,Le serveur maître ne répond pas.
+Set a master server URL on the Join screen first.,Pon primero la URL del servidor maestro en Unirse.,Defina antes a URL do servidor mestre em Entrar.,Zuerst unter Beitreten eine Master-Server-URL eintragen.,Indique d'abord l'URL du serveur maître dans Rejoindre.

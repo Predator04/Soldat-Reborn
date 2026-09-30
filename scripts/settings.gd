@@ -31,6 +31,8 @@ var show_fps := false          # overlay FPS counter on the HUD
 var pause_on_focus_loss := true  # open the pause menu when the window / app loses focus
 var check_updates := true      # look for a newer release on GitHub at startup
 var colorblind := false        # red team drawn orange (blue / orange)
+var language := ""             # "" = system language; else "en", "es", "pt_BR", "de", "fr"
+const LANGUAGES := [["", "Auto (system)"], ["en", "English"], ["es", "Español"], ["pt_BR", "Português (Brasil)"], ["de", "Deutsch"], ["fr", "Français"]]
 var last_seen_version := ""    # "what's new" shows once per new version
 var vehicles := true   # buggies on maps with room (host decides in multiplayer)
 var vsync := true
@@ -132,6 +134,7 @@ func is_team_mode() -> bool:
 
 func _ready() -> void:
 	load_settings()
+	apply_language()
 	# #115: create joy-only actions (aim_*, pause) + gamepad defaults FIRST, then
 	# apply saved rebinds over them. The old order skipped saved aim_*/pause
 	# binds (actions didn't exist yet) and re-added removed pad defaults.
@@ -187,6 +190,7 @@ func load_settings() -> void:
 	pause_on_focus_loss = bool(cf.get_value("game", "pause_on_focus_loss", true))
 	check_updates = bool(cf.get_value("game", "check_updates", true))
 	colorblind = bool(cf.get_value("video", "colorblind", false))
+	language = str(cf.get_value("game", "language", ""))
 	last_seen_version = str(cf.get_value("game", "last_seen_version", ""))
 	vehicles = bool(cf.get_value("game", "vehicles", true))
 	bot_chatter = bool(cf.get_value("game", "bot_chatter", true))
@@ -262,6 +266,7 @@ func save() -> void:
 	cf.set_value("game", "pause_on_focus_loss", pause_on_focus_loss)
 	cf.set_value("game", "check_updates", check_updates)
 	cf.set_value("video", "colorblind", colorblind)
+	cf.set_value("game", "language", language)
 	cf.set_value("game", "last_seen_version", last_seen_version)
 	cf.set_value("game", "vehicles", vehicles)
 	cf.set_value("game", "bot_chatter", bot_chatter)
@@ -307,3 +312,13 @@ func apply_display() -> void:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 	else:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+
+
+
+## Menus translate themselves (Godot auto-translation of Control text) into
+## the chosen language; in-match HUD text stays English for now.
+func apply_language() -> void:
+	var lang := language
+	if lang == "":
+		lang = OS.get_locale()
+	TranslationServer.set_locale(lang)
