@@ -119,7 +119,10 @@ var player_name := "Player"
 var name_set := false
 var training := false          # runtime only: the Training match is running
 var training_saved: Dictionary = {}   # the match settings Training replaced          # first-launch name prompt answered
-var master_url := ""
+## Official master server + relay (Oracle Cloud, Phoenix). An empty saved value
+## falls back to it, so Find Games, internet listing and relay work out of the box.
+const DEFAULT_MASTER_URL := "http://161.153.9.69:8080"
+var master_url := DEFAULT_MASTER_URL
 var recent_servers: Array = []   # "ip:port", newest first (Browse -> Recent)
 
 # Convenience: DM / Rambo / Battle Royale / Gun Game are FFA (friendly-fire on), teams disable friendly damage.
@@ -220,7 +223,9 @@ func load_settings() -> void:
 	player_name = str(cf.get_value("net", "player_name", "Player"))
 	# Players from before the prompt existed who already picked a name keep it.
 	name_set = bool(cf.get_value("net", "name_set", player_name != "Player"))
-	master_url = str(cf.get_value("net", "master_url", ""))
+	master_url = str(cf.get_value("net", "master_url", "")).strip_edges()
+	if master_url == "":
+		master_url = DEFAULT_MASTER_URL
 	var rs = cf.get_value("net", "recent_servers", [])
 	recent_servers = (rs as Array).duplicate() if rs is Array else []
 

@@ -2,6 +2,11 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.25.1] — 2026-10-01
+
+### Added
+- **Official online server**: the game now comes set up with the Soldat Reborn master server (161.153.9.69:8080), so Find Games shows internet games, "List on the master server" works, and **Host through the relay** works out of the box with no port forwarding and nothing to type. You can still point it at your own server under Join.
+
 ## [1.25.0] — 2026-09-30
 
 ### Added

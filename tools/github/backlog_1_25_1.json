@@ -1,0 +1,4 @@
+[
+ {"title": "Default master server URL (Oracle Cloud)", "labels": ["enhancement", "area: multiplayer"], "version": "1.25.1",
+  "body": "Public master server + relay deployed on Oracle Cloud Always Free (Phoenix, reserved IP 161.153.9.69, port 8080, systemd service built by cloud-init). Settings.DEFAULT_MASTER_URL used when no URL is saved. Verified /list and the /relay WebSocket upgrade from outside."}
+]
