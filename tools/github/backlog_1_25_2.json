@@ -1,0 +1,4 @@
+[
+ {"title": "Always-on official game server", "labels": ["enhancement", "area: multiplayer"], "version": "1.25.2",
+  "body": "Dedicated server --name and idle mode (pause + 5 fps / 5 tps with no peers, ~3% CPU; wakes on peer_connected). Releases ship SoldatReborn.pck. soldat-master-server deploy/game-server.sh installs headless Godot 4.7.2 + the release pck as the soldat-game service next to the master, with an hourly update timer; master advertises SOLDAT_PUBLIC_IP for loopback registrations."}
+]

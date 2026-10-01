@@ -140,18 +140,19 @@ def release(tag):
     if rel is None:
         rel = call("POST", "/repos/%s/releases" % REPO, {
             "tag_name": tag, "target_commitish": "main", "name": "Soldat Reborn " + tag,
-            "body": changelog_section(tag) + "\n\n**Downloads:** `SoldatReborn.exe` (Windows) and `SoldatReborn.apk` (Android)."})
+            "body": changelog_section(tag) + "\n\n**Downloads:** `SoldatReborn.exe` (Windows) and `SoldatReborn.apk` (Android). `SoldatReborn.pck` is the game pack for dedicated servers."})
         print("release created", tag)
     else:
         # Keep the release notes in step with CHANGELOG.md (a version can gain
         # entries after its first publish).
-        body = changelog_section(tag) + "\n\n**Downloads:** `SoldatReborn.exe` (Windows) and `SoldatReborn.apk` (Android)."
+        body = changelog_section(tag) + "\n\n**Downloads:** `SoldatReborn.exe` (Windows) and `SoldatReborn.apk` (Android). `SoldatReborn.pck` is the game pack for dedicated servers."
         if (rel.get("body") or "") != body:
             call("PATCH", "/repos/%s/releases/%d" % (REPO, rel["id"]), {"body": body})
             print("release notes updated")
     have = {a["name"]: a for a in rel.get("assets", [])}
     for f, ctype in (("SoldatReborn.exe", "application/vnd.microsoft.portable-executable"),
-                     ("SoldatReborn.apk", "application/vnd.android.package-archive")):
+                     ("SoldatReborn.apk", "application/vnd.android.package-archive"),
+                     ("SoldatReborn.pck", "application/octet-stream")):
         p = os.path.join(ROOT, "build", f)
         if not os.path.exists(p):
             print("asset skip", f, "(no build)")

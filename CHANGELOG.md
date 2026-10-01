@@ -2,6 +2,12 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.25.2] — 2026-10-01
+
+### Added
+- Dedicated servers: `--name="..."` sets the name shown in Find Games, and with nobody connected the match pauses and the server drops to a few frames a second (about 3% CPU instead of 20%), waking the moment a player joins. Turn it off with `--no-idle`.
+- Each release now includes `SoldatReborn.pck`, the game pack a headless dedicated server runs. The official always-on server uses it and updates itself within an hour of a new release.
+
 ## [1.25.1] — 2026-10-01
 
 ### Added

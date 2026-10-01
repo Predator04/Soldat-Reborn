@@ -63,6 +63,12 @@ var _heartbeat_timer: Timer = null
 # the server's main.tscn has finished loading. Buffer those calls in the autoload
 # (always present) and drain them from Main._ready() after _spawn_bots().
 var _pending_clients: Array = []
+# Dedicated idle: with nobody connected the match is paused and the frame rate
+# dropped to a trickle, so an always-on server on a tiny VM costs ~nothing.
+var _idle := false
+var _idle_since_ms := 0
+var _idle_enabled := true
+var _active_tps := 60
 
 
 func _ready() -> void:
@@ -144,6 +150,9 @@ func _maybe_run_dedicated() -> void:
 			i += 1
 		elif a.begins_with("--register="):
 			register_url = a.substr(len("--register="))
+		elif a.begins_with("--name="):
+			# Name shown in Find Games (e.g. the official server). Runtime only.
+			Settings.server_name = a.substr(len("--name=")).strip_edges().left(48)
 		i += 1
 	is_dedicated = true
 	if wants_smoke:
@@ -191,6 +200,17 @@ func _start_dedicated(port: int, map_index: int, mode_index: int) -> void:
 	var mode_name: String = MODE_NAMES[mode_index] if mode_index >= 0 and mode_index < MODE_NAMES.size() else "mode#%d" % mode_index
 	print("Dedicated server listening on port %d, map=%s mode=%s" % [port, map_name, mode_name])
 	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	_idle_enabled = not ("--no-idle" in (OS.get_cmdline_args() + OS.get_cmdline_user_args()))
+	if _idle_enabled:
+		# Net keeps running (heartbeat, peer events) while the match is paused.
+		process_mode = Node.PROCESS_MODE_ALWAYS
+		_idle_since_ms = Time.get_ticks_msec()
+		var it := Timer.new()
+		it.name = "DedicatedIdleTimer"
+		it.wait_time = 2.0
+		it.autostart = true
+		it.timeout.connect(_dedicated_idle_tick)
+		add_child(it)
 	if register_url != "":
 		_start_master_heartbeat(port)
 
@@ -668,7 +688,30 @@ func _set_status(s: String) -> void:
 	status_changed.emit()
 
 
+func _dedicated_idle_tick() -> void:
+	if multiplayer.get_peers().size() > 0:
+		_set_idle(false)
+		_idle_since_ms = Time.get_ticks_msec()
+	elif not _idle and Time.get_ticks_msec() - _idle_since_ms > 20000:
+		_set_idle(true)
+
+
+func _set_idle(on: bool) -> void:
+	if on == _idle:
+		return
+	_idle = on
+	get_tree().paused = on
+	if on:
+		_active_tps = Engine.physics_ticks_per_second
+	Engine.physics_ticks_per_second = 5 if on else _active_tps
+	Engine.max_fps = 5 if on else 0
+	print("Dedicated server %s" % ("idle (no players): match paused" if on else "active: match running"))
+
+
 func _on_peer_connected(id: int) -> void:
+	if is_dedicated and _idle_enabled:
+		_set_idle(false)
+		_idle_since_ms = Time.get_ticks_msec()
 	if is_host():
 		_refresh_host_status()
 		# #119: extend the ENet timeout on the host → client peer so the host

@@ -32,7 +32,12 @@ if [ "$WHAT" = all ] || [ "$WHAT" = win ]; then
   retire build/SoldatReborn.exe exe
   "$G" --headless --export-release "Windows Desktop" /tmp/SoldatReborn.exe >/dev/null 2>&1
   mv /tmp/SoldatReborn.exe build/SoldatReborn.exe
-  sync; ls -la build/SoldatReborn.exe
+  # Game pack alone, for the headless dedicated server (official server pulls
+  # it from the GitHub release and runs it with the Linux Godot binary).
+  rm -f build/SoldatReborn.pck
+  "$G" --headless --export-pack "Windows Desktop" /tmp/SoldatReborn.pck >/dev/null 2>&1
+  mv /tmp/SoldatReborn.pck build/SoldatReborn.pck
+  sync; ls -la build/SoldatReborn.exe build/SoldatReborn.pck
 fi
 
 if [ "$WHAT" = all ] || [ "$WHAT" = android ]; then
