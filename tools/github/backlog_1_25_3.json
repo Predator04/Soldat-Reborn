@@ -1,0 +1,4 @@
+[
+ {"title": "You can jump the whole buggy", "labels": ["bug", "area: gameplay"], "version": "1.25.3",
+  "body": "Reported. W gave buggies a 430 px/s hop (~54 px, a full vehicle height). HOP_VEL is now 0 for buggy and tank; a STEP_UP (16 px) lets the wheels climb near-vertical curbs while driving. tools/vehicle_step_test.gd (gate F step): no upward hop speed, climbs a 12 px curb, stopped by a 60 px wall."}
+]

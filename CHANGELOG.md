@@ -2,6 +2,11 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.25.3] — 2026-10-01
+
+### Fixed
+- Buggies and tanks no longer jump (reported: W launched the whole buggy into the air). Vehicles stay on the ground; instead the wheels roll up curbs and small lips (up to about a tire's height) when you drive into them, while real walls and steep slopes still stop you. W does nothing while driving.
+
 ## [1.25.2] — 2026-10-01
 
 ### Added

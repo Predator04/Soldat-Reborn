@@ -1,6 +1,6 @@
 extends CharacterBody2D
 ## Buggy (v1.19) — two-seat ground vehicle. Walk up and press F: the first
-## seat is the driver (A/D drive, W hops, F gets out), the second the gunner
+## seat is the driver (A/D drive, F gets out), the second the gunner
 ## on a mounted machine gun. A driver alone can also fire the gun.
 ## Enemies it hits at speed get run over; bullets and blasts wreck it, and it
 ## blows up with anyone still inside. Respawns at its spot after a while.
@@ -17,7 +17,8 @@ var BRAKE := 1100.0
 var ROLL_DRAG := 260.0
 var AIR_CONTROL := 0.25
 var GRAVITY := 1700.0
-var HOP_VEL := -430.0
+var HOP_VEL := 0.0            # no hop: vehicles stay on the ground (reported)
+var STEP_UP := 16.0           # climbs curbs / small lips up to this height
 var ENTER_RADIUS := 56.0
 var RUNOVER_MIN_SPEED := 190.0
 var GUN_RATE := 0.075
@@ -184,7 +185,7 @@ func set_seat(seat: int, s: Node2D) -> void:
 	if is_instance_valid(s) and s.has_method("mount_m2"):
 		s.mount_m2(self)
 		if s.has_method("_pickup_toast"):
-			s._pickup_toast("BUGGY", "A/D drive · W hop · aim + fire the gun · F to get out" if seat == 0 else "Gunner: aim + fire · F to get out", Color(0.95, 0.85, 0.5))
+			s._pickup_toast("BUGGY", "A/D drive · aim + fire the gun · F to get out" if seat == 0 else "Gunner: aim + fire · F to get out", Color(0.95, 0.85, 0.5))
 	_update_team()
 
 
@@ -313,6 +314,17 @@ func _simulate(delta: float) -> void:
 	var fall_v := velocity.y
 	velocity.y = minf(velocity.y + GRAVITY * MatchConfig.mod_gravity() * delta, 1400.0)
 	move_and_slide()
+	# Wheels roll up curbs and small lips instead of jumping them: when the
+	# buggy is blocked while driving on the ground, lift it onto the step if
+	# there's room above and ahead.
+	# Only a near-vertical face counts as a curb, so steep slopes stay steep.
+	if on_floor and throttle != 0.0 and is_on_wall() and STEP_UP > 0.0 and absf(get_wall_normal().y) < 0.25:
+		var ahead := Vector2(signf(throttle) * 6.0, 0.0)
+		for h in [4.0, 8.0, 12.0, STEP_UP]:
+			var up := global_transform.translated(Vector2(0.0, -h))
+			if not test_move(global_transform, Vector2(0.0, -h)) and not test_move(up, ahead):
+				global_position += Vector2(ahead.x, -h)
+				break
 	if is_on_floor() and was_air and fall_v > 520.0:
 		Sfx.land(global_position, true)
 	# Visual tilt follows the ground; in the air it eases toward level.
