@@ -129,14 +129,14 @@ const WEAPON_STATS := {
 	"Minimi":       {"damage": 23.0,  "rate": 0.20,  "speed": 1180.0, "kind": "bullet"},
 	"Minigun":      {"damage": 13.0,  "rate": 0.066, "speed": 1275.0, "kind": "bullet"},
 	"Flamethrower": {"damage": 19.0,  "rate": 0.08,  "speed": 420.0,  "kind": "bullet", "life": 0.35, "visual": "flame"},
-	"Rambo Bow":    {"damage": 12.0,  "rate": 1.5,   "speed": 900.0,  "kind": "bullet"},
+	"Rambo Bow":    {"damage": 100.0,  "rate": 1.5,   "speed": 900.0,  "kind": "bullet"},
 	"USSOCOM":      {"damage": 27.0,  "rate": 0.167, "speed": 800.0,  "kind": "bullet"},
 	"LAW":          {"damage": 90.0,  "rate": 1.6,   "speed": 720.0,  "kind": "rocket"},
 	# Gun Game melee rungs: bots don't do full melee arc scans, so approximate with
 	# a very-short-life bullet — travels ~60px then dies harmlessly. Damage still
 	# routes through take_damage with the correct weapon_name for GG kill scoring.
 	"Knife":        {"damage": 55.0,  "rate": 0.5,   "speed": 600.0,  "kind": "bullet", "life": 0.10},
-	"Chainsaw":     {"damage": 3.0,   "rate": 0.10,  "speed": 600.0,  "kind": "bullet", "life": 0.10},
+	"Chainsaw":     {"damage": 9.0,   "rate": 0.10,  "speed": 600.0,  "kind": "bullet", "life": 0.10},
 }
 
 # grenades

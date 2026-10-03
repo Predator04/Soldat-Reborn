@@ -39,13 +39,13 @@ var weapons := [
 	# Flamethrower — kind "flame" spawns short-lived orange puffs, so the cone dies at ~120px.
 	{"name": "Flamethrower", "damage": 19.0, "rate": 0.06,  "mag": 200, "reload": 5.0,  "auto": true,  "spread": 0.12, "speed": 420.0, "pellets": 1, "color": Color(1.0, 0.5, 0.15), "kind": "flame", "bink": 0.0, "life": 0.35},
 	# Rambo Bow — kind "arrow" is a slow, sagging projectile.
-	{"name": "Rambo Bow",    "damage": 12.0, "rate": 1.0,   "mag": 1,   "reload": 2.5,  "auto": false, "spread": 0.0,  "speed": 900.0, "pellets": 1, "color": Color(0.6, 0.4, 0.2),  "kind": "arrow", "bink": 0.0, "gravity": 240.0},
+	{"name": "Rambo Bow",    "damage": 100.0, "rate": 1.0,   "mag": 1,   "reload": 2.5,  "auto": false, "spread": 0.0,  "speed": 900.0, "pellets": 1, "color": Color(0.6, 0.4, 0.2),  "kind": "arrow", "bink": 0.0, "gravity": 240.0},
 ]
 # Secondary slot — the second weapon the soldier carries (Q to swap primary↔secondary).
 var secondary := [
 	{"name": "USSOCOM",  "damage": 27.0, "rate": 0.167, "mag": 14,  "reload": 1.0,  "auto": false, "spread": 0.0, "speed": 800.0, "pellets": 1, "color": Color(0.85, 0.8, 0.6),   "kind": "bullet", "bink": 25.0},
 	{"name": "Knife",    "damage": 55.0, "rate": 0.5,   "mag": 1,   "reload": 0.05, "auto": false, "spread": 0.0, "speed": 0.0,   "pellets": 0, "color": Color(0.9, 0.9, 0.95),   "kind": "melee",      "range": 34.0, "bink": 0.0},
-	{"name": "Chainsaw", "damage": 3.0,  "rate": 0.10,  "mag": 200, "reload": 1.83, "auto": true,  "spread": 0.0, "speed": 0.0,   "pellets": 0, "color": Color(1.0, 0.7, 0.15),   "kind": "melee_cont", "range": 32.0, "bink": 0.0},
+	{"name": "Chainsaw", "damage": 9.0,  "rate": 0.10,  "mag": 200, "reload": 1.83, "auto": true,  "spread": 0.0, "speed": 0.0,   "pellets": 0, "color": Color(1.0, 0.7, 0.15),   "kind": "melee_cont", "range": 32.0, "bink": 0.0},
 	{"name": "LAW",      "damage": 90.0, "rate": 1.1,   "mag": 1,   "reload": 3.0,  "auto": false, "spread": 0.0, "speed": 720.0, "pellets": 1, "color": Color(0.85, 0.55, 0.35), "kind": "rocket", "bink": 0.0},
 ]
 var ammo: Array[int] = []

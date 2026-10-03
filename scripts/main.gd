@@ -1184,6 +1184,11 @@ func _spawn_scenery_hints() -> void:
 		if not ResourceLoader.exists(path):
 			continue
 		var tex: Texture2D = load(path) as Texture2D
+		if stem == "blank":
+			# Soldat maps tint "blank" squares to fake light and shadow; drawn
+			# as hard-edged boxes they read as glitchy white/black rectangles.
+			# Feather the edges so they blend like a glow / shade.
+			tex = _soft_blank_tex()
 		if tex == null:
 			continue
 		var pos_arr = it.get("pos", [0, 0])
@@ -1214,6 +1219,25 @@ func _spawn_scenery_hints() -> void:
 		s.modulate = Color(tint.r, tint.g, tint.b, clamp(alpha / 255.0, 0.0, 1.0))
 		s.z_index = int(_SCENERY_LEVEL_Z.get(level, 0))
 		add_child(s)
+
+
+var _soft_blank: Texture2D = null
+
+
+func _soft_blank_tex() -> Texture2D:
+	if _soft_blank == null:
+		var g := Gradient.new()
+		g.offsets = PackedFloat32Array([0.0, 0.55, 1.0])
+		g.colors = PackedColorArray([Color(1, 1, 1, 1), Color(1, 1, 1, 0.85), Color(1, 1, 1, 0)])
+		var gt := GradientTexture2D.new()
+		gt.gradient = g
+		gt.width = 92
+		gt.height = 92
+		gt.fill = GradientTexture2D.FILL_SQUARE
+		gt.fill_from = Vector2(0.5, 0.5)
+		gt.fill_to = Vector2(1.0, 0.5)
+		_soft_blank = gt
+	return _soft_blank
 
 
 func _spawn_m2_mounts() -> void:

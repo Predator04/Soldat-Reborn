@@ -56,7 +56,7 @@ const WEAPONS := {
 	"Minimi": "Light machine gun — 50-round belt.",
 	"Minigun": "Spins up, then shreds. 100 rounds.",
 	"Flamethrower": "Short-range fire cone.",
-	"Rambo Bow": "Silent bow with sagging arrows.",
+	"Rambo Bow": "Silent bow: one arrow kills. Arrows sag, so aim high at range.",
 	"USSOCOM": "Sidearm pistol.",
 	"Knife": "Melee — stab, or throw it with F.",
 	"Chainsaw": "Melee — continuous damage up close.",
