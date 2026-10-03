@@ -92,7 +92,7 @@ func _draw() -> void:
 		y0 = maxf(y0, vp.y * 0.5 + 70.0)   # below the winner banner
 	draw_rect(Rect2(x0, y0, W, h), Color(0.04, 0.05, 0.08, 0.86))
 	draw_rect(Rect2(x0, y0, W, h), Color(0.98, 0.66, 0.18, 0.7), false, 2.0)
-	_text(font, Vector2(x0 + 18, y0 + 30), "SCOREBOARD", 20, Color(0.98, 0.66, 0.18))
+	_text(font, Vector2(x0 + 18, y0 + 30), tr("SCOREBOARD"), 20, Color(0.98, 0.66, 0.18))
 	var me := ""
 	var p = main.get("player")
 	if p != null and is_instance_valid(p):
@@ -105,7 +105,7 @@ func _draw() -> void:
 		var t: int = g[0]
 		var list: Array = g[1]
 		var head_col := Color(0.8, 0.82, 0.88)
-		var title := "PLAYERS"
+		var title := tr("PLAYERS")
 		if t > 0 and hud != null and hud.has_method("_team_display_info"):
 			var info: Dictionary = hud._team_display_info(t)
 			head_col = info["color"]

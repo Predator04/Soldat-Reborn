@@ -143,7 +143,7 @@ func _status_text() -> String:
 	var p := _player()
 	if Settings.is_team_mode() and p != null:
 		var mi := _team_info(int(p.get("team")))
-		parts.append("[color=#%s]YOU: %s[/color]" % [(mi["color"] as Color).to_html(false), str(mi["name"])])
+		parts.append(("[color=#%s]" + tr("YOU: %s") + "[/color]") % [(mi["color"] as Color).to_html(false), str(mi["name"])])
 	var flags: Array = main.get("flags") if main.get("flags") != null else []
 	for f in flags:
 		if not is_instance_valid(f):
@@ -152,11 +152,11 @@ func _status_text() -> String:
 		var c := _carrier_of(f)
 		var state := ""
 		if c != null:
-			state = "YOU HAVE IT" if c == p else "TAKEN · %s" % str(c.get("display_name"))
+			state = tr("YOU HAVE IT") if c == p else tr("TAKEN · %s") % str(c.get("display_name"))
 		elif (f as Node2D).position.distance_to(f.get_meta("home")) <= 12.0:
-			state = "HOME"
+			state = tr("HOME")
 		else:
-			state = "DROPPED"
+			state = tr("DROPPED")
 		var hexc := _flag_color(ft).to_html(false)
 		if c != null and c == p:
 			var a := 0.6 + 0.4 * sin(_t * 6.0)

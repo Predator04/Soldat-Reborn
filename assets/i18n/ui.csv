@@ -153,3 +153,26 @@ List on the master server (set its URL under Join first),Publicar en el servidor
 No master server set (Join screen) — LAN games show above.,No hay servidor maestro (pantalla Unirse): las partidas LAN aparecen arriba.,Sem servidor mestre (tela Entrar): as partidas LAN aparecem acima.,Kein Master-Server eingestellt (Beitreten) – LAN-Spiele stehen oben.,Aucun serveur maître (écran Rejoindre) : les parties LAN sont au-dessus.
 No response from master server.,El servidor maestro no responde.,O servidor mestre não respondeu.,Keine Antwort vom Master-Server.,Le serveur maître ne répond pas.
 Set a master server URL on the Join screen first.,Pon primero la URL del servidor maestro en Unirse.,Defina antes a URL do servidor mestre em Entrar.,Zuerst unter Beitreten eine Master-Server-URL eintragen.,Indique d'abord l'URL du serveur maître dans Rejoindre.
+Tap left / right to switch view,Toca a la izquierda / derecha para cambiar de vista,Toque à esquerda / direita para trocar de visão,"Links / rechts tippen, um die Ansicht zu wechseln",Touche à gauche / droite pour changer de vue
+← / →  or  LB / RB  next target    ·    C  toggle free-cam,← / →  o  LB / RB  siguiente objetivo    ·    C  cámara libre,← / →  ou  LB / RB  próximo alvo    ·    C  câmera livre,← / →  oder  LB / RB  nächstes Ziel    ·    C  freie Kamera,← / →  ou  LB / RB  cible suivante    ·    C  caméra libre
+%s ended %s's %d-kill streak,%s terminó la racha de %s (%d bajas),%s encerrou a sequência de %s (%d abates),%s beendet die Serie von %s (%d Kills),%s a stoppé la série de %s (%d éliminations)
+Spectating: %s,Observando: %s,Assistindo: %s,Zuschauen: %s,Spectateur : %s
+You were killed by %s,Te mató %s,Você foi morto por %s,Du wurdest von %s getötet,Tu as été tué par %s
+You died,Has muerto,Você morreu,Du bist gestorben,Tu es mort
+BLUE %d alive  ·  RED %d alive,AZUL %d vivos  ·  ROJO %d vivos,AZUL %d vivos  ·  VERMELHO %d vivos,BLAU %d am Leben  ·  ROT %d am Leben,BLEU %d en vie  ·  ROUGE %d en vie
+%d left,quedan %d,restam %d,noch %d,%d restants
+KILLED  %s  ·  HEADSHOT,ELIMINADO  %s  ·  DISPARO A LA CABEZA,ABATIDO  %s  ·  TIRO NA CABEÇA,GETÖTET  %s  ·  KOPFSCHUSS,ÉLIMINÉ  %s  ·  TIR À LA TÊTE
+KILLED  %s,ELIMINADO  %s,ABATIDO  %s,GETÖTET  %s,ÉLIMINÉ  %s
+Waiting for next round,Esperando la siguiente ronda,Aguardando a próxima rodada,Warte auf die nächste Runde,En attente de la prochaine manche
+Respawning in %d,Reapareces en %d,Renascendo em %d,Wiedereinstieg in %d,Réapparition dans %d
+RELOADING,RECARGANDO,RECARREGANDO,NACHLADEN,RECHARGEMENT
+GRENADES %d  [%s],GRANADAS %d  [%s],GRANADAS %d  [%s],GRANATEN %d  [%s],GRENADES %d  [%s]
+%s WINS,GANA %s,%s VENCE,%s GEWINNT,%s GAGNE
+DRAW,EMPATE,EMPATE,UNENTSCHIEDEN,ÉGALITÉ
+SCOREBOARD,MARCADOR,PLACAR,PUNKTESTAND,TABLEAU DES SCORES
+PLAYERS,JUGADORES,JOGADORES,SPIELER,JOUEURS
+YOU HAVE IT,LA TIENES TÚ,ESTÁ COM VOCÊ,DU HAST SIE,TU L'AS
+TAKEN · %s,TOMADA · %s,CAPTURADA · %s,GENOMMEN · %s,PRIS · %s
+HOME,EN BASE,NA BASE,ZU HAUSE,À LA BASE
+DROPPED,SOLTADA,CAÍDA,FALLEN GELASSEN,LÂCHÉ
+YOU: %s,TÚ: %s,VOCÊ: %s,DU: %s,TOI : %s

@@ -318,8 +318,8 @@ func _ready() -> void:
 	lbl_spectate_hint.offset_bottom = -150
 	var touch_ui: bool = OS.has_feature("android") or OS.has_feature("mobile") \
 			or DisplayServer.is_touchscreen_available() or "--force-touch" in OS.get_cmdline_user_args()
-	lbl_spectate_hint.text = "Tap left / right to switch view" if touch_ui \
-			else "← / →  or  LB / RB  next target    ·    C  toggle free-cam"
+	lbl_spectate_hint.text = tr("Tap left / right to switch view") if touch_ui \
+			else tr("← / →  or  LB / RB  next target    ·    C  toggle free-cam")
 	lbl_spectate_hint.add_theme_font_size_override("font_size", 14)
 	lbl_spectate_hint.add_theme_color_override("font_color", Color(0.75, 0.78, 0.85))
 	lbl_spectate_hint.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
@@ -485,7 +485,7 @@ func post_streak_ended(ender_name: String, victim_name: String, streak_len: int,
 	var info := _team_display_info(ender_team)
 	var col: Color = info.get("color", Color(1.0, 0.85, 0.35))
 	var lbl := Label.new()
-	lbl.text = "%s ended %s's %d-kill streak" % [ender_name, victim_name, streak_len]
+	lbl.text = tr("%s ended %s's %d-kill streak") % [ender_name, victim_name, streak_len]
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	lbl.add_theme_font_size_override("font_size", 14)
 	lbl.add_theme_color_override("font_color", col)
@@ -518,7 +518,7 @@ func set_spectate_target(name: String, col: Color) -> void:
 		lbl_spectate.visible = false
 		lbl_spectate_hint.visible = false
 		return
-	lbl_spectate.text = "Spectating: %s" % name
+	lbl_spectate.text = tr("Spectating: %s") % name
 	lbl_spectate.add_theme_color_override("font_color", col)
 	lbl_spectate.visible = true
 	lbl_spectate_hint.visible = true
@@ -878,7 +878,7 @@ func show_death(killer: String, weapon: String, respawn_secs: float = 2.0) -> vo
 	_death_remaining = respawn_secs
 	var me: String = str(player.display_name) if is_instance_valid(player) else Settings.player_name
 	var suicide: bool = killer != "" and killer == me
-	lbl_death.text = ("You were killed by %s" % killer) if killer != "" and not suicide else "You died"
+	lbl_death.text = (tr("You were killed by %s") % killer) if killer != "" and not suicide else tr("You died")
 	if weapon != "" and killer != "" and not suicide:
 		lbl_death.text += "  [%s]" % weapon
 	lbl_death.visible = true
@@ -900,8 +900,8 @@ func _alive_summary() -> String:
 			1: blue += 1
 			2: red += 1
 	if Settings.is_team_mode():
-		return "BLUE %d alive  ·  RED %d alive" % [blue, red]
-	return "%d left" % all
+		return tr("BLUE %d alive  ·  RED %d alive") % [blue, red]
+	return tr("%d left") % all
 
 
 func _hide_death() -> void:
@@ -1007,7 +1007,7 @@ func _kill_confirm(victim: String, headshot: bool) -> void:
 		_confirm_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
 		_confirm_lbl.add_theme_constant_override("outline_size", 4)
 		add_child(_confirm_lbl)
-	_confirm_lbl.text = ("KILLED  %s  ·  HEADSHOT" if headshot else "KILLED  %s") % victim
+	_confirm_lbl.text = (tr("KILLED  %s  ·  HEADSHOT") if headshot else tr("KILLED  %s")) % victim
 	_confirm_lbl.add_theme_color_override("font_color", Color(1.0, 0.55, 0.45) if headshot else Color(1.0, 0.88, 0.55))
 	_confirm_lbl.modulate.a = 1.0
 	_confirm_lbl.visible = true
@@ -1066,10 +1066,10 @@ func _process(delta: float) -> void:
 		if _death_remaining < 0.0:
 			# Survival: no respawn until the round resets. The desaturated overlay
 			# stays up until show_death is called again (or _hide_death fires).
-			lbl_respawn.text = "Waiting for next round  ·  " + _alive_summary()
+			lbl_respawn.text = tr("Waiting for next round") + "  ·  " + _alive_summary()
 		else:
 			_death_remaining -= delta
-			lbl_respawn.text = "Respawning in %d" % maxi(0, int(ceil(_death_remaining)))
+			lbl_respawn.text = tr("Respawning in %d") % maxi(0, int(ceil(_death_remaining)))
 			if _death_remaining <= 0.0:
 				_hide_death()
 	# Prefix the mode (full name) so users know which rules are live.
@@ -1131,7 +1131,7 @@ func _process(delta: float) -> void:
 	# Realistic ruleset hides the magazine readout — pilots go by weapon feel.
 	lbl_ammo.visible = not Settings.realistic
 	lbl_fuel.visible = not Settings.realistic
-	lbl_ammo.text = "%d / %d" % [mag, int(w["mag"])] + ("  · RELOADING" if player.reloading else "")
+	lbl_ammo.text = "%d / %d" % [mag, int(w["mag"])] + (("  · " + tr("RELOADING")) if player.reloading else "")
 	lbl_weapon.text = str(w["name"])
 	# Gun Game: overwrite the weapon label with the ladder rung so players see
 	# their race progress at a glance. Knife rung nudges them to close the deal.
@@ -1150,7 +1150,7 @@ func _process(delta: float) -> void:
 				var suffix: String = "  · Knife kill to win" if lvl >= ladder.size() - 1 else ""
 				lbl_weapon.text = "Gun Game — %s (%d/%d)%s" % [wname, lvl + 1, ladder.size(), suffix]
 	var gtype := "CLUSTER" if bool(player.get("use_cluster")) else "FRAG"
-	lbl_grenades.text = "GRENADES %d  [%s]" % [player.grenades, gtype]
+	lbl_grenades.text = tr("GRENADES %d  [%s]") % [player.grenades, gtype]
 
 
 func _update_match_ui() -> void:
@@ -1218,11 +1218,11 @@ func _update_match_ui() -> void:
 	var note: String = str(main.get("winner_note")) if main.get("winner_note") != null else ""
 	if not active and winner >= 0:
 		var info := _team_display_info(winner)
-		lbl_winner.text = "%s WINS" % info["name"]
+		lbl_winner.text = tr("%s WINS") % info["name"]
 		lbl_winner.add_theme_color_override("font_color", info["color"])
 		lbl_winner.visible = true
 	elif not active and winner < 0:
-		lbl_winner.text = "DRAW"
+		lbl_winner.text = tr("DRAW")
 		lbl_winner.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9))
 		lbl_winner.visible = true
 	else:
