@@ -460,6 +460,8 @@ func _ready() -> void:
 	_build_sky()
 	_build_parallax()
 	_build_terrain()
+	# Warm lazily-loaded art during the load, not mid-fight (frame hitches).
+	preload("res://scripts/gostek.gd").warm_cache()
 	nav = NavGraph.load_for(_map)
 	_build_weather()
 	_build_hud()

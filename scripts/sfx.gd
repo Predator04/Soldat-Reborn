@@ -85,6 +85,7 @@ var play_counts: Dictionary = {}
 
 
 func _ready() -> void:
+	_warm_all()
 	for _i in POOL_SIZE:
 		var p := AudioStreamPlayer.new()
 		add_child(p)
@@ -451,10 +452,35 @@ func _play_key(file_key: String, vol_db: float, pitch: float, at := NOWHERE, hea
 	p.play()
 
 
+# Every sound is requested on a background thread at startup, so the first
+# gunshot / explosion / grenade of a match doesn't stall a frame reading it
+# from disk.
+var _pending: Dictionary = {}
+
+
+func _warm_all() -> void:
+	var d := DirAccess.open(SFX_DIR)
+	if d == null:
+		return
+	for f in d.get_files():
+		var nm := f.trim_suffix(".import")
+		if not nm.ends_with(".wav"):
+			continue
+		var path := SFX_DIR + nm
+		if not _pending.has(path) and ResourceLoader.load_threaded_request(path) == OK:
+			_pending[path] = true
+
+
 func _load(file_key: String) -> AudioStreamWAV:
 	if _cache.has(file_key):
 		return _cache[file_key]
 	var path := SFX_DIR + file_key + ".wav"
+	if _pending.has(path):
+		_pending.erase(path)
+		var got = ResourceLoader.load_threaded_get(path)
+		if got is AudioStreamWAV:
+			_cache[file_key] = got
+			return got
 	if not ResourceLoader.exists(path):
 		_cache[file_key] = null
 		return null

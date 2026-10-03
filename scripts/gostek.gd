@@ -515,6 +515,15 @@ static func _arm_adjust(pos: Vector2, pivot: Vector2, aim_offset: float) -> Vect
 	return pivot + (pos - pivot).rotated(aim_offset)
 
 
+## Load the wound overlays (and their mirrored variants) up front. Done at
+## match start; otherwise the first soldier to drop under 60 HP stalled the
+## frame ~150 ms while 14 textures loaded mid-fight.
+static func warm_cache() -> void:
+	for k in WOUND_KEYS:
+		_tex("ranny/" + k, false)
+		_tex("ranny/" + k, true)
+
+
 static func _tex(key: String, mirror: bool) -> Texture2D:
 	# Two extra key shapes (#60):
 	#   "ranny/<part>"  — wound sprite in the ranny/ subfolder

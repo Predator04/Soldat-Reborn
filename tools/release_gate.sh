@@ -339,6 +339,7 @@ if has F; then
   ft botdrive vehicle_drive_test.gd 100 DRIVE-TEST "bots drive buggies to far-off goals"
   ft step vehicle_step_test.gd 90 STEP-TEST "buggy: no hop, rolls up a curb, stopped by a wall"
   ft teamspawn team_spawn_test.gd 90 TEAMSPAWN-TEST "team modes: each side spawns by its own flag on every map"
+  ft perf perf_test.gd 90 PERF-TEST "performance: 16 bots on Abel CTF, frame time and hitches"
   ft crew vehicle_crew_test.gd 100 CREW-TEST "buggy crew: solo-fire slowdown / bot gunner boards, shoots, leaves"
   ft tank tank_test.gd 100 TANK-TEST "tank: drive / lobbed shell / armor / wreck / respawn / wide-map spawns"
   ft joincode join_code_test.gd 60 JOINCODE-TEST "join codes: round trip, typos, garbage, host shows its code"

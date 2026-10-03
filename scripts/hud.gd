@@ -73,6 +73,7 @@ const GameInfo = preload("res://scripts/game_info.gd")
 
 
 func _ready() -> void:
+	_warm_kill_icons()
 	Stats.achievement_unlocked.connect(_on_achievement)
 	Stats.level_up.connect(func(lv: int) -> void: _ach_queue.append(["RANK UP", "you reached level %d" % lv]))
 	if Net.is_networked():
@@ -919,6 +920,12 @@ const KILL_ICONS := {
 	"Flamethrower": "flamer", "Rambo Bow": "bow", "M2": "m2", "Fist": "fist",
 }
 var _kill_icon_cache: Dictionary = {}
+
+
+## Kill-feed icons, loaded with the HUD instead of on the first kill.
+func _warm_kill_icons() -> void:
+	for w in KILL_ICONS.keys() + ["Grenade", "Cluster"]:
+		_kill_icon(str(w))
 
 
 func _kill_icon(weapon: String) -> Texture2D:
