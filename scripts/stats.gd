@@ -249,7 +249,7 @@ func reset() -> void:
 func accuracy() -> float:
 	if shots <= 0:
 		return 0.0
-	return float(hits) / float(shots)
+	return minf(1.0, float(hits) / float(shots))
 
 
 func kd() -> float:

@@ -174,8 +174,11 @@ func _explode() -> void:
 		if same_team and not is_self and not MatchConfig.friendly_fire_on():
 			continue
 		var scaled: float = damage * (1.0 - d / blast_radius)
+		var was_alive: bool = not bool(s.get("dead"))
 		if s.has_method("take_damage") and (multiplayer.multiplayer_peer == null or s.is_multiplayer_authority()):
 			s.take_damage(scaled, killer_name, weapon_name, team)
+		if not is_self and was_alive:
+			preload("res://scripts/bullet.gd").local_hit_feedback(get_tree(), killer_name, s.global_position, scaled)
 	preload("res://scripts/buggy.gd").splash(get_tree(), global_position, blast_radius, damage, killer_name, weapon_name, team)
 	if not Settings.lofi:
 		var p := CPUParticles2D.new()

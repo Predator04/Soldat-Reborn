@@ -133,6 +133,37 @@ func _maybe_record_hit() -> bool:
 	return false
 
 
+## Hit confirmation for damage that isn't a bullet (rockets, M79, grenades,
+## knife, chainsaw): the local shooter hears the hit tick, gets a damage number
+## and it counts toward accuracy, same as a bullet hit. Splash used to land
+## silently, so you couldn't tell whether a grenade did anything.
+static var _last_hit_ms := 0
+
+
+static func local_hit_feedback(tree: SceneTree, killer: String, pos: Vector2, amount: float, count_hit: bool = false) -> void:
+	var m := tree.current_scene
+	if m == null or amount <= 0.5:
+		return
+	var pl = m.get("player")
+	if pl == null or not is_instance_valid(pl) or str(pl.get("display_name")) != killer:
+		return
+	var now := Time.get_ticks_msec()
+	# Splash can tag several soldiers per throw/rocket; only direct hits
+	# (melee swings) count toward accuracy so it can't pass 100%.
+	if count_hit:
+		Stats.record_hit()
+	if now - _last_hit_ms > 90:  # chainsaw ticks 10x a second
+		Sfx.hit()
+		_last_hit_ms = now
+	if Settings.damage_numbers:
+		var p := Node2D.new()
+		p.set_script(DamagePopup)
+		p.set("amount", minf(amount, 100.0))
+		p.set("big", amount >= 99.0)
+		p.global_position = pos + Vector2(0, -24)
+		m.add_child(p)
+
+
 func _spawn_popup(amount: float, big: bool) -> void:
 	if not Settings.damage_numbers:
 		return

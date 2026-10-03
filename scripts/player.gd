@@ -1800,6 +1800,7 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_
 				continue
 			if s.has_method("take_damage") and (multiplayer.multiplayer_peer == null or s.is_multiplayer_authority()):
 				s.take_damage(dmg, display_name, str(w["name"]), team)
+			preload("res://scripts/bullet.gd").local_hit_feedback(get_tree(), display_name, s.global_position, dmg, true)
 		return
 	for i in dirs.size():
 		var bdir: Vector2 = dirs[i]

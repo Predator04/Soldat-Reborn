@@ -141,8 +141,12 @@ func _explode() -> void:
 			var is_self: bool = s.get("display_name") == killer_name
 			if same_team and not is_self and not MatchConfig.friendly_fire_on():
 				continue
+			var gdmg: float = damage * MatchConfig.mod_damage() * (1.0 - d / blast_radius)
+			var was_alive: bool = not bool(s.get("dead"))
 			if multiplayer.multiplayer_peer == null or s.is_multiplayer_authority():
-				s.take_damage(damage * MatchConfig.mod_damage() * (1.0 - d / blast_radius), killer_name, wname, team)
+				s.take_damage(gdmg, killer_name, wname, team)
+			if not is_self and was_alive:
+				preload("res://scripts/bullet.gd").local_hit_feedback(get_tree(), killer_name, s.global_position, gdmg)
 	preload("res://scripts/buggy.gd").splash(get_tree(), global_position, blast_radius, damage * MatchConfig.mod_damage(), killer_name, wname, team)
 	# Lo-fi (#25): skip the CPUParticles2D flame burst. The Sfx call above still fires.
 	if not Settings.lofi:
