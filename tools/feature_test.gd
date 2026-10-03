@@ -44,6 +44,10 @@ func _process(delta: float) -> bool:
 	var p = m.get("player")
 	var at := [1.0, 3.0, 5.0, 8.0, 12.0, 16.0, 20.0, 24.0, 27.0, 30.0, 34.0, 38.0]
 	if _step < at.size() and _t >= at[_step]:
+		# The /kill + limbo step needs a live player: if a bot just killed us,
+		# wait for the respawn instead of testing on a dying body (flaky).
+		if _step == 9 and (p == null or not is_instance_valid(p) or bool(p.get("dead"))):
+			return false
 		match _step:
 			0:
 				for c in ["victory", "smoke", "takeoff", "tabac"]:

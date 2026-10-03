@@ -1370,7 +1370,12 @@ func _spawn_player() -> void:
 	var p := player_scene.instantiate()
 	# Team modes: start on BLUE's own side of the map (by its flag), not at the
 	# map's single player_spawn, which on many ported maps sits in RED's base.
-	p.position = _find_free_spot_near(_team_spawn_pick(TEAM_BLUE) if Settings.is_team_mode() else _map["player_spawn"])
+	# FFA: any spawn point, preferring ones away from the bots.
+	var ffa: Array = (_map.get("bot_spawns", []) as Array).duplicate()
+	ffa.append(_map["player_spawn"])
+	var my_team: int = TEAM_BLUE if Settings.is_team_mode() else 0
+	var pick: Vector2 = _team_spawn_pick(TEAM_BLUE) if Settings.is_team_mode() else _pick_spawn_away(ffa, 0)
+	p.position = _safe_spawn_near(pick, my_team)
 	# In team modes player joins BLUE (team 1); in DM/RM she's team 0 (FFA).
 	if Settings.is_team_mode():
 		p.team = TEAM_BLUE
@@ -1656,10 +1661,33 @@ func _centroid(pts: Array) -> Vector2:
 	return c / maxf(1.0, float(pts.size()))
 
 
-# A random spawn point on team t's own side (team modes).
+# A spawn point on team t's own side (team modes), away from enemies.
 func _team_spawn_pick(t: int) -> Vector2:
-	var l := _team_spawn_list(t)
-	return l[randi() % l.size()] if not l.is_empty() else _map["player_spawn"]
+	return _pick_spawn_away(_team_spawn_list(t), t)
+
+
+# Classic Soldat respawns at a random spawn point, which can drop you next to
+# someone who's already aiming at the spot. Prefer the points farthest from
+# living enemies, with a little randomness among the best few so spawns don't
+# become predictable.
+func _pick_spawn_away(cands: Array, team: int) -> Vector2:
+	if cands.is_empty():
+		return _map["player_spawn"]
+	var enemies: Array = []
+	for s in get_tree().get_nodes_in_group("soldier"):
+		if is_instance_valid(s) and not bool(s.get("dead")) and int(s.get("team")) != team:
+			enemies.append((s as Node2D).global_position)
+	if enemies.is_empty():
+		return cands[randi() % cands.size()]
+	var scored: Array = []
+	for c in cands:
+		var near := INF
+		for e in enemies:
+			near = minf(near, (c as Vector2).distance_to(e))
+		scored.append([near, c])
+	scored.sort_custom(func(a, b) -> bool: return a[0] > b[0])
+	var top: int = clampi(int(ceil(scored.size() / 3.0)), 1, 3)
+	return scored[randi() % top][1]
 
 
 func _team_spawn_list(t: int) -> Array:
@@ -1794,7 +1822,7 @@ func _spawn_bot(pos: Vector2, team: int, bname: String, loadout: String = "AK-74
 			if not _bot_pending.has(bname):
 				return
 			_bot_pending.erase(bname)
-			_spawn_bot(pos, team, bname, loadout)))
+			_spawn_bot(_bot_respawn_pos(pos, team), team, bname, loadout)))
 	add_child(b)
 	# Reassert authority after add_child so children added in _ready inherit it.
 	if Net.is_networked() and Net.is_host():
@@ -1809,6 +1837,17 @@ func _spawn_bot(pos: Vector2, team: int, bname: String, loadout: String = "AK-74
 		# that's fine, joiners get all live bots mirrored in net_client_ready below.
 		for pid in _connected_peers.keys():
 			rpc_id(int(pid), "net_spawn_bot", assigned_id, b.position, team, bname, loadout, b.cosmetics)
+
+
+# Respawn somewhere on the bot's own side (team modes) or any spawn point
+# (FFA), preferring spots away from enemies, instead of always the same slot.
+func _bot_respawn_pos(slot: Vector2, team: int) -> Vector2:
+	if Settings.is_team_mode():
+		if Settings.game_mode == Settings.MODE_INF and team == TEAM_RED:
+			return _pick_spawn_away(_team_spawn_list(TEAM_RED), team)
+		return _team_spawn_pick(team)
+	var bs: Array = _map.get("bot_spawns", [])
+	return _pick_spawn_away(bs, team) if not bs.is_empty() else slot
 
 
 # ── Shared ────────────────────────────────────────────
@@ -1995,7 +2034,7 @@ func _spawn_networked_player(peer_id: int) -> void:
 	if Net.is_networked() and not Settings.is_team_mode():
 		var bs: Array = _map.get("bot_spawns", [])
 		if not bs.is_empty():
-			base = bs[randi() % bs.size()]
+			base = _pick_spawn_away(bs, t)
 	var spawn_pos := _jitter_spawn(base)
 	var display_name: String = Settings.player_name if peer_id == 1 else str(_peer_names.get(peer_id, "Player %d" % peer_id))
 	bcast("net_spawn_player", [peer_id, spawn_pos, display_name, t], true)
@@ -3577,7 +3616,7 @@ func _round_spawn_pos_for_team(t: int) -> Vector2:
 	if not Settings.is_team_mode():
 		var bs: Array = _map.get("bot_spawns", [])
 		if not bs.is_empty():
-			base = bs[randi() % bs.size()]
+			base = _pick_spawn_away(bs, t)
 	return _jitter_spawn(base)
 
 
