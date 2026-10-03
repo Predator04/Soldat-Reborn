@@ -76,11 +76,11 @@ func close(hold_key := false) -> void:
 
 func _refresh() -> void:
 	var rows: Array = WHAT if _stage == 0 else WHERE
-	var head := "RADIO" if _stage == 0 else "RADIO · " + _label_of(_what)
+	var head := tr("RADIO") if _stage == 0 else tr("RADIO") + " · " + tr(_label_of(_what))
 	var s := head
 	for i in rows.size():
-		s += "\n %d  %s" % [i + 1, rows[i][1]]
-	s += "\n Esc  cancel"
+		s += "\n %d  %s" % [i + 1, tr(rows[i][1])]
+	s += "\n Esc  " + tr("cancel")
 	_lbl.text = s
 
 

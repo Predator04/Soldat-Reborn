@@ -94,7 +94,7 @@ const SHORT := {
 
 
 static func item_short(kind: String) -> String:
-	return str(SHORT.get(kind, ""))
+	return TranslationServer.translate(str(SHORT.get(kind, "")))
 
 
 static func weapon_desc(wname: String) -> String:

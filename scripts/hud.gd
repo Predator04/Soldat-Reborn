@@ -460,7 +460,7 @@ func show_streak_banner(killer_name: String, title: String, killer_team: int, co
 		return
 	var info := _team_display_info(killer_team)
 	var col: Color = info.get("color", Color(1.0, 0.85, 0.35))
-	lbl_streak.text = "%s\n%s  ×%d" % [title.to_upper(), killer_name, count]
+	lbl_streak.text = "%s\n%s  ×%d" % [tr(title).to_upper(), killer_name, count]
 	lbl_streak.add_theme_color_override("font_color", col)
 	lbl_streak.visible = true
 	lbl_streak.modulate = Color(col.r, col.g, col.b, 1.0)
@@ -625,9 +625,9 @@ func _update_vote_ui() -> void:
 	var no_ct: int = int(main.get("vote_no"))
 	var tl: float = float(main.get("vote_time_left"))
 	var starter: String = str(main.get("vote_starter"))
-	var verb: String = "change map to" if kind == "votemap" else "kick"
-	lbl_vote_title.text = "Vote (%s): %s %s?" % [starter, verb, target]
-	lbl_vote_tally.text = "[F1] Yes %d    ·    [F2] No %d" % [yes_ct, no_ct]
+	var verb: String = tr("change map to") if kind == "votemap" else tr("kick")
+	lbl_vote_title.text = tr("Vote (%s): %s %s?") % [starter, verb, target]
+	lbl_vote_tally.text = tr("[F1] Yes %d    ·    [F2] No %d") % [yes_ct, no_ct]
 	lbl_vote_timer.text = "%ds" % int(ceil(tl))
 	vote_panel.visible = true
 

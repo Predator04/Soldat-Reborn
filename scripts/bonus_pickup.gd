@@ -97,10 +97,10 @@ static func kind_color(k: String) -> Color:
 
 static func kind_label(k: String) -> String:
 	match k:
-		"predator": return "PREDATOR"
-		"berserker": return "BERSERKER"
-		"vest": return "VEST"
-		"cluster": return "CLUSTER"
-		"medkit": return "MEDIKIT"
-		"grenades": return "GRENADES"
+		"predator": return TranslationServer.translate("PREDATOR")
+		"berserker": return TranslationServer.translate("BERSERKER")
+		"vest": return TranslationServer.translate("VEST")
+		"cluster": return TranslationServer.translate("CLUSTER")
+		"medkit": return TranslationServer.translate("MEDIKIT")
+		"grenades": return TranslationServer.translate("GRENADES")
 	return k.to_upper()

@@ -177,3 +177,31 @@ HOME,EN BASE,NA BASE,ZU HAUSE,À LA BASE
 DROPPED,SOLTADA,CAÍDA,FALLEN GELASSEN,LÂCHÉ
 YOU: %s,TÚ: %s,VOCÊ: %s,DU: %s,TOI : %s
 WHAT'S NEW,NOVEDADES,NOVIDADES,NEUIGKEITEN,NOUVEAUTÉS
+RADIO,RADIO,RÁDIO,FUNK,RADIO
+Enemy flag carrier,Portador de la bandera enemiga,Portador da bandeira inimiga,Feindlicher Flaggenträger,Porteur du drapeau ennemi
+Friendly flag carrier,Portador de nuestra bandera,Portador da nossa bandeira,Eigener Flaggenträger,Porteur de notre drapeau
+Enemy spotted,Enemigo a la vista,Inimigo avistado,Feind gesichtet,Ennemi repéré
+Up,Arriba,Em cima,Oben,En haut
+Mid,Medio,Meio,Mitte,Milieu
+Down,Abajo,Embaixo,Unten,En bas
+cancel,cancelar,cancelar,abbrechen,annuler
+Double Kill,Doble baja,Abate duplo,Doppelkill,Doublé
+Multi Kill,Multibaja,Multiabate,Multikill,Multi-élimination
+Killing Spree,Racha asesina,Matança,Killing Spree,Série meurtrière
+Rampage,Masacre,Massacre,Amoklauf,Carnage
+Godlike,Divino,Divino,Göttlich,Divin
+Ultra Godlike,Ultra divino,Ultra divino,Übergöttlich,Ultra divin
+change map to,cambiar el mapa a,mudar o mapa para,Karte wechseln zu,changer de carte pour
+kick,expulsar a,expulsar,rauswerfen:,expulser
+Vote (%s): %s %s?,Votación (%s): ¿%s %s?,Votação (%s): %s %s?,Abstimmung (%s): %s %s?,Vote (%s) : %s %s ?
+[F1] Yes %d    ·    [F2] No %d,[F1] Sí %d    ·    [F2] No %d,[F1] Sim %d    ·    [F2] Não %d,[F1] Ja %d    ·    [F2] Nein %d,[F1] Oui %d    ·    [F2] Non %d
+PREDATOR,DEPREDADOR,PREDADOR,PREDATOR,PRÉDATEUR
+BERSERKER,BERSERKER,BERSERKER,BERSERKER,BERSERKER
+VEST,CHALECO,COLETE,WESTE,GILET
+CLUSTER,RACIMO,FRAGMENTAÇÃO,CLUSTER,FRAGMENTATION
+MEDIKIT,BOTIQUÍN,KIT MÉDICO,MEDIKIT,TROUSSE DE SOINS
+GRENADES,GRANADAS,GRANADAS,GRANATEN,GRENADES
+see-through · faster · firing breaks it,casi invisible · más rápido · disparar lo rompe,quase invisível · mais rápido · atirar quebra,fast unsichtbar · schneller · Schießen beendet es,presque invisible · plus rapide · tirer l'annule
+knife one-hit kills,el cuchillo mata de un golpe,a faca mata com um golpe,Messer tötet mit einem Treffer,le couteau tue en un coup
+half damage,mitad de daño,metade do dano,halber Schaden,moitié des dégâts
+cluster grenades,granadas de racimo,granadas de fragmentação,Clustergranaten,grenades à fragmentation
