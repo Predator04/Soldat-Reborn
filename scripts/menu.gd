@@ -1365,8 +1365,31 @@ static func changelog_section(version: String) -> String:
 	return md_to_bb(sec)
 
 
-## Changelog markdown -> RichTextLabel bbcode (headers, bullets).
-static func md_to_bb(sec: String) -> String:
+## Every version newer than `since`, newest first (capped), as short notes.
+## Players who update across several releases see everything they missed.
+static func changelog_since(since: String, current: String, max_sections: int = 6) -> String:
+	var f := FileAccess.open("res://CHANGELOG.md", FileAccess.READ)
+	if f == null:
+		return ""
+	var txt := f.get_as_text()
+	var out := PackedStringArray()
+	var i := txt.find("## [%s]" % current)
+	while i >= 0 and out.size() < max_sections:
+		var e := txt.find("]", i)
+		var ver := txt.substr(i + 4, e - i - 4)
+		if ver == since:
+			break
+		var j := txt.find("\n## [", i + 4)
+		var sec := txt.substr(i, (j - i) if j > 0 else -1)
+		sec = sec.substr(sec.find("\n") + 1).strip_edges()
+		out.append("[b][color=#ffffff]v%s[/color][/b]\n%s" % [ver, md_to_bb(sec, true)])
+		i = j + 1 if j > 0 else -1
+	return "\n\n".join(out)
+
+
+## Changelog markdown -> RichTextLabel bbcode (headers, bullets). `short`
+## keeps just the first sentence of each bullet (the headline).
+static func md_to_bb(sec: String, short: bool = false) -> String:
 	var out := PackedStringArray()
 	for line in sec.replace("**", "").replace("`", "").split("\n"):
 		var l := line.strip_edges(false, true)
@@ -1374,7 +1397,16 @@ static func md_to_bb(sec: String) -> String:
 			out.append("\n[b][color=#f5a623]%s[/color][/b]" % l.substr(4).to_upper())
 		elif l.strip_edges().begins_with("- "):
 			var ind := l.length() - l.strip_edges(true, false).length()
-			out.append("%s• %s" % ["    ".repeat(ind / 2), l.strip_edges().substr(2)])
+			var item := l.strip_edges().substr(2)
+			if short:
+				if ind > 0:
+					continue  # sub-bullets are detail
+				var dot := item.find(". ")
+				if dot > 0 and dot < 200:
+					item = item.left(dot + 1)
+				elif item.length() > 200:
+					item = item.left(197) + "..."
+			out.append("%s• %s" % ["    ".repeat(ind / 2), item])
 		else:
 			out.append(l)
 	return "\n".join(out).strip_edges()
@@ -1385,11 +1417,12 @@ func _maybe_whats_new() -> void:
 	if Settings.last_seen_version == v:
 		return
 	var first := Settings.last_seen_version == ""
+	var prev := Settings.last_seen_version
 	Settings.last_seen_version = v
 	Settings.save()
 	if first:
 		return
-	var sec := changelog_section(v)
+	var sec := changelog_since(prev, v)
 	if sec == "":
 		return
 	var root := PanelContainer.new()
@@ -1402,10 +1435,11 @@ func _maybe_whats_new() -> void:
 	box.add_theme_constant_override("separation", 10)
 	box.custom_minimum_size = Vector2(600, 0)
 	root.add_child(box)
-	box.add_child(UITheme.make_screen_title("WHAT'S NEW IN v%s" % v))
+	box.add_child(UITheme.make_screen_title(tr("WHAT'S NEW")))
 	var notes := RichTextLabel.new()
 	notes.bbcode_enabled = true
-	notes.text = sec.left(2400)
+	notes.text = sec.left(4000)
+	notes.scroll_active = true
 	notes.custom_minimum_size = Vector2(580, 320)
 	notes.add_theme_font_size_override("normal_font_size", 13)
 	notes.add_theme_color_override("default_color", UITheme.COL_TEXT)

@@ -1,0 +1,12 @@
+[
+ {"title": "Spawns pick points away from enemies", "labels": ["enhancement", "area: gameplay"], "version": "1.26.0",
+  "body": "main.gd _pick_spawn_away(): farthest-from-enemies among candidates (random among top third, max 3). Used for SP player, MP joins/round resets, and bot respawns (_bot_respawn_pos: own side in team modes) which used to reuse one fixed slot."},
+ {"title": "Rambo Bow and Chainsaw too weak", "labels": ["balance", "area: gameplay"], "version": "1.26.0",
+  "body": "Bow 12 -> 100 damage (one-shot, as in Soldat); Chainsaw 3 -> 9 per 0.1 s (90 dps). Player and bot tables."},
+ {"title": "Hard-edged 'blank' scenery boxes", "labels": ["bug", "area: art"], "version": "1.26.0",
+  "body": "270 tinted blank.bmp props on 29 maps rendered as sharp translucent squares; now a feathered GradientTexture2D (FILL_SQUARE)."},
+ {"title": "Translate in-match HUD strings", "labels": ["enhancement", "area: ui"], "version": "1.26.0",
+  "body": "hud.gd / scoreboard.gd / objective_hud.gd core strings through tr() with es/pt_BR/de/fr rows. Remaining: radio lines, bonus labels, vote prompt, streak titles."},
+ {"title": "What's new shows only the latest version", "labels": ["enhancement", "area: ui"], "version": "1.26.0",
+  "body": "menu.gd changelog_since(): all sections since last_seen_version (max 6), first sentence per bullet."}
+]

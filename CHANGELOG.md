@@ -2,6 +2,23 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.26.0] — 2026-10-03
+
+Studio polish: six passes (QA, design, art, AI, localization, onboarding).
+
+### Changed
+- **Smarter spawns.** You, online players and respawning bots now come back at the spawn points farthest from enemies (picked at random among the best few), always on your own team's side in team modes. Bots used to respawn on the exact same spot every time.
+- **Rambo Bow kills in one arrow**, like the original. It needed 9 hits before, which made the Rambomatch power weapon the weakest gun in the game. Arrows still sag and reload slowly, so it's a skill shot.
+- **Chainsaw is deadly up close** (about a second of contact instead of over three).
+- **What's new** now lists every version you missed when you update across several releases, one line per change.
+
+### Fixed
+- Light and shadow patches on 29 classic maps (Arena3, and others) were drawn as hard white or black boxes floating over the level. They now blend in as soft glows and shade.
+- In-match text is translated in Español, Português, Deutsch and Français: death screen, respawn countdown, kill confirmations, winner banner, scoreboard, flag status and spectator hints.
+
+### Testing
+- Full release gate: every stage passed, including the CTF sweep on all 102 maps (0 errors). A flaky check in the feature test (a bot killing you right before the limbo-menu step) now waits for the respawn.
+
 ## [1.25.4] — 2026-10-03
 
 ### Fixed
