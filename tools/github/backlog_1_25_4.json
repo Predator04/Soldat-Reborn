@@ -1,0 +1,4 @@
+[
+ {"title": "Teams don't start on their own side of the map", "labels": ["bug", "area: gameplay"], "version": "1.25.4",
+  "body": "Reported. Ported maps' alpha/bravo team_spawns were reversed vs ctf_flags on ~29 maps (mixed on a few), and BLUE humans always used player_spawn (next to the RED flag on Airpirates etc.). main.gd _normalize_team_sides() re-splits all spawn points by nearest flag (flag base if a side has none); SP, MP and round-reset spawns use _team_spawn_pick(team). tools/team_spawn_test.gd (gate F teamspawn) checks the live match and all 102 maps."}
+]

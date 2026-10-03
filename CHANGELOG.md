@@ -2,6 +2,11 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.25.4] — 2026-10-03
+
+### Fixed
+- Team modes start each side on its own half of the map (reported). On about 30 of the classic maps BLUE spawned at RED's flag and RED at BLUE's (the original maps label their spawn groups the other way round, or mix them in the middle), and you always started at the map's one player spawn, which on maps like Airpirates is right next to the RED flag. Now every spawn point is given to the team whose flag it's nearer to, you (and every online player) spawn on your own team's side, and a side with no spawn points of its own starts at its flag base. Checked on all 102 maps.
+
 ## [1.25.3] — 2026-10-01
 
 ### Fixed

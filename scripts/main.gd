@@ -455,6 +455,7 @@ func _ready() -> void:
 		if _map.is_empty():
 			_map = MAPS[Settings.map_index % MAPS.size()]
 			Settings.map_index = (Settings.map_index + 1) % MAPS.size()
+	_normalize_team_sides()
 	_apply_world()
 	_build_sky()
 	_build_parallax()
@@ -1367,7 +1368,9 @@ func _apply_spawn_loadout(p: Node) -> void:
 
 func _spawn_player() -> void:
 	var p := player_scene.instantiate()
-	p.position = _find_free_spot_near(_map["player_spawn"])
+	# Team modes: start on BLUE's own side of the map (by its flag), not at the
+	# map's single player_spawn, which on many ported maps sits in RED's base.
+	p.position = _find_free_spot_near(_team_spawn_pick(TEAM_BLUE) if Settings.is_team_mode() else _map["player_spawn"])
 	# In team modes player joins BLUE (team 1); in DM/RM she's team 0 (FFA).
 	if Settings.is_team_mode():
 		p.team = TEAM_BLUE
@@ -1596,6 +1599,67 @@ func _team_base(t: int) -> Vector2:
 		if (v as Vector2).distance_to(ps) > far.distance_to(ps):
 			far = v
 	return far
+
+
+# Team modes put each side by its own flag. Ported Soldat maps label their
+# spawn groups alpha/bravo, but on about a third of them that is the opposite
+# of our BLUE/RED flag order, and on some the two groups are mixed around the
+# middle, so BLUE could start at RED's flag. Re-split the map's spawn points
+# by which flag they're nearer to (keeping at least two per side).
+func _normalize_team_sides() -> void:
+	var fl: Array = _map.get("ctf_flags", [])
+	if fl.size() < 2:
+		return
+	var pool: Array = []
+	var ts: Variant = _map.get("team_spawns", {})
+	if typeof(ts) == TYPE_DICTIONARY:
+		for k in (ts as Dictionary):
+			for v in (ts as Dictionary)[k]:
+				if not pool.has(v):
+					pool.append(v)
+	var fb: Vector2 = fl[0]
+	var fr: Vector2 = fl[1]
+	var blue: Array = []
+	var red: Array = []
+	for pass_i in 2:
+		if pass_i == 1:
+			# One side came up short (all of a map's team spawns on one half):
+			# widen the pool with the general spawn points too.
+			if blue.size() >= 2 and red.size() >= 2:
+				break
+			for v in _map.get("bot_spawns", []):
+				if not pool.has(v):
+					pool.append(v)
+			if not pool.has(_map["player_spawn"]):
+				pool.append(_map["player_spawn"])
+		blue.clear()
+		red.clear()
+		for v in pool:
+			if (v as Vector2).distance_to(fb) <= (v as Vector2).distance_to(fr):
+				blue.append(v)
+			else:
+				red.append(v)
+	# A side with no spawn points of its own (some maps put every spawn on one
+	# half) spawns at its flag base; the free-spot finder settles it on ground.
+	for side in [[blue, fb], [red, fr]]:
+		var lst: Array = side[0]
+		if lst.is_empty():
+			var f: Vector2 = side[1]
+			lst.append(f + Vector2(0, -40))
+	_map["team_spawns"] = {TEAM_BLUE: blue, TEAM_RED: red}
+
+
+func _centroid(pts: Array) -> Vector2:
+	var c := Vector2.ZERO
+	for v in pts:
+		c += v as Vector2
+	return c / maxf(1.0, float(pts.size()))
+
+
+# A random spawn point on team t's own side (team modes).
+func _team_spawn_pick(t: int) -> Vector2:
+	var l := _team_spawn_list(t)
+	return l[randi() % l.size()] if not l.is_empty() else _map["player_spawn"]
 
 
 func _team_spawn_list(t: int) -> Array:
@@ -1926,9 +1990,8 @@ func _spawn_networked_player(peer_id: int) -> void:
 	# team sides stay coherent. (#57)
 	var t: int = _assign_team_for_peer(peer_id)
 	var base: Vector2 = _map["player_spawn"]
-	if Settings.is_team_mode() and t == TEAM_RED:
-		var rl := _team_spawn_list(TEAM_RED)
-		base = rl[randi() % rl.size()]
+	if Settings.is_team_mode():
+		base = _team_spawn_pick(t)
 	if Net.is_networked() and not Settings.is_team_mode():
 		var bs: Array = _map.get("bot_spawns", [])
 		if not bs.is_empty():
@@ -3509,9 +3572,8 @@ func _round_spawn_pos_for_team(t: int) -> Vector2:
 	# player_spawn; FFA picks a random bot_spawns entry so respawning peers land
 	# in the action instead of a corner. Small jitter avoids stacking on top.
 	var base: Vector2 = _map["player_spawn"]
-	if Settings.is_team_mode() and t == TEAM_RED:
-		var rl := _team_spawn_list(TEAM_RED)
-		base = rl[randi() % rl.size()]
+	if Settings.is_team_mode():
+		base = _team_spawn_pick(t)
 	if not Settings.is_team_mode():
 		var bs: Array = _map.get("bot_spawns", [])
 		if not bs.is_empty():
