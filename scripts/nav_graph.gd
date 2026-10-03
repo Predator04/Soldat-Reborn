@@ -123,9 +123,67 @@ func nearest(pos: Vector2, max_dist: float = 480.0) -> int:
 	return best
 
 
+## Off the graph (fell into a pit with no nodes) and the goal is unreachable
+## from the nearest node: pick a node a jet tank can actually reach (rise
+## under ~520 px) on the goal's island, instead of the closest node, which can
+## be straight up a 700 px shaft no tank can climb.
+func exit_toward(pos: Vector2, goal: Vector2, max_dist: float = 1200.0) -> int:
+	var gn := nearest(goal, 900.0)
+	if gn < 0 or _comp.is_empty():
+		return nearest(pos, 900.0)
+	var want: int = _comp[gn]
+	var best := -1
+	var best_c := INF
+	var r := int(ceil(max_dist / CELL))
+	var c := Vector2i(int(pos.x / CELL), int(pos.y / CELL))
+	for gx in range(c.x - r, c.x + r + 1):
+		for gy in range(c.y - r, c.y + r + 1):
+			var ids: Variant = _grid.get(Vector2i(gx, gy))
+			if ids == null:
+				continue
+			for id in ids:
+				if _comp[id] != want or _air.has(id):
+					continue
+				var d: Vector2 = _pts[id] - pos
+				var rise: float = -d.y
+				if rise > 520.0 or d.length() > max_dist:
+					continue
+				var cost := d.length() + maxf(0.0, rise) * 0.5
+				if cost < best_c:
+					best_c = cost
+					best = id
+	return best if best >= 0 else nearest(pos, 900.0)
+
+
+# Waypoints bots keep failing to reach (a climb the jets can't make, a ledge
+# they bounce off) get more expensive for a while, so A* routes around them.
+# Shared by every bot on the map; penalties expire on their own.
+var _penalty: Dictionary = {}   # node id -> msec when it expires
+
+
+func penalize(pos: Vector2, secs: float = 45.0) -> void:
+	var id := nearest(pos, 64.0)
+	if id < 0:
+		return
+	var w: float = minf(astar.get_point_weight_scale(id) * 4.0, 64.0)
+	astar.set_point_weight_scale(id, w)
+	_penalty[id] = Time.get_ticks_msec() + int(secs * 1000.0)
+
+
+func _expire_penalties() -> void:
+	if _penalty.is_empty():
+		return
+	var now := Time.get_ticks_msec()
+	for id in _penalty.keys():
+		if now >= int(_penalty[id]):
+			astar.set_point_weight_scale(id, 1.0)
+			_penalty.erase(id)
+
+
 func path(from: Vector2, to: Vector2) -> PackedVector2Array:
 	if _pts.is_empty():
 		return PackedVector2Array()
+	_expire_penalties()
 	var a := nearest(from)
 	var b := nearest(to, 900.0)
 	if a < 0 or b < 0:

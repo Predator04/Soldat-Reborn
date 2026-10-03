@@ -46,6 +46,15 @@ var _escape_len := 0.0      # length of the current escape (grows on repeats)
 var _escape_streak := 0     # consecutive escapes without leaving the area
 var _since_escape := 99.0
 const PROGRESS_WINDOW := 2.5
+const WAYPOINT_GIVE_UP := 9.0   # s stuck on one waypoint before routing around it
+var _wp_watch := Vector2.INF
+var _wp_watch_t := 0.0
+# Trapped: off the graph in a pocket no jet tank climbs out of. After a while
+# the bot gives up and respawns (like a player typing /kill), instead of
+# hopping at the walls for the rest of the match.
+const TRAPPED_GIVE_UP := 30.0
+var _trap_anchor := Vector2.INF
+var _trap_t := 0.0
 const ESCAPE_TIME := 1.6
 
 # ── Brain (v1.14) ─────────────────────────────────────────────────────────
@@ -600,7 +609,11 @@ func _physics_process(delta: float) -> void:
 		_since_escape += delta
 		if _escape_t > 0.0:
 			_escape_t -= delta
-			dir = _escape_dir
+			# Mid-climb toward a ledge above, keep steering at it: the escape
+			# shove used to carry bots sideways past the lip they'd jetted up
+			# to, and they fell back into the pit (Outpost).
+			if not (navigating and nav_up and not is_on_floor()):
+				dir = _escape_dir
 
 		velocity.x = move_toward(velocity.x, dir * RUN_SPEED * MatchConfig.mod_speed(), 1300.0 * MatchConfig.mod_speed() * delta)
 		_hop_cd = maxf(0.0, _hop_cd - delta)
@@ -1842,12 +1855,25 @@ func _nav_step(goal: Vector2, delta: float) -> Vector3:
 			# Goal unreachable from the node we're nearest to (e.g. we fell
 			# into a one-way pocket): at least get back onto the graph by
 			# heading for the closest node, then replan from there.
-			var n: int = nav.nearest(global_position, 900.0)
+			var n: int = nav.exit_toward(global_position, goal)
 			if n >= 0:
 				_path = PackedVector2Array([nav.point(n)])
+			if _trap_anchor == Vector2.INF or global_position.distance_to(_trap_anchor) > 450.0:
+				_trap_anchor = global_position
+				_trap_t = 0.0
+		else:
+			_trap_anchor = Vector2.INF
+			_trap_t = 0.0
 		_path_i = 0
 		_repath_t = randf_range(1.0, 1.4)
 		_path_goal = goal
+	if _trap_anchor != Vector2.INF:
+		_trap_t += delta
+		if _trap_t > TRAPPED_GIVE_UP and not _carrying_flag() and global_position.distance_to(_trap_anchor) < 450.0:
+			_trap_anchor = Vector2.INF
+			_trap_t = 0.0
+			take_damage(9999.0, str(display_name), "Fall")
+			return Vector3.ZERO
 	if _path.is_empty():
 		return Vector3.ZERO
 	# Advance past waypoints we've reached. A later waypoint that's already
@@ -1860,6 +1886,20 @@ func _nav_step(goal: Vector2, delta: float) -> Vector3:
 		else:
 			break
 	var wp: Vector2 = _path[_path_i]
+	# Same waypoint for too long (bouncing under a climb it can't make, or
+	# pacing a pit): tell the graph that spot is bad for now and replan.
+	# The short-range escape below only catches standing still, not pacing.
+	if wp != _wp_watch:
+		_wp_watch = wp
+		_wp_watch_t = 0.0
+	else:
+		_wp_watch_t += delta
+		if _wp_watch_t > WAYPOINT_GIVE_UP and _path_i < _path.size() - 1:
+			nav.penalize(wp)
+			_wp_watch_t = 0.0
+			_repath_t = 0.0
+			_path = PackedVector2Array()
+			return Vector3.ZERO
 	var dx: float = wp.x - global_position.x
 	var dy: float = wp.y - global_position.y
 	var d := 0.0 if absf(dx) < 6.0 else signf(dx)
