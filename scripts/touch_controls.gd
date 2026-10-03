@@ -116,7 +116,14 @@ func _ready() -> void:
 	set_process(true)
 
 
-func _process(_delta: float) -> void:
+# The move / aim zone tint and the centre divider teach the layout, then fade
+# out: a permanent line down the middle of the screen read as a rendering bug.
+const ZONE_HINT_SECS := 6.0
+var _zone_hint_t := ZONE_HINT_SECS
+
+
+func _process(delta: float) -> void:
+	_zone_hint_t = maxf(0.0, _zone_hint_t - delta)
 	queue_redraw()
 
 
@@ -631,9 +638,11 @@ func _draw() -> void:
 	if edit_mode:
 		draw_rect(Rect2(Vector2.ZERO, vp), Color(0, 0, 0, 0.35), true)
 	else:
-		draw_rect(aim_r, Color(0.35, 0.6, 1.0, 0.035), true)
-		draw_rect(mv_r, Color(1.0, 0.75, 0.25, 0.035), true)
-		draw_line(Vector2(vp.x * 0.5, 0.0), Vector2(vp.x * 0.5, vp.y), Color(1, 1, 1, 0.06), 1.0)
+		var k: float = clampf(_zone_hint_t / 1.5, 0.0, 1.0)
+		if k > 0.0:
+			draw_rect(aim_r, Color(0.35, 0.6, 1.0, 0.035 * k), true)
+			draw_rect(mv_r, Color(1.0, 0.75, 0.25, 0.035 * k), true)
+			draw_line(Vector2(vp.x * 0.5, 0.0), Vector2(vp.x * 0.5, vp.y), Color(1, 1, 1, 0.06 * k), 1.0)
 	# Buttons
 	for i in range(_buttons.size()):
 		_draw_button(i)
