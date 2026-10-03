@@ -2,6 +2,23 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.27.0] — 2026-10-03
+
+Five more studio passes: localization, performance, bot AI, touch, game feel.
+
+### Changed
+- **Hits feel like hits.** Rocket and grenade splash, and Knife/Chainsaw melee, now play the hit sound and show damage numbers, like bullets always did.
+- **Bots get unstuck.** Bots that keep failing to reach a spot route around it for a while (shared by all bots), no longer get shoved sideways mid-climb, find a jet-reachable way back to the path when they fall off it, and respawn if trapped in a pit for 30 seconds. In a CTF test on all 102 maps they grabbed the flag 17% more often and fell to their death less than half as often.
+- **Touch:** the left/right zone tint and centre line fade out after the first few seconds so they don't cover the action.
+
+### Fixed
+- A ~150 ms stutter the first time anyone got hurt in a match (and smaller ones on first kill icons and first sounds). Everything is now loaded up front, in the background. Frame time with 16 bots: about 3 ms average, worst frame under 5 ms.
+- Radio calls, killing-spree titles, vote prompts and bonus pickups are now translated in Español, Português, Deutsch and Français.
+- Hit accuracy in stats could show above 100%.
+
+### Testing
+- New performance test (16 bots, CTF) in the release gate.
+
 ## [1.26.0] — 2026-10-03
 
 Studio polish: six passes (QA, design, art, AI, localization, onboarding).

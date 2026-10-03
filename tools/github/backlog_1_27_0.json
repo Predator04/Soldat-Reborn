@@ -1,0 +1,47 @@
+[
+ {
+  "title": "Splash and melee hit feedback",
+  "labels": [
+   "enhancement",
+   "area: gameplay"
+  ],
+  "version": "1.27.0",
+  "body": "bullet.gd local_hit_feedback(): hit sound (90 ms throttle) + damage popup for rockets, grenades and melee; melee counts as a hit for accuracy. stats.gd accuracy clamped to 1.0."
+ },
+ {
+  "title": "Bots stuck on unreachable waypoints",
+  "labels": [
+   "bug",
+   "area: ai"
+  ],
+  "version": "1.27.0",
+  "body": "nav_graph.gd penalize()/exit_toward(); bot.gd waypoint give-up 9 s, no escape steering mid-climb, trapped respawn after 30 s. CTF sweep grabs 108->126, falls 8->5."
+ },
+ {
+  "title": "First-wound frame hitch",
+  "labels": [
+   "bug",
+   "area: performance"
+  ],
+  "version": "1.27.0",
+  "body": "Preload wound sprites, kill icons, threaded sound loads. tools/perf_test.gd (gate F perf): avg ~2.9 ms, max ~4.6 ms with 16 bots."
+ },
+ {
+  "title": "Translate radio, streaks, votes, bonuses",
+  "labels": [
+   "enhancement",
+   "area: ui"
+  ],
+  "version": "1.27.0",
+  "body": "Remaining in-match strings through tr(); ui.csv ~208 rows."
+ },
+ {
+  "title": "Touch zone hint fades",
+  "labels": [
+   "enhancement",
+   "area: mobile"
+  ],
+  "version": "1.27.0",
+  "body": "touch_controls.gd ZONE_HINT_SECS 6."
+ }
+]
