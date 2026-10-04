@@ -45,6 +45,9 @@ var custom_map_json := ""
 # joining client has opponents. See #54.
 var is_dedicated := false
 var register_url := ""   # master-server URL from --register (dedicated lobby heartbeat)
+# Dedicated bot fill (--fill=N, default 8; --fill=0 = use the Bots setting):
+# the server keeps N soldiers in the match, bots leave as players join.
+var fill_target := 0
 # Per-session counter — bumped on the client every time it receives net_bot_shoot /
 # net_bot_grenade. Used by --smoke-botfire (and the extended --smoke-join print) to
 # confirm that bot fire actually replicates over ENet. See #57.
@@ -127,6 +130,7 @@ func _maybe_run_dedicated() -> void:
 	var port: int = DEFAULT_PORT
 	var map_index: int = Settings.map_index
 	var mode_index: int = Settings.game_mode
+	var fill_arg := 8
 	var i: int = 0
 	while i < args.size():
 		var a: String = args[i]
@@ -150,11 +154,14 @@ func _maybe_run_dedicated() -> void:
 			i += 1
 		elif a.begins_with("--register="):
 			register_url = a.substr(len("--register="))
+		elif a.begins_with("--fill="):
+			fill_arg = int(a.substr(len("--fill=")))
 		elif a.begins_with("--name="):
 			# Name shown in Find Games (e.g. the official server). Runtime only.
 			Settings.server_name = a.substr(len("--name=")).strip_edges().left(48)
 		i += 1
 	is_dedicated = true
+	fill_target = maxi(0, fill_arg)
 	if wants_smoke:
 		call_deferred("_smoke_dedicated", port, map_index, mode_index)
 	else:

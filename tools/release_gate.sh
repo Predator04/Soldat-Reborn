@@ -27,7 +27,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 G="${GODOT_BIN:-$HOME/godot/Godot_v4.7.2-stable_linux.x86_64}"
 QUICK=0; OUT="build/gate"; ONLY="A B N C D R F E"; MODESEL="0 1 2 3 4 5 6 7 8 9"
-NETSEL="ctf dm two respawn drive rejoin relay host listen lan soak m3 m7 m9"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
+NETSEL="ctf dm two fill respawn drive rejoin relay host listen lan soak m3 m7 m9"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --quick) QUICK=1;; --out) OUT="$2"; shift;; --only) ONLY="$2"; shift;;
@@ -142,6 +142,29 @@ case " $NETSEL " in *" two "*)
     pass "C net two clients: $names errors=0"
   else
     fail "C net two clients: '$(grep -m1 SMOKE-JOIN "$OUT/net_two_c2.log")' $names errors=$e"
+  fi
+;; esac
+case " $NETSEL " in *" fill "*)
+  # Bot fill: a --fill=4 server keeps 4 soldiers; bots step aside as two
+  # players join and come back when they leave. Teams stay even.
+  port=$((7700 + RANDOM % 200))
+  timeout 90 "$G" --headless -- --dedicated --fill=4 --port $port --map 19 --mode 2 > "$OUT/net_fill_server.log" 2>&1 &
+  spid=$!
+  for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_fill_server.log" 2>/dev/null && break; sleep 0.5; done
+  sleep 3
+  timeout 40 "$G" --headless -- --smoke-join --port $port --smoke-secs=20 > "$OUT/net_fill_c1.log" 2>&1 &
+  c1=$!
+  sleep 6
+  timeout 30 "$G" --headless -- --smoke-join --port $port --smoke-secs=8 > "$OUT/net_fill_c2.log" 2>&1
+  wait $c1 2>/dev/null
+  for _ in $(seq 1 30); do grep -q "FILL humans=0" "$OUT/net_fill_server.log" && break; sleep 0.5; done
+  kill $spid 2>/dev/null; wait $spid 2>/dev/null
+  e=$(( $(errs "$OUT/net_fill_server.log") + $(errs "$OUT/net_fill_c1.log") + $(errs "$OUT/net_fill_c2.log") ))
+  seq=$(grep -o "FILL humans=[0-9]* bots=[0-9]* blue=[0-9]* red=[0-9]*" "$OUT/net_fill_server.log" | sed 's/FILL //' | tr '\n' ';')
+  if echo "$seq" | grep -q "humans=2 bots=2 blue=2 red=2" && echo "$seq" | grep -q "humans=0 bots=4" && [ "$e" = "0" ]; then
+    pass "C net bot fill: $seq"
+  else
+    fail "C net bot fill: '$seq' errors=$e"
   fi
 ;; esac
 case " $NETSEL " in *" relay "*)
@@ -343,6 +366,7 @@ if has F; then
   ft crew vehicle_crew_test.gd 100 CREW-TEST "buggy crew: solo-fire slowdown / bot gunner boards, shoots, leaves"
   ft tank tank_test.gd 100 TANK-TEST "tank: drive / lobbed shell / armor / wreck / respawn / wide-map spawns"
   ft joincode join_code_test.gd 60 JOINCODE-TEST "join codes: round trip, typos, garbage, host shows its code"
+  ft quickplay quickplay_test.gd 60 QUICKPLAY-TEST "quick play: no game online -> bot match"
   ft name name_test.gd 60 NAME-TEST "name required before Training / online, easy rename"
   if fon updater; then
     # Fake GitHub: a releases/latest JSON one version ahead + a 1 MB "exe".

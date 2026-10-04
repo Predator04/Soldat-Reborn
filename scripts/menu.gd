@@ -452,11 +452,11 @@ func _build_menu() -> void:
 		UITheme.safe_grab_focus_deferred(_join_first_focus)))
 	_menu_box2.add_child(join)
 
-	var qj := _make_button("QUICK JOIN")
-	qj.tooltip_text = "Jump into the best open game: same version, not full, lowest ping (LAN and master server)."
+	var qj := _make_button("QUICK PLAY", true)
+	qj.tooltip_text = "One click to play: joins the best open online game (people first, then lowest ping). If nobody's online, starts a bot match."
 	qj.pressed.connect(func() -> void: _with_name(func() -> void:
 		_menu_root.visible = false
-		_quick_join()))
+		_quick_join(true)))
 	_menu_box2.add_child(qj)
 
 	_menu_box2.add_child(UITheme.spacer(4))
@@ -1660,12 +1660,13 @@ func _render_master() -> void:
 
 
 # QUICK JOIN: listen / fetch for a moment, then join the best open game.
-func _quick_join() -> void:
+func _quick_join(bot_fallback := false) -> void:
 	_browse_root.visible = true
 	_refresh_browse()
 	_qj_active = true
-	_qj_t = 2.5
-	_status_label.text = "Quick join: looking for an open game..."
+	_qj_t = 3.5
+	_qp_fallback = bot_fallback
+	_status_label.text = tr("Quick play: looking for a game...")
 
 
 func _quick_join_pick() -> void:
@@ -1689,13 +1690,35 @@ func _quick_join_pick() -> void:
 			best_score = score
 			best = d
 	if best == null:
+		if _qp_fallback:
+			_qp_bot_match()
+			return
 		_status_label.text = "No open games found. Host one with HOST GAME, or try again."
 		return
-	_status_label.text = "Quick join: %s" % str(best.get("name", "?"))
+	_status_label.text = tr("Quick play: joining %s") % str(best.get("name", "?"))
+	_qp_joining = _qp_fallback
 	if str(best.get("relay", "")) != "":
 		_join_server(str(best.get("relay")), 0)
 	else:
 		_join_server(str(best.get("ip")), int(best.get("port")))
+
+
+var _qp_fallback := false   # Quick Play (main menu): fall back to bots
+var _qp_joining := false    # a Quick Play join is in flight
+
+
+# Nobody online (or the join failed): play a bot match right away instead of
+# leaving the player on an empty server list.
+func _qp_bot_match() -> void:
+	_qp_fallback = false
+	_qp_joining = false
+	if _browse_root != null:
+		_browse_root.visible = false
+	if _join_root != null:
+		_join_root.visible = false
+	_status_label.text = tr("Nobody online right now - starting a bot match.")
+	Net.set_singleplayer()
+	_go_to_match()
 
 
 func _join_server(ip: String, port: int) -> void:
@@ -1804,6 +1827,7 @@ func _on_net_connected() -> void:
 func _on_map_received() -> void:
 	if Net.is_client() and _connecting:
 		_connecting = false
+		_qp_joining = false
 		var key := "%s:%d" % [Net.last_server_ip, Net.last_server_port]
 		Settings.recent_servers.erase(key)
 		Settings.recent_servers.push_front(key)
@@ -1814,6 +1838,9 @@ func _on_map_received() -> void:
 
 func _on_net_disconnected() -> void:
 	_connecting = false
+	if _qp_joining:
+		_qp_bot_match()
+		return
 	if is_instance_valid(_connect_btn):
 		_connect_btn.disabled = false
 

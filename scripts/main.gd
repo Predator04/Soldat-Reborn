@@ -1609,11 +1609,82 @@ func _spawn_bots() -> void:
 	var spots: Array = _map["bot_spawns"]
 	# #67: bot_count -1 = "every spawn slot" (legacy). Otherwise cap to the setting.
 	# We recycle spawn positions round-robin if the user asks for more bots than slots.
-	var desired: int = spots.size() if MatchConfig.bot_count() < 0 else MatchConfig.bot_count()
+	if _bot_fill_active() and Settings.is_team_mode() and Settings.game_mode != Settings.MODE_INF and not spots.is_empty():
+		_reconcile_fill_teams()
+		return
+	var desired: int = _desired_bot_count()
 	if desired <= 0 or spots.is_empty():
 		return
 	for i in desired:
 		_spawn_bot_at(i, desired)
+
+
+# Bot fill (dedicated servers, --fill=N): keep the match at N soldiers, with
+# bots stepping aside one-for-one as real players join and coming back when
+# they leave. Otherwise the Bots setting decides.
+func _bot_fill_active() -> bool:
+	return Net.is_networked() and Net.is_host() and Net.is_dedicated and Net.fill_target > 0
+
+
+func _desired_bot_count() -> int:
+	if _bot_fill_active():
+		return maxi(0, Net.fill_target - _connected_peers.size())
+	var spots: Array = _map["bot_spawns"]
+	return spots.size() if MatchConfig.bot_count() < 0 else MatchConfig.bot_count()
+
+
+func _bot_carries_flag(b: Node) -> bool:
+	for f in flags:
+		if is_instance_valid(f) and f.has_meta("carrier") and f.get_meta("carrier") == b:
+			return true
+	return false
+
+
+var _fill_seq := 100
+var _bot_team_by_name: Dictionary = {}   # bot name -> team (live or waiting to respawn)
+
+
+# Team-mode fill: each side is topped up to half the target with bots, so a
+# side with more players gets fewer bots and the teams stay even.
+func _reconcile_fill_teams() -> void:
+	var per_side: int = int(ceil(Net.fill_target / 2.0))
+	for t in [TEAM_BLUE, TEAM_RED]:
+		var humans := 0
+		for pid in _connected_peers.keys():
+			if int(_peer_team_by_id.get(pid, -1)) == t:
+				humans += 1
+		var want: int = maxi(0, per_side - humans)
+		var live_t: Array = _live_bots().filter(func(b): return int(b.team) == t)
+		var pend_t: Array = _bot_pending.keys().filter(func(n): return int(_bot_team_by_name.get(n, -1)) == t)
+		var have: int = live_t.size() + pend_t.size()
+		while have < want:
+			_fill_seq += 1
+			var tl := _team_spawn_list(t)
+			var nm := ("Blue Bot %d" if t == TEAM_BLUE else "Red Bot %d") % _fill_seq
+			_spawn_bot(tl[_fill_seq % tl.size()], t, nm, "AK-74")
+			have += 1
+		while have > want and not pend_t.is_empty():
+			_bot_pending.erase(pend_t.pop_back())
+			have -= 1
+		while have > want and not live_t.is_empty():
+			var rb: Node = null
+			for i in range(live_t.size() - 1, -1, -1):
+				if not _bot_carries_flag(live_t[i]):
+					rb = live_t[i]
+					break
+			if rb == null:
+				break
+			live_t.erase(rb)
+			_despawn_bot(rb)
+			have -= 1
+
+
+# Fill removal (FFA / INF): newest bot first, never the flag carrier.
+func _fill_pick_removal(live: Array) -> Node:
+	for i in range(live.size() - 1, -1, -1):
+		if not _bot_carries_flag(live[i]):
+			return live[i]
+	return null
 
 
 func _team_base(t: int) -> Vector2:
@@ -1764,7 +1835,11 @@ func _reconcile_bots() -> void:
 	var spots: Array = _map["bot_spawns"]
 	if spots.is_empty():
 		return
-	var desired: int = spots.size() if MatchConfig.bot_count() < 0 else MatchConfig.bot_count()
+	if _bot_fill_active() and Settings.is_team_mode() and Settings.game_mode != Settings.MODE_INF:
+		_reconcile_fill_teams()
+		_log_fill.call_deferred()
+		return
+	var desired: int = _desired_bot_count()
 	var live: Array = _live_bots()
 	# Dead bots waiting on their respawn timer count too — otherwise lowering
 	# then raising the slider mid-fight spawned extras AND the pending respawns.
@@ -1780,8 +1855,36 @@ func _reconcile_bots() -> void:
 				break
 			_bot_pending.erase(k)
 			excess -= 1
-		for i in range(maxi(0, live.size() - excess), live.size()):
-			_despawn_bot(live[i])
+		if _bot_fill_active():
+			while excess > 0 and not live.is_empty():
+				var rb: Node = _fill_pick_removal(live)
+				if rb == null:
+					break
+				live.erase(rb)
+				_despawn_bot(rb)
+				excess -= 1
+		else:
+			for i in range(maxi(0, live.size() - excess), live.size()):
+				_despawn_bot(live[i])
+	if _bot_fill_active():
+		_log_fill.call_deferred()
+
+
+func _log_fill() -> void:
+	await get_tree().process_frame
+	var c := {TEAM_BLUE: 0, TEAM_RED: 0}
+	for pid in _connected_peers.keys():
+		var pt: int = int(_peer_team_by_id.get(pid, -1))
+		if c.has(pt):
+			c[pt] += 1
+	for b in _live_bots():
+		if c.has(int(b.team)):
+			c[int(b.team)] += 1
+	for n in _bot_pending.keys():
+		var bt: int = int(_bot_team_by_name.get(n, -1))
+		if c.has(bt):
+			c[bt] += 1
+	print("FILL humans=%d bots=%d blue=%d red=%d" % [_connected_peers.size(), _live_bots().size() + _bot_pending.size(), int(c[TEAM_BLUE]), int(c[TEAM_RED])])
 
 
 func _live_bots() -> Array:
@@ -1809,6 +1912,7 @@ func _spawn_bot(pos: Vector2, team: int, bname: String, loadout: String = "AK-74
 	if Net.is_networked() and not Net.is_host():
 		return
 	var b := bot_scene.instantiate()
+	_bot_team_by_name[bname] = team
 	b.position = _safe_spawn_near(pos, team)
 	b.team = team
 	b.display_name = bname
@@ -2143,6 +2247,8 @@ func _on_net_peer_disconnected(id: int) -> void:
 		# immediately — no one benefits from a countdown against a phantom.
 		if vote_active and vote_kind == "votekick" and vote_target_arg == id:
 			_resolve_vote(false, "Target left the server")
+		if _bot_fill_active():
+			call_deferred("_reconcile_bots")
 
 
 # ── Bot chatter (host decides, everyone sees it in chat) ───────────────────
@@ -2362,6 +2468,8 @@ func _handle_client_ready(sender_id: int, joiner_name: String = "", client_versi
 	rpc_id(sender, "net_stats_sync", player_stats)
 	# then spawn a body for the new peer on everyone
 	_spawn_networked_player(sender)
+	if _bot_fill_active():
+		call_deferred("_reconcile_bots")
 	# NOTE: _ready_peers[sender] is set only when the client acks the spawn (net_spawn_ack).
 	# Otherwise net_state (unreliable_ordered) can beat the reliable spawn RPC and error out.
 
