@@ -1,0 +1,11 @@
+[
+ {
+  "title": "Player customization catalog",
+  "labels": [
+   "enhancement",
+   "area: ui"
+  ],
+  "version": "1.29.0",
+  "body": "customization.gd catalog + unlock rules (level / achievement); customize_panel.gd screen with live preview; gostek / soldier_art draw skin, trousers, vest paint and weapon skins; player.my_cosmetics drops locked items; bots random."
+ }
+]

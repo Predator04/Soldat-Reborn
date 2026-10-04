@@ -2,6 +2,20 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.29.0] — 2026-10-04
+
+### Added
+- **CUSTOMIZE** (main menu): dress your soldier from our own catalog, with a live preview. Skin tone, head (helmet, cap, four hair styles, bald), helmet paint, vest and vest paint, trousers, chain, cigar / dreadlocks / dogtag, and **weapon skins** (Desert, Woodland, Carbon, Arctic, Crimson, Gold) that tint every gun you carry.
+- **Unlocks.** Many looks unlock as your career level goes up or when you earn certain achievements (Massacre, Unstoppable, Flag Runner, Long Shot, Champion). Locked items show what they need, and a message pops up in-game the moment you unlock one.
+- Everyone online sees your look, and bots now wear random outfits and weapon skins too.
+
+### Changed
+- The main menu is rearranged to fit the new buttons: HOST / JOIN side by side, CUSTOMIZE and MAP LIBRARY under Deploy.
+- Settings > Cosmetics uses the same options as CUSTOMIZE.
+
+### Planned
+- Match replays, Discord status and an itch.io page are filed on GitHub for a later update.
+
 ## [1.28.0] — 2026-10-04
 
 The online update: Quick Play, a leaderboard, shared maps, kill cam, lag compensation, map voting.
