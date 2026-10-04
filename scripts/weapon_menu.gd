@@ -108,20 +108,29 @@ func _process(_delta: float) -> void:
 	queue_redraw()
 
 
-# Keyboard only: on a gamepad the D-pad (also bound to slots 1-4) steps
-# through the list instead, see _input.
+# Slot hotkeys, except when it's the D-pad (also bound to slots 1-4): on a
+# gamepad the D-pad steps through the list instead, see _input.
+var _dpad_down: Dictionary = {}
+
+
 func _key_down(a: String) -> bool:
+	if not Input.is_action_pressed(a):
+		return false
 	for ev in InputMap.action_get_events(a):
-		if ev is InputEventKey:
-			var k := ev as InputEventKey
-			if (k.physical_keycode != 0 and Input.is_physical_key_pressed(k.physical_keycode)) \
-					or (k.keycode != 0 and Input.is_key_pressed(k.keycode)):
-				return true
-	return false
+		if ev is InputEventJoypadButton and _dpad_down.has((ev as InputEventJoypadButton).button_index):
+			return false
+	return true
 
 
 # Gamepad in limbo: D-pad up/down = primary, left/right = secondary.
 func _input(event: InputEvent) -> void:
+	if event is InputEventJoypadButton:
+		var b: int = (event as InputEventJoypadButton).button_index
+		if b >= JOY_BUTTON_DPAD_UP and b <= JOY_BUTTON_DPAD_RIGHT:
+			if event.pressed:
+				_dpad_down[b] = true
+			else:
+				_dpad_down.erase(b)
 	if not visible or not (event is InputEventJoypadButton) or not event.pressed:
 		return
 	var n_pri: int = mini(PRIMARY_KEYS.size(), _weapons.size())

@@ -382,6 +382,12 @@ func _smoke_join() -> void:
 	if "--smoke-die" in OS.get_cmdline_user_args():
 		get_tree().create_timer(4.0).timeout.connect(func() -> void:
 			var mn = get_tree().current_scene
+			# The body can take a moment longer to arrive on a busy machine.
+			for _w in 20:
+				if mn != null and mn.get("player") != null and is_instance_valid(mn.player):
+					break
+				await get_tree().create_timer(0.25).timeout
+				mn = get_tree().current_scene
 			if mn != null and mn.get("player") != null and is_instance_valid(mn.player):
 				var old_id: int = mn.player.get_instance_id()
 				mn.player.take_damage(999.0, str(mn.player.display_name), "Selfkill", int(mn.player.team))

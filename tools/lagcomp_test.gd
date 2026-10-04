@@ -51,6 +51,7 @@ func _process(_d: float) -> bool:
 			if now - _t < 100:
 				return false
 			p.ceasefire_t = 0.0
+			p.bonus_kind = ""   # a picked-up vest would halve the damage
 			_hp0 = p.health
 			_shoot(m, 0, 7.0)
 			_shoot(m, 180, 20.0)
@@ -64,6 +65,7 @@ func _process(_d: float) -> bool:
 			if absf(dmg - 20.0) > 0.5:
 				_bad.append("expected only the compensated bullet to hit, took %.0f" % dmg)
 			p.health = 100.0
+			p.bonus_kind = ""
 			_hp0 = p.health
 			# Now > 200 ms after the move: even the max rewind finds the new spot.
 			_shoot(m, 200, 20.0)
