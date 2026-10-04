@@ -1475,9 +1475,15 @@ func _begin_spectator() -> void:
 	if spectator == null or not is_instance_valid(spectator):
 		return
 	var anchor: Vector2 = Vector2.ZERO
+	var killer := ""
+	var weapon := ""
 	if is_instance_valid(player):
 		anchor = player.global_position
-	spectator.activate(anchor)
+		killer = str(player.last_killer)
+		weapon = str(player.last_weapon).replace(" (headshot)", "")
+		if killer == str(player.display_name):
+			killer = ""
+	spectator.activate(anchor, killer, weapon)
 
 
 func _end_spectator() -> void:

@@ -9,6 +9,11 @@ var cam: Camera2D
 var _target: Node2D = null
 var _free_cam := false
 var _active := false
+# Kill cam: right after you die the camera follows whoever killed you, with
+# their health and weapon on screen, until you cycle away or respawn.
+var _killcam := false
+var _killcam_weapon := ""
+var _hud_t := 0.0
 
 const PAN_SPEED := 900.0
 const MAP_W := 4800.0   # fallback only — real bounds come from main (per-map world)
@@ -38,14 +43,24 @@ func _ready() -> void:
 	set_process_unhandled_input(false)
 
 
-func activate(anchor: Vector2 = Vector2.ZERO) -> void:
+func activate(anchor: Vector2 = Vector2.ZERO, killer := "", weapon := "") -> void:
 	if _active:
 		return
 	_active = true
 	_free_cam = false
 	if anchor != Vector2.ZERO:
 		global_position = anchor
-	_target = _pick_nearest_target(global_position)
+	_killcam = false
+	_target = null
+	if killer != "":
+		for s in _living_targets():
+			if str(s.get("display_name")) == killer:
+				_target = s
+				_killcam = true
+				_killcam_weapon = weapon
+				break
+	if _target == null:
+		_target = _pick_nearest_target(global_position)
 	if _target != null:
 		global_position = _target.global_position
 	cam.enabled = true
@@ -59,12 +74,17 @@ func deactivate() -> void:
 	if not _active:
 		return
 	_active = false
+	_killcam = false
 	cam.enabled = false
 	_target = null
 	set_process(false)
 	set_process_unhandled_input(false)
 	if main != null and main.get("hud") != null and main.hud.has_method("set_spectate_target"):
 		main.hud.set_spectate_target("", Color(1, 1, 1))
+
+
+func is_killcam() -> bool:
+	return _active and _killcam
 
 
 func is_active() -> bool:
@@ -91,10 +111,16 @@ func _process(delta: float) -> void:
 			global_position = next
 		return
 	if not is_instance_valid(_target) or bool(_target.get("dead")):
+		_killcam = false
 		_target = _pick_nearest_target(global_position)
 		_notify_hud()
 	if _target != null:
 		global_position = _target.global_position
+	if _killcam:
+		_hud_t -= delta
+		if _hud_t <= 0.0:
+			_hud_t = 0.25
+			_notify_hud()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -115,6 +141,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	var kc: int = (event as InputEventKey).keycode
 	if kc == KEY_C:
 		_free_cam = not _free_cam
+		_killcam = false
 		_notify_hud()
 		get_viewport().set_input_as_handled()
 	elif not _free_cam and kc == KEY_LEFT:
@@ -168,6 +195,7 @@ func _cycle_target(step: int) -> void:
 			if idx < 0:
 				idx += arr.size()
 	_target = arr[idx]
+	_killcam = false
 	_notify_hud()
 
 
@@ -178,6 +206,9 @@ func _notify_hud() -> void:
 		return
 	if _free_cam:
 		main.hud.set_spectate_target("Free Cam  (C to follow · arrows to pan)", Color(0.85, 0.9, 1.0))
+	elif _killcam and is_instance_valid(_target) and main.hud.has_method("set_killcam"):
+		var kc: Color = _target.get("color") if _target.get("color") != null else Color(1, 1, 1)
+		main.hud.set_killcam(str(_target.get("display_name")), int(ceil(float(_target.get("health")))), _killcam_weapon, kc)
 	elif is_instance_valid(_target):
 		var col: Color = _target.get("color") if _target.get("color") != null else Color(1, 1, 1)
 		main.hud.set_spectate_target(str(_target.get("display_name")), col)

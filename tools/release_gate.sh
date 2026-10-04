@@ -380,6 +380,7 @@ if has F; then
   ft crew vehicle_crew_test.gd 100 CREW-TEST "buggy crew: solo-fire slowdown / bot gunner boards, shoots, leaves"
   ft tank tank_test.gd 100 TANK-TEST "tank: drive / lobbed shell / armor / wreck / respawn / wide-map spawns"
   ft joincode join_code_test.gd 60 JOINCODE-TEST "join codes: round trip, typos, garbage, host shows its code"
+  ft killcam killcam_test.gd 60 KILLCAM-TEST "kill cam follows your killer, ends on respawn"
   ft lagcomp lagcomp_test.gd 60 LAGCOMP-TEST "lag compensation: hits where the shooter saw you, capped"
   ft quickplay quickplay_test.gd 60 QUICKPLAY-TEST "quick play: no game online -> bot match"
   ft name name_test.gd 60 NAME-TEST "name required before Training / online, easy rename"

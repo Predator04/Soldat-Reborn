@@ -525,6 +525,16 @@ func set_spectate_target(name: String, col: Color) -> void:
 	lbl_spectate_hint.visible = true
 
 
+func set_killcam(name: String, hp: int, weapon: String, col: Color) -> void:
+	if lbl_spectate == null:
+		return
+	var w := (" · " + tr(weapon)) if weapon != "" else ""
+	lbl_spectate.text = tr("KILL CAM: %s") % name + "  ·  " + (tr("%d HP left") % maxi(0, hp)) + w
+	lbl_spectate.add_theme_color_override("font_color", col)
+	lbl_spectate.visible = true
+	lbl_spectate_hint.visible = true
+
+
 func open_command(prefill: String = "/") -> void:
 	_open_line("cmd", prefill, "/votemap N   /votekick name   /victory  /smoke  /mercy  /kill")
 
