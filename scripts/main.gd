@@ -484,6 +484,10 @@ func _ready() -> void:
 			# Dedicated (headless) host: pure authority, no local player, no camera.
 			# Fill the match with bots so a lone joining client has opponents (#54).
 			if Net.is_dedicated:
+				if Net.stats_url != "":
+					ranked = preload("res://scripts/ranked.gd").new()
+					ranked.main = self
+					add_child(ranked)
 				_spawn_bots()
 				# Drain any net_client_ready calls that arrived before main.tscn
 				# finished loading (#118 — race between ENet accept and scene load).
@@ -500,6 +504,7 @@ func _ready() -> void:
 			# if the host's main.tscn is still loading (#118).
 			Net.disconnected.connect(_on_lost_host)
 			Net.rpc_id(1, "net_client_ready", Settings.player_name, str(ProjectSettings.get_setting("application/config/version", "")), Net.session_token)
+			Net.rpc_id(1, "net_profile", Settings.profile_id)
 	else:
 		_spawn_player()
 		_spawn_bots()
@@ -1641,6 +1646,7 @@ func _bot_carries_flag(b: Node) -> bool:
 
 
 var _fill_seq := 100
+var ranked: Node = null   # ranked.gd on a dedicated host with a stats URL
 var _bot_team_by_name: Dictionary = {}   # bot name -> team (live or waiting to respawn)
 
 
@@ -2234,6 +2240,8 @@ func _on_net_peer_disconnected(id: int) -> void:
 	if Net.is_host():
 		# Remember the leaver's side so a rejoin (same name) lands on it again;
 		# their K/D stays in player_stats (name-keyed) already.
+		if ranked != null:
+			ranked.player_left(id)
 		var lp = _players_by_id.get(id, null)
 		if lp != null and is_instance_valid(lp) and _peer_names.has(id):
 			_left_team[str(_peer_names[id])] = int(lp.team)
@@ -2468,6 +2476,8 @@ func _handle_client_ready(sender_id: int, joiner_name: String = "", client_versi
 	rpc_id(sender, "net_stats_sync", player_stats)
 	# then spawn a body for the new peer on everyone
 	_spawn_networked_player(sender)
+	if ranked != null:
+		ranked.player_joined(sender)
 	if _bot_fill_active():
 		call_deferred("_reconcile_bots")
 	# NOTE: _ready_peers[sender] is set only when the client acks the spawn (net_spawn_ack).
@@ -3585,6 +3595,8 @@ func _end_round(team: int) -> void:
 	if is_instance_valid(player):
 		var won: bool = team >= 0 and int(player.team) == team
 		Stats.record_match_end(won)
+	if ranked != null:
+		ranked.round_end(team)
 	if Net.is_networked() and Net.is_host():
 		_broadcast_match_state()
 

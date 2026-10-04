@@ -48,6 +48,10 @@ var register_url := ""   # master-server URL from --register (dedicated lobby he
 # Dedicated bot fill (--fill=N, default 8; --fill=0 = use the Bots setting):
 # the server keeps N soldiers in the match, bots leave as players join.
 var fill_target := 0
+# Ranked results (dedicated): where to report them (--stats=URL, default the
+# --register master) and each connected player's profile hash.
+var stats_url := ""
+var peer_profiles: Dictionary = {}   # peer id -> sha256(profile id)
 # Per-session counter — bumped on the client every time it receives net_bot_shoot /
 # net_bot_grenade. Used by --smoke-botfire (and the extended --smoke-join print) to
 # confirm that bot fire actually replicates over ENet. See #57.
@@ -154,6 +158,8 @@ func _maybe_run_dedicated() -> void:
 			i += 1
 		elif a.begins_with("--register="):
 			register_url = a.substr(len("--register="))
+		elif a.begins_with("--stats="):
+			stats_url = a.substr(len("--stats="))
 		elif a.begins_with("--fill="):
 			fill_arg = int(a.substr(len("--fill=")))
 		elif a.begins_with("--name="):
@@ -162,6 +168,8 @@ func _maybe_run_dedicated() -> void:
 		i += 1
 	is_dedicated = true
 	fill_target = maxi(0, fill_arg)
+	if stats_url == "":
+		stats_url = register_url
 	if wants_smoke:
 		call_deferred("_smoke_dedicated", port, map_index, mode_index)
 	else:
@@ -653,6 +661,16 @@ func net_client_ready(joiner_name: String = "", client_version: String = "", tok
 		main._handle_client_ready(sender, joiner_name, client_version, token)
 	else:
 		_pending_clients.append({id = sender, name = joiner_name, version = client_version, token = token})
+
+
+# Client -> host after joining: the player's profile id, for the leaderboard.
+# The host keeps only its hash.
+@rpc("any_peer", "reliable")
+func net_profile(pid: String) -> void:
+	if not is_host():
+		return
+	if pid.length() == 32 and pid.is_valid_hex_number():
+		peer_profiles[multiplayer.get_remote_sender_id()] = pid.to_lower().sha256_text()
 
 
 func consume_pending_clients() -> Array:

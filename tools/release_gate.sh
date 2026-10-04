@@ -27,7 +27,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 G="${GODOT_BIN:-$HOME/godot/Godot_v4.7.2-stable_linux.x86_64}"
 QUICK=0; OUT="build/gate"; ONLY="A B N C D R F E"; MODESEL="0 1 2 3 4 5 6 7 8 9"
-NETSEL="ctf dm two fill respawn drive rejoin relay host listen lan soak m3 m7 m9"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
+NETSEL="ctf dm two fill ranked respawn drive rejoin relay host listen lan soak m3 m7 m9"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --quick) QUICK=1;; --out) OUT="$2"; shift;; --only) ONLY="$2"; shift;;
@@ -166,6 +166,20 @@ case " $NETSEL " in *" fill "*)
   else
     fail "C net bot fill: '$seq' errors=$e"
   fi
+;; esac
+case " $NETSEL " in *" ranked "*)
+  # Leaderboard: the host's ranked reporter -> master /report -> /leaderboard.
+  RB="../server/master-server/dist/soldat-master-linux-amd64"
+  rport=$((8300 + RANDOM % 400)); rdir=$(mktemp -d)
+  SOLDAT_DATA_DIR="$rdir" timeout 60 "$RB" -port $rport > "$OUT/net_ranked_master.log" 2>&1 &
+  rpid=$!; sleep 1
+  timeout 50 "$G" --headless -s tools/ranked_test.gd -- --master=http://127.0.0.1:$rport > "$OUT/net_ranked.log" 2>&1
+  timeout 60 "$G" --headless --fixed-fps 60 -s tools/online_panels_test.gd -- --master=http://127.0.0.1:$rport > "$OUT/net_panels.log" 2>&1
+  pline=$(grep -m1 "PANELS-TEST" "$OUT/net_panels.log")
+  if echo "$pline" | grep -q "PANELS-TEST ok" && [ "$(errs "$OUT/net_panels.log")" = "0" ]; then pass "C net leaderboard + map library screens: $pline"; else fail "C net leaderboard + map library screens: '${pline:-no result}' errors=$(errs "$OUT/net_panels.log")"; fi
+  kill $rpid 2>/dev/null; wait $rpid 2>/dev/null
+  line=$(grep -m1 "RANKED-TEST" "$OUT/net_ranked.log")
+  if echo "$line" | grep -q "RANKED-TEST ok" && [ "$(errs "$OUT/net_ranked.log")" = "0" ]; then pass "C net leaderboard: $line"; else fail "C net leaderboard: '${line:-no result}' errors=$(errs "$OUT/net_ranked.log")"; fi
 ;; esac
 case " $NETSEL " in *" relay "*)
   # Host and client both go through the WebSocket relay on the master server.

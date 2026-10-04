@@ -17,6 +17,7 @@ var _sb := false
 var _nohud := false
 var _gesture := ""
 var _call := ""
+var _master := ""
 var _menu_map := ""
 var _vis := ""   # --show=NodeVar: make current_scene.<var> visible, hide _menu_root
 
@@ -37,6 +38,8 @@ func _initialize() -> void:
 			_scene = a.substr(8)
 		elif a.begins_with("--menu-map="):
 			_menu_map = a.substr(11)
+		elif a.begins_with("--master="):
+			_master = a.substr(9)
 		elif a.begins_with("--call="):
 			_call = a.substr(7)
 		elif a.begins_with("--gesture="):
@@ -95,6 +98,11 @@ func _process(_delta: float) -> bool:
 				current_scene._on_sp_map_selected(i)
 	if _gesture != "" and _n == 14 and current_scene != null and current_scene.get("player") != null:
 		current_scene.player.apply_gesture(_gesture)
+	if _master != "" and _n == 13:
+		root.get_node("Settings").master_url = _master
+		root.get_node("Settings").name_set = true
+		if current_scene != null and current_scene.get("_name_prompt_root") != null and is_instance_valid(current_scene._name_prompt_root):
+			current_scene._name_prompt_root.visible = false
 	if _call != "" and _n == 14 and current_scene != null:
 		# --call=method on the scene root, or --call=Child/Path:method
 		var tgt: Node = current_scene

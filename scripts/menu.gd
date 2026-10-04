@@ -459,6 +459,20 @@ func _build_menu() -> void:
 		_quick_join(true)))
 	_menu_box2.add_child(qj)
 
+	var lb := _make_button("LEADERBOARD")
+	lb.tooltip_text = "Top players on the official server, and your own rank."
+	lb.pressed.connect(_open_leaderboard)
+	var lib := _make_button("MAP LIBRARY")
+	lib.tooltip_text = "Download maps other players made, or share your own."
+	lib.pressed.connect(_open_map_library)
+	var online_row := HBoxContainer.new()
+	online_row.add_theme_constant_override("separation", 8)
+	for b in [lb, lib]:
+		b.custom_minimum_size = Vector2(0, b.custom_minimum_size.y)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		online_row.add_child(b)
+	_menu_box2.add_child(online_row)
+
 	_menu_box2.add_child(UITheme.spacer(4))
 	_menu_box2.add_child(UITheme.make_section_header("System"))
 
@@ -1865,7 +1879,38 @@ func _notification(what: int) -> void:
 		_go_back()
 
 
+var _lb_panel: Control = null
+var _lib_panel: Control = null
+
+
+func _open_leaderboard() -> void:
+	if _lb_panel == null:
+		_lb_panel = preload("res://scripts/leaderboard_panel.gd").new()
+		add_child(_lb_panel)
+		_lb_panel.closed.connect(func() -> void: _menu_root.visible = true)
+	_menu_root.visible = false
+	_lb_panel.visible = true
+	_lb_panel.refresh_data()
+
+
+func _open_map_library() -> void:
+	if _lib_panel == null:
+		_lib_panel = preload("res://scripts/map_library_panel.gd").new()
+		add_child(_lib_panel)
+		_lib_panel.closed.connect(func() -> void:
+			_refresh_sp_map_pick()
+			_menu_root.visible = true)
+	_menu_root.visible = false
+	_lib_panel.visible = true
+	_lib_panel.refresh_data()
+
+
 func _go_back() -> void:
+	for pn in [_lb_panel, _lib_panel]:
+		if pn != null and pn.visible:
+			pn.visible = false
+			pn.closed.emit()
+			return
 	if _controls_panel != null and _controls_panel.visible:
 		# Mid-rebind: let the capture eat ESC so the user doesn't lose the session
 		# on the first press (matches the pause-menu handling).
