@@ -1,5 +1,4 @@
 extends VBoxContainer
-const Gostek = preload("res://scripts/gostek.gd")
 ## SettingsPanel — retro-military accordion of setting sections.
 ##
 ## Six collapsible cards (Audio, Video, Controls, Game, Mods, Cosmetics) live
@@ -440,57 +439,8 @@ func _build_mods(box: VBoxContainer) -> void:
 
 
 func _build_cosmetics(box: VBoxContainer) -> void:
-	var head_opts := ["helm", "kap", "hair1", "hair2", "hair3", "hair4", "none"]
-	box.add_child(_option_row("Head", head_opts, Settings.cos_head,
-		func(v: String) -> void:
-			Settings.cos_head = v
-			Settings.save()))
-	var chain_opts := ["none", "silver", "gold"]
-	box.add_child(_option_row("Chain", chain_opts, Settings.cos_chain,
-		func(v: String) -> void:
-			Settings.cos_chain = v
-			Settings.save()))
-	box.add_child(_check_button("Vest (kamizelka)", Settings.cos_vest,
-		func(on: bool) -> void:
-			Settings.cos_vest = on
-			Settings.save()))
-	box.add_child(_check_button("Cigar (cygaro)", Settings.cos_cigar,
-		func(on: bool) -> void:
-			Settings.cos_cigar = on
-			Settings.save()))
-	box.add_child(_check_button("Dreadlocks (dred)", Settings.cos_dreadlocks,
-		func(on: bool) -> void:
-			Settings.cos_dreadlocks = on
-			Settings.save()))
-	box.add_child(_check_button("Dogtag (metal)", Settings.cos_dogtag,
-		func(on: bool) -> void:
-			Settings.cos_dogtag = on
-			Settings.save()))
-	# Helmet finishes unlock with your career level (STATS screen).
-	var lvl: int = Stats.level_for(Stats.xp())
-	var fin_keys := ["", "desert", "urban", "night", "gold"]
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
-	var lbl := Label.new()
-	lbl.text = tr("Helmet finish")
-	lbl.custom_minimum_size = Vector2(120, 0)
-	UITheme.style_body(lbl)
-	row.add_child(lbl)
-	var pick := OptionButton.new()
-	for k in fin_keys:
-		var need: int = int(Gostek.FINISH_LEVELS.get(k, 1))
-		var nm: String = tr("Standard") if k == "" else tr(String(k).capitalize())
-		pick.add_item(nm if lvl >= need else "%s  (%s)" % [nm, tr("level %d") % need])
-		pick.set_item_disabled(pick.item_count - 1, lvl < need)
-	pick.selected = maxi(0, fin_keys.find(Settings.cos_finish))
-	pick.custom_minimum_size = Vector2(240, 32)
-	pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	UITheme.style_option_button(pick)
-	pick.item_selected.connect(func(idx: int) -> void:
-		Settings.cos_finish = String(fin_keys[idx])
-		Settings.save())
-	row.add_child(pick)
-	box.add_child(row)
+	# Same rows as the main menu's CUSTOMIZE screen (customization.gd catalog).
+	preload("res://scripts/customize_panel.gd").build_rows(box)
 
 
 # ── Widget helpers ────────────────────────────────────────

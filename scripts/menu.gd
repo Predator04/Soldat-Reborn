@@ -313,7 +313,7 @@ func _build_menu() -> void:
 	_menu_root.offset_left = -372
 	_menu_root.offset_right = 372
 	_menu_root.offset_top = 204
-	_menu_root.offset_bottom = 596  # base height is 720 (stretch "expand")
+	_menu_root.offset_bottom = 650  # base height is 720 (stretch "expand"); footer starts ~655
 	add_child(_menu_root)
 
 	var scroll := ScrollContainer.new()
@@ -435,6 +435,19 @@ func _build_menu() -> void:
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		deploy_row.add_child(b)
 	_menu_box.add_child(deploy_row)
+	var cust := _make_button("CUSTOMIZE")
+	cust.tooltip_text = "Your soldier's look and weapon skins. More unlock as you level up."
+	cust.pressed.connect(_open_customize)
+	var lib := _make_button("MAP LIBRARY")
+	lib.tooltip_text = "Download maps other players made, or share your own."
+	lib.pressed.connect(_open_map_library)
+	var extra_row := HBoxContainer.new()
+	extra_row.add_theme_constant_override("separation", 8)
+	for b in [cust, lib]:
+		b.custom_minimum_size = Vector2(0, b.custom_minimum_size.y)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		extra_row.add_child(b)
+	_menu_box.add_child(extra_row)
 
 
 	_menu_box2.add_child(UITheme.make_section_header("Network"))
@@ -442,7 +455,6 @@ func _build_menu() -> void:
 	var host := _make_button("HOST GAME")
 	host.tooltip_text = "Start an online / LAN server that friends can join."
 	host.pressed.connect(func() -> void: _with_name(_open_host))
-	_menu_box2.add_child(host)
 
 	var join := _make_button("JOIN GAME")
 	join.tooltip_text = "Find a LAN or online game, or type an address."
@@ -450,7 +462,13 @@ func _build_menu() -> void:
 		_menu_root.visible = false
 		_join_root.visible = true
 		UITheme.safe_grab_focus_deferred(_join_first_focus)))
-	_menu_box2.add_child(join)
+	var net_row := HBoxContainer.new()
+	net_row.add_theme_constant_override("separation", 8)
+	for b in [host, join]:
+		b.custom_minimum_size = Vector2(0, b.custom_minimum_size.y)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		net_row.add_child(b)
+	_menu_box2.add_child(net_row)
 
 	var qj := _make_button("QUICK PLAY", true)
 	qj.tooltip_text = "One click to play: joins the best open online game (people first, then lowest ping). If nobody's online, starts a bot match."
@@ -462,16 +480,7 @@ func _build_menu() -> void:
 	var lb := _make_button("LEADERBOARD")
 	lb.tooltip_text = "Top players on the official server, and your own rank."
 	lb.pressed.connect(_open_leaderboard)
-	var lib := _make_button("MAP LIBRARY")
-	lib.tooltip_text = "Download maps other players made, or share your own."
-	lib.pressed.connect(_open_map_library)
-	var online_row := HBoxContainer.new()
-	online_row.add_theme_constant_override("separation", 8)
-	for b in [lb, lib]:
-		b.custom_minimum_size = Vector2(0, b.custom_minimum_size.y)
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		online_row.add_child(b)
-	_menu_box2.add_child(online_row)
+	_menu_box2.add_child(lb)
 
 	_menu_box2.add_child(UITheme.spacer(4))
 	_menu_box2.add_child(UITheme.make_section_header("System"))
@@ -1893,6 +1902,19 @@ func _open_leaderboard() -> void:
 	_lb_panel.refresh_data()
 
 
+var _cust_panel: Control = null
+
+
+func _open_customize() -> void:
+	if _cust_panel == null:
+		_cust_panel = preload("res://scripts/customize_panel.gd").new()
+		add_child(_cust_panel)
+		_cust_panel.closed.connect(func() -> void: _menu_root.visible = true)
+	_menu_root.visible = false
+	_cust_panel.visible = true
+	_cust_panel.refresh_data()
+
+
 func _open_map_library() -> void:
 	if _lib_panel == null:
 		_lib_panel = preload("res://scripts/map_library_panel.gd").new()
@@ -1906,7 +1928,7 @@ func _open_map_library() -> void:
 
 
 func _go_back() -> void:
-	for pn in [_lb_panel, _lib_panel]:
+	for pn in [_lb_panel, _lib_panel, _cust_panel]:
 		if pn != null and pn.visible:
 			pn.visible = false
 			pn.closed.emit()

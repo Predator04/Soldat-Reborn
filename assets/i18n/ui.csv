@@ -262,3 +262,47 @@ Desert,Desierto,Deserto,Wüste,Désert
 Urban,Urbano,Urbano,Urban,Urbain
 Night,Noche,Noite,Nacht,Nuit
 Gold,Oro,Ouro,Gold,Or
+CUSTOMIZE,PERSONALIZAR,PERSONALIZAR,ANPASSEN,PERSONNALISER
+Skin tone,Tono de piel,Tom de pele,Hautton,Teint
+Head,Cabeza,Cabeça,Kopf,Tête
+Helmet paint,Pintura del casco,Pintura do capacete,Helmfarbe,Peinture du casque
+Vest,Chaleco,Colete,Weste,Gilet
+Vest paint,Pintura del chaleco,Pintura do colete,Westenfarbe,Peinture du gilet
+Trousers,Pantalones,Calças,Hose,Pantalon
+Chain,Cadena,Corrente,Kette,Chaîne
+Extras,Extras,Extras,Extras,Extras
+Weapon skin,Aspecto del arma,Skin da arma,Waffen-Skin,Skin d'arme
+Default,Predeterminado,Padrão,Standard,Par défaut
+Fair,Clara,Clara,Hell,Clair
+Tan,Bronceada,Morena,Gebräunt,Mat
+Brown,Morena,Parda,Braun,Brun
+Dark,Oscura,Escura,Dunkel,Foncé
+Helmet,Casco,Capacete,Helm,Casque
+Cap,Gorra,Boné,Mütze,Casquette
+Hair 1,Pelo 1,Cabelo 1,Haare 1,Cheveux 1
+Hair 2,Pelo 2,Cabelo 2,Haare 2,Cheveux 2
+Hair 3,Pelo 3,Cabelo 3,Haare 3,Cheveux 3
+Hair 4,Pelo 4,Cabelo 4,Haare 4,Cheveux 4
+Bald,Calvo,Careca,Glatze,Chauve
+On,Sí,Sim,An,Oui
+Off,No,Não,Aus,Non
+Team color,Color del equipo,Cor da equipe,Teamfarbe,Couleur d'équipe
+Woodland,Bosque,Floresta,Wald,Forêt
+Black,Negro,Preto,Schwarz,Noir
+White,Blanco,Branco,Weiß,Blanc
+None,Ninguna,Nenhuma,Keine,Aucune
+Silver,Plata,Prata,Silber,Argent
+Cigar,Puro,Charuto,Zigarre,Cigare
+Dreadlocks,Rastas,Dreadlocks,Dreadlocks,Dreadlocks
+Dogtag,Placa,Plaqueta,Hundemarke,Plaque
+Factory,De fábrica,De fábrica,Werkslack,D'usine
+Carbon,Carbono,Carbono,Carbon,Carbone
+Arctic,Ártico,Ártico,Arktis,Arctique
+Crimson,Carmesí,Carmesim,Karmesin,Pourpre
+achievement: %s,logro: %s,conquista: %s,Erfolg: %s,succès : %s
+Career level %d  ·  %d / %d XP to the next,Nivel %d  ·  %d / %d XP para el siguiente,Nível %d  ·  %d / %d XP para o próximo,Stufe %d  ·  %d / %d XP bis zur nächsten,Niveau %d  ·  %d / %d XP avant le suivant
+Level up and earn achievements to unlock more. Everyone online sees your look.,Sube de nivel y consigue logros para desbloquear más. Todos en línea ven tu aspecto.,Suba de nível e ganhe conquistas para desbloquear mais. Todos online veem seu visual.,"Steige auf und sammle Erfolge, um mehr freizuschalten. Online sieht jeder deinen Look.","Montez de niveau et gagnez des succès pour débloquer plus. En ligne, tout le monde voit votre style."
+UNLOCKED,DESBLOQUEADO,DESBLOQUEADO,FREIGESCHALTET,DÉBLOQUÉ
+main menu > CUSTOMIZE,menú principal > PERSONALIZAR,menu principal > PERSONALIZAR,Hauptmenü > ANPASSEN,menu principal > PERSONNALISER
+BLUE,AZUL,AZUL,BLAU,BLEU
+RED,ROJO,VERMELHO,ROT,ROUGE

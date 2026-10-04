@@ -2302,10 +2302,7 @@ func _update_camera_lead(stick: Vector2, delta: float) -> void:
 # it (see _net_accept). A plain rpc() also reached peers still loading the
 # match via Godot's server relay ("Node not found: Main/Player_N" spam).
 static func my_cosmetics() -> Dictionary:
-	var fin: String = Settings.cos_finish
-	var lvl: int = Stats.level_for(Stats.xp())
-	if int(Gostek.FINISH_LEVELS.get(fin, 999)) > lvl:
-		fin = ""
+	var C := Gostek.Custom
 	return {
 		"head": Settings.cos_head,
 		"vest": Settings.cos_vest,
@@ -2313,7 +2310,11 @@ static func my_cosmetics() -> Dictionary:
 		"cigar": Settings.cos_cigar,
 		"dreadlocks": Settings.cos_dreadlocks,
 		"dogtag": Settings.cos_dogtag,
-		"finish": fin,
+		"finish": C.allowed("finish", Settings.cos_finish),
+		"vfinish": C.allowed("vfinish", Settings.cos_vfinish),
+		"pants": C.allowed("pants", Settings.cos_pants),
+		"skin": C.allowed("skin", Settings.cos_skin),
+		"wskin": C.allowed("wskin", Settings.cos_wskin),
 	}
 
 
@@ -2327,7 +2328,7 @@ func net_cosmetics(c: Dictionary) -> void:
 	if not _net_accept("net_cosmetics", [c]):
 		return
 	var out := {}
-	for k in ["head", "chain", "finish"]:
+	for k in ["head", "chain", "finish", "vfinish", "pants", "skin", "wskin"]:
 		if c.has(k):
 			out[k] = str(c[k]).left(16)
 	for k in ["vest", "cigar", "dreadlocks", "dogtag"]:
@@ -2358,7 +2359,7 @@ func _fanout(method: StringName, args: Array, except_pid: int) -> void:
 # Gate for the fan-out RPCs above: accept local calls, the body's owner, or
 # the host relaying the owner; the host relays an owner's call onward.
 func _net_accept(method: StringName, args: Array) -> bool:
-	if multiplayer.multiplayer_peer == null:
+	if not is_inside_tree() or multiplayer.multiplayer_peer == null:
 		return true
 	var sender := multiplayer.get_remote_sender_id()
 	if sender == 0:

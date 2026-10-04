@@ -287,6 +287,9 @@ func _ready() -> void:
 			# / helmeted bots don't render orphan dred tufts. (#60)
 			"dreadlocks": head_pick.begins_with("hair") and randf() < 0.35,
 			"dogtag": randf() < 0.3,
+			"skin": ["", "fair", "tan", "brown", "dark"][randi() % 5],
+			"pants": ["", "", "desert", "woodland", "urban", "black"][randi() % 6],
+			"wskin": ["", "", "", "desert", "woodland", "carbon"][randi() % 6],
 		}
 	ammo = int(AMMO_STATS.get(loadout, AMMO_STATS["AK-74"])["mag"])
 	secondary_ammo = int(AMMO_STATS["USSOCOM"]["mag"])

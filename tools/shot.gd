@@ -19,6 +19,7 @@ var _gesture := ""
 var _call := ""
 var _master := ""
 var _call_arg := ""
+var _sets: Array = []   # --set=settings_prop:value (applied after Settings loads)
 var _menu_map := ""
 var _vis := ""   # --show=NodeVar: make current_scene.<var> visible, hide _menu_root
 
@@ -39,6 +40,8 @@ func _initialize() -> void:
 			_scene = a.substr(8)
 		elif a.begins_with("--menu-map="):
 			_menu_map = a.substr(11)
+		elif a.begins_with("--set="):
+			_sets.append(a.substr(6))
 		elif a.begins_with("--call-arg="):
 			_call_arg = a.substr(11)
 		elif a.begins_with("--master="):
@@ -101,11 +104,19 @@ func _process(_delta: float) -> bool:
 				current_scene._on_sp_map_selected(i)
 	if _gesture != "" and _n == 14 and current_scene != null and current_scene.get("player") != null:
 		current_scene.player.apply_gesture(_gesture)
+	if _n == 12:
+		for kv in _sets:
+			var k: String = String(kv).get_slice(":", 0)
+			var v: String = String(kv).get_slice(":", 1)
+			var cur = root.get_node("Settings").get(k)
+			root.get_node("Settings").set(k, (v == "true") if typeof(cur) == TYPE_BOOL else (int(v) if typeof(cur) == TYPE_INT else v))
 	if _master != "" and _n == 13:
 		root.get_node("Settings").master_url = _master
 		root.get_node("Settings").name_set = true
 		if current_scene != null and current_scene.get("_name_prompt_root") != null and is_instance_valid(current_scene._name_prompt_root):
 			current_scene._name_prompt_root.visible = false
+			if current_scene.get("_menu_root") != null and _call == "":
+				current_scene._menu_root.visible = true
 	if _call != "" and _n == 14 and current_scene != null:
 		# --call=method on the scene root, or --call=Child/Path:method
 		var tgt: Node = current_scene

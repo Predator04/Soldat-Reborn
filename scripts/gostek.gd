@@ -97,10 +97,9 @@ const PARTS := [
 # The special values "none" (bald) and "helm" (default) are handled inline.
 const HEAD_KEYS := ["helm", "kap", "hair1", "hair2", "hair3", "hair4", "none"]
 const CHAIN_KEYS := {"silver": "lancuch", "gold": "zlotylancuch"}
-# Helmet finishes, unlocked by career level (Stats.level_for).
-const FINISHES := {"desert": Color(0.78, 0.68, 0.46), "urban": Color(0.58, 0.6, 0.64),
-	"night": Color(0.2, 0.22, 0.27), "gold": Color(1.0, 0.8, 0.28)}
-const FINISH_LEVELS := {"": 1, "desert": 5, "urban": 10, "night": 20, "gold": 35}
+# Player customization colors (skin, trousers, helmet / vest paint, weapon skin).
+const Custom := preload("res://scripts/customization.gd")
+const FINISHES := Custom.FINISHES
 
 # Body-part basenames that have a ranny/*.png blood counterpart. Anything
 # below this HP threshold starts blending the wound sprite over the part.
@@ -150,9 +149,14 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 	var facing: float = float(gs.get("facing", 1.0))
 	var flip := facing < 0.0
 	var dead: bool = bool(gs.get("dead", false))
+	var cos0: Dictionary = gs.get("cosmetics", {})
 	var pants := body_color.darkened(0.35)
+	if Custom.PANTS.has(str(cos0.get("pants", ""))):
+		pants = Custom.PANTS[str(cos0.get("pants", ""))]
+	var skin: Color = Custom.SKIN_TONES.get(str(cos0.get("skin", "")), SKIN)
+	var wskin: Color = Custom.WEAPON_SKINS.get(str(cos0.get("wskin", "")), Color.WHITE)
 	var tint := body_color if not dead else body_color.darkened(0.4)
-	var skin_tint := SKIN if not dead else SKIN.darkened(0.4)
+	var skin_tint := skin if not dead else skin.darkened(0.4)
 	var pants_tint := pants if not dead else pants.darkened(0.4)
 
 	# Front-arm aim overlay (#59). Cache alongside facing so joint_pos() can
@@ -184,6 +188,8 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 		# Track the raw body-part key (pre-cosmetic-resolve) so we can look up
 		# the ranny/*.png wound sprite on the same transform.
 		var wound_key: String = key if WOUND_KEYS.has(key) else ""
+		var paint := ""     # vest paint
+		var gun := false    # back-slung weapon: weapon skin
 
 		# Resolve cosmetic placeholders. Missing / disabled → skip the row.
 		match key:
@@ -201,6 +207,7 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 				if not bool(cos.get("vest", false)):
 					continue
 				key = "kamizelka"
+				paint = str(cos.get("vfinish", ""))
 			"<chain>":
 				var c: String = str(cos.get("chain", "none"))
 				if not CHAIN_KEYS.has(c):
@@ -232,6 +239,7 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 				if bw == "" or not BACK_WEAPON_TEX.has(bw):
 					continue
 				key = str(BACK_WEAPON_TEX[bw])
+				gun = true
 
 		var p1 := _joint_local(frame, p1_id, flip)
 		var p2 := _joint_local(frame, p2_id, flip)
@@ -281,13 +289,17 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 				# Helm reads as a distinct piece rather than blending into the body silhouette.
 				col = tint.darkened(0.35) if not dead else tint.darkened(0.6)
 				var fin: String = str(cos.get("finish", ""))
-				if FINISHES.has(fin):
+				if FINISHES.has(fin) and not key.begins_with("hair"):
 					col = (FINISHES[fin] as Color) if not dead else (FINISHES[fin] as Color).darkened(0.5)
 			_:
 				# "none" parts (feet) still darken on death so corpses don't have
 				# full-brightness white boots against the darkened body.
 				col = Color(0.4, 0.4, 0.4, 1.0) if dead else Color.WHITE
 
+		if paint != "" and FINISHES.has(paint):
+			col = (FINISHES[paint] as Color) if not dead else (FINISHES[paint] as Color).darkened(0.5)
+		elif gun:
+			col = wskin if not dead else wskin.darkened(0.4)
 		node.draw_set_transform(p1, angle, Vector2(sx, sy))
 		node.draw_texture_rect(tex, Rect2(-cx, -cy, w, h), false, col)
 

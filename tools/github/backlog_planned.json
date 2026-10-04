@@ -1,0 +1,32 @@
+[
+ {
+  "title": "Match replays",
+  "open": true,
+  "labels": [
+   "enhancement",
+   "area: gameplay"
+  ],
+  "version": "1.28.0",
+  "body": "Planned for a later update. Record every match (soldier positions, aim, weapons, shots, flags, kills) at ~15 Hz into user://replays/ (compressed, a few MB per round), and a REPLAYS screen to watch them back with play/pause, speed and a free camera / follow-player view. The same buffer can turn the kill cam into a real rewind of the last few seconds."
+ },
+ {
+  "title": "Discord Rich Presence",
+  "open": true,
+  "labels": [
+   "enhancement",
+   "area: platform"
+  ],
+  "version": "1.28.0",
+  "body": "Planned for a later update. Show \"Playing CTF on Ascent, 7/12\" with a join button in Discord. Needs a Discord application id (Discord developer portal) and the Discord IPC / a GDExtension on Windows."
+ },
+ {
+  "title": "itch.io page",
+  "open": true,
+  "labels": [
+   "enhancement",
+   "area: platform"
+  ],
+  "version": "1.28.0",
+  "body": "Planned for a later update. Store page (description, screenshots, GIFs, controls) with the Windows build and the Android APK, so new players can find the game. Steam later if it catches on."
+ }
+]

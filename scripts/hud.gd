@@ -75,6 +75,7 @@ const GameInfo = preload("res://scripts/game_info.gd")
 func _ready() -> void:
 	_warm_kill_icons()
 	Stats.achievement_unlocked.connect(_on_achievement)
+	_locked_looks = preload("res://scripts/customization.gd").locked_list()
 	Stats.level_up.connect(func(lv: int) -> void: _ach_queue.append(["RANK UP", "you reached level %d" % lv]))
 	if Net.is_networked():
 		Stats.record_event.call_deferred("online")
@@ -1060,7 +1061,27 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
+var _locked_looks: Array = []
+var _looks_t := 0.0
+
+
+# New customization unlocked this match (level up / achievement): say so.
+func _check_new_looks(delta: float) -> void:
+	_looks_t -= delta
+	if _looks_t > 0.0:
+		return
+	_looks_t = 1.5
+	var C = preload("res://scripts/customization.gd")
+	var now: Array = C.locked_list()
+	for item in _locked_looks:
+		if not now.has(item):
+			var parts := String(item).split(":")
+			toast(tr("UNLOCKED"), C.item_name(parts[0], parts[1]) + "  ·  " + tr("main menu > CUSTOMIZE"), Color(1.0, 0.85, 0.4))
+	_locked_looks = now
+
+
 func _process(delta: float) -> void:
+	_check_new_looks(delta)
 	# GIF indicator — mirrors the recorder's live state.
 	if lbl_rec != null:
 		if GifRecorder.is_recording():

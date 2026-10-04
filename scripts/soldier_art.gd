@@ -81,6 +81,7 @@ static func draw_soldier(
 	grenade_count: int = 0,
 	use_cluster: bool = false,
 	is_local: bool = false,
+	show_hp: bool = true,
 ) -> void:
 	if jet_on and not dead:
 		_draw_jet_flame(node, facing)
@@ -119,7 +120,10 @@ static func draw_soldier(
 	var shoulder: Vector2 = Gostek.joint_pos(node, 16)
 	if not Gostek.has_frame(node):
 		shoulder = Vector2(facing * 1.2, -8.0)
-	var barrel_end: Vector2 = _draw_weapon_sprite(node, shoulder, aim_dir, facing, weapon_name, weapon_color, weapon_kind)
+	var wskin: Color = Gostek.Custom.WEAPON_SKINS.get(str(cosmetics.get("wskin", "")), Color.WHITE)
+	if dead:
+		wskin = wskin.darkened(0.4)
+	var barrel_end: Vector2 = _draw_weapon_sprite(node, shoulder, aim_dir, facing, weapon_name, weapon_color, weapon_kind, wskin)
 
 	# Muzzle flash on top of the sprite (bigger/brighter so shots clearly read as muzzle fire).
 	if muzzle_t > 0.0:
@@ -130,8 +134,9 @@ static func draw_soldier(
 		node.draw_circle(flash_pos, 1.2 + m * 8.0, Color(1.0, 1.0, 0.7, m * 0.95))
 
 	# HP + optional fuel bar.
-	node.draw_rect(Rect2(-6.5, HP_BAR_Y, 13.0, 2.0), Color(0.0, 0.0, 0.0, 0.55))
-	node.draw_rect(Rect2(-6.5, HP_BAR_Y, 13.0 * clampf(health / 100.0, 0.0, 1.0), 2.0), Color(0.9, 0.2, 0.2))
+	if show_hp:
+		node.draw_rect(Rect2(-6.5, HP_BAR_Y, 13.0, 2.0), Color(0.0, 0.0, 0.0, 0.55))
+		node.draw_rect(Rect2(-6.5, HP_BAR_Y, 13.0 * clampf(health / 100.0, 0.0, 1.0), 2.0), Color(0.9, 0.2, 0.2))
 	if show_fuel:
 		node.draw_rect(Rect2(-6.5, HP_BAR_Y + 2.0, 13.0, 1.5), Color(0.0, 0.0, 0.0, 0.55))
 		node.draw_rect(Rect2(-6.5, HP_BAR_Y + 2.0, 13.0 * clampf(fuel / 100.0, 0.0, 1.0), 1.5), Color(0.3, 0.7, 1.0))
@@ -163,7 +168,8 @@ static func _draw_weapon_sprite(
 	facing: float,
 	weapon_name: String,
 	fallback_color: Color,
-	weapon_kind: String
+	weapon_kind: String,
+	skin: Color = Color.WHITE
 ) -> Vector2:
 	var tex := _weapon_texture(weapon_name)
 	if tex == null:
@@ -185,7 +191,7 @@ static func _draw_weapon_sprite(
 	var flip_y := -1.0 if facing < 0.0 else 1.0
 
 	node.draw_set_transform(shoulder, angle, Vector2(1.0, flip_y))
-	node.draw_texture_rect(tex, Rect2(Vector2(-grip_offset, -cy_offset), size), false)
+	node.draw_texture_rect(tex, Rect2(Vector2(-grip_offset, -cy_offset), size), false, skin)
 	node.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	return shoulder + aim_dir * barrel_len
