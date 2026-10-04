@@ -97,6 +97,10 @@ const PARTS := [
 # The special values "none" (bald) and "helm" (default) are handled inline.
 const HEAD_KEYS := ["helm", "kap", "hair1", "hair2", "hair3", "hair4", "none"]
 const CHAIN_KEYS := {"silver": "lancuch", "gold": "zlotylancuch"}
+# Helmet finishes, unlocked by career level (Stats.level_for).
+const FINISHES := {"desert": Color(0.78, 0.68, 0.46), "urban": Color(0.58, 0.6, 0.64),
+	"night": Color(0.2, 0.22, 0.27), "gold": Color(1.0, 0.8, 0.28)}
+const FINISH_LEVELS := {"": 1, "desert": 5, "urban": 10, "night": 20, "gold": 35}
 
 # Body-part basenames that have a ranny/*.png blood counterpart. Anything
 # below this HP threshold starts blending the wound sprite over the part.
@@ -276,6 +280,9 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 			"helm":
 				# Helm reads as a distinct piece rather than blending into the body silhouette.
 				col = tint.darkened(0.35) if not dead else tint.darkened(0.6)
+				var fin: String = str(cos.get("finish", ""))
+				if FINISHES.has(fin):
+					col = (FINISHES[fin] as Color) if not dead else (FINISHES[fin] as Color).darkened(0.5)
 			_:
 				# "none" parts (feet) still darken on death so corpses don't have
 				# full-brightness white boots against the darkened body.

@@ -245,14 +245,14 @@ func _ready() -> void:
 	add_child(FootAudio.new())
 	ceasefire_t = CEASEFIRE_SECS
 	if cosmetics.is_empty():
-		cosmetics = {
-			"head": Settings.cos_head,
-			"vest": Settings.cos_vest,
-			"chain": Settings.cos_chain,
-			"cigar": Settings.cos_cigar,
-			"dreadlocks": Settings.cos_dreadlocks,
-			"dogtag": Settings.cos_dogtag,
-		}
+		# Your own outfit for your body; other players' bodies wait for theirs
+		# (net_cosmetics) instead of showing yours.
+		if not Net.is_networked() or not multiplayer.has_multiplayer_peer() or is_multiplayer_authority():
+			cosmetics = my_cosmetics()
+			if Net.is_networked() and multiplayer.has_multiplayer_peer():
+				_send_cosmetics.call_deferred()
+		else:
+			cosmetics = {"head": "helm", "vest": true}
 	# Release the per-instance skeleton state dict when this node is freed so long
 	# sessions don't leak dict entries in Gostek._states.
 	tree_exited.connect(func() -> void: Gostek.forget(self))
@@ -2301,6 +2301,41 @@ func _update_camera_lead(stick: Vector2, delta: float) -> void:
 # peer that has finished loading; a client sends it to the host, which relays
 # it (see _net_accept). A plain rpc() also reached peers still loading the
 # match via Godot's server relay ("Node not found: Main/Player_N" spam).
+static func my_cosmetics() -> Dictionary:
+	var fin: String = Settings.cos_finish
+	var lvl: int = Stats.level_for(Stats.xp())
+	if int(Gostek.FINISH_LEVELS.get(fin, 999)) > lvl:
+		fin = ""
+	return {
+		"head": Settings.cos_head,
+		"vest": Settings.cos_vest,
+		"chain": Settings.cos_chain,
+		"cigar": Settings.cos_cigar,
+		"dreadlocks": Settings.cos_dreadlocks,
+		"dogtag": Settings.cos_dogtag,
+		"finish": fin,
+	}
+
+
+func _send_cosmetics() -> void:
+	if is_inside_tree() and not dead:
+		_cast("net_cosmetics", [cosmetics])
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func net_cosmetics(c: Dictionary) -> void:
+	if not _net_accept("net_cosmetics", [c]):
+		return
+	var out := {}
+	for k in ["head", "chain", "finish"]:
+		if c.has(k):
+			out[k] = str(c[k]).left(16)
+	for k in ["vest", "cigar", "dreadlocks", "dogtag"]:
+		if c.has(k):
+			out[k] = bool(c[k])
+	cosmetics = out
+
+
 func _cast(method: StringName, args: Array) -> void:
 	callv(method, args)
 	if not (Net.is_networked() and multiplayer.has_multiplayer_peer()):

@@ -360,6 +360,9 @@ func _smoke_host() -> void:
 
 
 func _smoke_join() -> void:
+	var ch := _smoke_arg("--cos-head")
+	if ch != "":
+		Settings.cos_head = ch
 	map_received.connect(func() -> void:
 		get_tree().change_scene_to_file("res://scenes/main.tscn"))
 	var rj := _smoke_arg("--relay-join")
@@ -418,6 +421,11 @@ func _smoke_join() -> void:
 				if _c is CharacterBody2D and _c.get("loadout") == null and not _c.is_in_group("vehicle"):
 					_names.append(str(_c.name))
 			print("SMOKE-JOIN-PLAYERS ", _names)
+			var _heads := []
+			for _c in _mn.get_children():
+				if _c is CharacterBody2D and _c.get("loadout") == null and not _c.is_in_group("vehicle"):
+					_heads.append(str(_c.cosmetics.get("head", "?")))
+			print("SMOKE-JOIN-HEADS ", _heads)
 			var lp = _mn.get("player")
 			print("SMOKE-JOIN-LOCAL alive=%s pings=%s" % [str(lp != null and is_instance_valid(lp) and not bool(lp.get("dead"))), str(_mn.get("peer_pings"))])
 		leave()
@@ -425,6 +433,8 @@ func _smoke_join() -> void:
 
 
 func _smoke_botfire() -> void:
+	if _smoke_arg("--cos-head") != "":
+		Settings.cos_head = _smoke_arg("--cos-head")
 	# Same handshake as _smoke_join but with a longer post-connect window so remote
 	# bots have time to lock on to our joining player and open fire. Verifies #57.
 	# #103: after spawn we teleport the local body to bot_spawns[0] + a small

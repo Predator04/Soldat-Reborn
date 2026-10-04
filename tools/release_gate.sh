@@ -131,17 +131,18 @@ case " $NETSEL " in *" two "*)
   spid=$!
   for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_two_server.log" 2>/dev/null && break; sleep 0.5; done
   sleep 3
-  timeout 80 "$G" --headless -- --smoke-botfire --port $port > "$OUT/net_two_c1.log" 2>&1 &
+  timeout 80 "$G" --headless -- --smoke-botfire --port $port --cos-head=kap > "$OUT/net_two_c1.log" 2>&1 &
   c1=$!
   sleep 3
   timeout 70 "$G" --headless -- --smoke-join --port $port > "$OUT/net_two_c2.log" 2>&1
   wait $c1 2>/dev/null; wait $spid 2>/dev/null
   e=$(( $(errs "$OUT/net_two_server.log") + $(errs "$OUT/net_two_c1.log") + $(errs "$OUT/net_two_c2.log") ))
   names=$(grep -m1 "SMOKE-JOIN-PLAYERS" "$OUT/net_two_c2.log")
-  if grep -q "players=2" "$OUT/net_two_c2.log" && [ "$e" = "0" ] && ! echo "$names" | grep -q "@"; then
-    pass "C net two clients: $names errors=0"
+  heads=$(grep -m1 "SMOKE-JOIN-HEADS" "$OUT/net_two_c2.log")
+  if grep -q "players=2" "$OUT/net_two_c2.log" && [ "$e" = "0" ] && ! echo "$names" | grep -q "@" && echo "$heads" | grep -q '"kap"'; then
+    pass "C net two clients: $names $heads errors=0"
   else
-    fail "C net two clients: '$(grep -m1 SMOKE-JOIN "$OUT/net_two_c2.log")' $names errors=$e"
+    fail "C net two clients: '$(grep -m1 SMOKE-JOIN "$OUT/net_two_c2.log")' $names $heads errors=$e"
   fi
 ;; esac
 case " $NETSEL " in *" fill "*)

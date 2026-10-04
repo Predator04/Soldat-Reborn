@@ -59,6 +59,7 @@ var cos_chain := "none"
 var cos_cigar := false
 var cos_dreadlocks := false
 var cos_dogtag := false
+var cos_finish := ""   # helmet finish (gostek.gd FINISHES), unlocked by level
 
 # Game mode: 0 = Deathmatch, 1 = Teammatch, 2 = CTF, 3 = Infiltration,
 # 4 = Hold the Flag, 5 = Rambomatch, 6 = Pointmatch, 7 = Domination,
@@ -219,6 +220,7 @@ func load_settings() -> void:
 	cos_cigar = bool(cf.get_value("cosmetics", "cigar", false))
 	cos_dreadlocks = bool(cf.get_value("cosmetics", "dreadlocks", false))
 	cos_dogtag = bool(cf.get_value("cosmetics", "dogtag", false))
+	cos_finish = str(cf.get_value("cosmetics", "finish", ""))
 	mod_gravity = clampf(float(cf.get_value("mods", "gravity", 1.0)), 0.5, 2.0)
 	mod_jet = clampf(float(cf.get_value("mods", "jet", 1.0)), 0.5, 2.0)
 	mod_damage = clampf(float(cf.get_value("mods", "damage", 1.0)), 0.5, 2.0)
@@ -301,6 +303,7 @@ func save() -> void:
 	cf.set_value("cosmetics", "cigar", cos_cigar)
 	cf.set_value("cosmetics", "dreadlocks", cos_dreadlocks)
 	cf.set_value("cosmetics", "dogtag", cos_dogtag)
+	cf.set_value("cosmetics", "finish", cos_finish)
 	cf.set_value("mods", "gravity", mod_gravity)
 	cf.set_value("mods", "jet", mod_jet)
 	cf.set_value("mods", "damage", mod_damage)
