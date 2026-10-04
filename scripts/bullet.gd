@@ -17,6 +17,9 @@ var life := 0.0
 # Optional gravity — arrows sag slightly, standard bullets are 0.
 var grav := 0.0
 var _hit := false
+# Lag compensation (bullets from a remote player): also test the local
+# player's hitbox from this many ms ago, i.e. where the shooter saw them.
+var lag_ms := 0
 var _ray_exclude: Array[RID] = []
 # Bodies this round passes through (a buggy and its crew for the buggy gun).
 var ignore_bodies: Array = []
@@ -59,6 +62,9 @@ func _physics_process(delta: float) -> void:
 					_ray_exclude.append((ib as CollisionObject2D).get_rid())
 		var q := PhysicsRayQueryParameters2D.create(global_position, global_position + step, collision_mask, _ray_exclude)
 		var hit := get_world_2d().direct_space_state.intersect_ray(q)
+		if lag_ms > 0 and _lag_comp_hit(step, hit):
+			queue_redraw()
+			return
 		if not hit.is_empty():
 			global_position = hit["position"]
 			_on_body_entered(hit["collider"])
@@ -70,6 +76,58 @@ func _physics_process(delta: float) -> void:
 	position += step
 	_whizz_check()
 	queue_redraw()
+
+
+# Rewound test against the local player: a hit there counts unless a wall (or
+# someone else) is closer along this step.
+func _lag_comp_hit(step: Vector2, hit: Dictionary) -> bool:
+	var m := get_tree().current_scene
+	var lp = m.get("player") if m != null else null
+	if lp == null or not is_instance_valid(lp) or bool(lp.get("dead")) or not lp.has_method("hitbox_at"):
+		return false
+	if lp in ignore_bodies or str(lp.display_name) == killer_name:
+		return false
+	if int(lp.team) == team and not MatchConfig.friendly_fire_on():
+		return false
+	if multiplayer.multiplayer_peer != null and not lp.is_multiplayer_authority():
+		return false
+	var t := segment_rect_t(global_position, global_position + step, (lp.hitbox_at(lag_ms) as Rect2).grow(3.0))
+	if t < 0.0:
+		return false
+	if not hit.is_empty() and hit.get("collider") != lp:
+		var ht: float = global_position.distance_to(hit["position"]) / maxf(step.length(), 0.001)
+		if ht < t:
+			return false
+	global_position += step * t
+	_on_body_entered(lp)
+	return _hit
+
+
+# First point (0..1 along a->b) where the segment enters rect, or -1.
+static func segment_rect_t(a: Vector2, b: Vector2, r: Rect2) -> float:
+	var d := b - a
+	var t0 := 0.0
+	var t1 := 1.0
+	for axis in 2:
+		var p: float = a[axis]
+		var dd: float = d[axis]
+		var lo: float = r.position[axis]
+		var hi: float = r.end[axis]
+		if absf(dd) < 0.000001:
+			if p < lo or p > hi:
+				return -1.0
+		else:
+			var ta := (lo - p) / dd
+			var tb := (hi - p) / dd
+			if ta > tb:
+				var tmp := ta
+				ta = tb
+				tb = tmp
+			t0 = maxf(t0, ta)
+			t1 = minf(t1, tb)
+			if t0 > t1:
+				return -1.0
+	return t0
 
 
 func _on_body_entered(body: Node) -> void:
@@ -88,6 +146,10 @@ func _on_body_entered(body: Node) -> void:
 			# Self-hits are always allowed so the shooter's own bullet doesn't
 			# eat a wall / crate collision path silently.
 			if same_team and not is_self and not MatchConfig.friendly_fire_on():
+				return
+			# Your own rounds never hit you (a sagging Rambo arrow, now a
+			# one-shot kill, could drop back onto the archer).
+			if is_self:
 				return
 			_hit = true
 			ImpactFx.spawn(get_parent(), global_position, -direction, "blood")

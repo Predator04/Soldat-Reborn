@@ -71,6 +71,11 @@ var _g_held_prev := false
 var use_cluster := false
 var g_prev := false
 var muzzle_t := 0.0
+# Lag compensation: where this (locally controlled) body was over the last
+# ~300 ms, so a remote player's bullet can be tested against the position the
+# shooter actually saw. Entries are [msec, hitbox Rect2].
+var pos_hist: Array = []
+const LAG_COMP_MAX_MS := 200
 var q_prev := false     # prev-frame Q — swap on rising edge only, not every physics tick
 var x_prev := false     # prev-frame X — prone toggle on rising edge
 var s_prev := false     # prev-frame S — roll on rising edge with lateral momentum
@@ -312,6 +317,9 @@ func _physics_process(delta: float) -> void:
 	var has_peer := multiplayer.has_multiplayer_peer()
 	if Net.is_networked() and not has_peer:
 		return
+
+	if not has_peer or is_multiplayer_authority():
+		_record_hitbox()
 
 	# Non-authority replica: state is set by net_state RPCs; just visual bookkeeping.
 	if has_peer and not is_multiplayer_authority():
@@ -1839,6 +1847,8 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_
 			elif kind == "arrow":
 				b.visual = "arrow"
 				b.grav = float(w.get("gravity", 0.0))
+			if Net.is_networked() and multiplayer.has_multiplayer_peer() and not is_multiplayer_authority():
+				b.lag_ms = lag_comp_ms()
 			get_parent().add_child(b)
 
 
@@ -2198,6 +2208,45 @@ var _net_age := 0.0
 const NET_SNAP_DIST := 160.0
 const STATE_SEND_HZ := 30.0
 var _state_send_acc := 0.0
+
+
+func hitbox_now() -> Rect2:
+	var sz: Vector2 = shape_stand.size
+	if col_shape != null and col_shape.shape is RectangleShape2D:
+		sz = (col_shape.shape as RectangleShape2D).size
+	return Rect2(global_position + Vector2(-sz.x * 0.5, -sz.y), sz)
+
+
+func _record_hitbox() -> void:
+	var now := Time.get_ticks_msec()
+	pos_hist.append([now, hitbox_now()])
+	while pos_hist.size() > 2 and now - int(pos_hist[0][0]) > 320:
+		pos_hist.pop_front()
+
+
+# Hitbox as it was `ms_ago` milliseconds ago (nearest recorded frame).
+func hitbox_at(ms_ago: int) -> Rect2:
+	if pos_hist.is_empty():
+		return hitbox_now()
+	var want := Time.get_ticks_msec() - ms_ago
+	for i in range(pos_hist.size() - 1, -1, -1):
+		if int(pos_hist[i][0]) <= want:
+			return pos_hist[i][1]
+	return pos_hist[0][1]
+
+
+# How far back a bullet fired by this (remote) shooter should check the local
+# player: both players' latency to the host, capped so nobody gets shot
+# around a corner they turned long ago.
+func lag_comp_ms() -> int:
+	var m := get_tree().current_scene
+	if m == null or m.get("peer_pings") == null:
+		return 0
+	var pings: Dictionary = m.peer_pings
+	var lp = m.get("player")
+	var mine: int = int(pings.get(str(lp.display_name), 0)) if lp != null and is_instance_valid(lp) else 0
+	var theirs: int = int(pings.get(display_name, 0))
+	return clampi(int((mine + theirs) * 0.75), 0, LAG_COMP_MAX_MS)
 
 
 func net_apply_pos(pos: Vector2, vel: Vector2) -> void:
