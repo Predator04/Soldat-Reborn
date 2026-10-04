@@ -1042,6 +1042,8 @@ func _input(event: InputEvent) -> void:
 	# rather than the player so it still works from the death screen and menus.
 	if event.is_action_pressed("record_gif"):
 		GifRecorder.toggle()
+	if _next_map_key(event):
+		return
 	# Vote hotkeys (#77) — F1/F2 rebindable. Only meaningful while a vote is
 	# active. Ignored while the command line is open so a "yes" typed as text
 	# doesn't accidentally cast when the user hits F1.
@@ -1246,6 +1248,7 @@ func _update_match_ui() -> void:
 		lbl_winner.visible = true
 	else:
 		lbl_winner.visible = false
+	_update_next_map(main, active)
 	if lbl_winner_note != null:
 		# MVP: best kills + 3x captures this round (from the scoreboard stats).
 		var mvp := ""
@@ -1262,6 +1265,94 @@ func _update_match_ui() -> void:
 			full = (note + "   ·   " if note != "" else "") + mvp
 		lbl_winner_note.text = full
 		lbl_winner_note.visible = lbl_winner.visible and full != ""
+
+
+# ── End-of-round map vote (winner screen) ──
+var next_map_panel: PanelContainer = null
+var _nm_btns: Array = []
+var _nm_title: Label = null
+
+
+func _build_next_map_panel() -> void:
+	next_map_panel = PanelContainer.new()
+	next_map_panel.add_theme_stylebox_override("panel", UITheme.panel_style(Color(0.05, 0.05, 0.09, 0.85), UITheme.COL_ACCENT_DIM))
+	# Top centre, under the score strip: the end-of-round scoreboard covers
+	# the bottom half.
+	next_map_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	next_map_panel.offset_left = -330
+	next_map_panel.offset_right = 330
+	next_map_panel.offset_top = 150
+	next_map_panel.offset_bottom = 240
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 6)
+	next_map_panel.add_child(vb)
+	_nm_title = Label.new()
+	_nm_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	UITheme.style_body(_nm_title, 15, UITheme.COL_ACCENT_HI)
+	vb.add_child(_nm_title)
+	var hb := HBoxContainer.new()
+	hb.add_theme_constant_override("separation", 8)
+	vb.add_child(hb)
+	for i in 3:
+		var b := UITheme.make_small_button("", 200, 40)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.focus_mode = Control.FOCUS_NONE
+		var idx := i
+		b.pressed.connect(func() -> void:
+			var m := get_parent()
+			if m != null and m.has_method("vote_next_map"):
+				m.vote_next_map(idx))
+		hb.add_child(b)
+		_nm_btns.append(b)
+	next_map_panel.visible = false
+	next_map_panel.add_to_group("touch_passthrough")   # taps reach the buttons
+	add_child(next_map_panel)
+
+
+func _update_next_map(main: Node, active: bool) -> void:
+	var choices: Array = main.get("next_map_choices") if main.get("next_map_choices") != null else []
+	var show: bool = not active and not choices.is_empty()
+	if not show:
+		if next_map_panel != null:
+			next_map_panel.visible = false
+		return
+	if next_map_panel == null:
+		_build_next_map_panel()
+	next_map_panel.visible = true
+	var tally: Array = main.next_map_tally
+	var mine: int = int(main.my_next_map_vote)
+	var pad := not Input.get_connected_joypads().is_empty()
+	var keys := ["↑", "→", "↓"]
+	_nm_title.text = tr("NEXT MAP - vote: %s") % ("1 / 2 / 3" + ("  ·  D-pad ↑ → ↓" if pad else "")) + "   ·   %ds" % int(ceil(float(main.winner_end_t)))
+	for i in 3:
+		var b: Button = _nm_btns[i]
+		b.visible = i < choices.size()
+		if not b.visible:
+			continue
+		var n := int(tally[i]) if i < tally.size() else 0
+		b.text = "%d%s  %s%s" % [i + 1, ("/" + keys[i]) if pad else "", main.next_map_name(i), ("   (%d)" % n) if n > 0 else ""]
+		b.modulate = Color(1.0, 0.85, 0.4) if i == mine else Color(1, 1, 1)
+
+
+func _next_map_key(event: InputEvent) -> bool:
+	if next_map_panel == null or not next_map_panel.visible:
+		return false
+	var pick := -1
+	if event is InputEventKey and event.pressed and not event.echo:
+		var kc: int = (event as InputEventKey).physical_keycode
+		if kc >= KEY_1 and kc <= KEY_3:
+			pick = kc - KEY_1
+		elif kc >= KEY_KP_1 and kc <= KEY_KP_3:
+			pick = kc - KEY_KP_1
+	elif event is InputEventJoypadButton and event.pressed:
+		pick = {JOY_BUTTON_DPAD_UP: 0, JOY_BUTTON_DPAD_RIGHT: 1, JOY_BUTTON_DPAD_DOWN: 2}.get((event as InputEventJoypadButton).button_index, -1)
+	if pick < 0:
+		return false
+	var m := get_parent()
+	if m != null and m.has_method("vote_next_map"):
+		m.vote_next_map(pick)
+	get_viewport().set_input_as_handled()
+	return true
 
 
 func _render_gg_scoreboard(main: Node) -> void:

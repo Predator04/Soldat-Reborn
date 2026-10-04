@@ -18,6 +18,7 @@ var _nohud := false
 var _gesture := ""
 var _call := ""
 var _master := ""
+var _call_arg := ""
 var _menu_map := ""
 var _vis := ""   # --show=NodeVar: make current_scene.<var> visible, hide _menu_root
 
@@ -38,6 +39,8 @@ func _initialize() -> void:
 			_scene = a.substr(8)
 		elif a.begins_with("--menu-map="):
 			_menu_map = a.substr(11)
+		elif a.begins_with("--call-arg="):
+			_call_arg = a.substr(11)
 		elif a.begins_with("--master="):
 			_master = a.substr(9)
 		elif a.begins_with("--call="):
@@ -111,7 +114,10 @@ func _process(_delta: float) -> bool:
 			tgt = current_scene.get_node_or_null(_call.get_slice(":", 0))
 			meth = _call.get_slice(":", 1)
 		if tgt != null and tgt.has_method(meth):
-			tgt.call(meth)
+			if _call_arg != "":
+				tgt.call(meth, int(_call_arg) if _call_arg.is_valid_int() else _call_arg)
+			else:
+				tgt.call(meth)
 	if _sb and current_scene != null and current_scene.get("hud") != null:
 		var sbn = current_scene.hud.get("scoreboard")
 		if sbn != null:

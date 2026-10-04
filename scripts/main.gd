@@ -125,6 +125,7 @@ var _gg_kills: Dictionary = {}
 const SCORE_TO_WIN := 20
 const ROUND_TIME := 300.0
 const WINNER_DISPLAY := 4.0
+const WINNER_VOTE_DISPLAY := 10.0    # winner screen with a next-map vote
 const MATCH_SYNC_HZ := 5.0           # host → clients broadcast rate for scoreboard
 
 var scores: Dictionary = {}          # team_id -> int
@@ -135,6 +136,14 @@ var winner_team := -1
 # "3-3 tie", etc.). Broadcast alongside the rest of match state.
 var winner_note := ""
 var winner_end_t := 0.0
+# End-of-round map vote: three candidate maps on the winner screen. Players
+# press 1/2/3 (D-pad, or tap); most votes wins. No votes = same map again,
+# except a dedicated server rotates to the first choice.
+var next_map_choices: Array = []     # map indices
+var next_map_tally: Array = [0, 0, 0]
+var _nm_votes: Dictionary = {}       # voter peer id (1 = host / SP) -> choice
+var my_next_map_vote := -1
+var cur_map_index := -1              # built-in map playing now (-1 = custom)
 var _match_sync_cd := 0.0
 var _flag_sync_cd := 0.0
 const FLAG_SYNC_HZ := 8.0
@@ -445,6 +454,7 @@ func _ready() -> void:
 			_map = MapIO.json_to_map(Net.custom_map_json)
 		if _map.is_empty():
 			_map = MAPS[Net.chosen_map_index % MAPS.size()]
+			cur_map_index = Net.chosen_map_index % MAPS.size()
 			Net.custom_map_json = ""
 	else:
 		# Custom map (from the editor / user://maps/) short-circuits the built-in
@@ -454,6 +464,7 @@ func _ready() -> void:
 			_map = MapIO.load_from_file(Settings.custom_map_path)
 		if _map.is_empty():
 			_map = MAPS[Settings.map_index % MAPS.size()]
+			cur_map_index = Settings.map_index % MAPS.size()
 			Settings.map_index = (Settings.map_index + 1) % MAPS.size()
 	_normalize_team_sides()
 	_apply_world()
@@ -2994,7 +3005,8 @@ func _process(delta: float) -> void:
 	else:
 		winner_end_t = maxf(0.0, winner_end_t - delta)
 		if winner_end_t <= 0.0:
-			_reset_round()
+			if not _apply_next_map_vote():
+				_reset_round()
 	if Net.is_networked() and Net.is_host():
 		_match_sync_cd -= delta
 		if _match_sync_cd <= 0.0:
@@ -3596,6 +3608,10 @@ func _end_round(team: int) -> void:
 	winner_team = team
 	round_active = false
 	winner_end_t = WINNER_DISPLAY
+	if not Net.is_networked() or Net.is_host():
+		_pick_next_map_choices()
+		if not next_map_choices.is_empty():
+			winner_end_t = WINNER_VOTE_DISPLAY
 	# Record local W/L for the human player. In FFA modes the winner is the local
 	# player's own team id; in team modes it's TEAM_BLUE / TEAM_RED.
 	if is_instance_valid(player):
@@ -3605,6 +3621,103 @@ func _end_round(team: int) -> void:
 		ranked.round_end(team)
 	if Net.is_networked() and Net.is_host():
 		_broadcast_match_state()
+
+
+func _pick_next_map_choices() -> void:
+	next_map_choices = []
+	next_map_tally = [0, 0, 0]
+	_nm_votes.clear()
+	my_next_map_vote = -1
+	# Custom / editor maps (and Survival BR-style resets) keep playing the same map.
+	if cur_map_index < 0 or Settings.custom_map_path != "" or Net.custom_map_json != "" or MAPS.size() < 4:
+		return
+	var cur: int = cur_map_index
+	var pool: Array = []
+	for i in MAPS.size():
+		if i != cur:
+			pool.append(i)
+	pool.shuffle()
+	next_map_choices = pool.slice(0, 3)
+	_push_next_maps()
+
+
+func _push_next_maps() -> void:
+	if Net.is_networked() and Net.is_host():
+		bcast("net_next_maps", [next_map_choices, next_map_tally], true)
+
+
+@rpc("authority", "call_remote", "reliable")
+func net_next_maps(choices: Array, tally: Array) -> void:
+	if choices != next_map_choices:
+		my_next_map_vote = -1
+	next_map_choices = choices
+	next_map_tally = tally
+
+
+func next_map_name(i: int) -> String:
+	if i < 0 or i >= next_map_choices.size():
+		return ""
+	var mi: int = int(next_map_choices[i])
+	return str(MAPS[mi].get("name", "?")) if mi >= 0 and mi < MAPS.size() else "?"
+
+
+# Local player's vote (HUD: keys 1-3, D-pad, tap).
+func vote_next_map(i: int) -> void:
+	if round_active or i < 0 or i >= next_map_choices.size():
+		return
+	my_next_map_vote = i
+	if Net.is_networked() and not Net.is_host():
+		rpc_id(1, "net_next_map_vote", i)
+	else:
+		_record_next_map_vote(1, i)
+
+
+@rpc("any_peer", "reliable")
+func net_next_map_vote(i: int) -> void:
+	if Net.is_host():
+		_record_next_map_vote(multiplayer.get_remote_sender_id(), i)
+
+
+func _record_next_map_vote(voter: int, i: int) -> void:
+	if round_active or i < 0 or i >= next_map_choices.size():
+		return
+	_nm_votes[voter] = i
+	next_map_tally = [0, 0, 0]
+	for v in _nm_votes.values():
+		next_map_tally[int(v)] += 1
+	_push_next_maps()
+
+
+# Host / SP at the end of the winner screen: switch maps if anyone voted (or a
+# dedicated server rotates). Returns true when a map change was started.
+func _apply_next_map_vote() -> bool:
+	if Net.is_networked() and not Net.is_host():
+		return false
+	if next_map_choices.is_empty():
+		return false
+	var best := -1
+	var best_ct := 0
+	for i in next_map_choices.size():
+		if int(next_map_tally[i]) > best_ct:
+			best_ct = int(next_map_tally[i])
+			best = i
+	if best < 0:
+		if Net.is_dedicated:
+			best = 0
+		else:
+			next_map_choices = []
+			return false
+	var target: int = int(next_map_choices[best])
+	print("NEXT-MAP %s (%d votes)" % [next_map_name(best), best_ct])
+	next_map_choices = []
+	if Net.is_networked():
+		bcast("net_match_restart", [target, Settings.game_mode], true)
+	else:
+		Settings.map_index = target
+		Settings.custom_map_path = ""
+		Settings.save()
+		call_deferred("_do_reload_main")
+	return true
 
 
 func _end_round_by_time() -> void:
@@ -3693,6 +3806,8 @@ func _reset_round() -> void:
 	winner_note = ""
 	winner_end_t = 0.0
 	round_active = true
+	next_map_choices = []
+	my_next_map_vote = -1
 	# Survival: nobody respawns during the round, so at reset we wipe surviving
 	# bodies and start everyone fresh.
 	if Settings.survival:
