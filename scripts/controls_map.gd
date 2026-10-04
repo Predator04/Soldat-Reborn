@@ -82,10 +82,12 @@ const ACTIONS := [
 	["weapon_10",       "Weapon Slot 10",   [{"type": "key", "physical_keycode": 48}]],       # 0
 	["chat",            "Chat",             [{"type": "key", "physical_keycode": 84}]],       # T
 	["team_chat",       "Team Chat",        [{"type": "key", "physical_keycode": 89}]],       # Y
-	["radio",           "Radio Callouts",   [{"type": "key", "physical_keycode": 86}]],       # V
+	["radio",           "Radio Callouts",   [{"type": "key", "physical_keycode": 86},         # V
+											 {"type": "joy_button", "button_index": 7}]],    # L3 (left stick click)
 	["taunt",           "Taunt Modifier",   [{"type": "key", "physical_keycode": 4194328}]],  # Alt
 	["command",         "Command Console",  [{"type": "key", "physical_keycode": 47}]],       # /
-	["vote_yes",        "Vote Yes",         [{"type": "key", "physical_keycode": 4194332}]],  # F1
+	["vote_yes",        "Vote Yes",         [{"type": "key", "physical_keycode": 4194332},    # F1
+											 {"type": "joy_button", "button_index": 8}]],    # R3 (right stick click)
 	["vote_no",         "Vote No",          [{"type": "key", "physical_keycode": 4194333}]],  # F2
 	["pause",           "Pause Menu",       [{"type": "key", "physical_keycode": 4194305},    # Esc
 											 {"type": "joy_button", "button_index": 6}]],    # Start
@@ -298,6 +300,12 @@ static func rebind(action_id: String, new_ev: InputEvent) -> void:
 
 # Load bindings from disk (if any) and apply them over the defaults already
 # baked in from project.godot. Called from Settings._ready.
+# Pad buttons added after a config may have been saved (v1.28: L3 radio,
+# R3 vote yes): configs saved before that keep these new defaults.
+const JOY_SAVE_VERSION := 2
+const JOY_ADDED_V2 := ["radio", "vote_yes"]
+
+
 static func load_and_apply() -> void:
 	var cf := ConfigFile.new()
 	if cf.load(PATH) != OK:
@@ -319,7 +327,8 @@ static func load_and_apply() -> void:
 		# Keep the pad defaults when this file predates gamepad support (it
 		# never saved joy events, so "none saved" doesn't mean "removed").
 		var keep_joy: Array = []
-		if int(cf.get_value("meta", "joy_saved", 0)) == 0:
+		var jv := int(cf.get_value("meta", "joy_saved", 0))
+		if jv == 0 or (jv < JOY_SAVE_VERSION and aid in JOY_ADDED_V2):
 			for ev0 in InputMap.action_get_events(aid):
 				if ev0 is InputEventJoypadButton or ev0 is InputEventJoypadMotion:
 					keep_joy.append(ev0)
@@ -396,7 +405,7 @@ static func save() -> void:
 			if not d.is_empty():
 				out.append(d)
 		cf.set_value("bindings", aid, out)
-	cf.set_value("meta", "joy_saved", 1)
+	cf.set_value("meta", "joy_saved", JOY_SAVE_VERSION)
 	cf.save(PATH)
 
 

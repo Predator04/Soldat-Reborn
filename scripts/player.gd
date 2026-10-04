@@ -821,6 +821,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if input_locked:
 		return
+	# Gamepad: L3 opens team radio (the chat / console keys are keyboard only).
+	if event is InputEventJoypadButton and event.is_action_pressed("radio"):
+		var ph = get_parent().get("hud") if get_parent() != null else null
+		if ph != null and ph.has_method("toggle_radio"):
+			ph.toggle_radio()
+			get_viewport().set_input_as_handled()
+		return
 	if not (event is InputEventKey) or not event.pressed or event.echo:
 		return
 	var parent := get_parent()

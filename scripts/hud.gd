@@ -639,6 +639,8 @@ func _update_vote_ui() -> void:
 	var verb: String = tr("change map to") if kind == "votemap" else tr("kick")
 	lbl_vote_title.text = tr("Vote (%s): %s %s?") % [starter, verb, target]
 	lbl_vote_tally.text = tr("[F1] Yes %d    ·    [F2] No %d") % [yes_ct, no_ct]
+	if not Input.get_connected_joypads().is_empty():
+		lbl_vote_tally.text += "   (" + tr("pad: R3 = yes") + ")"
 	lbl_vote_timer.text = "%ds" % int(ceil(tl))
 	vote_panel.visible = true
 

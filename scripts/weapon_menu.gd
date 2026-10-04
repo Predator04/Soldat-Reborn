@@ -93,7 +93,7 @@ func _process(_delta: float) -> void:
 	# is_action_just_pressed, which misses presses injected mid-frame).
 	for i in _KEY_ACTIONS.size():
 		var a: String = _KEY_ACTIONS[i]
-		var down: bool = i < _weapons.size() and InputMap.has_action(a) and Input.is_action_pressed(a)
+		var down: bool = i < _weapons.size() and InputMap.has_action(a) and _key_down(a)
 		if limbo and down and not _keys_down.get(a, false):
 			_pick(i)
 		_keys_down[a] = down
@@ -106,6 +106,37 @@ func _process(_delta: float) -> void:
 	if new_slot != _hover_slot:
 		_hover_slot = new_slot
 	queue_redraw()
+
+
+# Keyboard only: on a gamepad the D-pad (also bound to slots 1-4) steps
+# through the list instead, see _input.
+func _key_down(a: String) -> bool:
+	for ev in InputMap.action_get_events(a):
+		if ev is InputEventKey:
+			var k := ev as InputEventKey
+			if (k.physical_keycode != 0 and Input.is_physical_key_pressed(k.physical_keycode)) \
+					or (k.keycode != 0 and Input.is_key_pressed(k.keycode)):
+				return true
+	return false
+
+
+# Gamepad in limbo: D-pad up/down = primary, left/right = secondary.
+func _input(event: InputEvent) -> void:
+	if not visible or not (event is InputEventJoypadButton) or not event.pressed:
+		return
+	var n_pri: int = mini(PRIMARY_KEYS.size(), _weapons.size())
+	match (event as InputEventJoypadButton).button_index:
+		JOY_BUTTON_DPAD_UP:
+			_pick(posmod(Settings.spawn_primary - 1, n_pri))
+		JOY_BUTTON_DPAD_DOWN:
+			_pick(posmod(Settings.spawn_primary + 1, n_pri))
+		JOY_BUTTON_DPAD_LEFT:
+			_pick(100 + posmod(Settings.spawn_secondary - 1, _secondary.size()))
+		JOY_BUTTON_DPAD_RIGHT:
+			_pick(100 + posmod(Settings.spawn_secondary + 1, _secondary.size()))
+		_:
+			return
+	get_viewport().set_input_as_handled()
 
 
 func _gui_input(event: InputEvent) -> void:
@@ -193,6 +224,8 @@ func _draw() -> void:
 		var is_hover2: bool = _hover_slot == 100 + j
 		_draw_row(str(j + 1), str(w2["name"]), y, is_current2, is_hover2)
 		y += ROW_H
+	if not Input.get_connected_joypads().is_empty():
+		_draw_outlined_text(tr("D-pad: ↑↓ primary · ←→ secondary"), Vector2(4, y + 14), 12, Color(0.75, 0.8, 0.88))
 
 	# Tooltip — draw last so it always sits on top.
 	if _hover_slot >= 0:

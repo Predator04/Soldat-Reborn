@@ -78,9 +78,11 @@ func _refresh() -> void:
 	var rows: Array = WHAT if _stage == 0 else WHERE
 	var head := tr("RADIO") if _stage == 0 else tr("RADIO") + " · " + tr(_label_of(_what))
 	var s := head
+	var pad := not Input.get_connected_joypads().is_empty()
+	var pad_keys := ["↑", "→", "↓"]
 	for i in rows.size():
-		s += "\n %d  %s" % [i + 1, tr(rows[i][1])]
-	s += "\n Esc  " + tr("cancel")
+		s += "\n %s  %s" % [("%d/%s" % [i + 1, pad_keys[i]]) if pad else str(i + 1), tr(rows[i][1])]
+	s += "\n " + ("Esc/B" if pad else "Esc") + "  " + tr("cancel")
 	_lbl.text = s
 
 
@@ -94,7 +96,7 @@ func _label_of(code: String) -> String:
 func _process(delta: float) -> void:
 	if _release_pending and not (Input.is_physical_key_pressed(KEY_1) or Input.is_physical_key_pressed(KEY_2) \
 			or Input.is_physical_key_pressed(KEY_3) or Input.is_physical_key_pressed(KEY_KP_1) \
-			or Input.is_physical_key_pressed(KEY_KP_2) or Input.is_physical_key_pressed(KEY_KP_3)):
+			or Input.is_physical_key_pressed(KEY_KP_2) or Input.is_physical_key_pressed(KEY_KP_3) or _dpad_held()):
 		_release_pending = false
 		if player != null and is_instance_valid(player):
 			player.set("radio_open", false)
@@ -106,11 +108,29 @@ func _process(delta: float) -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if event is InputEventJoypadButton:
+		var b: int = (event as InputEventJoypadButton).button_index
+		if b >= JOY_BUTTON_DPAD_UP and b <= JOY_BUTTON_DPAD_RIGHT:
+			if event.pressed:
+				_dpad_down[b] = true
+			else:
+				_dpad_down.erase(b)
 	if _release_pending and event is InputEventKey and not event.pressed:
 		_release_pending = false
 		if player != null and is_instance_valid(player):
 			player.set("radio_open", false)
 	if not visible:
+		return
+	# Gamepad: D-pad up / right / down pick 1 / 2 / 3, B cancels.
+	if event is InputEventJoypadButton and event.pressed:
+		var jb: int = (event as InputEventJoypadButton).button_index
+		var jp: int = {JOY_BUTTON_DPAD_UP: 0, JOY_BUTTON_DPAD_RIGHT: 1, JOY_BUTTON_DPAD_DOWN: 2}.get(jb, -1)
+		if jb == JOY_BUTTON_B:
+			close()
+			get_viewport().set_input_as_handled()
+		elif jp >= 0:
+			get_viewport().set_input_as_handled()
+			_choose(jp)
 		return
 	if not (event is InputEventKey) or not event.pressed or event.echo:
 		return
@@ -127,6 +147,17 @@ func _input(event: InputEvent) -> void:
 	if pick < 0:
 		return
 	get_viewport().set_input_as_handled()
+	_choose(pick)
+
+
+var _dpad_down: Dictionary = {}   # D-pad buttons currently held (from events)
+
+
+func _dpad_held() -> bool:
+	return not _dpad_down.is_empty()
+
+
+func _choose(pick: int) -> void:
 	_t = 0.0
 	if _stage == 0:
 		_what = str(WHAT[pick][0])

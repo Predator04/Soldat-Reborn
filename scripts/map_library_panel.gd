@@ -4,6 +4,8 @@ extends PanelContainer
 
 signal closed
 
+var _focus_btn: Control = null
+
 const MapIO := preload("res://scripts/map_io.gd")
 
 var _list: VBoxContainer
@@ -77,6 +79,7 @@ func _ready() -> void:
 	box.add_child(_status)
 
 	var back := UITheme.make_button("BACK")
+	_focus_btn = back
 	back.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	back.pressed.connect(func() -> void:
 		visible = false
@@ -103,6 +106,8 @@ func _base() -> String:
 
 
 func refresh_data() -> void:
+	if _focus_btn != null:
+		UITheme.safe_grab_focus_deferred(_focus_btn)   # gamepad / keyboard navigation
 	_refresh_share_pick()
 	loaded_rows = -1
 	for c in _list.get_children():

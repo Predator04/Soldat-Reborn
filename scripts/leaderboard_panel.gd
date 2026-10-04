@@ -4,6 +4,8 @@ extends PanelContainer
 
 signal closed
 
+var _focus_btn: Control = null
+
 const TIERS := [[0, "Recruit"], [500, "Private"], [1500, "Corporal"], [4000, "Sergeant"],
 	[10000, "Lieutenant"], [25000, "Captain"], [50000, "Major"], [100000, "Colonel"], [200000, "General"]]
 
@@ -51,6 +53,7 @@ func _ready() -> void:
 	refresh.pressed.connect(refresh_data)
 	row.add_child(refresh)
 	var back := UITheme.make_button("BACK")
+	_focus_btn = back
 	back.pressed.connect(func() -> void:
 		visible = false
 		closed.emit())
@@ -77,6 +80,8 @@ func _rtl(h: int) -> RichTextLabel:
 
 
 func refresh_data() -> void:
+	if _focus_btn != null:
+		UITheme.safe_grab_focus_deferred(_focus_btn)   # gamepad / keyboard navigation
 	var url := Settings.master_url.strip_edges().trim_suffix("/")
 	_list.text = "[color=#a8b0bc]%s[/color]" % tr("Loading...")
 	_me.text = ""
