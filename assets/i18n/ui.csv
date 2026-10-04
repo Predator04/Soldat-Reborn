@@ -209,3 +209,56 @@ QUICK PLAY,JUEGO RÁPIDO,JOGO RÁPIDO,SCHNELLSPIEL,JEU RAPIDE
 Quick play: looking for a game...,Juego rápido: buscando partida...,Jogo rápido: procurando partida...,Schnellspiel: suche ein Spiel...,Jeu rapide : recherche d'une partie...
 Quick play: joining %s,Juego rápido: entrando en %s,Jogo rápido: entrando em %s,Schnellspiel: trete %s bei,Jeu rapide : connexion à %s
 Nobody online right now - starting a bot match.,No hay nadie en línea - empezando partida con bots.,Ninguém online agora - iniciando partida com bots.,Gerade niemand online - starte ein Bot-Match.,Personne en ligne - lancement d'une partie contre des bots.
+%d HP left,%d PV restantes,%d HP restantes,%d HP übrig,%d PV restants
+(make a map in the Map Editor first),(crea un mapa en el Editor primero),(crie um mapa no Editor primeiro),(erst im Karteneditor eine Karte bauen),(créez d'abord une carte dans l'éditeur)
+Already in the library - thanks!,Ya está en la biblioteca - ¡gracias!,Já está na biblioteca - obrigado!,Schon in der Bibliothek - danke!,Déjà dans la bibliothèque - merci !
+Couldn't reach the master server.,No se pudo contactar el servidor maestro.,Não foi possível acessar o servidor mestre.,Master-Server nicht erreichbar.,Impossible de joindre le serveur maître.
+D-pad: ↑↓ primary · ←→ secondary,Cruceta: ↑↓ principal · ←→ secundaria,Direcional: ↑↓ primária · ←→ secundária,Steuerkreuz: ↑↓ Primär · ←→ Sekundär,Croix : ↑↓ principale · ←→ secondaire
+Downloading %s...,Descargando %s...,Baixando %s...,Lade %s herunter...,Téléchargement de %s...
+Helmet finish,Acabado del casco,Acabamento do capacete,Helm-Lackierung,Finition du casque
+KILL CAM: %s,CÁMARA DE MUERTE: %s,KILL CAM: %s,KILLCAM: %s,KILL CAM : %s
+Loading...,Cargando...,Carregando...,Lädt...,Chargement...
+Most downloaded,Más descargados,Mais baixados,Meist geladen,Plus téléchargées
+NEXT MAP - vote: %s,PRÓXIMO MAPA - vota: %s,PRÓXIMO MAPA - vote: %s,NÄCHSTE KARTE - abstimmen: %s,CARTE SUIVANTE - votez : %s
+Name,Nombre,Nome,Name,Nom
+Newest,Más nuevos,Mais novos,Neueste,Plus récentes
+No ranked players yet. Play on the official server to be the first!,Aún no hay jugadores clasificados. ¡Juega en el servidor oficial para ser el primero!,Ainda não há jogadores ranqueados. Jogue no servidor oficial para ser o primeiro!,Noch keine Spieler in der Wertung. Spiel auf dem offiziellen Server und sei der Erste!,Aucun joueur classé pour l'instant. Jouez sur le serveur officiel pour être le premier !
+No shared maps yet. Be the first: share one below.,Aún no hay mapas compartidos. Sé el primero: comparte uno abajo.,Ainda não há mapas compartilhados. Seja o primeiro: compartilhe um abaixo.,Noch keine geteilten Karten. Sei der Erste: teile unten eine.,Aucune carte partagée. Soyez le premier : partagez-en une ci-dessous.
+Rank,Rango,Patente,Rang,Grade
+"Ranked on the official server: kill +10, capture +50, match +20, win +100.","Clasificación del servidor oficial: baja +10, captura +50, partida +20, victoria +100.","Ranking do servidor oficial: abate +10, captura +50, partida +20, vitória +100.","Wertung auf dem offiziellen Server: Kill +10, Eroberung +50, Match +20, Sieg +100.","Classement du serveur officiel : élimination +10, capture +50, partie +20, victoire +100."
+Search maps or authors,Buscar mapas o autores,Buscar mapas ou autores,Karten oder Autoren suchen,Rechercher cartes ou auteurs
+Shared! Everyone can download it now.,¡Compartido! Ya todos pueden descargarlo.,Compartilhado! Todos já podem baixar.,Geteilt! Jetzt kann es jeder herunterladen.,Partagée ! Tout le monde peut la télécharger.
+Standard,Estándar,Padrão,Standard,Standard
+That map couldn't be downloaded.,No se pudo descargar ese mapa.,Não foi possível baixar esse mapa.,Diese Karte konnte nicht geladen werden.,Impossible de télécharger cette carte.
+That map is empty.,Ese mapa está vacío.,Esse mapa está vazio.,Diese Karte ist leer.,Cette carte est vide.
+Unranked - finish a round on the official server to get on the board.,Sin clasificar - termina una ronda en el servidor oficial para aparecer.,Sem ranking - termine uma rodada no servidor oficial para aparecer.,Ohne Wertung - beende eine Runde auf dem offiziellen Server.,Non classé - terminez une manche sur le serveur officiel pour apparaître.
+Upload failed: %s,Error al subir: %s,Falha no envio: %s,Hochladen fehlgeschlagen: %s,Échec de l'envoi : %s
+Uploading...,Subiendo...,Enviando...,Lade hoch...,Envoi...
+Wins,Victorias,Vitórias,Siege,Victoires
+by,por,por,von,par
+caps,capturas,capturas,Eroberungen,captures
+downloads,descargas,downloads,Downloads,téléchargements
+kills,bajas,abates,Kills,éliminations
+level %d,nivel %d,nível %d,Stufe %d,niveau %d
+matches,partidas,partidas,Matches,parties
+pad: R3 = yes,mando: R3 = sí,controle: R3 = sim,Pad: R3 = ja,manette : R3 = oui
+wins,victorias,vitórias,Siege,victoires
+"Saved ""%s"". Pick it from the map list to play it or host it.","Guardado ""%s"". Elígelo en la lista de mapas para jugarlo o alojarlo.","Salvo ""%s"". Escolha na lista de mapas para jogar ou hospedar.","""%s"" gespeichert. Wähle sie in der Kartenliste zum Spielen oder Hosten.","""%s"" enregistrée. Choisissez-la dans la liste des cartes pour jouer ou héberger."
+LEADERBOARD,CLASIFICACIÓN,CLASSIFICAÇÃO,BESTENLISTE,CLASSEMENT
+MAP LIBRARY,BIBLIOTECA DE MAPAS,BIBLIOTECA DE MAPAS,KARTENBIBLIOTHEK,BIBLIOTHÈQUE DE CARTES
+Top 50,Top 50,Top 50,Top 50,Top 50
+Share one of your maps,Comparte uno de tus mapas,Compartilhe um dos seus mapas,Teile eine deiner Karten,Partagez une de vos cartes
+SHARE,COMPARTIR,COMPARTILHAR,TEILEN,PARTAGER
+Recruit,Recluta,Recruta,Rekrut,Recrue
+Private,Soldado,Soldado,Gefreiter,Soldat
+Corporal,Cabo,Cabo,Korporal,Caporal
+Sergeant,Sargento,Sargento,Feldwebel,Sergent
+Lieutenant,Teniente,Tenente,Leutnant,Lieutenant
+Captain,Capitán,Capitão,Hauptmann,Capitaine
+Major,Comandante,Major,Major,Commandant
+Colonel,Coronel,Coronel,Oberst,Colonel
+General,General,General,General,Général
+Desert,Desierto,Deserto,Wüste,Désert
+Urban,Urbano,Urbano,Urban,Urbain
+Night,Noche,Noite,Nacht,Nuit
+Gold,Oro,Ouro,Gold,Or

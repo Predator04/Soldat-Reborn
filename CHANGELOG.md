@@ -2,6 +2,30 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.28.0] — 2026-10-04
+
+The online update: Quick Play, a leaderboard, shared maps, kill cam, lag compensation, map voting.
+
+### Added
+- **QUICK PLAY** on the main menu: one click joins the best online game (people first, then lowest ping). If nobody's online it starts a bot match right away.
+- **Servers stay full.** Dedicated servers (like the official one) keep 8 soldiers in the match: bots step aside one for one as players join and come back when they leave, and teams stay even.
+- **LEADERBOARD** (main menu): the top 50 on the official server and your own rank. Kills, captures, matches and wins earn ranked XP, from Recruit to General.
+- **MAP LIBRARY** (main menu): download maps other players made, or share your own editor maps with everyone.
+- **Kill cam.** When you die, the camera follows whoever killed you, with their health and weapon on screen.
+- **Next-map vote.** The winner screen offers three maps: press 1/2/3 (or D-pad, or tap). The most votes loads next; no votes keeps the map. The official server rotates maps.
+- **Helmet finishes** to unlock with your career level: Desert (5), Urban (10), Night (20), Gold (35). Settings > Cosmetics.
+- **Gamepad:** L3 opens team radio and the D-pad picks the callout, R3 votes yes, and the D-pad picks your loadout while you wait to respawn.
+
+### Changed
+- **Lag compensation.** Hits from other players count where the shooter saw you (based on both players' ping, at most 0.2 s back), so shots that land on their screen land on yours.
+
+### Fixed
+- The Rambo Bow killed the archer: since it became a one-shot kill, an arrow could drop back onto whoever fired it. Your own rounds never hit you now.
+- Other players were drawn wearing your outfit (helmet, chain, vest...). Everyone now shows their own.
+
+### Testing
+- New release-gate checks: bot fill, leaderboard reporting and screens, map library upload / download, Quick Play fallback, lag compensation, kill cam, gamepad radio / loadout, map vote, and players seeing each other's outfits.
+
 ## [1.27.0] — 2026-10-03
 
 Five more studio passes: localization, performance, bot AI, touch, game feel.

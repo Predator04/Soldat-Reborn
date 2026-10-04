@@ -1,0 +1,64 @@
+[
+ {
+  "title": "Quick Play + bot fill",
+  "labels": [
+   "enhancement",
+   "area: online"
+  ],
+  "version": "1.28.0",
+  "body": "menu.gd _quick_join(true) falls back to a bot match; main.gd bot fill (--fill=N, default 8 on dedicated), team-aware, never removes the flag carrier."
+ },
+ {
+  "title": "Leaderboard",
+  "labels": [
+   "enhancement",
+   "area: online"
+  ],
+  "version": "1.28.0",
+  "body": "ranked.gd reports per-round deltas to master /report (loopback or SOLDAT_STATS_KEY); Settings.profile_id hashed; leaderboard_panel.gd."
+ },
+ {
+  "title": "Map library",
+  "labels": [
+   "enhancement",
+   "area: online"
+  ],
+  "version": "1.28.0",
+  "body": "master /maps, /maps/get, /maps/upload (20/day/IP, 512 KB); map_library_panel.gd."
+ },
+ {
+  "title": "Lag compensation",
+  "labels": [
+   "enhancement",
+   "area: netcode"
+  ],
+  "version": "1.28.0",
+  "body": "player.gd pos_hist / hitbox_at; bullet.gd lag_ms rewound segment test, capped 200 ms."
+ },
+ {
+  "title": "Rambo Bow kills the archer",
+  "labels": [
+   "bug",
+   "area: gameplay"
+  ],
+  "version": "1.28.0",
+  "body": "bullet.gd: own rounds pass through the shooter."
+ },
+ {
+  "title": "Remote players wear your cosmetics",
+  "labels": [
+   "bug",
+   "area: online"
+  ],
+  "version": "1.28.0",
+  "body": "player.gd net_cosmetics; host mirrors to joiners."
+ },
+ {
+  "title": "Kill cam, map vote, gamepad radio/loadout, helmet finishes",
+  "labels": [
+   "enhancement"
+  ],
+  "version": "1.28.0",
+  "body": "spectator.gd killcam; main.gd next_map_*; radio_menu/weapon_menu pad input; gostek FINISHES."
+ }
+]
