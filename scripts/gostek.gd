@@ -297,7 +297,11 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 				col = Color(0.4, 0.4, 0.4, 1.0) if dead else Color.WHITE
 
 		if paint != "" and FINISHES.has(paint):
-			col = (FINISHES[paint] as Color) if not dead else (FINISHES[paint] as Color).darkened(0.5)
+			# The vest sprite is dark grey (~0.3), so lift the paint or it all
+			# reads as near-black.
+			var vc: Color = (FINISHES[paint] as Color) * 3.0
+			vc.a = 1.0
+			col = vc if not dead else vc.darkened(0.5)
 		elif gun:
 			col = wskin if not dead else wskin.darkened(0.4)
 		node.draw_set_transform(p1, angle, Vector2(sx, sy))

@@ -73,6 +73,9 @@ func _ready() -> void:
 	var lvl := Label.new()
 	var lp: Array = Stats.level_progress()
 	lvl.text = tr("Career level %d  ·  %d / %d XP to the next") % [Stats.level_for(Stats.xp()), lp[0], lp[1]]
+	var nxt := Custom.next_unlock_text()
+	if nxt != "":
+		lvl.text += "\n" + nxt
 	lvl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	UITheme.style_body(lvl, 13, UITheme.COL_TEXT_DIM)
 	left.add_child(lvl)
@@ -138,12 +141,42 @@ static func cos_set(kind: String, v: String) -> void:
 		"skin": Settings.cos_skin = v
 		"head": Settings.cos_head = v
 		"finish": Settings.cos_finish = v
-		"vest": Settings.cos_vest = v == "on"
-		"vfinish": Settings.cos_vfinish = v
+		"vest":
+			Settings.cos_vest = v == "on"
+			if v == "off":
+				Settings.cos_vfinish = ""
+		"vfinish":
+			Settings.cos_vfinish = v
+			if v != "":
+				Settings.cos_vest = true   # paint needs a vest to show on
 		"pants": Settings.cos_pants = v
 		"chain": Settings.cos_chain = v
 		"wskin": Settings.cos_wskin = v
 	Settings.save()
+	apply_live()
+
+
+## Changed from the pause menu mid-match: your soldier (and everyone online)
+## sees it right away instead of on the next respawn.
+static func apply_live() -> void:
+	var ml = Engine.get_main_loop()
+	var scene: Node = (ml as SceneTree).current_scene if ml is SceneTree else null
+	var p = scene.get("player") if scene != null else null
+	if p != null and is_instance_valid(p) and not bool(p.get("dead")) and p.has_method("_send_cosmetics"):
+		p.cosmetics = PlayerScript.my_cosmetics()
+		if Net.is_networked():
+			p._send_cosmetics()
+
+
+# Vest and vest paint depend on each other: redraw the rows so both show
+# the current state.
+static func _rebuild(box: VBoxContainer) -> void:
+	if not is_instance_valid(box):
+		return
+	for c in box.get_children():
+		box.remove_child(c)
+		c.queue_free()
+	build_rows(box)
 
 
 ## One row per customization slot. Locked options are greyed out and say
@@ -169,7 +202,8 @@ static func build_rows(box: VBoxContainer) -> void:
 				var prop: String = "cos_" + ex[0]
 				cb.toggled.connect(func(on: bool) -> void:
 					Settings.set(prop, on)
-					Settings.save())
+					Settings.save()
+					apply_live())
 				flow.add_child(cb)
 			h.add_child(flow)
 			box.add_child(h)
@@ -193,6 +227,8 @@ static func build_rows(box: VBoxContainer) -> void:
 		UITheme.style_option_button(pick)
 		pick.item_selected.connect(func(idx: int) -> void:
 			if idx >= 0 and idx < keys.size():
-				cos_set(kind, str(keys[idx])))
+				cos_set(kind, str(keys[idx]))
+				if kind == "vest" or kind == "vfinish":
+					_rebuild.call_deferred(box))
 		h.add_child(pick)
 		box.add_child(h)

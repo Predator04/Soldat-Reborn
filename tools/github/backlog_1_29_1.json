@@ -1,0 +1,20 @@
+[
+ {
+  "title": "Vest paint and weapon skins too faint",
+  "labels": [
+   "bug",
+   "area: graphics"
+  ],
+  "version": "1.29.1",
+  "body": "Vest sprite ~0.3 grey: paint x3. Weapon skins boosted above 1.0. Skin tones spread."
+ },
+ {
+  "title": "Look changes apply live",
+  "labels": [
+   "enhancement",
+   "area: ui"
+  ],
+  "version": "1.29.1",
+  "body": "customize_panel.apply_live(); unlock toasts via the achievement queue; next-unlock hint; settings values validated against the catalog."
+ }
+]

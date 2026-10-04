@@ -1062,6 +1062,7 @@ func _input(event: InputEvent) -> void:
 
 
 var _locked_looks: Array = []
+var unlock_toasts := 0   # for tests
 var _looks_t := 0.0
 
 
@@ -1073,10 +1074,16 @@ func _check_new_looks(delta: float) -> void:
 	_looks_t = 1.5
 	var C = preload("res://scripts/customization.gd")
 	var now: Array = C.locked_list()
+	var names: Array = []
 	for item in _locked_looks:
 		if not now.has(item):
 			var parts := String(item).split(":")
-			toast(tr("UNLOCKED"), C.item_name(parts[0], parts[1]) + "  ·  " + tr("main menu > CUSTOMIZE"), Color(1.0, 0.85, 0.4))
+			names.append(C.item_name(parts[0], parts[1]))
+	if not names.is_empty():
+		# Through the achievement queue so it never hides a RANK UP or an
+		# achievement that fired at the same moment.
+		_ach_queue.append([tr("UNLOCKED"), ", ".join(names) + "  ·  " + tr("main menu > CUSTOMIZE"), true])
+		unlock_toasts += 1
 	_locked_looks = now
 
 
@@ -1453,5 +1460,8 @@ func _tick_achievements() -> void:
 		return
 	var a: Array = _ach_queue.pop_front()
 	var head := str(a[0]).to_upper()
-	toast(head if head == "RANK UP" else "ACHIEVEMENT: %s" % head, str(a[1]), Color(1.0, 0.82, 0.3))
+	if a.size() > 2:
+		toast(head, str(a[1]), Color(1.0, 0.85, 0.4))
+	else:
+		toast(head if head == "RANK UP" else "ACHIEVEMENT: %s" % head, str(a[1]), Color(1.0, 0.82, 0.3))
 	Sfx.objective("point")

@@ -131,7 +131,7 @@ case " $NETSEL " in *" two "*)
   spid=$!
   for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_two_server.log" 2>/dev/null && break; sleep 0.5; done
   sleep 3
-  timeout 80 "$G" --headless -- --smoke-botfire --port $port --cos-head=kap > "$OUT/net_two_c1.log" 2>&1 &
+  timeout 80 "$G" --headless -- --smoke-botfire --port $port --cos-head=kap --cos-skin=dark > "$OUT/net_two_c1.log" 2>&1 &
   c1=$!
   sleep 3
   timeout 70 "$G" --headless -- --smoke-join --port $port > "$OUT/net_two_c2.log" 2>&1
@@ -139,7 +139,7 @@ case " $NETSEL " in *" two "*)
   e=$(( $(errs "$OUT/net_two_server.log") + $(errs "$OUT/net_two_c1.log") + $(errs "$OUT/net_two_c2.log") ))
   names=$(grep -m1 "SMOKE-JOIN-PLAYERS" "$OUT/net_two_c2.log")
   heads=$(grep -m1 "SMOKE-JOIN-HEADS" "$OUT/net_two_c2.log")
-  if grep -q "players=2" "$OUT/net_two_c2.log" && [ "$e" = "0" ] && ! echo "$names" | grep -q "@" && echo "$heads" | grep -q '"kap"'; then
+  if grep -q "players=2" "$OUT/net_two_c2.log" && [ "$e" = "0" ] && ! echo "$names" | grep -q "@" && echo "$heads" | grep -q '"kap/dark"' && grep -q "SMOKE-JOIN-BOTLOOK keys=9" "$OUT/net_two_c2.log"; then
     pass "C net two clients: $names $heads errors=0"
   else
     fail "C net two clients: '$(grep -m1 SMOKE-JOIN "$OUT/net_two_c2.log")' $names $heads errors=$e"
@@ -381,6 +381,7 @@ if has F; then
   ft crew vehicle_crew_test.gd 100 CREW-TEST "buggy crew: solo-fire slowdown / bot gunner boards, shoots, leaves"
   ft tank tank_test.gd 100 TANK-TEST "tank: drive / lobbed shell / armor / wreck / respawn / wide-map spawns"
   ft joincode join_code_test.gd 60 JOINCODE-TEST "join codes: round trip, typos, garbage, host shows its code"
+  ft unlock unlock_test.gd 60 UNLOCK-TEST "unlock in play: toast, equip live, kept on respawn"
   ft customize customize_test.gd 60 CUSTOMIZE-TEST "customization: locks, unlocks, network, screens"
   ft mapvote mapvote_test.gd 60 MAPVOTE-TEST "end-of-round map vote"
   ft pad pad_test.gd 60 PAD-TEST "gamepad: radio (L3 + D-pad), limbo loadout (D-pad)"

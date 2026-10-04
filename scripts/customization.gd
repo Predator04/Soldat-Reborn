@@ -5,8 +5,8 @@ extends Object
 ## that every peer draws (gostek.gd / soldier_art.gd).
 
 const SKIN_TONES := {
-	"": Color(0.98, 0.82, 0.65), "fair": Color(1.0, 0.89, 0.78), "tan": Color(0.86, 0.67, 0.49),
-	"brown": Color(0.65, 0.45, 0.31), "dark": Color(0.44, 0.3, 0.21),
+	"": Color(0.98, 0.82, 0.65), "fair": Color(1.0, 0.9, 0.82), "tan": Color(0.82, 0.6, 0.42),
+	"brown": Color(0.58, 0.38, 0.25), "dark": Color(0.36, 0.24, 0.17),
 }
 # Trousers (the jacket keeps the team color so friend / foe still reads).
 const PANTS := {
@@ -18,8 +18,9 @@ const FINISHES := {"desert": Color(0.78, 0.68, 0.46), "urban": Color(0.58, 0.6, 
 	"night": Color(0.2, 0.22, 0.27), "gold": Color(1.0, 0.8, 0.28)}
 # Weapon skins tint every gun you carry.
 const WEAPON_SKINS := {
-	"desert": Color(1.0, 0.86, 0.62), "woodland": Color(0.72, 0.86, 0.58), "carbon": Color(0.42, 0.43, 0.48),
-	"arctic": Color(0.84, 0.93, 1.0), "crimson": Color(1.0, 0.55, 0.5), "gold": Color(1.0, 0.82, 0.32),
+	# Values above 1 brighten: the gun sprites are mostly dark metal.
+	"desert": Color(1.35, 1.12, 0.72), "woodland": Color(0.75, 1.0, 0.55), "carbon": Color(0.42, 0.43, 0.48),
+	"arctic": Color(1.45, 1.55, 1.7), "crimson": Color(1.45, 0.5, 0.45), "gold": Color(1.75, 1.35, 0.45),
 }
 
 # kind -> key -> ["level", n] | ["ach", id]. Keys not listed are free.
@@ -45,8 +46,16 @@ const ROWS := [
 ]
 
 
+# Looked up at runtime (not the autoload identifier) so drawing code that
+# preloads this catalog also compiles in tools that run before autoloads.
+static func _stats() -> Node:
+	var ml = Engine.get_main_loop()
+	return (ml as SceneTree).root.get_node_or_null("Stats") if ml is SceneTree else null
+
+
 static func _level() -> int:
-	return Stats.level_for(Stats.xp())
+	var st := _stats()
+	return st.level_for(st.xp()) if st != null else 1
 
 
 static func is_unlocked(kind: String, key: String) -> bool:
@@ -55,7 +64,8 @@ static func is_unlocked(kind: String, key: String) -> bool:
 		return true
 	if str(rule[0]) == "level":
 		return _level() >= int(rule[1])
-	return Stats.unlocked.has(str(rule[1]))
+	var st := _stats()
+	return st != null and st.unlocked.has(str(rule[1]))
 
 
 static func lock_text(kind: String, key: String) -> String:
@@ -64,14 +74,25 @@ static func lock_text(kind: String, key: String) -> String:
 		return ""
 	if str(rule[0]) == "level":
 		return TranslationServer.translate("level %d") % int(rule[1])
-	for a in Stats.ACHIEVEMENTS:
+	var st := _stats()
+	for a in (st.ACHIEVEMENTS if st != null else []):
 		if str(a[0]) == str(rule[1]):
 			return TranslationServer.translate("achievement: %s") % TranslationServer.translate(str(a[1]))
 	return "?"
 
 
+## The key if it's a real catalog option you've unlocked, else the default.
 static func allowed(kind: String, key: String) -> String:
-	return key if is_unlocked(kind, key) else ""
+	return key if is_option(kind, key) and is_unlocked(kind, key) else ""
+
+
+static func is_option(kind: String, key: String) -> bool:
+	for row in ROWS:
+		if row[0] == kind:
+			for opt in row[2]:
+				if opt[0] == key:
+					return true
+	return false
 
 
 ## Everything still locked for you, for the "unlocked" toasts.
@@ -91,3 +112,18 @@ static func item_name(kind: String, key: String) -> String:
 				if opt[0] == key:
 					return "%s: %s" % [TranslationServer.translate(row[1]), TranslationServer.translate(opt[1])]
 	return key
+
+
+## "Next unlock: Trousers: Desert at level 3" (lowest level still locked).
+static func next_unlock_text() -> String:
+	var best_lv := 9999
+	var best := ""
+	for kind in UNLOCKS.keys():
+		for key in (UNLOCKS[kind] as Dictionary).keys():
+			var rule = UNLOCKS[kind][key]
+			if str(rule[0]) == "level" and not is_unlocked(kind, key) and int(rule[1]) < best_lv:
+				best_lv = int(rule[1])
+				best = item_name(kind, key)
+	if best == "":
+		return ""
+	return TranslationServer.translate("Next unlock: %s at level %d") % [best, best_lv]

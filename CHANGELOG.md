@@ -2,6 +2,25 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.29.1] — 2026-10-04
+
+Seven review passes over customization and unlocks.
+
+### Fixed
+- **Vest paint barely showed.** The vest sprite is dark, so every paint came out near-black; it now shows its real color.
+- **Weapon skins were too faint** on the dark gun sprites (Desert, Woodland, Arctic looked almost stock). All six now read clearly, Gold included.
+- **Skin tones** were too close together; they're more distinct now.
+- Changing your look from the pause menu now updates your soldier right away (and for everyone online) instead of on the next respawn.
+- Picking a vest paint turns the vest on; turning the vest off clears its paint.
+- Unknown or hand-edited values in the settings file can no longer reach your soldier.
+- The "UNLOCKED" message no longer hides a RANK UP or achievement message that pops at the same moment; several unlocks at once share one message.
+
+### Added
+- CUSTOMIZE shows your next unlock ("Next unlock: Weapon skin: Desert at level 2").
+
+### Testing
+- New checks: unlocking in a real match (message, equip, kept after respawn), save / reload of every look, and other players' and bots' looks arriving over the network.
+
 ## [1.29.0] — 2026-10-04
 
 ### Added

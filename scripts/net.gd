@@ -360,6 +360,8 @@ func _smoke_host() -> void:
 
 
 func _smoke_join() -> void:
+	if _smoke_arg("--cos-skin") != "":
+		Settings.cos_skin = _smoke_arg("--cos-skin")
 	var ch := _smoke_arg("--cos-head")
 	if ch != "":
 		Settings.cos_head = ch
@@ -430,8 +432,14 @@ func _smoke_join() -> void:
 			var _heads := []
 			for _c in _mn.get_children():
 				if _c is CharacterBody2D and _c.get("loadout") == null and not _c.is_in_group("vehicle"):
-					_heads.append(str(_c.cosmetics.get("head", "?")))
+					_heads.append(str(_c.cosmetics.get("head", "?")) + "/" + str(_c.cosmetics.get("skin", "-")))
 			print("SMOKE-JOIN-HEADS ", _heads)
+			var _bk := -1
+			for _c in _mn.get_children():
+				if _c is CharacterBody2D and _c.get("loadout") != null:
+					_bk = (_c.cosmetics as Dictionary).size()
+					break
+			print("SMOKE-JOIN-BOTLOOK keys=%d" % _bk)
 			var lp = _mn.get("player")
 			print("SMOKE-JOIN-LOCAL alive=%s pings=%s" % [str(lp != null and is_instance_valid(lp) and not bool(lp.get("dead"))), str(_mn.get("peer_pings"))])
 		leave()
@@ -439,6 +447,8 @@ func _smoke_join() -> void:
 
 
 func _smoke_botfire() -> void:
+	if _smoke_arg("--cos-skin") != "":
+		Settings.cos_skin = _smoke_arg("--cos-skin")
 	if _smoke_arg("--cos-head") != "":
 		Settings.cos_head = _smoke_arg("--cos-head")
 	# Same handshake as _smoke_join but with a longer post-connect window so remote
