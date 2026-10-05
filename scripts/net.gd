@@ -301,7 +301,25 @@ func _on_master_heartbeat_completed(result: int, _response_code: int, _headers: 
 	# visible in logs but doesn't disrupt hosting (#86.2). The HTTPRequest node
 	# is reusable — the next 30s tick will fire another request unblocked.
 	if result != HTTPRequest.RESULT_SUCCESS:
-		push_warning("master heartbeat result=%d — will retry on next tick" % result)
+		push_warning("master heartbeat result=%d — retrying in 5 s" % result)
+		# Don't stay unlisted for a whole 30 s tick after one hiccup (a
+		# server that boots before the master, a dropped packet).
+		if _heartbeat_http != null and is_instance_valid(_heartbeat_http) and _heartbeat_timer != null and is_instance_valid(_heartbeat_timer):
+			var http := _heartbeat_http
+			get_tree().create_timer(5.0).timeout.connect(func() -> void:
+				if is_instance_valid(http) and http == _heartbeat_http:
+					_heartbeat_timer.timeout.emit())
+
+
+## Someone joined / left: refresh the master listing in a moment instead of
+## waiting for the 30 s tick (player count + names for friends' "join").
+func heartbeat_soon() -> void:
+	if _heartbeat_timer == null or not is_instance_valid(_heartbeat_timer):
+		return
+	var t := _heartbeat_timer
+	get_tree().create_timer(1.5).timeout.connect(func() -> void:
+		if is_instance_valid(t) and t == _heartbeat_timer:
+			t.timeout.emit())
 
 
 # Who's playing here (for friends' "online now / join"): every connected

@@ -2273,6 +2273,7 @@ func _on_net_peer_disconnected(id: int) -> void:
 		# their K/D stays in player_stats (name-keyed) already.
 		if ranked != null:
 			ranked.player_left(id)
+		Net.heartbeat_soon()
 		var lp = _players_by_id.get(id, null)
 		if lp != null and is_instance_valid(lp) and _peer_names.has(id):
 			_left_team[str(_peer_names[id])] = int(lp.team)
@@ -2512,6 +2513,7 @@ func _handle_client_ready(sender_id: int, joiner_name: String = "", client_versi
 	_spawn_networked_player(sender)
 	if ranked != null:
 		ranked.player_joined(sender)
+	Net.heartbeat_soon()
 	if _bot_fill_active():
 		call_deferred("_reconcile_bots")
 	# NOTE: _ready_peers[sender] is set only when the client acks the spawn (net_spawn_ack).

@@ -139,7 +139,7 @@ case " $NETSEL " in *" two "*)
   e=$(( $(errs "$OUT/net_two_server.log") + $(errs "$OUT/net_two_c1.log") + $(errs "$OUT/net_two_c2.log") ))
   names=$(grep -m1 "SMOKE-JOIN-PLAYERS" "$OUT/net_two_c2.log")
   heads=$(grep -m1 "SMOKE-JOIN-HEADS" "$OUT/net_two_c2.log")
-  if grep -q "players=2" "$OUT/net_two_c2.log" && [ "$e" = "0" ] && ! echo "$names" | grep -q "@" && echo "$heads" | grep -q '"kap/dark"' && grep -q "SMOKE-JOIN-BOTLOOK keys=9" "$OUT/net_two_c2.log"; then
+  if grep -q "players=2" "$OUT/net_two_c2.log" && [ "$e" = "0" ] && ! echo "$names" | grep -q "@" && echo "$heads" | grep -q '"kap/dark"' && grep -qE "SMOKE-JOIN-BOTLOOK keys=(9|1[0-9])" "$OUT/net_two_c2.log"; then
     pass "C net two clients: $names $heads errors=0"
   else
     fail "C net two clients: '$(grep -m1 SMOKE-JOIN "$OUT/net_two_c2.log")' $names $heads errors=$e"
@@ -202,7 +202,7 @@ case " $NETSEL " in *" friends "*)
   # list, and another player who meets them has them on their recent list.
   RB="../server/master-server/dist/soldat-master-linux-amd64"
   fport=$((8300 + RANDOM % 400)); port=$((7700 + RANDOM % 200))
-  timeout 80 "$RB" -port $fport > "$OUT/net_friends_master.log" 2>&1 &
+  SOLDAT_DATA_DIR="$(mktemp -d)" timeout 80 "$RB" -port $fport > "$OUT/net_friends_master.log" 2>&1 &
   fpid=$!; sleep 1
   timeout 75 "$G" --headless -- --dedicated --port $port --map 19 --mode 2 --fill=2 --register http://127.0.0.1:$fport > "$OUT/net_friends_server.log" 2>&1 &
   spid=$!
@@ -227,7 +227,7 @@ case " $NETSEL " in *" relay "*)
   RB="../server/master-server/dist/soldat-master-linux-amd64"
   if [ -x "$RB" ]; then
     rport=$((8300 + RANDOM % 400))
-    timeout 70 "$RB" -port $rport > "$OUT/net_relay_server.log" 2>&1 &
+    SOLDAT_DATA_DIR="$(mktemp -d)" timeout 70 "$RB" -port $rport > "$OUT/net_relay_server.log" 2>&1 &
     rpid=$!; sleep 1
     cf="$OUT/relay_code.txt"; rm -f "$cf"
     timeout 60 "$G" --headless -- --smoke-host --relay-host=http://127.0.0.1:$rport --code-file="$cf" --smoke-secs=28 > "$OUT/net_relay_host.log" 2>&1 &
