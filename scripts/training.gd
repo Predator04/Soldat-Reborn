@@ -139,8 +139,8 @@ func _player() -> Node:
 
 func _my_kills() -> int:
 	var stats = main.get("player_stats") if main != null else null
-	if stats is Dictionary and stats.has(Settings.player_name):
-		return int(stats[Settings.player_name].get("k", 0))
+	if stats is Dictionary and stats.has(Settings.display_name()):
+		return int(stats[Settings.display_name()].get("k", 0))
 	return 0
 
 

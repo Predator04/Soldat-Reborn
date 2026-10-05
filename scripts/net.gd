@@ -278,7 +278,7 @@ func _send_master_heartbeat(http: HTTPRequest, port: int) -> void:
 	var mode_idx: int = Settings.game_mode
 	var mode_name: String = MODE_NAMES[mode_idx] if mode_idx >= 0 and mode_idx < MODE_NAMES.size() else "mode#%d" % mode_idx
 	var body := JSON.stringify({
-		"name": Settings.server_name if is_dedicated else "%s's game" % Settings.player_name,
+		"name": Settings.server_name if is_dedicated else "%s's game" % Settings.display_name(),
 		"port": port,
 		"map": map_name if Settings.custom_map_path == "" else "Custom: %s" % Settings.custom_map_path.get_file().get_basename(),
 		"mode": mode_name,
@@ -287,6 +287,7 @@ func _send_master_heartbeat(http: HTTPRequest, port: int) -> void:
 		"password": false,
 		"version": str(ProjectSettings.get_setting("application/config/version", "dev")),
 		"relay": relay_code if via_relay else "",
+		"names": _human_names(),
 	})
 	var err := http.request(register_url.rstrip("/") + "/register", PackedStringArray(["Content-Type: application/json"]), HTTPClient.METHOD_POST, body)
 	if err != OK:
@@ -299,6 +300,20 @@ func _on_master_heartbeat_completed(result: int, _response_code: int, _headers: 
 	# is reusable — the next 30s tick will fire another request unblocked.
 	if result != HTTPRequest.RESULT_SUCCESS:
 		push_warning("master heartbeat result=%d — will retry on next tick" % result)
+
+
+# Who's playing here (for friends' "online now / join"): every connected
+# player's name, plus the host's own on a listen server.
+func _human_names() -> Array:
+	var out: Array = []
+	var main := get_tree().current_scene
+	var pn = main.get("_peer_names") if main != null else null
+	if pn is Dictionary:
+		for pid in (pn as Dictionary).keys():
+			out.append(str(pn[pid]).left(32))
+	if not is_dedicated:
+		out.append(Settings.display_name())
+	return out.slice(0, 32)
 
 
 func _count_human_players() -> int:
@@ -360,6 +375,8 @@ func _smoke_host() -> void:
 
 
 func _smoke_join() -> void:
+	if _smoke_arg("--clan") != "":
+		Settings.clan_tag = Settings.clean_tag(_smoke_arg("--clan"))
 	if _smoke_arg("--cos-skin") != "":
 		Settings.cos_skin = _smoke_arg("--cos-skin")
 	var ch := _smoke_arg("--cos-head")
@@ -440,6 +457,7 @@ func _smoke_join() -> void:
 					_bk = (_c.cosmetics as Dictionary).size()
 					break
 			print("SMOKE-JOIN-BOTLOOK keys=%d" % _bk)
+			print("SMOKE-RECENT ", Settings.recent_players.map(func(e): return str(e.get("name", ""))))
 			var lp = _mn.get("player")
 			print("SMOKE-JOIN-LOCAL alive=%s pings=%s" % [str(lp != null and is_instance_valid(lp) and not bool(lp.get("dead"))), str(_mn.get("peer_pings"))])
 		leave()
@@ -447,6 +465,8 @@ func _smoke_join() -> void:
 
 
 func _smoke_botfire() -> void:
+	if _smoke_arg("--clan") != "":
+		Settings.clan_tag = Settings.clean_tag(_smoke_arg("--clan"))
 	if _smoke_arg("--cos-skin") != "":
 		Settings.cos_skin = _smoke_arg("--cos-skin")
 	if _smoke_arg("--cos-head") != "":
@@ -583,7 +603,7 @@ var via_relay := false
 func host_game_relay(master_url: String, map_index: int = 0) -> bool:
 	leave()
 	var peer = RelayPeer.new()
-	if peer.start_host(master_url, "%s's game" % Settings.player_name) != OK:
+	if peer.start_host(master_url, "%s's game" % Settings.display_name()) != OK:
 		_set_status("Relay: bad server address")
 		return false
 	peer.hosted.connect(func(c: String) -> void:
@@ -978,7 +998,7 @@ func server_info() -> Dictionary:
 	var info := {
 		"g": LAN_TAG,
 		"v": str(ProjectSettings.get_setting("application/config/version", "")),
-		"name": Settings.server_name if is_dedicated else "%s's game" % Settings.player_name,
+		"name": Settings.server_name if is_dedicated else "%s's game" % Settings.display_name(),
 		"port": _lan_port,
 		"map": map_name,
 		"mode": str(MODE_NAMES[gm]) if gm >= 0 and gm < MODE_NAMES.size() else "?",

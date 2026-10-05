@@ -279,6 +279,13 @@ func _build_game(box: VBoxContainer) -> void:
 			Settings.player_name = clean if clean != "" else "Player"
 			Settings.name_set = clean != "" and clean.to_lower() != "player"
 			Settings.save()))
+	var tag_row := _text_field("Clan Tag (optional)", Settings.clan_tag,
+		func(t: String) -> void:
+			Settings.clan_tag = Settings.clean_tag(t)
+			Settings.save())
+	(tag_row.get_child(1) as LineEdit).placeholder_text = "ABCD"
+	(tag_row.get_child(1) as LineEdit).max_length = 4
+	box.add_child(tag_row)
 	box.add_child(_check_button("Vehicles: buggies on maps with room (host decides online)", Settings.vehicles,
 		func(on: bool) -> void:
 			Settings.vehicles = on

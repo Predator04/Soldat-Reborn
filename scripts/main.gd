@@ -514,7 +514,7 @@ func _ready() -> void:
 			# Send to Net autoload (always present) — it forwards to Main or buffers
 			# if the host's main.tscn is still loading (#118).
 			Net.disconnected.connect(_on_lost_host)
-			Net.rpc_id(1, "net_client_ready", Settings.player_name, str(ProjectSettings.get_setting("application/config/version", "")), Net.session_token)
+			Net.rpc_id(1, "net_client_ready", Settings.display_name(), str(ProjectSettings.get_setting("application/config/version", "")), Net.session_token)
 			Net.rpc_id(1, "net_profile", Settings.profile_id)
 	else:
 		_spawn_player()
@@ -1424,7 +1424,7 @@ func _spawn_player() -> void:
 		p.color = Color(0.35, 0.55, 1.0)
 	else:
 		p.team = 0
-	p.display_name = Settings.player_name
+	p.display_name = Settings.display_name()
 	# Advance mode: start with the humble knife.
 	if Settings.advance:
 		p.set("using_secondary", true)
@@ -2189,7 +2189,7 @@ func _spawn_networked_player(peer_id: int) -> void:
 		if not bs.is_empty():
 			base = _pick_spawn_away(bs, t)
 	var spawn_pos := _jitter_spawn(base)
-	var display_name: String = Settings.player_name if peer_id == 1 else str(_peer_names.get(peer_id, "Player %d" % peer_id))
+	var display_name: String = Settings.display_name() if peer_id == 1 else str(_peer_names.get(peer_id, "Player %d" % peer_id))
 	bcast("net_spawn_player", [peer_id, spawn_pos, display_name, t], true)
 
 
@@ -2434,7 +2434,9 @@ func _handle_client_ready(sender_id: int, joiner_name: String = "", client_versi
 	# Remember the joiner's chosen display name (sanitized, unique) so
 	# _spawn_networked_player uses it instead of "Player N". Duplicate names
 	# broke kill credit, spawn protection and Gun Game rungs (all name-keyed).
-	var clean_name: String = str(joiner_name).strip_edges().left(24)
+	# Room for a clan tag ("«TAG» "); square brackets become round so a name
+	# can't inject rich-text markup into everyone's kill feed / scoreboard.
+	var clean_name: String = str(joiner_name).strip_edges().replace("[", "(").replace("]", ")").left(32)
 	if clean_name == "":
 		clean_name = "Player %d" % sender
 	# Rejoin after a drop: the host may not have timed the old connection out
@@ -2526,7 +2528,7 @@ func _stale_peer_for(sender: int, want: String, token: String) -> int:
 func _unique_display_name(want: String, for_peer: int) -> String:
 	var taken := {}
 	if not Net.is_dedicated:
-		taken[Settings.player_name] = true
+		taken[Settings.display_name()] = true
 	for pid in _peer_names.keys():
 		if int(pid) != for_peer:
 			taken[str(_peer_names[pid])] = true
@@ -2928,6 +2930,55 @@ var peer_pings: Dictionary = {}   # display name -> ms
 var _ping_t := 0.0
 
 
+var _recent_t := 5.0
+
+
+# Friends list: remember the people you play with online (newest first, 40
+# kept, favourites never dropped). Saved at most once a minute.
+func _tick_recent_players(delta: float) -> void:
+	if not Net.is_networked():
+		return
+	_recent_t -= delta
+	if _recent_t > 0.0:
+		return
+	_recent_t = 20.0
+	var me := Settings.display_name()
+	var now := int(Time.get_unix_time_from_system())
+	var seen: Array = []
+	for pid in _players_by_id.keys():
+		var p = _players_by_id[pid]
+		if is_instance_valid(p) and str(p.display_name) != me:
+			seen.append(str(p.display_name))
+	if seen.is_empty():
+		return
+	remember_players(seen, now)
+	Settings.save()
+
+
+static func remember_players(names: Array, now: int) -> void:
+	var list: Array = Settings.recent_players
+	for nm in names:
+		var found = null
+		for e in list:
+			if e is Dictionary and str(e.get("name", "")) == nm:
+				found = e
+				break
+		if found == null:
+			found = {"name": nm, "fav": false}
+			list.push_front(found)
+		found["last"] = now
+	list.sort_custom(func(a, b): return int(a.get("last", 0)) > int(b.get("last", 0)))
+	var keep: Array = []
+	var others := 0
+	for e in list:
+		if bool(e.get("fav", false)):
+			keep.append(e)
+		elif others < 40:
+			keep.append(e)
+			others += 1
+	Settings.recent_players = keep
+
+
 func _tick_pings(delta: float) -> void:
 	if not Net.is_networked() or not Net.is_host():
 		return
@@ -2955,6 +3006,7 @@ func net_pings(table: Dictionary) -> void:
 
 func _process(delta: float) -> void:
 	_tick_pings(delta)
+	_tick_recent_players(delta)
 	# Vote timer + cooldown ticks — before the client early-return so the vote
 	# countdown reads smoothly on every peer between host state broadcasts (#77).
 	_tick_vote(delta)

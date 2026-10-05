@@ -27,7 +27,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 G="${GODOT_BIN:-$HOME/godot/Godot_v4.7.2-stable_linux.x86_64}"
 QUICK=0; OUT="build/gate"; ONLY="A B N C D R F E"; MODESEL="0 1 2 3 4 5 6 7 8 9"
-NETSEL="ctf dm two fill ranked respawn drive rejoin relay host listen lan soak m3 m7 m9"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
+NETSEL="ctf dm two fill ranked friends respawn drive rejoin relay host listen lan soak m3 m7 m9"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --quick) QUICK=1;; --out) OUT="$2"; shift;; --only) ONLY="$2"; shift;;
@@ -196,6 +196,31 @@ case " $NETSEL " in *" ranked "*)
   kill $rpid 2>/dev/null; wait $rpid 2>/dev/null
   line=$(grep -m1 "RANKED-TEST" "$OUT/net_ranked.log")
   if echo "$line" | grep -q "RANKED-TEST ok" && [ "$(errs "$OUT/net_ranked.log")" = "0" ]; then pass "C net leaderboard: $line"; else fail "C net leaderboard: '${line:-no result}' errors=$(errs "$OUT/net_ranked.log")"; fi
+;; esac
+case " $NETSEL " in *" friends "*)
+  # Clan tag + friends: a tagged player shows up by name in the master's game
+  # list, and another player who meets them has them on their recent list.
+  RB="../server/master-server/dist/soldat-master-linux-amd64"
+  fport=$((8300 + RANDOM % 400)); port=$((7700 + RANDOM % 200))
+  timeout 80 "$RB" -port $fport > "$OUT/net_friends_master.log" 2>&1 &
+  fpid=$!; sleep 1
+  timeout 75 "$G" --headless -- --dedicated --port $port --map 19 --mode 2 --fill=2 --register http://127.0.0.1:$fport > "$OUT/net_friends_server.log" 2>&1 &
+  spid=$!
+  for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_friends_server.log" 2>/dev/null && break; sleep 0.5; done
+  sleep 2
+  timeout 50 "$G" --headless -- --smoke-join --port $port --smoke-secs=30 --clan=abc > "$OUT/net_friends_c1.log" 2>&1 &
+  c1=$!
+  sleep 6
+  timeout 40 "$G" --headless -- --smoke-join --port $port --smoke-secs=14 > "$OUT/net_friends_c2.log" 2>&1
+  sleep 1; list=$(curl -s "http://127.0.0.1:$fport/list")
+  wait $c1 2>/dev/null; kill $spid $fpid 2>/dev/null; wait $spid $fpid 2>/dev/null
+  rec=$(grep -m1 "SMOKE-RECENT" "$OUT/net_friends_c2.log")
+  e=$(( $(errs "$OUT/net_friends_server.log") + $(errs "$OUT/net_friends_c1.log") + $(errs "$OUT/net_friends_c2.log") ))
+  if echo "$list" | grep -q '«ABC» Player' && echo "$rec" | grep -q '«ABC» Player' && [ "$e" = "0" ]; then
+    pass "C net clan tag + friends: listed $(echo "$list" | grep -o '"names":\[[^]]*\]') | $rec"
+  else
+    fail "C net clan tag + friends: list=$(echo "$list" | head -c 300) recent='$rec' errors=$e"
+  fi
 ;; esac
 case " $NETSEL " in *" relay "*)
   # Host and client both go through the WebSocket relay on the master server.
@@ -396,6 +421,7 @@ if has F; then
   ft crew vehicle_crew_test.gd 100 CREW-TEST "buggy crew: solo-fire slowdown / bot gunner boards, shoots, leaves"
   ft tank tank_test.gd 100 TANK-TEST "tank: drive / lobbed shell / armor / wreck / respawn / wide-map spawns"
   ft joincode join_code_test.gd 60 JOINCODE-TEST "join codes: round trip, typos, garbage, host shows its code"
+  ft friends friends_test.gd 60 FRIENDS-TEST "friends list: order, online + join, stars, cap"
   ft unlock unlock_test.gd 60 UNLOCK-TEST "unlock in play: toast, equip live, kept on respawn"
   ft customize customize_test.gd 60 CUSTOMIZE-TEST "customization: locks, unlocks, network, screens"
   ft mapvote mapvote_test.gd 60 MAPVOTE-TEST "end-of-round map vote"

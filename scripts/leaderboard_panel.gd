@@ -109,7 +109,7 @@ func _on_board(_r: int, code: int, _h: PackedStringArray, body: PackedByteArray)
 		_list.text = "[color=#a8b0bc]%s[/color]" % tr("No ranked players yet. Play on the official server to be the first!")
 		loaded_rows = 0
 		return
-	var me_name := Settings.player_name
+	var me_name := Settings.display_name()
 	var t := "[table=6]"
 	for hdr in ["#", tr("Name"), "XP", tr("Rank"), "K/D", tr("Wins")]:
 		t += "[cell][b][color=#f5a623]%s[/color][/b]   [/cell]" % hdr

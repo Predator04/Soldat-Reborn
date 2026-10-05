@@ -480,7 +480,16 @@ func _build_menu() -> void:
 	var lb := _make_button("LEADERBOARD")
 	lb.tooltip_text = "Top players on the official server, and your own rank."
 	lb.pressed.connect(_open_leaderboard)
-	_menu_box2.add_child(lb)
+	var fr := _make_button("FRIENDS")
+	fr.tooltip_text = "People you've played with: see who's online and join them."
+	fr.pressed.connect(func() -> void: _with_name(_open_friends))
+	var social_row := HBoxContainer.new()
+	social_row.add_theme_constant_override("separation", 8)
+	for b in [lb, fr]:
+		b.custom_minimum_size = Vector2(0, b.custom_minimum_size.y)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		social_row.add_child(b)
+	_menu_box2.add_child(social_row)
 
 	_menu_box2.add_child(UITheme.spacer(4))
 	_menu_box2.add_child(UITheme.make_section_header("System"))
@@ -635,6 +644,14 @@ func _build_name_prompt(then: Callable = Callable(), changing := false) -> void:
 	edit.custom_minimum_size = Vector2(0, 38)
 	UITheme.style_lineedit(edit)
 	box.add_child(edit)
+	# Optional clan tag, shown as "«TAG» Name".
+	var tag_edit := LineEdit.new()
+	tag_edit.max_length = 4
+	tag_edit.placeholder_text = tr("Clan tag (optional, up to 4 letters)")
+	tag_edit.text = Settings.clan_tag
+	tag_edit.custom_minimum_size = Vector2(0, 34)
+	UITheme.style_lineedit(tag_edit)
+	box.add_child(tag_edit)
 	var hint := Label.new()
 	hint.add_theme_font_size_override("font_size", 13)
 	hint.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)
@@ -674,6 +691,7 @@ func _build_name_prompt(then: Callable = Callable(), changing := false) -> void:
 			refresh.call(edit.text)
 			return
 		Settings.player_name = edit.text.strip_edges().left(24)
+		Settings.clan_tag = Settings.clean_tag(tag_edit.text)
 		Settings.name_set = true
 		Settings.save()
 		close.call()
@@ -824,7 +842,7 @@ var _name_btn: Button = null
 
 func _refresh_name_btn() -> void:
 	if _name_btn != null:
-		var t := "  %s  ·  LV %d  ·  %s  " % [Settings.player_name if has_real_name() else tr("No name yet"), Stats.level_for(Stats.xp()), tr("CHANGE NAME")]
+		var t := "  %s  ·  LV %d  ·  %s  " % [Settings.display_name() if has_real_name() else tr("No name yet"), Stats.level_for(Stats.xp()), tr("CHANGE NAME")]
 		if _name_btn.text != t:
 			_name_btn.text = t
 
@@ -1903,6 +1921,20 @@ func _open_leaderboard() -> void:
 
 
 var _cust_panel: Control = null
+var _friends_panel: Control = null
+
+
+func _open_friends() -> void:
+	if _friends_panel == null:
+		_friends_panel = preload("res://scripts/friends_panel.gd").new()
+		add_child(_friends_panel)
+		_friends_panel.closed.connect(func() -> void: _menu_root.visible = true)
+		_friends_panel.join_requested.connect(func(ip: String, port: int) -> void:
+			_friends_panel.visible = false
+			_join_server(ip, port))
+	_menu_root.visible = false
+	_friends_panel.visible = true
+	_friends_panel.refresh_data()
 
 
 func _open_customize() -> void:
@@ -1928,7 +1960,7 @@ func _open_map_library() -> void:
 
 
 func _go_back() -> void:
-	for pn in [_lb_panel, _lib_panel, _cust_panel]:
+	for pn in [_lb_panel, _lib_panel, _cust_panel, _friends_panel]:
 		if pn != null and pn.visible:
 			pn.visible = false
 			pn.closed.emit()

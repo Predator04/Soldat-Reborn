@@ -211,7 +211,7 @@ func share_file(path: String) -> void:
 	if m.is_empty() or (m.get("platforms", []) as Array).is_empty():
 		_status.text = tr("That map is empty.")
 		return
-	var body := JSON.stringify({"name": path.get_file().get_basename(), "author": Settings.player_name,
+	var body := JSON.stringify({"name": path.get_file().get_basename(), "author": Settings.display_name(),
 		"map": JSON.parse_string(MapIO.map_to_json(m))})
 	_status.text = tr("Uploading...")
 	_http_up.cancel_request()

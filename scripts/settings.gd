@@ -124,10 +124,29 @@ var upnp := true                # host asks the router to open its ports (UPnP)
 var host_relay := false         # host through the master server's relay
 var player_name := "Player"
 var name_set := false
+var clan_tag := ""        # up to 4 letters / digits, shown as "«TAG» Name"
+# Players you've played with online: [{name, last (unix), fav}] newest first.
+var recent_players: Array = []
 # Random id made once per install; the official server reports results under a
 # hash of it (the leaderboard). Never shown or sent anywhere else.
 var profile_id := ""
 var _profile_new := false
+
+
+## Your name as everyone sees it: "«TAG» Name" with a clan tag. (Not square
+## brackets: names go into rich-text labels, where [B] or [I] would turn
+## into bold / italic markup.)
+func display_name() -> String:
+	var t := clean_tag(clan_tag)
+	return ("«%s» %s" % [t, player_name]) if t != "" else player_name
+
+
+static func clean_tag(t: String) -> String:
+	var out := ""
+	for ch in t.to_upper():
+		if (ch >= "A" and ch <= "Z") or (ch >= "0" and ch <= "9"):
+			out += ch
+	return out.left(4)
 
 
 func profile_hash() -> String:
@@ -254,6 +273,9 @@ func load_settings() -> void:
 	player_name = str(cf.get_value("net", "player_name", "Player"))
 	# Players from before the prompt existed who already picked a name keep it.
 	name_set = bool(cf.get_value("net", "name_set", player_name != "Player"))
+	clan_tag = clean_tag(str(cf.get_value("net", "clan_tag", "")))
+	var rp = cf.get_value("net", "recent_players", [])
+	recent_players = (rp as Array).duplicate(true) if rp is Array else []
 	profile_id = str(cf.get_value("net", "profile_id", ""))
 	if not (profile_id.length() == 32 and profile_id.is_valid_hex_number()):
 		profile_id = Crypto.new().generate_random_bytes(16).hex_encode()
@@ -342,6 +364,8 @@ func save() -> void:
 	cf.set_value("net", "last_join_port", last_join_port)
 	cf.set_value("net", "player_name", player_name)
 	cf.set_value("net", "name_set", name_set)
+	cf.set_value("net", "clan_tag", clan_tag)
+	cf.set_value("net", "recent_players", recent_players)
 	cf.set_value("net", "profile_id", profile_id)
 	cf.set_value("net", "master_url", master_url)
 	cf.set_value("net", "recent_servers", recent_servers)

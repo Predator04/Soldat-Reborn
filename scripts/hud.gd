@@ -890,7 +890,7 @@ func show_death(killer: String, weapon: String, respawn_secs: float = 2.0) -> vo
 	# while the player is still on the floor (INF attackers pay 5s, not 2s).
 	# Pass a negative value to display the "no respawn" survival hint instead.
 	_death_remaining = respawn_secs
-	var me: String = str(player.display_name) if is_instance_valid(player) else Settings.player_name
+	var me: String = str(player.display_name) if is_instance_valid(player) else Settings.display_name()
 	var suicide: bool = killer != "" and killer == me
 	lbl_death.text = (tr("You were killed by %s") % killer) if killer != "" and not suicide else tr("You died")
 	if weapon != "" and killer != "" and not suicide:
