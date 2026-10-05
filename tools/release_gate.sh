@@ -172,12 +172,27 @@ case " $NETSEL " in *" ranked "*)
   # Leaderboard: the host's ranked reporter -> master /report -> /leaderboard.
   RB="../server/master-server/dist/soldat-master-linux-amd64"
   rport=$((8300 + RANDOM % 400)); rdir=$(mktemp -d)
-  SOLDAT_DATA_DIR="$rdir" timeout 60 "$RB" -port $rport > "$OUT/net_ranked_master.log" 2>&1 &
+  SOLDAT_DATA_DIR="$rdir" timeout 150 "$RB" -port $rport > "$OUT/net_ranked_master.log" 2>&1 &
   rpid=$!; sleep 1
   timeout 50 "$G" --headless -s tools/ranked_test.gd -- --master=http://127.0.0.1:$rport > "$OUT/net_ranked.log" 2>&1
   timeout 60 "$G" --headless --fixed-fps 60 -s tools/online_panels_test.gd -- --master=http://127.0.0.1:$rport > "$OUT/net_panels.log" 2>&1
   pline=$(grep -m1 "PANELS-TEST" "$OUT/net_panels.log")
   if echo "$pline" | grep -q "PANELS-TEST ok" && [ "$(errs "$OUT/net_panels.log")" = "0" ]; then pass "C net leaderboard + map library screens: $pline"; else fail "C net leaderboard + map library screens: '${pline:-no result}' errors=$(errs "$OUT/net_panels.log")"; fi
+  # End to end like the official server: dedicated + --register, a brand-new
+  # player (no settings file yet) joins, dies, leaves -> on the leaderboard.
+  port=$((7700 + RANDOM % 200))
+  timeout 60 "$G" --headless -- --dedicated --port $port --map 19 --mode 2 --fill=2 --register http://127.0.0.1:$rport > "$OUT/net_ranked_server.log" 2>&1 &
+  spid=$!
+  for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_ranked_server.log" 2>/dev/null && break; sleep 0.5; done
+  sleep 2
+  timeout 40 "$G" --headless -- --smoke-join --port $port --smoke-secs=12 --smoke-die > "$OUT/net_ranked_client.log" 2>&1
+  sleep 4; kill $spid 2>/dev/null; wait $spid 2>/dev/null
+  board=$(curl -s "http://127.0.0.1:$rport/leaderboard")
+  if echo "$board" | grep -q '"total":3' && grep -q "RANKED queued" "$OUT/net_ranked_server.log" && [ "$(errs "$OUT/net_ranked_server.log")" = "0" ]; then
+    pass "C net leaderboard end to end (new player, real server): $(grep -m1 'RANKED queued' "$OUT/net_ranked_server.log" | cut -c1-90)"
+  else
+    fail "C net leaderboard end to end: board=$board $(grep -m1 RANKED "$OUT/net_ranked_server.log")"
+  fi
   kill $rpid 2>/dev/null; wait $rpid 2>/dev/null
   line=$(grep -m1 "RANKED-TEST" "$OUT/net_ranked.log")
   if echo "$line" | grep -q "RANKED-TEST ok" && [ "$(errs "$OUT/net_ranked.log")" = "0" ]; then pass "C net leaderboard: $line"; else fail "C net leaderboard: '${line:-no result}' errors=$(errs "$OUT/net_ranked.log")"; fi

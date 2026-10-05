@@ -26,9 +26,16 @@ class Preview extends Node2D:
 
 	func _draw() -> void:
 		var aim := Vector2(1.0, -0.12 + 0.12 * sin(t * 0.8)).normalized()
-		SoldierArt.draw_soldier(self, team_color, 1.0, aim, Vector2.ZERO, false, false, Color.WHITE, "bullet",
+		var cos: Dictionary = PlayerScript.my_cosmetics()
+		var jet := true
+		SoldierArt.draw_soldier(self, team_color, 1.0, aim, Vector2.ZERO, jet, false, Color.WHITE, "bullet",
 			0.0, 100.0, 0.0, false, weapon, true, false, false, false, false, "", false, false,
-			PlayerScript.my_cosmetics(), "USSOCOM", 3, false, false, false)
+			cos, "USSOCOM", 3, false, false, false)
+		# A tracer flying out of the gun every half second.
+		var tc: Color = Custom.TRACERS.get(str(cos.get("tracer", "")), Color(1.0, 0.85, 0.4))
+		var ph := fmod(t * 1.5, 1.0)
+		var from := Vector2(12, -12.5) + aim * (ph * 7.0)
+		draw_line(from, from + aim * 5.0, Color(tc.r, tc.g, tc.b, 1.0 - ph * 0.5), 1.4)
 
 
 func _ready() -> void:
@@ -58,7 +65,7 @@ func _ready() -> void:
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	stage.add_child(bg)
 	_preview = Preview.new()
-	_preview.position = Vector2(112, 235)
+	_preview.position = Vector2(92, 196)   # leaves room for the jet flame below
 	_preview.scale = Vector2(6.5, 6.5)
 	_preview.weapon = _spawn_weapon_name()
 	stage.add_child(_preview)
@@ -87,7 +94,7 @@ func _ready() -> void:
 
 	# Right: the option rows.
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(430, 380)
+	scroll.custom_minimum_size = Vector2(430, 460)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	hb.add_child(scroll)
 	_rows_box = VBoxContainer.new()
@@ -133,6 +140,8 @@ static func cos_get(kind: String) -> String:
 		"pants": return Settings.cos_pants
 		"chain": return Settings.cos_chain
 		"wskin": return Settings.cos_wskin
+		"jet": return Settings.cos_jet
+		"tracer": return Settings.cos_tracer
 	return ""
 
 
@@ -152,6 +161,8 @@ static func cos_set(kind: String, v: String) -> void:
 		"pants": Settings.cos_pants = v
 		"chain": Settings.cos_chain = v
 		"wskin": Settings.cos_wskin = v
+		"jet": Settings.cos_jet = v
+		"tracer": Settings.cos_tracer = v
 	Settings.save()
 	apply_live()
 

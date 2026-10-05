@@ -70,9 +70,35 @@ func _process(_d: float) -> bool:
 				_log.append("respawned wskin=%s" % w)
 				if w != "desert":
 					_bad.append("respawn lost the skin")
-				return _end(_bad.is_empty(), " ".join(_log))
+				# Tracer + jet colors reach the bullets / jet particles.
+				m.player.cosmetics["tracer"] = "gold"
+				m.player.cosmetics["jet"] = "blue"
+				m.player.call("_switch_weapon", 2)
+				m.player.set("fire_cd", 0.0)
+				Input.action_press("jet")
+				_t = _n
+				_st = 4
+				return false
 			if _n - _t > 900:
 				return _end(false, "no respawn")
+		4:
+			if _n - _t == 40:
+				Input.action_press("fire")
+			if _n - _t < 52:
+				return false
+			Input.action_release("fire")
+			Input.action_release("jet")
+			var tinted := 0
+			for b in get_nodes_in_group("bullet"):
+				if str(b.get("killer_name")) == str(m.player.display_name) and (b.get("tint") as Color).is_equal_approx(load("res://scripts/customization.gd").TRACERS["gold"]):
+					tinted += 1
+			var jc: Color = m.player.jet_particles.color
+			_log.append("gold_tracers=%d jet=%s" % [tinted, jc.to_html(false)])
+			if tinted == 0:
+				_bad.append("no gold tracer on own bullets")
+			if not (jc.b > jc.r):
+				_bad.append("jet particles not blue")
+			return _end(_bad.is_empty(), " ".join(_log))
 	return false
 
 

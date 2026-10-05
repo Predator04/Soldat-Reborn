@@ -64,6 +64,8 @@ var cos_vfinish := ""  # vest paint
 var cos_pants := ""    # trousers ("" = team color)
 var cos_skin := ""     # skin tone
 var cos_wskin := ""    # weapon skin
+var cos_jet := ""      # jet flame color
+var cos_tracer := ""   # bullet tracer color
 
 # Game mode: 0 = Deathmatch, 1 = Teammatch, 2 = CTF, 3 = Infiltration,
 # 4 = Hold the Flag, 5 = Rambomatch, 6 = Pointmatch, 7 = Domination,
@@ -150,6 +152,12 @@ func is_team_mode() -> bool:
 
 func _ready() -> void:
 	load_settings()
+	# A first launch has no settings file, so load_settings() returns before
+	# it gets to the profile id: make one here (it used to stay empty, and
+	# the first session never counted on the leaderboard).
+	if not (profile_id.length() == 32 and profile_id.is_valid_hex_number()):
+		profile_id = Crypto.new().generate_random_bytes(16).hex_encode()
+		_profile_new = true
 	if _profile_new:
 		_profile_new = false
 		save()
@@ -229,6 +237,8 @@ func load_settings() -> void:
 	cos_pants = str(cf.get_value("cosmetics", "pants", ""))
 	cos_skin = str(cf.get_value("cosmetics", "skin", ""))
 	cos_wskin = str(cf.get_value("cosmetics", "wskin", ""))
+	cos_jet = str(cf.get_value("cosmetics", "jet", ""))
+	cos_tracer = str(cf.get_value("cosmetics", "tracer", ""))
 	mod_gravity = clampf(float(cf.get_value("mods", "gravity", 1.0)), 0.5, 2.0)
 	mod_jet = clampf(float(cf.get_value("mods", "jet", 1.0)), 0.5, 2.0)
 	mod_damage = clampf(float(cf.get_value("mods", "damage", 1.0)), 0.5, 2.0)
@@ -316,6 +326,8 @@ func save() -> void:
 	cf.set_value("cosmetics", "pants", cos_pants)
 	cf.set_value("cosmetics", "skin", cos_skin)
 	cf.set_value("cosmetics", "wskin", cos_wskin)
+	cf.set_value("cosmetics", "jet", cos_jet)
+	cf.set_value("cosmetics", "tracer", cos_tracer)
 	cf.set_value("mods", "gravity", mod_gravity)
 	cf.set_value("mods", "jet", mod_jet)
 	cf.set_value("mods", "damage", mod_damage)

@@ -20,6 +20,7 @@ var _hit := false
 # Lag compensation (bullets from a remote player): also test the local
 # player's hitbox from this many ms ago, i.e. where the shooter saw them.
 var lag_ms := 0
+var tint := Color(1, 1, 1)   # tracer color (shooter's customization)
 var _ray_exclude: Array[RID] = []
 # Bodies this round passes through (a buggy and its crew for the buggy gun).
 var ignore_bodies: Array = []
@@ -257,7 +258,7 @@ func _draw() -> void:
 			var w := _sprite_size.x * stretch
 			var h := _sprite_size.y
 			draw_set_transform(Vector2.ZERO, direction.angle(), Vector2.ONE)
-			draw_texture_rect(_sprite, Rect2(-w * 0.5, -h * 0.5, w, h), false, Color(1, 1, 1, 0.9))
+			draw_texture_rect(_sprite, Rect2(-w * 0.5, -h * 0.5, w, h), false, Color(tint.r, tint.g, tint.b, 0.9))
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 

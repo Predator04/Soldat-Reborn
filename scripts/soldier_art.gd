@@ -84,7 +84,7 @@ static func draw_soldier(
 	show_hp: bool = true,
 ) -> void:
 	if jet_on and not dead:
-		_draw_jet_flame(node, facing)
+		_draw_jet_flame(node, facing, Gostek.Custom.JET_COLORS.get(str(cosmetics.get("jet", "")), Color(1.0, 0.35, 0.10)))
 
 	# Jetpack — sits behind the torso on the opposite side of `facing`.
 	var pack_col := body_color.darkened(0.25) if not dead else body_color.darkened(0.6)
@@ -223,7 +223,10 @@ static func _weapon_texture(weapon_name: String) -> Texture2D:
 	return tex
 
 
-static func _draw_jet_flame(node: CanvasItem, facing: float) -> void:
+static func _draw_jet_flame(node: CanvasItem, facing: float, base: Color = Color(1.0, 0.35, 0.10)) -> void:
+	var outer := Color(base.r, base.g, base.b, 0.55)
+	var mid := base.lerp(Color(1, 1, 0.8), 0.45)
+	mid.a = 0.75
 	var t := Time.get_ticks_msec() * 0.001
 	var origin: Vector2 = Vector2(-facing * 3.3, 1.2)
 	var length := 9.0 + sin(t * 26.0) * 1.9
@@ -239,9 +242,9 @@ static func _draw_jet_flame(node: CanvasItem, facing: float) -> void:
 			origin + Vector2(wobble * 0.5, length),
 		]),
 		PackedColorArray([
-			Color(1.0, 0.35, 0.10, 0.55),
-			Color(1.0, 0.35, 0.10, 0.55),
-			Color(1.0, 0.25, 0.05, 0.0),
+			outer,
+			outer,
+			Color(base.r, base.g * 0.7, base.b * 0.5, 0.0),
 		])
 	)
 	node.draw_polygon(
@@ -251,9 +254,9 @@ static func _draw_jet_flame(node: CanvasItem, facing: float) -> void:
 			origin + Vector2(wobble * 0.3, length * 0.78),
 		]),
 		PackedColorArray([
-			Color(1.0, 0.72, 0.28, 0.75),
-			Color(1.0, 0.72, 0.28, 0.75),
-			Color(1.0, 0.72, 0.28, 0.0),
+			mid,
+			mid,
+			Color(mid.r, mid.g, mid.b, 0.0),
 		])
 	)
 	node.draw_polygon(

@@ -23,13 +23,26 @@ const WEAPON_SKINS := {
 	"arctic": Color(1.45, 1.55, 1.7), "crimson": Color(1.45, 0.5, 0.45), "gold": Color(1.75, 1.35, 0.45),
 }
 
+# Jetpack flame and your bullets' tracer color.
+const JET_COLORS := {
+	"": Color(1.0, 0.35, 0.10), "blue": Color(0.3, 0.65, 1.0), "green": Color(0.35, 1.0, 0.4),
+	"purple": Color(0.8, 0.4, 1.0), "white": Color(0.95, 0.97, 1.0),
+}
+const TRACERS := {
+	"red": Color(1.5, 0.45, 0.4), "green": Color(0.55, 1.5, 0.5), "blue": Color(0.55, 0.85, 1.6),
+	"white": Color(1.6, 1.6, 1.6), "gold": Color(1.7, 1.3, 0.4),
+}
+
 # kind -> key -> ["level", n] | ["ach", id]. Keys not listed are free.
 const UNLOCKS := {
-	"finish": {"desert": ["level", 5], "urban": ["level", 10], "night": ["level", 20], "gold": ["level", 35]},
-	"vfinish": {"desert": ["level", 6], "urban": ["level", 12], "night": ["ach", "unstoppable"], "gold": ["ach", "champion"]},
-	"pants": {"desert": ["level", 3], "woodland": ["level", 7], "urban": ["level", 14], "black": ["ach", "flag_runner"], "white": ["level", 25]},
-	"wskin": {"desert": ["level", 2], "woodland": ["level", 8], "carbon": ["level", 15], "arctic": ["ach", "long_shot"],
-		"crimson": ["ach", "massacre"], "gold": ["level", 40]},
+	# Something new roughly every level or two up to 25, then achievements.
+	"wskin": {"desert": ["level", 2], "woodland": ["level", 5], "carbon": ["level", 10], "arctic": ["ach", "long_shot"],
+		"crimson": ["ach", "massacre"], "gold": ["level", 25]},
+	"pants": {"desert": ["level", 3], "woodland": ["level", 7], "urban": ["level", 12], "black": ["ach", "flag_runner"], "white": ["level", 18]},
+	"jet": {"blue": ["level", 4], "green": ["level", 9], "purple": ["level", 15], "white": ["ach", "all_rounder"]},
+	"finish": {"desert": ["level", 6], "urban": ["level", 11], "night": ["level", 16], "gold": ["level", 22]},
+	"vfinish": {"desert": ["level", 8], "urban": ["level", 14], "night": ["ach", "unstoppable"], "gold": ["ach", "champion"]},
+	"tracer": {"red": ["level", 13], "green": ["level", 17], "blue": ["level", 20], "white": ["ach", "sharpshooter"], "gold": ["ach", "veteran"]},
 }
 
 # Rows of the CUSTOMIZE screen: [kind, label, [[key, name], ...]]
@@ -43,6 +56,8 @@ const ROWS := [
 	["chain", "Chain", [["none", "None"], ["silver", "Silver"], ["gold", "Gold"]]],
 	["extras", "Extras", []],
 	["wskin", "Weapon skin", [["", "Factory"], ["desert", "Desert"], ["woodland", "Woodland"], ["carbon", "Carbon"], ["arctic", "Arctic"], ["crimson", "Crimson"], ["gold", "Gold"]]],
+	["tracer", "Tracers", [["", "Standard"], ["red", "Red"], ["green", "Green"], ["blue", "Blue"], ["white", "White"], ["gold", "Gold"]]],
+	["jet", "Jet flame", [["", "Standard"], ["blue", "Blue"], ["green", "Green"], ["purple", "Purple"], ["white", "White"]]],
 ]
 
 

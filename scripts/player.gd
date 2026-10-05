@@ -341,6 +341,7 @@ func _physics_process(delta: float) -> void:
 		# always dim when active. (#78)
 		modulate.a = 0.35 if bonus_kind == "predator" else 1.0
 		jet_particles.emitting = jet_on and not dead
+		jet_particles.color = jet_particle_color(cosmetics)
 		jet_particles.position = Vector2(-facing * 3.3, 1.7)
 		queue_redraw()
 		return
@@ -782,6 +783,7 @@ func _physics_process(delta: float) -> void:
 		Sfx.jet(false)
 	was_jet = jet_on
 	jet_particles.emitting = jet_on and not Settings.lofi
+	jet_particles.color = jet_particle_color(cosmetics)
 	jet_particles.position = Vector2(-facing * 3.3, 1.7)
 
 	# camera shake decay
@@ -1856,6 +1858,8 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_
 				b.grav = float(w.get("gravity", 0.0))
 			if Net.is_networked() and multiplayer.has_multiplayer_peer() and not is_multiplayer_authority():
 				b.lag_ms = lag_comp_ms()
+			if Gostek.Custom.TRACERS.has(str(cosmetics.get("tracer", ""))):
+				b.tint = Gostek.Custom.TRACERS[str(cosmetics.get("tracer", ""))]
 			get_parent().add_child(b)
 
 
@@ -2301,6 +2305,11 @@ func _update_camera_lead(stick: Vector2, delta: float) -> void:
 # peer that has finished loading; a client sends it to the host, which relays
 # it (see _net_accept). A plain rpc() also reached peers still loading the
 # match via Godot's server relay ("Node not found: Main/Player_N" spam).
+static func jet_particle_color(cos: Dictionary) -> Color:
+	var c: Color = Gostek.Custom.JET_COLORS.get(str(cos.get("jet", "")), Color(1.0, 0.35, 0.1))
+	return c.lerp(Color(1, 1, 1), 0.15)
+
+
 static func my_cosmetics() -> Dictionary:
 	var C := Gostek.Custom
 	return {
@@ -2315,6 +2324,8 @@ static func my_cosmetics() -> Dictionary:
 		"pants": C.allowed("pants", Settings.cos_pants),
 		"skin": C.allowed("skin", Settings.cos_skin),
 		"wskin": C.allowed("wskin", Settings.cos_wskin),
+		"jet": C.allowed("jet", Settings.cos_jet),
+		"tracer": C.allowed("tracer", Settings.cos_tracer),
 	}
 
 
@@ -2328,7 +2339,7 @@ func net_cosmetics(c: Dictionary) -> void:
 	if not _net_accept("net_cosmetics", [c]):
 		return
 	var out := {}
-	for k in ["head", "chain", "finish", "vfinish", "pants", "skin", "wskin"]:
+	for k in ["head", "chain", "finish", "vfinish", "pants", "skin", "wskin", "jet", "tracer"]:
 		if c.has(k):
 			out[k] = str(c[k]).left(16)
 	for k in ["vest", "cigar", "dreadlocks", "dogtag"]:

@@ -1,4 +1,5 @@
 extends CharacterBody2D
+const PlayerArt = preload("res://scripts/player.gd")
 ## Bot — AI soldier: leads its aim, circle-strafes, dodge-jumps, lobs grenades, jet-boots up.
 
 signal died
@@ -290,6 +291,7 @@ func _ready() -> void:
 			"skin": ["", "fair", "tan", "brown", "dark"][randi() % 5],
 			"pants": ["", "", "desert", "woodland", "urban", "black"][randi() % 6],
 			"wskin": ["", "", "", "desert", "woodland", "carbon"][randi() % 6],
+			"jet": ["", "", "", "blue", "green"][randi() % 5],
 		}
 	ammo = int(AMMO_STATS.get(loadout, AMMO_STATS["AK-74"])["mag"])
 	secondary_ammo = int(AMMO_STATS["USSOCOM"]["mag"])
@@ -352,6 +354,7 @@ func _physics_process(delta: float) -> void:
 		muzzle_t = maxf(0.0, muzzle_t - delta * 10.0)
 		if jet_particles != null:
 			jet_particles.emitting = jet_on and not Settings.lofi
+			jet_particles.color = PlayerArt.jet_particle_color(cosmetics)
 			jet_particles.position = Vector2(-facing * 3.3, 1.7)
 		queue_redraw()
 		return
@@ -731,6 +734,7 @@ func _physics_process(delta: float) -> void:
 		# your jet hum start/stop from across the map.)
 		was_jet = jet_on
 		jet_particles.emitting = jet_on and not Settings.lofi
+		jet_particles.color = PlayerArt.jet_particle_color(cosmetics)
 		jet_particles.position = Vector2(-facing * 3.3, 1.7)
 		if on_floor:
 			fuel = minf(100.0, fuel + 32.0 * delta)
