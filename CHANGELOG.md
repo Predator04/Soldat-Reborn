@@ -16,6 +16,7 @@ All notable changes to Soldat Reborn.
 
 ### Fixed
 - **Brand-new players didn't reach the leaderboard** until their second launch: the profile id was only created once a settings file existed. Found by playing on the live official server.
+- Servers update the online game list right after someone joins or leaves (it could lag 30 s), and retry a failed update after 5 s instead of staying unlisted.
 - Names can no longer inject text formatting into other players' kill feed and scoreboard (square brackets are turned into round ones on the server).
 
 ### Testing
