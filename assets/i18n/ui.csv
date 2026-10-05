@@ -307,3 +307,32 @@ main menu > CUSTOMIZE,menú principal > PERSONALIZAR,menu principal > PERSONALIZ
 BLUE,AZUL,AZUL,BLAU,BLEU
 RED,ROJO,VERMELHO,ROT,ROUGE
 Next unlock: %s at level %d,Próximo desbloqueo: %s en el nivel %d,Próximo desbloqueio: %s no nível %d,Nächste Freischaltung: %s ab Stufe %d,Prochain déblocage : %s au niveau %d
+%d days ago,hace %d días,há %d dias,vor %d Tagen,il y a %d jours
+%d h ago,hace %d h,há %d h,vor %d Std.,il y a %d h
+%d min ago,hace %d min,há %d min,vor %d Min.,il y a %d min
+"Clan tag (optional, up to 4 letters)","Etiqueta de clan (opcional, hasta 4 letras)","Tag do clã (opcional, até 4 letras)","Clan-Tag (optional, bis 4 Zeichen)","Tag de clan (facultatif, 4 lettres max)"
+Clan Tag (optional),Etiqueta de clan (opcional),Tag do clã (opcional),Clan-Tag (optional),Tag de clan (facultatif)
+Drag to look around,Arrastra para mirar alrededor,Arraste para olhar em volta,Ziehen zum Umsehen,Glissez pour regarder autour
+"Every match you play is recorded (the last 20 are kept). Watch from any player's view, at any speed.","Cada partida se graba (se guardan las últimas 20). Mírala desde la vista de cualquier jugador, a cualquier velocidad.","Toda partida é gravada (as últimas 20 ficam salvas). Assista pela visão de qualquer jogador, em qualquer velocidade.","Jedes Match wird aufgezeichnet (die letzten 20 bleiben). Schau aus der Sicht jedes Spielers, in jedem Tempo.","Chaque partie est enregistrée (les 20 dernières sont gardées). Regardez depuis n'importe quel joueur, à toute vitesse."
+Keep on the list,Mantener en la lista,Manter na lista,Auf der Liste behalten,Garder dans la liste
+No one yet. Play online (QUICK PLAY) and the people you meet show up here.,Nadie todavía. Juega en línea (JUEGO RÁPIDO) y la gente que conozcas aparecerá aquí.,Ninguém ainda. Jogue online (JOGO RÁPIDO) e quem você encontrar aparece aqui.,"Noch niemand. Spiel online (SCHNELLSPIEL), dann erscheinen hier die Leute, die du triffst.",Personne pour l'instant. Jouez en ligne (JEU RAPIDE) et les joueurs rencontrés apparaîtront ici.
+No replays yet. Play a match and it shows up here.,Aún no hay repeticiones. Juega una partida y aparecerá aquí.,Ainda não há replays. Jogue uma partida e ela aparece aqui.,"Noch keine Wiederholungen. Spiel ein Match, dann erscheint es hier.",Pas encore de replays. Jouez une partie et elle apparaîtra ici.
+PAUSE,PAUSA,PAUSAR,PAUSE,PAUSE
+PLAY,REPRODUCIR,REPRODUZIR,ABSPIELEN,LIRE
+People you've played with online. Star the ones you want to keep; join them when they're playing.,Gente con la que has jugado en línea. Marca con estrella a quien quieras conservar; únete cuando estén jugando.,Pessoas com quem você jogou online. Marque com estrela quem quer manter; entre quando estiverem jogando.,"Leute, mit denen du online gespielt hast. Markiere sie mit Stern; tritt bei, wenn sie spielen.",Les joueurs croisés en ligne. Mettez une étoile pour les garder ; rejoignez-les quand ils jouent.
+REPLAY,REPETICIÓN,REPLAY,WIEDERHOLUNG,REPLAY
+Space pause · ←/→ seek · ↑/↓ speed · Q/E player · F free cam · drag to look · Esc exit,Espacio pausa · ←/→ buscar · ↑/↓ velocidad · Q/E jugador · F cámara libre · arrastrar para mirar · Esc salir,Espaço pausa · ←/→ avançar · ↑/↓ velocidade · Q/E jogador · F câmera livre · arrastar para olhar · Esc sair,Leertaste Pause · ←/→ spulen · ↑/↓ Tempo · Q/E Spieler · F freie Kamera · ziehen zum Umsehen · Esc Ende,Espace pause · ←/→ avancer · ↑/↓ vitesse · Q/E joueur · F caméra libre · glisser pour regarder · Échap quitter
+playing on %s (%s),jugando en %s (%s),jogando em %s (%s),spielt auf %s (%s),joue sur %s (%s)
+Red,Rojo,Vermelho,Rot,Rouge
+Green,Verde,Verde,Grün,Vert
+Blue,Azul,Azul,Blau,Bleu
+Purple,Morado,Roxo,Lila,Violet
+Tracers,Trazadoras,Traçantes,Leuchtspur,Traçantes
+Jet flame,Llama del jetpack,Chama do jetpack,Jetpack-Flamme,Flamme du jetpack
+FRIENDS,AMIGOS,AMIGOS,FREUNDE,AMIS
+REPLAYS,REPETICIONES,REPLAYS,WIEDERHOLUNGEN,REPLAYS
+WATCH,VER,ASSISTIR,ANSEHEN,REGARDER
+DELETE,BORRAR,EXCLUIR,LÖSCHEN,SUPPRIMER
+JOIN,UNIRSE,ENTRAR,BEITRETEN,REJOINDRE
+FREE CAM,CÁMARA LIBRE,CÂMERA LIVRE,FREIE KAMERA,CAMÉRA LIBRE
+EXIT,SALIR,SAIR,BEENDEN,QUITTER

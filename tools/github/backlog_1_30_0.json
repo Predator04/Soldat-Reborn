@@ -1,0 +1,71 @@
+[
+ {
+  "title": "Match replays",
+  "close": true,
+  "version": "1.30.0",
+  "body": "Done: replay_recorder.gd records every match (15 Hz, gzip, last 20 kept); REPLAYS screen + replay_player.gd plays them back with pause, speed, seek, follow / free cam."
+ },
+ {
+  "title": "Flaky: client logs Node not found Main/BotRocket_* right after joining",
+  "close": true,
+  "version": "1.30.0",
+  "body": "Fixed earlier by sending projectile updates through Main.net_proj by name (unknown nodes are dropped quietly); no recurrence in later gate runs."
+ },
+ {
+  "title": "Flaky: weapon test bot Barrett sometimes misses its single shot",
+  "close": true,
+  "version": "1.30.0",
+  "body": "The bot now has 999 ammo and a 10 s window; passed every run since (re-checked twice for 1.30)."
+ },
+ {
+  "title": "Two pickup name tags overlap when kits sit next to each other",
+  "close": true,
+  "version": "1.30.0",
+  "body": "item_label.gd merges identical neighbours and stacks different ones; new gate test (label_overlap_test.gd) checks Voland and four other maps."
+ },
+ {
+  "title": "Deploy a public master server so relay and listing work out of the box",
+  "close": true,
+  "version": "1.30.0",
+  "body": "Running on Oracle Cloud (161.153.9.69:8080) with the official game server next to it."
+ },
+ {
+  "title": "Translate in-match HUD strings",
+  "close": true,
+  "version": "1.30.0",
+  "body": "Done in 1.26-1.27."
+ },
+ {
+  "title": "Relay server so internet games work without UPnP or port forwarding",
+  "close": true,
+  "version": "1.30.0",
+  "body": "The master server's /relay has hosted R- codes since 1.23."
+ },
+ {
+  "title": "Leaderboard missed brand-new players",
+  "labels": [
+   "bug",
+   "area: multiplayer"
+  ],
+  "version": "1.30.0",
+  "body": "Settings.profile_id was only generated inside load_settings(), which returns early without a settings file."
+ },
+ {
+  "title": "Clan tags and friends list",
+  "labels": [
+   "enhancement",
+   "area: multiplayer"
+  ],
+  "version": "1.30.0",
+  "body": "Settings.clan_tag / display_name(); servers send player names in the heartbeat; friends_panel.gd."
+ },
+ {
+  "title": "Tracer and jet flame colors",
+  "labels": [
+   "enhancement",
+   "area: graphics"
+  ],
+  "version": "1.30.0",
+  "body": "customization.gd TRACERS / JET_COLORS with unlocks; unlock pacing to level 25."
+ }
+]

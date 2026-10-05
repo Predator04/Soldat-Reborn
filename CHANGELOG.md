@@ -2,6 +2,25 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.30.0] — 2026-10-05
+
+### Added
+- **REPLAYS.** Every match you play is recorded (the last 20 are kept, about 2 MB for a 5-minute round). Watch any of them on its map: pause, 0.25x to 4x speed, seek, follow any player or roam with a free camera (drag on phones).
+- **FRIENDS and clan tags.** Add a clan tag (up to 4 letters) to your name: it shows as «TAG» Name. FRIENDS lists everyone you've played with online, shows who's playing right now and where, and joins their game in one click. Star people to keep them on the list.
+- **New unlocks:** tracer colors (Red, Green, Blue, White, Gold) for your bullets and jetpack flame colors (Blue, Green, Purple, White).
+- The CUSTOMIZE preview shows your jet flame and tracers.
+
+### Changed
+- **Unlocks come faster:** something new every level or two up to level 25 (Gold weapon skin was level 40, Gold helmet 35).
+- Buttons in lists (WATCH, JOIN, DOWNLOAD...) are bigger on phones.
+
+### Fixed
+- **Brand-new players didn't reach the leaderboard** until their second launch: the profile id was only created once a settings file existed. Found by playing on the live official server.
+- Names can no longer inject text formatting into other players' kill feed and scoreboard (square brackets are turned into round ones on the server).
+
+### Testing
+- New release-gate checks: the leaderboard end to end with a brand-new player on a real dedicated server, clan tag + friends over the network, replays (record, save, list, play back, seek, exit), tracer and jet colors on real bullets, pickup tags never overlapping.
+
 ## [1.29.1] — 2026-10-04
 
 Seven review passes over customization and unlocks.
