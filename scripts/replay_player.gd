@@ -138,7 +138,7 @@ func _build_ui() -> void:
 	_feed.offset_top = 12
 	_ui.add_child(_feed)
 	var help := Label.new()
-	help.text = tr("Space pause · ←/→ seek · ↑/↓ speed · Q/E player · F free cam · Esc exit")
+	help.text = tr("Drag to look around") if UITheme.is_touch() else tr("Space pause · ←/→ seek · ↑/↓ speed · Q/E player · F free cam · drag to look · Esc exit")
 	help.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	help.offset_top = -84
 	help.offset_left = -300
@@ -196,6 +196,17 @@ func exit_replay() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	# Drag (finger or mouse) pans the camera: free cam.
+	var drag := Vector2.ZERO
+	if event is InputEventScreenDrag:
+		drag = (event as InputEventScreenDrag).relative
+	elif event is InputEventMouseMotion and ((event as InputEventMouseMotion).button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
+		drag = (event as InputEventMouseMotion).relative
+	if drag != Vector2.ZERO:
+		follow_id = -1
+		_cam.global_position -= drag / _cam.zoom
+		get_viewport().set_input_as_handled()
+		return
 	if not (event is InputEventKey) or not event.pressed:
 		return
 	match (event as InputEventKey).keycode:

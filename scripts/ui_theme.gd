@@ -229,9 +229,18 @@ static func make_button(text: String, primary: bool = false, w: int = BTN_W, h: 
 static func make_small_button(text: String, w: int = 200, h: int = 34) -> Button:
 	var b := Button.new()
 	b.text = text
+	# Phones: at least ~44 px tall so rows of WATCH / JOIN / DOWNLOAD are easy
+	# to hit with a thumb.
+	if is_touch():
+		h = maxi(h, 44)
 	b.custom_minimum_size = Vector2(w, h)
 	style_button(b, 15, false)
 	return b
+
+
+static func is_touch() -> bool:
+	return OS.has_feature("android") or OS.has_feature("mobile") or DisplayServer.is_touchscreen_available() \
+		or "--force-touch" in OS.get_cmdline_user_args()
 
 
 # ── Text ───────────────────────────────────────────────
