@@ -443,7 +443,10 @@ func _build_menu() -> void:
 	lib.pressed.connect(_open_map_library)
 	var extra_row := HBoxContainer.new()
 	extra_row.add_theme_constant_override("separation", 8)
-	for b in [cust, lib]:
+	var rep := _make_button("REPLAYS")
+	rep.tooltip_text = "Watch your recorded matches back."
+	rep.pressed.connect(_open_replays)
+	for b in [cust, lib, rep]:
 		b.custom_minimum_size = Vector2(0, b.custom_minimum_size.y)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		extra_row.add_child(b)
@@ -1922,6 +1925,17 @@ func _open_leaderboard() -> void:
 
 var _cust_panel: Control = null
 var _friends_panel: Control = null
+var _replays_panel: Control = null
+
+
+func _open_replays() -> void:
+	if _replays_panel == null:
+		_replays_panel = preload("res://scripts/replays_panel.gd").new()
+		add_child(_replays_panel)
+		_replays_panel.closed.connect(func() -> void: _menu_root.visible = true)
+	_menu_root.visible = false
+	_replays_panel.visible = true
+	_replays_panel.refresh_data()
 
 
 func _open_friends() -> void:
@@ -1960,7 +1974,7 @@ func _open_map_library() -> void:
 
 
 func _go_back() -> void:
-	for pn in [_lb_panel, _lib_panel, _cust_panel, _friends_panel]:
+	for pn in [_lb_panel, _lib_panel, _cust_panel, _friends_panel, _replays_panel]:
 		if pn != null and pn.visible:
 			pn.visible = false
 			pn.closed.emit()

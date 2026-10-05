@@ -28,6 +28,7 @@ var _exploded := false
 
 
 func _ready() -> void:
+	add_to_group("grenade")   # match replays
 	_snapshot_net_peers()
 	# Grenades bounce off "only bullets" polys too (terrain layer 2).
 	collision_mask = 1 | 2 | 8  # terrain, bullets-only terrain, soldiers

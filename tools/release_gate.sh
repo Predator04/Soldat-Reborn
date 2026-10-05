@@ -421,6 +421,7 @@ if has F; then
   ft crew vehicle_crew_test.gd 100 CREW-TEST "buggy crew: solo-fire slowdown / bot gunner boards, shoots, leaves"
   ft tank tank_test.gd 100 TANK-TEST "tank: drive / lobbed shell / armor / wreck / respawn / wide-map spawns"
   ft joincode join_code_test.gd 60 JOINCODE-TEST "join codes: round trip, typos, garbage, host shows its code"
+  ft replay replay_test.gd 150 REPLAY-TEST "replays: record, save on leave, list, play back in place, seek, exit restores"
   ft tags label_overlap_test.gd 120 LABELS-TEST "pickup name tags never overlap (#185)"
   ft friends friends_test.gd 60 FRIENDS-TEST "friends list: order, online + join, stars, cap"
   ft unlock unlock_test.gd 60 UNLOCK-TEST "unlock in play: toast, equip live, kept on respawn"

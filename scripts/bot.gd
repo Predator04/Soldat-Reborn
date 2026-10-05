@@ -1482,6 +1482,17 @@ func _spawn_ragdoll() -> void:
 		get_tree().create_timer(2.5).timeout.connect(body.queue_free)
 
 
+## Compact snapshot for match replays (replay_recorder.gd).
+func replay_state() -> Array:
+	var aim: Vector2 = Vector2(facing, 0.0)
+	if is_instance_valid(target):
+		aim = (target.global_position - global_position).normalized()
+	var on_floor := is_on_floor() if (multiplayer.multiplayer_peer == null or is_multiplayer_authority()) else absf(velocity.y) < 5.0
+	var bits := (1 if jet_on else 0) | (2 if dead else 0) | (4 if on_floor else 0) | (32 if reloading else 0)
+	return [snappedf(global_position.x, 0.1), snappedf(global_position.y, 0.1), snappedf(aim.angle(), 0.01), int(signf(facing)),
+		roundi(velocity.x), roundi(velocity.y), bits, "USSOCOM" if using_secondary else loadout, loadout if using_secondary else "", roundi(health)]
+
+
 func _draw() -> void:
 	# Aim direction: bots don't track aim_dir as a var — reconstruct it from facing + target.
 	var aim: Vector2 = Vector2(facing, 0.0)

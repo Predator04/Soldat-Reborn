@@ -473,6 +473,14 @@ func _ready() -> void:
 	_build_terrain()
 	# Warm lazily-loaded art during the load, not mid-fight (frame hitches).
 	preload("res://scripts/gostek.gd").warm_cache()
+	if Net.replay_path != "":
+		# Watching a replay: the map only, then the replay player draws the
+		# recorded soldiers / shots / flags on top. No match logic runs.
+		replay_mode = true
+		var rp = preload("res://scripts/replay_player.gd").new()
+		rp.main = self
+		add_child(rp)
+		return
 	nav = NavGraph.load_for(_map)
 	_build_weather()
 	_build_hud()
@@ -488,6 +496,10 @@ func _ready() -> void:
 	_spawn_bonus_boxes_init()
 	_spawn_vehicles()
 	kill.connect(_on_kill_scored)
+	if not Net.is_dedicated and not Settings.training:
+		recorder = preload("res://scripts/replay_recorder.gd").new()
+		recorder.main = self
+		add_child(recorder)
 
 	if Net.is_networked():
 		multiplayer.peer_disconnected.connect(_on_net_peer_disconnected)
@@ -1664,6 +1676,8 @@ func _bot_carries_flag(b: Node) -> bool:
 
 var _fill_seq := 100
 var ranked: Node = null   # ranked.gd on a dedicated host with a stats URL
+var replay_mode := false  # this scene is showing a recorded match
+var recorder: Node = null # replay_recorder.gd (every match except dedicated servers)
 var _bot_team_by_name: Dictionary = {}   # bot name -> team (live or waiting to respawn)
 
 
@@ -2676,6 +2690,12 @@ func net_match_restart(map_idx: int, mode_idx: int) -> void:
 	call_deferred("_do_reload_main")
 
 
+func _exit_tree() -> void:
+	# Leaving mid-round (quit to menu, disconnect, map change): keep what was played.
+	if recorder != null and is_instance_valid(recorder):
+		recorder.save()
+
+
 func _do_reload_main() -> void:
 	get_tree().paused = false
 	get_tree().change_scene_to_file("res://scenes/main.tscn")
@@ -3005,6 +3025,8 @@ func net_pings(table: Dictionary) -> void:
 
 
 func _process(delta: float) -> void:
+	if replay_mode:
+		return
 	_tick_pings(delta)
 	_tick_recent_players(delta)
 	# Vote timer + cooldown ticks — before the client early-return so the vote
@@ -3670,6 +3692,12 @@ func _end_round(team: int) -> void:
 	if is_instance_valid(player):
 		var won: bool = team >= 0 and int(player.team) == team
 		Stats.record_match_end(won)
+	if recorder != null:
+		recorder.save()
+		recorder.queue_free()   # next round records into a new file
+		recorder = preload("res://scripts/replay_recorder.gd").new()
+		recorder.main = self
+		add_child(recorder)
 	if ranked != null:
 		ranked.round_end(team)
 	if Net.is_networked() and Net.is_host():

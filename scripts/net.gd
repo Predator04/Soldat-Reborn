@@ -48,6 +48,8 @@ var register_url := ""   # master-server URL from --register (dedicated lobby he
 # Dedicated bot fill (--fill=N, default 8; --fill=0 = use the Bots setting):
 # the server keeps N soldiers in the match, bots leave as players join.
 var fill_target := 0
+var replay_path := ""   # set by the REPLAYS screen: main.tscn shows this replay
+var replay_restore: Dictionary = {}   # settings to put back after watching
 # Ranked results (dedicated): where to report them (--stats=URL, default the
 # --register master) and each connected player's profile hash.
 var stats_url := ""

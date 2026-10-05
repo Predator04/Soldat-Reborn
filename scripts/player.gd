@@ -1995,6 +1995,17 @@ func _spawn_ragdoll() -> void:
 		get_tree().create_timer(2.5).timeout.connect(body.queue_free)
 
 
+## Compact snapshot for match replays (replay_recorder.gd).
+func replay_state() -> Array:
+	var w := _active_weapon()
+	var back_wn: String = str(weapons[weapon_index]["name"]) if using_secondary else str(secondary[secondary_index]["name"])
+	var on_floor := is_on_floor() if (multiplayer.multiplayer_peer == null or is_multiplayer_authority()) else absf(velocity.y) < 5.0
+	var bits := (1 if jet_on else 0) | (2 if dead else 0) | (4 if (on_floor or climbing) else 0) \
+		| (8 if crouching else 0) | (16 if prone else 0) | (32 if reloading else 0)
+	return [snappedf(global_position.x, 0.1), snappedf(global_position.y, 0.1), snappedf(aim_dir.angle(), 0.01), int(signf(facing)),
+		roundi(velocity.x), roundi(velocity.y), bits, str(w["name"]), back_wn, roundi(health)]
+
+
 func _draw() -> void:
 	var w := _active_weapon()
 	# For non-authority replicas is_on_floor() is stale (no move_and_slide runs on them),
