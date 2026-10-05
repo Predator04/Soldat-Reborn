@@ -109,7 +109,15 @@ def backlog(path):
     have = all_issue_titles()
     for it in items:
         if it["title"] in have:
-            print("exists #%d %s" % (have[it["title"]], it["title"]))
+            n = have[it["title"]]
+            if it.get("close"):
+                iss = call("GET", "/repos/%s/issues/%d" % (REPO, n))
+                if iss.get("state") == "open":
+                    call("POST", "/repos/%s/issues/%d/comments" % (REPO, n), {"body": it["body"] + "\n\n_Closed in v%s._" % it.get("version", "?")})
+                    call("PATCH", "/repos/%s/issues/%d" % (REPO, n), {"state": "closed", "state_reason": "completed"})
+                    print("closed #%d %s" % (n, it["title"]))
+                    continue
+            print("exists #%d %s" % (n, it["title"]))
             continue
         sha = it.get("commit", "")
         if it.get("open"):
