@@ -27,7 +27,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 G="${GODOT_BIN:-$HOME/godot/Godot_v4.7.2-stable_linux.x86_64}"
 QUICK=0; OUT="build/gate"; ONLY="A B N C D R F E"; MODESEL="0 1 2 3 4 5 6 7 8 9"
-NETSEL="ctf dm two fill ranked friends respawn drive rejoin relay host listen lan soak m3 m7 m9"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
+NETSEL="ctf dm two fill ranked friends respawn killcam drive rejoin relay host listen lan soak m3 m7 m9"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --quick) QUICK=1;; --out) OUT="$2"; shift;; --only) ONLY="$2"; shift;;
@@ -286,11 +286,33 @@ case " $NETSEL " in *" respawn "*)
   timeout 40 "$G" --headless -- --smoke-join --port $port --smoke-secs=12 --smoke-die > "$OUT/net_respawn_client.log" 2>&1
   wait $spid 2>/dev/null
   e=$(( $(errs "$OUT/net_respawn_server.log") + $(errs "$OUT/net_respawn_client.log") ))
+  after=$(grep -m1 -o "SMOKE-RESPAWNED.*after=[0-9.]*" "$OUT/net_respawn_client.log" | grep -o "after=[0-9.]*" | cut -d= -f2)
   if grep -q "SMOKE-DIE sent" "$OUT/net_respawn_client.log" && grep -q "SMOKE-RESPAWNED name=Player_" "$OUT/net_respawn_client.log" \
+      && [ -n "$after" ] && awk "BEGIN{exit !($after <= 3.2)}" \
       && ! grep -m1 "SMOKE-JOIN-PLAYERS" "$OUT/net_respawn_client.log" | grep -q "@" && [ "$e" = "0" ]; then
     pass "C net client death + respawn: $(grep -m1 SMOKE-RESPAWNED "$OUT/net_respawn_client.log")"
   else
     fail "C net client death + respawn: $(grep -hE 'SMOKE-(DIE|RESPAWNED|JOIN-LOCAL|JOIN-PLAYERS)' "$OUT/net_respawn_client.log" | tr '\n' ' ') errors=$e"
+  fi
+;; esac
+case " $NETSEL " in *" killcam "*)
+  # A bot "kills" the client: its kill cam rewind plays (~4.3 s) and the host
+  # holds the respawn until the client says it's done; a self-kill (case
+  # "respawn") must still come back on the normal 2 s timer.
+  port=$((7700 + RANDOM % 200))
+  timeout 60 "$G" --headless -- --dedicated --port $port --map 0 --mode 0 > "$OUT/net_killcam_server.log" 2>&1 &
+  spid=$!
+  for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_killcam_server.log" 2>/dev/null && break; sleep 0.5; done
+  sleep 3
+  timeout 40 "$G" --headless -- --smoke-join --port $port --smoke-secs=14 --smoke-die --smoke-die-by-bot > "$OUT/net_killcam_client.log" 2>&1
+  wait $spid 2>/dev/null
+  e=$(( $(errs "$OUT/net_killcam_server.log") + $(errs "$OUT/net_killcam_client.log") ))
+  after=$(grep -m1 -o "SMOKE-RESPAWNED.*after=[0-9.]*" "$OUT/net_killcam_client.log" | grep -o "after=[0-9.]*" | cut -d= -f2)
+  if grep "SMOKE-DIE sent" "$OUT/net_killcam_client.log" | grep -v "killer=Player_" | grep -q "rewind=true"; [ $? = 0 ] && grep -q "SMOKE-DIE sent" "$OUT/net_killcam_client.log" && grep -q "KILLCAM-REWIND end skipped=false" "$OUT/net_killcam_client.log" \
+      && [ -n "$after" ] && awk "BEGIN{exit !($after >= 3.6 && $after <= 6.0)}" && [ "$e" = "0" ]; then
+    pass "C net kill cam rewind holds the respawn: respawned after ${after}s"
+  else
+    fail "C net kill cam: $(grep -hE 'SMOKE-(DIE|RESPAWNED)|KILLCAM-REWIND' "$OUT/net_killcam_client.log" | tr '\n' ' ') errors=$e"
   fi
 ;; esac
 case " $NETSEL " in *" host "*)
@@ -428,7 +450,7 @@ if has F; then
   ft customize customize_test.gd 60 CUSTOMIZE-TEST "customization: locks, unlocks, network, screens"
   ft mapvote mapvote_test.gd 60 MAPVOTE-TEST "end-of-round map vote"
   ft pad pad_test.gd 60 PAD-TEST "gamepad: radio (L3 + D-pad), limbo loadout (D-pad)"
-  ft killcam killcam_test.gd 60 KILLCAM-TEST "kill cam follows your killer, ends on respawn"
+  ft killcam killcam_test.gd 60 KILLCAM-TEST "kill cam: rewind w/ slow-mo, respawn waits, skip, live follow"
   ft lagcomp lagcomp_test.gd 60 LAGCOMP-TEST "lag compensation: hits where the shooter saw you, capped"
   ft quickplay quickplay_test.gd 60 QUICKPLAY-TEST "quick play: no game online -> bot match"
   ft name name_test.gd 60 NAME-TEST "name required before Training / online, easy rename"

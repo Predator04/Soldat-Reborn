@@ -429,8 +429,20 @@ func _smoke_join() -> void:
 				mn = get_tree().current_scene
 			if mn != null and mn.get("player") != null and is_instance_valid(mn.player):
 				var old_id: int = mn.player.get_instance_id()
-				mn.player.take_damage(999.0, str(mn.player.display_name), "Selfkill", int(mn.player.team))
-				print("SMOKE-DIE sent")
+				# --smoke-die-by-bot: a bot is the killer, so the kill cam rewind
+				# plays and the host has to hold the respawn until it's done.
+				var killer := str(mn.player.display_name)
+				var kw := "Selfkill"
+				if "--smoke-die-by-bot" in OS.get_cmdline_user_args():
+					for s in get_tree().get_nodes_in_group("soldier"):
+						if s != mn.player and s.get("loadout") != null and str(s.get("display_name")) != "":
+							killer = str(s.get("display_name"))
+							kw = "AK-74"
+							break
+				var died_t := Time.get_ticks_msec()
+				mn.player.take_damage(999.0, killer, kw, int(mn.player.team))
+				var rw = mn.get("killcam")
+				print("SMOKE-DIE sent killer=%s rewind=%s" % [killer, str(rw != null and rw.is_active())])
 				# Report the first new living body (bots may kill it again
 				# before the end-of-window summary, so don't rely on that).
 				var watch := Timer.new()
@@ -441,7 +453,7 @@ func _smoke_join() -> void:
 					var m2 = get_tree().current_scene
 					var np = m2.get("player") if m2 != null else null
 					if np != null and is_instance_valid(np) and np.get_instance_id() != old_id and not bool(np.get("dead")):
-						print("SMOKE-RESPAWNED name=%s" % str(np.name))
+						print("SMOKE-RESPAWNED name=%s after=%.2f" % [str(np.name), (Time.get_ticks_msec() - died_t) / 1000.0])
 						watch.queue_free()))
 	# Larger window so the client has time to complete: connect → map_received →
 	# main.tscn._ready → net_client_ready → host mirrors bots via net_spawn_bot.

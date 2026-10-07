@@ -11,6 +11,7 @@ const PoaLoader = preload("res://scripts/poa_loader.gd")
 const WeaponPickup = preload("res://scripts/weapon_pickup.gd")
 const MapIO = preload("res://scripts/map_io.gd")
 const Spectator = preload("res://scripts/spectator.gd")
+const KillcamRewind = preload("res://scripts/killcam_rewind.gd")
 const BonusPickup = preload("res://scripts/bonus_pickup.gd")
 const TouchControls = preload("res://scripts/touch_controls.gd")
 const NavGraph = preload("res://scripts/nav_graph.gd")
@@ -20,6 +21,7 @@ signal objective(kind: String, team: int, who: String)   # grab/drop/return/capt
 
 var player: Node2D = null            # LOCAL player (whichever peer owns us)
 var hud: CanvasLayer = null
+var killcam: Node2D = null           # killcam_rewind.gd — replays the last seconds before your death
 var spectator: Node2D = null         # (#75) follow/free-cam while dead — owns its own Camera2D
 # (#76) Kill-streak + multi-kill announcer state. Keyed by killer's display_name.
 # {"streak": int (kills-per-life), "multi": int (kills within 2s), "multi_t": float,
@@ -1466,10 +1468,15 @@ func _on_player_died() -> void:
 	# the nearest living soldier. Uses the just-died body's last known position as
 	# the anchor for the first target pick so the transition doesn't hop the view.
 	_begin_spectator()
+	var rewinding: bool = killcam != null and killcam.is_active()
 	# In MP the host owns respawn scheduling (see player.gd::_die), so main only
 	# shows the death UI — no local timer needed. SP still schedules here.
 	if Net.is_networked():
 		var mp_delay: float = _respawn_delay_for_team(int(player.team))
+		if rewinding:
+			mp_delay += _killcam_pad(mp_delay)
+		else:
+			request_respawn_ready.call_deferred()   # nothing to watch: respawn on the normal timer
 		if hud:
 			if Settings.survival and round_active:
 				hud.show_death(str(player.last_killer), str(player.last_weapon), -1.0)
@@ -1489,9 +1496,13 @@ func _on_player_died() -> void:
 			hud.show_death(str(player.last_killer), str(player.last_weapon), -1.0)
 		return
 	var delay: float = _respawn_delay_for_team(int(player.team))
+	var pad: float = _killcam_pad(delay) if rewinding else 0.0
 	if hud:
-		hud.show_death(str(player.last_killer), str(player.last_weapon), delay)
-	get_tree().create_timer(delay).timeout.connect(_spawn_player)
+		hud.show_death(str(player.last_killer), str(player.last_weapon), delay + pad)
+	_respawn_gate(0, delay, pad, func() -> void:
+		# A round reset in between may already have spawned us.
+		if player == null or not is_instance_valid(player) or bool(player.get("dead")):
+			_spawn_player())
 
 
 func _begin_spectator() -> void:
@@ -1507,11 +1518,86 @@ func _begin_spectator() -> void:
 		if killer == str(player.display_name):
 			killer = ""
 	spectator.activate(anchor, killer, weapon)
+	# Kill cam rewind: replay the last seconds (from this client's recorder).
+	if killer != "" and Settings.killcam_replay and killcam != null and recorder != null and is_instance_valid(player):
+		killcam.start(recorder, killer, str(player.display_name), weapon)
 
 
 func _end_spectator() -> void:
+	if killcam != null and is_instance_valid(killcam):
+		killcam.stop(false, false)
 	if spectator != null and is_instance_valid(spectator):
 		spectator.deactivate()
+
+
+# ── Respawn gate (kill cam rewind) ──────────────────────
+# A death waits `base` seconds as always, plus `pad` while the kill cam
+# rewind plays. The player can skip it (request_respawn_ready); the respawn
+# then happens as soon as the normal `base` delay is over. Keyed per peer on
+# the host (0 = singleplayer local player).
+var _rs_state: Dictionary = {}
+var _rs_tok := 0
+var _rs_early: Dictionary = {}   # key -> msec a "ready" arrived before its gate existed
+
+
+## Extra wait so a full rewind fits before the respawn (none if the normal
+## delay is already long enough, e.g. INF attackers).
+func _killcam_pad(base: float) -> float:
+	return maxf(0.0, KillcamRewind.LENGTH + 0.3 - base)
+
+
+func _respawn_gate(key: int, base: float, pad: float, fire: Callable) -> void:
+	_rs_tok += 1
+	var tok := _rs_tok
+	var early: bool = Time.get_ticks_msec() - int(_rs_early.get(key, -100000)) < 1500
+	_rs_early.erase(key)
+	_rs_state[key] = {"ready": pad <= 0.0 or early, "base": false, "tok": tok, "fire": fire}
+	get_tree().create_timer(base).timeout.connect(func() -> void:
+		var st: Variant = _rs_state.get(key)
+		if st == null or int(st.tok) != tok:
+			return
+		st.base = true
+		if bool(st.ready):
+			_rs_fire(key))
+	if pad > 0.0:
+		get_tree().create_timer(base + pad).timeout.connect(func() -> void:
+			var st: Variant = _rs_state.get(key)
+			if st != null and int(st.tok) == tok:
+				_rs_fire(key))
+
+
+func _rs_fire(key: int) -> void:
+	var st: Variant = _rs_state.get(key)
+	if st == null:
+		return
+	_rs_state.erase(key)
+	(st.fire as Callable).call()
+
+
+func _rs_ready(key: int) -> void:
+	var st: Variant = _rs_state.get(key)
+	if st == null:
+		_rs_early[key] = Time.get_ticks_msec()
+		return
+	st.ready = true
+	if bool(st.base):
+		_rs_fire(key)
+
+
+## Local player is done watching (rewind ended / skipped / nothing to show).
+func request_respawn_ready() -> void:
+	if not Net.is_networked():
+		_rs_ready(0)
+	elif Net.is_host():
+		_rs_ready(1)
+	else:
+		rpc_id(1, "net_respawn_ready")
+
+
+@rpc("any_peer", "reliable")
+func net_respawn_ready() -> void:
+	if Net.is_host():
+		_rs_ready(multiplayer.get_remote_sender_id())
 
 
 # ── Kill streaks + multi-kills (#76) ──────────────────
@@ -2033,6 +2119,11 @@ func _build_hud() -> void:
 	spectator.name = "Spectator"
 	spectator.main = self
 	add_child(spectator)
+	killcam = KillcamRewind.new()
+	killcam.name = "KillcamRewind"
+	killcam.main = self
+	add_child(killcam)
+	killcam.finished.connect(func(_skipped: bool) -> void: request_respawn_ready())
 
 
 func _build_pause_menu() -> void:
@@ -2248,7 +2339,9 @@ func _schedule_peer_respawn(peer_id: int, t: int) -> void:
 		return
 	var delay: float = _respawn_delay_for_team(t)
 	var mode_at_schedule: int = Net.mode
-	get_tree().create_timer(delay).timeout.connect(func() -> void:
+	# Human players may be watching the kill cam rewind: wait for their
+	# "ready" (sent right away when there's nothing to watch) or the pad.
+	_respawn_gate(peer_id, delay, _killcam_pad(delay), func() -> void:
 		if Net.mode != mode_at_schedule or not is_inside_tree():
 			return
 		# A round reset in between may already have given this peer a body.

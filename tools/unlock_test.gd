@@ -6,6 +6,8 @@ extends SceneTree
 ##   godot --headless -s tools/unlock_test.gd
 
 var _n := 0
+var _spawned: Array = []
+var _spawned_ok := false
 var _st := 0
 var _t := 0
 var _saved := {}
@@ -76,6 +78,12 @@ func _process(_d: float) -> bool:
 				m.player.call("_switch_weapon", 2)
 				m.player.set("fire_cd", 0.0)
 				Input.action_press("jet")
+				# Bullets can hit a wall and vanish before we look: tally each
+				# one as it spawns (tint is set before it enters the tree).
+				node_added.connect(func(nd: Node) -> void:
+					if nd.get("tint") is Color and str(nd.get("killer_name")) == str(current_scene.player.display_name) \
+							and (nd.get("tint") as Color).is_equal_approx(load("res://scripts/customization.gd").TRACERS["gold"]):
+						_spawned_ok = true)
 				_t = _n
 				_st = 4
 				return false
@@ -89,6 +97,14 @@ func _process(_d: float) -> bool:
 			Input.action_release("fire")
 			Input.action_release("jet")
 			var tinted := 0
+			for b in _spawned:
+				if not is_instance_valid(b):
+					continue
+				if str(b.get("killer_name")) == str(m.player.display_name) and (b.get("tint") as Color).is_equal_approx(load("res://scripts/customization.gd").TRACERS["gold"]):
+					tinted += 1
+					_spawned_ok = true
+			if _spawned_ok and tinted == 0:
+				tinted = 1
 			for b in get_nodes_in_group("bullet"):
 				if str(b.get("killer_name")) == str(m.player.display_name) and (b.get("tint") as Color).is_equal_approx(load("res://scripts/customization.gd").TRACERS["gold"]):
 					tinted += 1

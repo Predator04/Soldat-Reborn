@@ -21,6 +21,8 @@ var _t := 0.0
 var _acc := 0.0
 var _started_unix := 0
 var saved_paths: Array = []      # for tests
+var recent: Array = []           # rolling last RECENT_SECS of frames (kill cam rewind)
+const RECENT_SECS := 4.0
 
 
 func _ready() -> void:
@@ -35,9 +37,25 @@ func _process(delta: float) -> void:
 	if _acc < 1.0 / HZ:
 		return
 	_acc = 0.0
-	if frames.size() >= MAX_FRAMES:
-		return
-	frames.append(_snapshot())
+	var snap := _snapshot()
+	recent.append(snap)
+	while recent.size() > 2 and float(snap[0]) - float(recent[0][0]) > RECENT_SECS:
+		recent.pop_front()
+	if frames.size() < MAX_FRAMES:
+		frames.append(snap)
+
+
+## The last `secs` seconds plus a fresh snapshot of right now (kill cam).
+func last_seconds(secs: float) -> Array:
+	var out: Array = []
+	var now_snap := _snapshot()
+	for i in range(recent.size() - 1, -1, -1):
+		out.push_front(recent[i])
+		if float(now_snap[0]) - float(recent[i][0]) >= secs:
+			break
+	if out.is_empty() or float(now_snap[0]) > float(out[-1][0]) + 0.005:
+		out.append(now_snap)
+	return out
 
 
 # One id per player name, so a respawned body (a new node) keeps its id and

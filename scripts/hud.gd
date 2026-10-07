@@ -28,6 +28,7 @@ var desat_overlay: ColorRect
 var lbl_death: Label
 var lbl_respawn: Label
 var _death_remaining := 0.0
+var rewind_on := false     # kill cam rewind playing: keep the middle of the screen clear
 var _dead := false
 
 # /command line for gestures (opened by player.gd when the "/" key is pressed).
@@ -522,8 +523,8 @@ func set_spectate_target(name: String, col: Color) -> void:
 		return
 	lbl_spectate.text = tr("Spectating: %s") % name
 	lbl_spectate.add_theme_color_override("font_color", col)
-	lbl_spectate.visible = true
-	lbl_spectate_hint.visible = true
+	lbl_spectate.visible = not rewind_on
+	lbl_spectate_hint.visible = not rewind_on
 
 
 func set_killcam(name: String, hp: int, weapon: String, col: Color) -> void:
@@ -532,8 +533,26 @@ func set_killcam(name: String, hp: int, weapon: String, col: Color) -> void:
 	var w := (" · " + tr(weapon)) if weapon != "" else ""
 	lbl_spectate.text = tr("KILL CAM: %s") % name + "  ·  " + (tr("%d HP left") % maxi(0, hp)) + w
 	lbl_spectate.add_theme_color_override("font_color", col)
-	lbl_spectate.visible = true
-	lbl_spectate_hint.visible = true
+	lbl_spectate.visible = not rewind_on
+	lbl_spectate_hint.visible = not rewind_on
+
+
+## Kill cam rewind start / end: hide the death text, grey overlay, spectate
+## label and the help card while it plays; put them back after.
+func set_rewind(on: bool) -> void:
+	rewind_on = on
+	var hint := get_node_or_null("ControlsHint")
+	if on:
+		for c in [lbl_death, lbl_respawn, desat_overlay, lbl_spectate, lbl_spectate_hint]:
+			if c != null:
+				c.visible = false
+		if hint != null:
+			hint.visible = false
+	elif _dead:
+		desat_overlay.visible = true
+		var m := get_parent()
+		if m != null and m.get("spectator") != null and is_instance_valid(m.spectator) and m.spectator.is_active():
+			m.spectator._notify_hud()
 
 
 func open_command(prefill: String = "/") -> void:
@@ -1109,8 +1128,9 @@ func _process(delta: float) -> void:
 	# printed over "BLUE WINS" / the MVP line (Survival especially).
 	var winner_up: bool = lbl_winner != null and lbl_winner.visible
 	if _dead:
-		lbl_death.visible = not winner_up
-		lbl_respawn.visible = not winner_up
+		lbl_death.visible = not winner_up and not rewind_on
+		lbl_respawn.visible = not winner_up and not rewind_on
+		desat_overlay.visible = not rewind_on
 	if _dead:
 		if _death_remaining < 0.0:
 			# Survival: no respawn until the round resets. The desaturated overlay

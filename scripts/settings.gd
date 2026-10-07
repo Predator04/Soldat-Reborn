@@ -27,6 +27,7 @@ var touch_swap := false
 # in-game "Customize touch layout" editor (touch_controls.gd), reset by the
 # "Reset touch layout" action.
 var touch_btn_pos: Dictionary = {}
+var killcam_replay := true     # rewind the last seconds when you die
 var show_fps := false          # overlay FPS counter on the HUD
 var pause_on_focus_loss := true  # open the pause menu when the window / app loses focus
 var check_updates := true      # look for a newer release on GitHub at startup
@@ -230,6 +231,7 @@ func load_settings() -> void:
 			elif v is Array and v.size() >= 2:
 				touch_btn_pos[str(k)] = Vector2(float(v[0]), float(v[1]))
 	show_fps = bool(cf.get_value("video", "show_fps", false))
+	killcam_replay = bool(cf.get_value("game", "killcam_replay", true))
 	damage_numbers = bool(cf.get_value("video", "damage_numbers", true))
 	vsync = bool(cf.get_value("video", "vsync", true))
 	max_fps = clampi(int(cf.get_value("video", "max_fps", 0)), 0, 360)
@@ -322,6 +324,7 @@ func save() -> void:
 	cf.set_value("controls", "touch_swap", touch_swap)
 	cf.set_value("controls", "touch_btn_pos", touch_btn_pos)
 	cf.set_value("video", "show_fps", show_fps)
+	cf.set_value("game", "killcam_replay", killcam_replay)
 	cf.set_value("video", "damage_numbers", damage_numbers)
 	cf.set_value("video", "vsync", vsync)
 	cf.set_value("video", "max_fps", max_fps)

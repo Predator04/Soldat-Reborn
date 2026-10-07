@@ -294,6 +294,10 @@ func _build_game(box: VBoxContainer) -> void:
 		func(on: bool) -> void:
 			Settings.check_updates = on
 			Settings.save()))
+	box.add_child(_check_button("Kill cam replay (rewind how you died)", Settings.killcam_replay,
+		func(on: bool) -> void:
+			Settings.killcam_replay = on
+			Settings.save()))
 	box.add_child(_check_button("Pause when the game loses focus (alt-tab, phone home button)", Settings.pause_on_focus_loss,
 		func(on: bool) -> void:
 			Settings.pause_on_focus_loss = on
