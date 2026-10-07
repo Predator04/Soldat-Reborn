@@ -2,6 +2,26 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.31.0] — 2026-10-07
+
+### Added
+- **KILL CAM REPLAY.** When you die, the last 3 seconds rewind and play back: real speed, then slow motion over the killing shot, framed on you and your killer (arrow + ring on them). Then the live kill cam follows them until you respawn. Space / click / tap / A skips it and you respawn on the normal timer. Works online too (the server waits for you to finish watching). Can be turned off in Settings.
+- **Graphics upgrade**, with a new **Graphics quality** setting (Low / Medium / High; phones start on Medium):
+  - Terrain has depth now: a soft shadow along every edge, a lit rim on top surfaces, darker undersides, and grass growing on green ground (High).
+  - Light: muzzle flashes, explosions and rockets glow, and on High explosions light up the walls around them.
+  - Smoke and debris: rockets leave a smoke trail, explosions leave smoke clouds and a scorch mark on the ground, guns kick back and eject shell casings, hard landings kick up dust.
+  - Soldiers and vehicles cast a soft shadow on the ground under them.
+  - Post-processing: color grading and vignette, a red flash with color split when you're hit, bloom on High. Floating dust (fireflies at night) on High.
+  - Low is the old Lo-fi mode. If a match runs under 35 fps, the game drops one quality step once and tells you.
+
+### Fixed
+- The release gate's server query check could time out its own server (it needed about 31 s of a 30 s window).
+- The nav check flagged two maps whose objectives are reachable from a spawn on a different level than the first one.
+- The unlock test could miss its gold tracer when the bullet hit a wall before it looked.
+
+### Testing
+- New release-gate checks: kill cam rewind (slow motion, respawn waits for it, skip respawns on time, live follow after), the same online with a dedicated server holding the respawn, and every graphics preset switched live mid-match (terrain depth, grass, post FX, bloom, lights, shadows, effect caps).
+
 ## [1.30.0] — 2026-10-05
 
 ### Added

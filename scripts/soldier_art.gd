@@ -123,6 +123,9 @@ static func draw_soldier(
 	var wskin: Color = Gostek.Custom.WEAPON_SKINS.get(str(cosmetics.get("wskin", "")), Color.WHITE)
 	if dead:
 		wskin = wskin.darkened(0.4)
+	# Recoil: the gun kicks back along the aim for the muzzle flash's life.
+	if muzzle_t > 0.0 and not dead:
+		shoulder -= aim_dir * muzzle_t * 22.0
 	var barrel_end: Vector2 = _draw_weapon_sprite(node, shoulder, aim_dir, facing, weapon_name, weapon_color, weapon_kind, wskin)
 
 	# Muzzle flash on top of the sprite (bigger/brighter so shots clearly read as muzzle fire).

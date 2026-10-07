@@ -1202,6 +1202,12 @@ func net_bot_shoot(muzzle: Vector2, aim: Vector2, proj_id: int = 0, weapon: Stri
 	var stats: Dictionary = WEAPON_STATS.get(active_weapon, WEAPON_STATS["AK-74"])
 	Sfx.shoot(active_weapon, muzzle)
 	muzzle_t = 0.08
+	if get_parent() != null and String(stats["kind"]) != "melee":
+		var GfxS = preload("res://scripts/gfx.gd")
+		var expl := String(stats["kind"]) == "rocket" or String(stats["kind"]) == "launcher"
+		GfxS.muzzle(get_parent(), muzzle, expl)
+		if String(stats["kind"]) == "bullet":
+			GfxS.casing(get_parent(), global_position + Vector2(facing * 2.0, -10.0), facing, active_weapon == "Spas-12")
 	# Debug counter so --smoke-botfire can confirm the RPC reached the client.
 	if Net.is_client():
 		Net.bot_shots_seen += 1

@@ -31,8 +31,7 @@ func _physics_process(delta: float) -> void:
 	# Teleports (respawn, round reset) are not footsteps.
 	if d.length() > 200.0:
 		return
-	if Settings.sfx_volume <= 0.0:
-		return
+	var loud: bool = Settings.sfx_volume > 0.0
 	var vy := d.y / delta
 	var on_floor: bool
 	if not body.multiplayer.has_multiplayer_peer() or body.is_multiplayer_authority():
@@ -47,7 +46,11 @@ func _physics_process(delta: float) -> void:
 		_step_acc = 0.0
 	else:
 		if not _grounded and _air_t > 0.18 and _peak_vy > LAND_MIN_VY:
-			Sfx.land(pos, _peak_vy > LAND_HARD_VY)
+			if loud:
+				Sfx.land(pos, _peak_vy > LAND_HARD_VY)
+			# Dust kicked up by the landing (gfx.gd Medium+).
+			if body.get_parent() != null:
+				preload("res://scripts/gfx.gd").dust(body.get_parent(), pos, clampf((_peak_vy - LAND_MIN_VY) / (LAND_HARD_VY - LAND_MIN_VY), 0.2, 1.0))
 			_step_acc = 0.0
 		_air_t = 0.0
 		_peak_vy = 0.0
@@ -56,5 +59,6 @@ func _physics_process(delta: float) -> void:
 		var need := CROUCH_STEP_DIST if crouched else STEP_DIST
 		if _step_acc >= need:
 			_step_acc -= need
-			Sfx.footstep(pos, crouched)
+			if loud:
+				Sfx.footstep(pos, crouched)
 	_grounded = on_floor

@@ -172,10 +172,27 @@ func _build_video(box: VBoxContainer) -> void:
 		func(on: bool) -> void:
 			Settings.colorblind = on
 			Settings.save()))
-	box.add_child(_check_button("Lo-fi mode (no particles/gibs — low-end PCs)", Settings.lofi,
-		func(on: bool) -> void:
-			Settings.lofi = on
-			Settings.save()))
+	# Graphics preset (gfx.gd): Low = the old Lo-fi mode.
+	var gq_row := HBoxContainer.new()
+	var gq_lbl := Label.new()
+	gq_lbl.text = "Graphics quality"
+	gq_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	UITheme.style_body(gq_lbl)
+	gq_row.add_child(gq_lbl)
+	var gq_pick := OptionButton.new()
+	gq_pick.name = "GfxQuality"
+	for t in ["Low (fastest — old PCs / phones)", "Medium (lights, smoke, shadows)", "High (bloom, grass, real lights)"]:
+		gq_pick.add_item(t)
+	gq_pick.selected = clampi(int(Settings.gfx_quality), 0, 2)
+	UITheme.style_option_button(gq_pick)
+	gq_pick.item_selected.connect(func(i: int) -> void:
+		Settings.set_gfx_quality(i)
+		Settings.save()
+		var m := get_tree().current_scene
+		if m != null and m.has_method("apply_gfx_quality"):
+			m.apply_gfx_quality())
+	gq_row.add_child(gq_pick)
+	box.add_child(gq_row)
 	box.add_child(_check_button("VSync (no tearing; caps FPS to the monitor)", Settings.vsync,
 		func(on: bool) -> void:
 			Settings.vsync = on

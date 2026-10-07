@@ -427,6 +427,15 @@ func _smoke_join() -> void:
 					break
 				await get_tree().create_timer(0.25).timeout
 				mn = get_tree().current_scene
+			# A bot kill shows the rewind: give the recorder its 3 s first.
+			if "--smoke-die-by-bot" in OS.get_cmdline_user_args():
+				for _w in 40:
+					mn = get_tree().current_scene
+					var rec = mn.get("recorder") if mn != null else null
+					if rec != null and is_instance_valid(rec) and float(rec.get("_t")) >= 3.3 \
+							and mn.get("player") != null and is_instance_valid(mn.player) and not bool(mn.player.dead):
+						break
+					await get_tree().create_timer(0.25).timeout
 			if mn != null and mn.get("player") != null and is_instance_valid(mn.player):
 				var old_id: int = mn.player.get_instance_id()
 				# --smoke-die-by-bot: a bot is the killer, so the kill cam rewind
@@ -440,6 +449,8 @@ func _smoke_join() -> void:
 							kw = "AK-74"
 							break
 				var died_t := Time.get_ticks_msec()
+				if mn.player.get("ceasefire_t") != null:
+					mn.player.ceasefire_t = 0.0   # spawn protection would eat the hit
 				mn.player.take_damage(999.0, killer, kw, int(mn.player.team))
 				var rw = mn.get("killcam")
 				print("SMOKE-DIE sent killer=%s rewind=%s" % [killer, str(rw != null and rw.is_active())])

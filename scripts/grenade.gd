@@ -133,6 +133,8 @@ func _explode() -> void:
 	else:
 		Sfx.explode(global_position)
 	var wname: String = "Cluster" if (cluster or is_fragment) else "Grenade"
+	if get_parent() != null:
+		preload("res://scripts/gfx.gd").explosion(get_parent(), global_position, blast_radius * (0.6 if is_fragment else 1.0))
 	for s in get_tree().get_nodes_in_group("soldier"):
 		if not is_instance_valid(s):
 			continue

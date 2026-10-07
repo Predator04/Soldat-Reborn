@@ -660,6 +660,8 @@ func apply_destroy(at: Vector2, killer: String, killer_team: int, quiet := false
 		return
 	Sfx.explode(at)
 	Sfx._play_key("m2explode", -2.0, 0.9, at)
+	if get_parent() != null:
+		preload("res://scripts/gfx.gd").explosion(get_parent(), at, 140.0)
 	var kname: String = killer if killer != "" else "Buggy"
 	for s in get_tree().get_nodes_in_group("soldier"):
 		if not is_instance_valid(s) or s.get("dead") == true:

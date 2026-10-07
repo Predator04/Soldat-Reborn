@@ -25,6 +25,9 @@ var feed: VBoxContainer
 
 # Death screen state
 var desat_overlay: ColorRect
+var post_fx: ColorRect          # post_fx.gdshader (grade / vignette / bloom / hit flash)
+var _hit_fx := 0.0
+var _last_hp := -1.0
 var lbl_death: Label
 var lbl_respawn: Label
 var _death_remaining := 0.0
@@ -80,6 +83,17 @@ func _ready() -> void:
 	Stats.level_up.connect(func(lv: int) -> void: _ach_queue.append(["RANK UP", "you reached level %d" % lv]))
 	if Net.is_networked():
 		Stats.record_event.call_deferred("online")
+	# Post-processing pass over the world (gfx.gd quality): first child, so
+	# it sits under every HUD element.
+	post_fx = ColorRect.new()
+	post_fx.name = "PostFX"
+	post_fx.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	post_fx.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var _pm := ShaderMaterial.new()
+	_pm.shader = preload("res://scripts/post_fx.gdshader")
+	post_fx.material = _pm
+	add_child(post_fx)
+	apply_gfx_quality()
 	# Full-screen death desaturation overlay (behind all HUD text).
 	desat_overlay = ColorRect.new()
 	desat_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -1106,7 +1120,34 @@ func _check_new_looks(delta: float) -> void:
 	_locked_looks = now
 
 
+## Graphics preset changed (or HUD built): post FX on/off, bloom on High.
+func apply_gfx_quality() -> void:
+	if post_fx == null:
+		return
+	var G = preload("res://scripts/gfx.gd")
+	post_fx.visible = G.on(G.MEDIUM)
+	var sm := post_fx.material as ShaderMaterial
+	sm.set_shader_parameter("bloom", 0.85 if G.on(G.HIGH) else 0.0)
+	sm.set_shader_parameter("vignette", 0.34 if UITheme.is_touch() == false else 0.22)
+
+
+## Red edge + colour split when the local player takes damage.
+func _tick_hit_fx(delta: float) -> void:
+	if post_fx == null or not post_fx.visible:
+		return
+	var hp := -1.0
+	if is_instance_valid(player) and not bool(player.get("dead")):
+		hp = float(player.get("health"))
+	if hp >= 0.0 and _last_hp >= 0.0 and hp < _last_hp - 0.5:
+		_hit_fx = clampf(_hit_fx + (_last_hp - hp) / 45.0, 0.0, 1.0)
+	_last_hp = hp
+	if _hit_fx > 0.0:
+		_hit_fx = maxf(0.0, _hit_fx - delta * 2.4)
+	(post_fx.material as ShaderMaterial).set_shader_parameter("hit", _hit_fx)
+
+
 func _process(delta: float) -> void:
+	_tick_hit_fx(delta)
 	_check_new_looks(delta)
 	# GIF indicator — mirrors the recorder's live state.
 	if lbl_rec != null:

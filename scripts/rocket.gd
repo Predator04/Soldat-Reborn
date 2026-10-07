@@ -62,6 +62,28 @@ func _ready() -> void:
 	_smoke.scale_amount_max = 4.0
 	_smoke.color = Color(0.9, 0.6, 0.35, 0.85)
 	add_child(_smoke)
+	var G = preload("res://scripts/gfx.gd")
+	if G.on(G.MEDIUM):
+		# Soft grey smoke trail + a hot glow on the motor.
+		_smoke.texture = G.soft_tex()
+		_smoke.scale_amount_min = 0.12
+		_smoke.scale_amount_max = 0.26
+		_smoke.lifetime = 0.9
+		_smoke.amount = 30
+		_smoke.local_coords = false
+		var ramp := Gradient.new()
+		ramp.offsets = PackedFloat32Array([0.0, 0.15, 1.0])
+		ramp.colors = PackedColorArray([Color(1.0, 0.75, 0.4, 0.9), Color(0.55, 0.52, 0.5, 0.55), Color(0.4, 0.4, 0.4, 0.0)])
+		_smoke.color_ramp = ramp
+		_smoke.color = Color.WHITE
+		_smoke.scale_amount_curve = null
+		var glow := Sprite2D.new()
+		glow.texture = G.glow_tex()
+		glow.material = G.add_mat()
+		glow.modulate = Color(1.0, 0.6, 0.25, 0.85)
+		glow.scale = Vector2.ONE * 0.75
+		glow.z_index = 60
+		add_child(glow)
 
 
 func _physics_process(delta: float) -> void:
@@ -161,6 +183,8 @@ func _explode() -> void:
 		Sfx.m79_thump(global_position)
 	else:
 		Sfx.explode(global_position)
+	if get_parent() != null:
+		preload("res://scripts/gfx.gd").explosion(get_parent(), global_position, blast_radius)
 	for s in get_tree().get_nodes_in_group("soldier"):
 		if not is_instance_valid(s) or ignore_bodies.has(s):
 			continue

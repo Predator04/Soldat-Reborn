@@ -473,6 +473,7 @@ func _ready() -> void:
 	_build_sky()
 	_build_parallax()
 	_build_terrain()
+	_build_gfx_world()
 	# Warm lazily-loaded art during the load, not mid-fight (frame hitches).
 	preload("res://scripts/gostek.gd").warm_cache()
 	if Net.replay_path != "":
@@ -814,6 +815,132 @@ func _make_polygon_body(points: PackedVector2Array, col: Color, tex_path: String
 		body.add_child(outline)
 	add_child(body)
 	return body
+
+
+# ── Graphics layers (gfx.gd) ────────────────────────────
+var terrain_fx: Node2D = null       # terrain_fx.gd — edge shading / rim light / grass
+var soldier_shadows: Node2D = null  # soldier_shadows.gd
+var ambient_fx: CPUParticles2D = null
+
+
+func _build_gfx_world() -> void:
+	if Net.is_dedicated:
+		return
+	terrain_fx = Node2D.new()
+	terrain_fx.name = "TerrainFX"
+	terrain_fx.set_script(preload("res://scripts/terrain_fx.gd"))
+	var outlines: Array = []
+	var pieces: Array = []
+	var tris: Array = []
+	var default_col: Color = _map.get("terrain_color", Color(0.24, 0.28, 0.34))
+	var default_tex: String = str(_map.get("terrain_texture", ""))
+	var has_coll: bool = _map.has("collision") and typeof(_map["collision"]) == TYPE_ARRAY and not (_map["collision"] as Array).is_empty()
+	for poly in _map.get("polys", []):
+		var pts: PackedVector2Array = poly.get("points", PackedVector2Array())
+		if pts.size() < 3:
+			continue
+		var cc := int(poly.get("col", 0))
+		var tex := str(poly.get("texture", default_tex))
+		var textured := tex != "" and ResourceLoader.exists(tex)
+		tris.append({"pts": pts, "tex": tex if textured else "", "uvs": poly.get("uvs", PackedVector2Array()),
+			"vc": poly.get("vc", PackedColorArray()), "col": Color.WHITE if textured else (poly.get("color", default_col) as Color)})
+		if not has_coll and (cc == 0 or cc == 2):
+			pieces.append(pts)
+	if has_coll:
+		for c in _map["collision"]:
+			var ccl := int(c.get("col", 0))
+			if ccl == 0 or ccl == 2:
+				pieces.append(c["points"])   # convex pieces: shared edges dropped
+	var plat_tex: String = str(_map.get("platform_texture", default_tex))
+	for pl in _map.get("platforms", []):
+		var hs: Vector2 = (pl["s"] as Vector2) * 0.5
+		var pc: Vector2 = pl["p"]
+		var rect := PackedVector2Array([pc + Vector2(-hs.x, -hs.y), pc + Vector2(hs.x, -hs.y), pc + Vector2(hs.x, hs.y), pc + Vector2(-hs.x, hs.y)])
+		pieces.append(rect)
+		tris.append({"pts": rect, "tex": plat_tex if ResourceLoader.exists(plat_tex) else "", "uvs": PackedVector2Array(), "vc": PackedColorArray(), "col": Color(0.82, 0.8, 0.78)})
+	var world_cfg: Dictionary = _map.get("world", {}) if typeof(_map.get("world", {})) == TYPE_DICTIONARY else {}
+	if bool(world_cfg.get("floor_visible", true)):
+		var fl := PackedVector2Array([Vector2(-100, GROUND_Y), Vector2(MAP_W + 100, GROUND_Y), Vector2(MAP_W + 100, GROUND_Y + 200), Vector2(-100, GROUND_Y + 200)])
+		pieces.append(fl)
+		var ftex := str(_map.get("floor_texture", ""))
+		tris.append({"pts": fl, "tex": ftex if ResourceLoader.exists(ftex) else "", "uvs": PackedVector2Array(), "vc": PackedColorArray(), "col": Color(0.22, 0.26, 0.32) if not ResourceLoader.exists(ftex) else Color.WHITE})
+	terrain_fx.set("outlines", outlines)
+	terrain_fx.set("pieces", pieces)
+	terrain_fx.set("tris", tris)
+	add_child(terrain_fx)
+	if preload("res://scripts/gfx.gd").on(preload("res://scripts/gfx.gd").MEDIUM):
+		terrain_fx.build()
+	soldier_shadows = Node2D.new()
+	soldier_shadows.name = "SoldierShadows"
+	soldier_shadows.set_script(preload("res://scripts/soldier_shadows.gd"))
+	add_child(soldier_shadows)
+	_build_ambient_fx()
+
+
+## Floating motes around the camera (High): dust in daylight, warm sparks
+## at night. Follows the camera via weather_follow-style re-centering.
+func _build_ambient_fx() -> void:
+	var G = preload("res://scripts/gfx.gd")
+	ambient_fx = CPUParticles2D.new()
+	ambient_fx.name = "AmbientFX"
+	ambient_fx.amount = 46
+	ambient_fx.lifetime = 7.0
+	ambient_fx.preprocess = 7.0
+	ambient_fx.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	ambient_fx.emission_rect_extents = Vector2(900, 500)
+	ambient_fx.gravity = Vector2(0, -4)
+	ambient_fx.direction = Vector2(1, -0.2)
+	ambient_fx.spread = 60.0
+	ambient_fx.initial_velocity_min = 4.0
+	ambient_fx.initial_velocity_max = 16.0
+	ambient_fx.scale_amount_min = 1.0
+	ambient_fx.scale_amount_max = 2.4
+	ambient_fx.texture = G.soft_tex()
+	ambient_fx.scale_amount_min = 0.05
+	ambient_fx.scale_amount_max = 0.11
+	var ramp := Gradient.new()
+	ramp.offsets = PackedFloat32Array([0.0, 0.2, 0.8, 1.0])
+	var night := _is_night_map()
+	var mc := Color(1.0, 0.8, 0.45) if night else Color(1.0, 1.0, 0.95)
+	ramp.colors = PackedColorArray([Color(mc, 0.0), Color(mc, 0.55 if night else 0.35), Color(mc, 0.45 if night else 0.3), Color(mc, 0.0)])
+	ambient_fx.color_ramp = ramp
+	ambient_fx.material = G.add_mat()
+	ambient_fx.z_index = 70
+	ambient_fx.local_coords = false
+	add_child(ambient_fx)
+	ambient_fx.emitting = G.on(G.HIGH)
+
+
+func _is_night_map() -> bool:
+	var sky_cfg: Variant = _map.get("sky", {})
+	if typeof(sky_cfg) == TYPE_DICTIONARY and (sky_cfg as Dictionary).has("top"):
+		var c := _arr_to_color((sky_cfg as Dictionary)["top"])
+		return c.get_luminance() < 0.22
+	return str(_map.get("name", "")).to_lower().contains("night")
+
+
+func _tick_ambient_fx() -> void:
+	if ambient_fx == null or not ambient_fx.emitting:
+		return
+	var cam := get_viewport().get_camera_2d()
+	if cam != null:
+		ambient_fx.global_position = cam.get_screen_center_position()
+
+
+## Settings → Graphics quality changed mid-match.
+func apply_gfx_quality() -> void:
+	var G = preload("res://scripts/gfx.gd")
+	if hud != null and hud.has_method("apply_gfx_quality"):
+		hud.apply_gfx_quality()
+	if terrain_fx != null:
+		for c in terrain_fx.get_children():
+			c.queue_free()
+		terrain_fx.set("edges_built", 0)
+		terrain_fx.set("grass_blades", 0)
+		if G.on(G.MEDIUM):
+			terrain_fx.build()
+	if ambient_fx != null:
+		ambient_fx.emitting = G.on(G.HIGH)
 
 
 func _build_terrain() -> void:
@@ -3019,7 +3146,8 @@ var _perf_done := false
 
 func _tick_perf_watch(delta: float) -> void:
 	if _perf_done or Settings.lofi or Settings.lofi_auto_done or Net.is_dedicated \
-			or DisplayServer.get_name() == "headless" or get_tree().paused:
+			or DisplayServer.get_name() == "headless" or get_tree().paused \
+			or "--no-perf-guard" in OS.get_cmdline_user_args():
 		return
 	_perf_t += delta
 	if _perf_t < 6.0:
@@ -3032,11 +3160,14 @@ func _tick_perf_watch(delta: float) -> void:
 	var fps: float = float(_perf_frames) / (_perf_t - 6.0)
 	if fps >= 35.0:
 		return
-	Settings.lofi = true
+	# Step the graphics preset down one notch (High → Medium → Low).
+	Settings.set_gfx_quality(maxi(0, int(Settings.gfx_quality) - 1))
 	Settings.lofi_auto_done = true
 	Settings.save()
+	apply_gfx_quality()
 	if hud:
-		hud.post_chat("SYSTEM", "Low frame rate (%d fps): Lo-fi mode is on now. Settings → Video to turn it off." % int(fps), false)
+		var qn: String = ["Low", "Medium", "High"][int(Settings.gfx_quality)]
+		hud.post_chat("SYSTEM", "Low frame rate (%d fps): graphics set to %s. Settings → Video to change it." % [int(fps), qn], false)
 
 
 # Online: the host measures each client's round trip (ENet) and shares the
@@ -3120,6 +3251,7 @@ func net_pings(table: Dictionary) -> void:
 
 
 func _process(delta: float) -> void:
+	_tick_ambient_fx()
 	if replay_mode:
 		return
 	_tick_pings(delta)

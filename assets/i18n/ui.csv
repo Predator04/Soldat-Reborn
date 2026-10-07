@@ -336,3 +336,14 @@ DELETE,BORRAR,EXCLUIR,LÖSCHEN,SUPPRIMER
 JOIN,UNIRSE,ENTRAR,BEITRETEN,REJOINDRE
 FREE CAM,CÁMARA LIBRE,CÂMERA LIVRE,FREIE KAMERA,CAMÉRA LIBRE
 EXIT,SALIR,SAIR,BEENDEN,QUITTER
+KILL CAM,CÁMARA DE MUERTE,KILL CAM,KILLCAM,KILL CAM
+Killed by %s,Te mató %s,Morto por %s,Getötet von %s,Tué par %s
+Tap to skip,Toca para saltar,Toque para pular,Tippen zum Überspringen,Touchez pour passer
+SPACE / click to skip,ESPACIO / clic para saltar,ESPAÇO / clique para pular,LEERTASTE / Klick zum Überspringen,ESPACE / clic pour passer
+SLOW-MO,CÁMARA LENTA,CÂMERA LENTA,ZEITLUPE,RALENTI
+YOU,TÚ,VOCÊ,DU,TOI
+Graphics quality,Calidad gráfica,Qualidade gráfica,Grafikqualität,Qualité graphique
+Kill cam replay (rewind how you died),Repetición de muerte (rebobina cómo moriste),Replay da morte (volta como você morreu),"Killcam-Wiederholung (zeigt, wie du gestorben bist)",Rediffusion de mort (revoir comment vous êtes mort)
+Low (fastest — old PCs / phones),Baja (la más rápida — PCs viejos / móviles),Baixa (mais rápida — PCs antigos / celulares),Niedrig (am schnellsten — alte PCs / Handys),Basse (la plus rapide — vieux PC / mobiles)
+"Medium (lights, smoke, shadows)","Media (luces, humo, sombras)","Média (luzes, fumaça, sombras)","Mittel (Licht, Rauch, Schatten)","Moyenne (lumières, fumée, ombres)"
+"High (bloom, grass, real lights)","Alta (resplandor, hierba, luces reales)","Alta (brilho, grama, luzes reais)","Hoch (Bloom, Gras, echte Lichter)","Haute (bloom, herbe, vraies lumières)"

@@ -1790,6 +1790,11 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_
 	var is_explosive := kind == "rocket" or kind == "launcher"
 	muzzle_t = 0.10 if is_explosive else 0.08
 	_shake(6.0 if is_explosive else 3.5)
+	if kind != "melee" and kind != "melee_cont" and get_parent() != null:
+		var GfxS = preload("res://scripts/gfx.gd")
+		GfxS.muzzle(get_parent(), shot_pos, is_explosive)
+		if kind == "bullet":
+			GfxS.casing(get_parent(), global_position + Vector2(facing * 2.0, -10.0), facing, str(w["name"]) == "Spas-12")
 	Sfx.shoot(str(w["name"]), _sfx_at())
 	if kind == "melee" or kind == "melee_cont":
 		var swing: Vector2 = dirs[0] if dirs.size() > 0 else aim_dir

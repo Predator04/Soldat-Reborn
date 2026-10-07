@@ -15,7 +15,8 @@ var fullscreen := false
 var map_index := 0             # which map layout the next game loads
 var custom_map_path := ""      # if non-empty, main.gd loads this JSON map (issue #31)
 var lofi_auto_done := false    # the low-FPS guard already switched Lo-fi on once
-var lofi := false              # low-end mode: no particles, no gib meshes, no glow
+var lofi := false              # low-end mode: no particles, no gib meshes, no glow (= gfx_quality 0)
+var gfx_quality := 2           # 0 Low · 1 Medium · 2 High (gfx.gd); phones start on Medium
 var mouse_sensitivity := 1.0   # 0.25..3.0 — scales incoming mouse motion via Input.set_custom_mouse_cursor + relative event scale
 # Android on-screen touch layout (issue #116 / #117). Default is the standard
 # dual-stick scheme: LEFT half = movement joystick, RIGHT half = aim + fire.
@@ -192,6 +193,7 @@ func _ready() -> void:
 func load_settings() -> void:
 	var cf := ConfigFile.new()
 	if cf.load(PATH) != OK:
+		set_gfx_quality(default_gfx_quality())
 		return
 	sfx_volume = float(cf.get_value("audio", "sfx_volume", 1.0))
 	music_volume = clampf(float(cf.get_value("audio", "music_volume", 0.55)), 0.0, 1.0)
@@ -215,6 +217,11 @@ func load_settings() -> void:
 	survival = bool(cf.get_value("game", "survival", false))
 	advance = bool(cf.get_value("game", "advance", false))
 	lofi = bool(cf.get_value("video", "lofi", false))
+	if cf.has_section_key("video", "gfx_quality"):
+		gfx_quality = clampi(int(cf.get_value("video", "gfx_quality", 2)), 0, 2)
+	else:
+		gfx_quality = 0 if lofi else default_gfx_quality()
+	lofi = gfx_quality == 0
 	lofi_auto_done = bool(cf.get_value("video", "lofi_auto_done", false))
 	mouse_sensitivity = clampf(float(cf.get_value("controls", "mouse_sensitivity", 1.0)), 0.25, 3.0)
 	touch_swap = bool(cf.get_value("controls", "touch_swap", false))
@@ -319,6 +326,7 @@ func save() -> void:
 	cf.set_value("game", "survival", survival_pref)
 	cf.set_value("game", "advance", advance_pref)
 	cf.set_value("video", "lofi", lofi)
+	cf.set_value("video", "gfx_quality", gfx_quality)
 	cf.set_value("video", "lofi_auto_done", lofi_auto_done)
 	cf.set_value("controls", "mouse_sensitivity", mouse_sensitivity)
 	cf.set_value("controls", "touch_swap", touch_swap)
@@ -397,3 +405,13 @@ func apply_language() -> void:
 	if lang == "":
 		lang = OS.get_locale()
 	TranslationServer.set_locale(lang)
+
+
+static func default_gfx_quality() -> int:
+	return 1 if (OS.has_feature("android") or OS.has_feature("mobile")) else 2
+
+
+## Graphics preset: keeps the old lofi flag (read all over the game) in step.
+func set_gfx_quality(v: int) -> void:
+	gfx_quality = clampi(v, 0, 2)
+	lofi = gfx_quality == 0

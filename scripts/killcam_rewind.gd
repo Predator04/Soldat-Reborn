@@ -74,6 +74,7 @@ func start(rec: Node, killer: String, victim: String, wpn: String) -> bool:
 		return false
 	frames = rec.last_seconds(SECS)
 	if frames.size() < 6:
+		print("KILLCAM-REWIND skip: only %d frames recorded" % frames.size())
 		return false
 	who = (rec.get("who") as Dictionary).duplicate(true)
 	killer_id = -1
@@ -85,6 +86,10 @@ func start(rec: Node, killer: String, victim: String, wpn: String) -> bool:
 		elif n == victim:
 			victim_id = int(id)
 	if killer_id < 0:
+		var names: Array = []
+		for id in who.keys():
+			names.append(str(who[id].get("name", "")))
+		print("KILLCAM-REWIND skip: killer '%s' not in recording %s" % [killer, str(names)])
 		return false
 	killer_name = killer
 	weapon = wpn

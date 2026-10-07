@@ -83,7 +83,17 @@ func _process(_d: float) -> bool:
 		var base: Vector2 = m._settle_on_ground(sp1[0] if not sp1.is_empty() else home[1])
 		for o in objs:
 			var op: Vector2 = m._settle_on_ground(o[1])
-			if not _ok(nav, base, op) or not _ok(nav, op, base):
+			# Reachable from a team spawn and back to one (any of them: some
+			# maps split spawns between levels, or put one on a jet-only ledge).
+			var out := false
+			var back := false
+			for sp_pt in (sp1 if not sp1.is_empty() else [base]):
+				var g: Vector2 = m._settle_on_ground(sp_pt)
+				out = out or _ok(nav, g, op)
+				back = back or _ok(nav, op, g)
+				if out and back:
+					break
+			if not out or not back:
 				probs.append("OBJ %s%s" % [o[0], Vector2i(op)])
 		if not probs.is_empty():
 			_bad += 1

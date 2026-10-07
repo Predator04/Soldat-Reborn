@@ -1,0 +1,32 @@
+[
+ {
+  "title": "Kill cam: rewind the last seconds before you died",
+  "labels": [
+   "enhancement",
+   "area: gameplay"
+  ],
+  "close": true,
+  "version": "1.31.0",
+  "body": "Done in 1.31.0: killcam_rewind.gd replays the last 3 s from the match recorder (slow motion on the kill, framed on victim + killer), skippable; the respawn waits for it (host-held online, skip = normal timer). Gate: killcam_test + net case 'killcam'."
+ },
+ {
+  "title": "Graphics upgrade: lighting, effects, terrain depth, post-processing, quality presets",
+  "labels": [
+   "enhancement",
+   "area: graphics"
+  ],
+  "close": true,
+  "version": "1.31.0",
+  "body": "Done in 1.31.0: gfx.gd (glows, real 2D lights on High, smoke, casings, dust, scorch), terrain_fx.gd (edge AO, rim light, grass), soldier_shadows.gd, post_fx.gdshader (grade, vignette, hit flash, bloom), Low / Medium / High setting. Gate: gfx_test."
+ },
+ {
+  "title": "Flaky: gate server query timed out its own dedicated server",
+  "labels": [
+   "bug",
+   "area: qa"
+  ],
+  "close": true,
+  "version": "1.31.0",
+  "body": "The LAN + query case needed ~31 s against a 30 s server timeout; now 50 s."
+ }
+]

@@ -339,7 +339,7 @@ case " $NETSEL " in *" soak "*)
 case " $NETSEL " in *" lan "*)
   # LAN discovery: a dedicated host's beacon must show up in a listener.
   port=$((7700 + RANDOM % 200))
-  timeout 30 "$G" --headless -- --dedicated --port $port --map 12 --mode 7 > "$OUT/net_lan_server.log" 2>&1 &
+  timeout 50 "$G" --headless -- --dedicated --port $port --map 12 --mode 7 > "$OUT/net_lan_server.log" 2>&1 &
   spid=$!
   for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_lan_server.log" 2>/dev/null && break; sleep 0.5; done
   sleep 4   # the host is still loading the match right after it starts listening
@@ -450,6 +450,7 @@ if has F; then
   ft customize customize_test.gd 60 CUSTOMIZE-TEST "customization: locks, unlocks, network, screens"
   ft mapvote mapvote_test.gd 60 MAPVOTE-TEST "end-of-round map vote"
   ft pad pad_test.gd 60 PAD-TEST "gamepad: radio (L3 + D-pad), limbo loadout (D-pad)"
+  ft gfx gfx_test.gd 60 GFX-TEST "graphics presets: terrain depth / grass / post FX / bloom / lights / shadows / caps, live switch"
   ft killcam killcam_test.gd 60 KILLCAM-TEST "kill cam: rewind w/ slow-mo, respawn waits, skip, live follow"
   ft lagcomp lagcomp_test.gd 60 LAGCOMP-TEST "lag compensation: hits where the shooter saw you, capped"
   ft quickplay quickplay_test.gd 60 QUICKPLAY-TEST "quick play: no game online -> bot match"
