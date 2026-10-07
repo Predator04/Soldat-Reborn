@@ -2,6 +2,15 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.32.0] — 2026-10-07
+
+### Added
+- **Skill matchmaking.** After 3 online matches you get a skill rating (average XP per match, so it measures how well you play, not how long). QUICK PLAY now prefers games with players near your level, as long as the ping is close. Servers at your level say "your level" in the server list, and the Leaderboard shows your skill. New players match anywhere.
+- Master server: `/list` shows each server's average player skill, `/profile` shows yours.
+
+### Testing
+- New release-gate check: skill matchmaking against a real master server (ratings, server averages, Quick Play picks the server at your level).
+
 ## [1.31.0] — 2026-10-07
 
 ### Added

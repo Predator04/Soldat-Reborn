@@ -1,0 +1,18 @@
+[
+ {
+  "title": "Ranked matchmaking / dedicated servers",
+  "close": true,
+  "version": "1.32.0",
+  "body": "Done across 1.28-1.32: official dedicated server (Oracle, bot fill), ranked stats + leaderboard on the master server, and now skill matchmaking — players get a skill rating (avg XP/match after 3 matches), /list carries each server's average, Quick Play prefers the server at your level. Gate: net case 'ranked' (matchmaking_test)."
+ },
+ {
+  "title": "Skill-based matchmaking for Quick Play",
+  "labels": [
+   "enhancement",
+   "area: multiplayer"
+  ],
+  "close": true,
+  "version": "1.32.0",
+  "body": "Skill = average XP per match (3+ online matches). Master /list adds per-server average skill, /profile adds yours; Quick Play adds a capped relative skill-gap penalty to its ping score; server list marks 'your level'; leaderboard shows your skill."
+ }
+]

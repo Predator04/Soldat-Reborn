@@ -347,3 +347,6 @@ Kill cam replay (rewind how you died),Repetición de muerte (rebobina cómo mori
 Low (fastest — old PCs / phones),Baja (la más rápida — PCs viejos / móviles),Baixa (mais rápida — PCs antigos / celulares),Niedrig (am schnellsten — alte PCs / Handys),Basse (la plus rapide — vieux PC / mobiles)
 "Medium (lights, smoke, shadows)","Media (luces, humo, sombras)","Média (luzes, fumaça, sombras)","Mittel (Licht, Rauch, Schatten)","Moyenne (lumières, fumée, ombres)"
 "High (bloom, grass, real lights)","Alta (resplandor, hierba, luces reales)","Alta (brilho, grama, luzes reais)","Hoch (Bloom, Gras, echte Lichter)","Haute (bloom, herbe, vraies lumières)"
+your level,tu nivel,seu nível,dein Niveau,ton niveau
+Skill %d - Quick Play matches you with players near this,Habilidad %d - Partida rápida te empareja con jugadores de tu nivel,Habilidade %d - Jogo rápido junta você com jogadores desse nível,Können %d - Schnelles Spiel bringt dich zu Spielern auf diesem Niveau,Niveau %d - Partie rapide vous place avec des joueurs de ce niveau
+Skill: play 3 online matches to get matched by skill,Habilidad: juega 3 partidas en línea para emparejarte por nivel,Habilidade: jogue 3 partidas online para ser pareado por nível,Können: spiele 3 Online-Matches für Matchmaking nach Können,Niveau : jouez 3 parties en ligne pour être apparié par niveau

@@ -137,3 +137,8 @@ func _on_me(_r: int, code: int, _h: PackedStringArray, body: PackedByteArray) ->
 	_me.text = "[b][color=#ffd257]%s[/color][/b]  ·  %s  ·  #%d / %d  ·  %d XP\n[color=#a8b0bc]%d %s · %d %s · %d %s · %d %s[/color]" % [
 		str(p.get("name", "")).replace("[", "("), tr(tier_for(xp)), int(d.get("rank", 0)), int(d.get("total", 0)), xp,
 		int(p.get("k", 0)), tr("kills"), int(p.get("c", 0)), tr("caps"), int(p.get("w", 0)), tr("wins"), int(p.get("m", 0)), tr("matches")]
+	# Matchmaking skill (avg XP per match, 3+ matches): what Quick Play uses.
+	if d.has("skill"):
+		_me.text += "\n[color=#9fd3ff]%s[/color]" % (tr("Skill %d - Quick Play matches you with players near this") % int(d["skill"]))
+	else:
+		_me.text += "\n[color=#a8b0bc]%s[/color]" % tr("Skill: play 3 online matches to get matched by skill")

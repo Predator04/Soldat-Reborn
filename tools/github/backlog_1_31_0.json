@@ -28,5 +28,11 @@
   "close": true,
   "version": "1.31.0",
   "body": "The LAN + query case needed ~31 s against a 30 s server timeout; now 50 s."
+ },
+ {
+  "title": "[selfcheck] regression detected at 22f5bde",
+  "close": true,
+  "version": "1.31.0",
+  "body": "Closing: not reproducible. Dedicated servers start cleanly in every release-gate run (net cases ctf/dm/fill/ranked/friends/respawn/killcam/drive/lan/m3/m7/m9) and on the live official server (1.31.0). Nothing in the repo matches the selfcheck tool that filed this."
  }
 ]

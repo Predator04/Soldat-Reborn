@@ -193,6 +193,9 @@ case " $NETSEL " in *" ranked "*)
   else
     fail "C net leaderboard end to end: board=$board $(grep -m1 RANKED "$OUT/net_ranked_server.log")"
   fi
+  timeout 60 "$G" --headless -s tools/matchmaking_test.gd -- --master=http://127.0.0.1:$rport > "$OUT/net_matchmaking.log" 2>&1
+  mline=$(grep -m1 "MATCHMAKING-TEST" "$OUT/net_matchmaking.log")
+  if echo "$mline" | grep -q "MATCHMAKING-TEST ok" && [ "$(errs "$OUT/net_matchmaking.log")" = "0" ]; then pass "C net skill matchmaking: $(echo "$mline" | cut -c1-120)"; else fail "C net skill matchmaking: '${mline:-no result}' errors=$(errs "$OUT/net_matchmaking.log")"; fi
   kill $rpid 2>/dev/null; wait $rpid 2>/dev/null
   line=$(grep -m1 "RANKED-TEST" "$OUT/net_ranked.log")
   if echo "$line" | grep -q "RANKED-TEST ok" && [ "$(errs "$OUT/net_ranked.log")" = "0" ]; then pass "C net leaderboard: $line"; else fail "C net leaderboard: '${line:-no result}' errors=$(errs "$OUT/net_ranked.log")"; fi

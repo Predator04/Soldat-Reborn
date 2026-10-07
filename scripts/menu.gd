@@ -1657,6 +1657,8 @@ func _server_row(d0: Dictionary) -> Button:
 		note = "   FULL"
 	elif bool(d.get("password", false)):
 		note = "   (locked)"
+	elif my_skill >= 0 and d.get("skill", null) != null and skill_penalty(my_skill, d.get("skill")) < 45.0:
+		note = "   " + tr("your level")
 	var btn := Button.new()
 	btn.text = "  %s   [%d/%d]   %s · %s   %s%s" % [str(d.get("name", "?")), int(d.get("players", 0)), int(d.get("max", 0)),
 			str(d.get("map", "?")), str(d.get("mode", "?")), ("%d ms" % ping) if ping >= 0 else "— ms", note]
@@ -1707,6 +1709,7 @@ func _render_master() -> void:
 func _quick_join(bot_fallback := false) -> void:
 	_browse_root.visible = true
 	_refresh_browse()
+	_fetch_my_skill()
 	_qj_active = true
 	_qj_t = 3.5
 	_qp_fallback = bot_fallback
@@ -1726,10 +1729,7 @@ func _quick_join_pick() -> void:
 		var d := _live(d0)
 		if not _row_ok(d):
 			continue
-		var ping := Net.ping_of(str(d.get("ip")), int(d.get("port")))
-		var score: float = (float(ping) if ping >= 0 else 400.0)
-		if int(d.get("players", 0)) > 0:
-			score -= 150.0   # a game with people in it beats an empty one
+		var score := qp_score(d)
 		if score < best_score:
 			best_score = score
 			best = d
@@ -1745,6 +1745,53 @@ func _quick_join_pick() -> void:
 		_join_server(str(best.get("relay")), 0)
 	else:
 		_join_server(str(best.get("ip")), int(best.get("port")))
+
+
+# ── Skill matchmaking (#33) ───────────────────────────
+# The master server rates each player by average XP per match (3+ online
+# matches) and lists each server's average. Quick play adds a penalty for
+# the gap between you and a server, so among similar pings you land with
+# players at your level. Unrated players (new, or the server has no rated
+# players) match anywhere.
+var my_skill := -1
+var _skill_http: HTTPRequest = null
+
+
+## Quick play: lower is better. Ping, people over empty, then skill gap.
+func qp_score(d: Dictionary) -> float:
+	var ping := Net.ping_of(str(d.get("ip")), int(d.get("port")))
+	var score: float = (float(ping) if ping >= 0 else 400.0)
+	if int(d.get("players", 0)) > 0:
+		score -= 150.0   # a game with people in it beats an empty one
+	return score + skill_penalty(my_skill, d.get("skill", null))
+
+
+static func skill_penalty(mine: int, server_skill: Variant) -> float:
+	if mine < 0 or server_skill == null:
+		return 0.0
+	var gap := absf(float(server_skill) - float(mine))
+	# Relative gap: 100 vs 200 is as far apart as 400 vs 800. Up to 180 ms
+	# worth of penalty — never enough to beat an empty server by itself.
+	var rel := gap / maxf(60.0, maxf(float(mine), float(server_skill)))
+	return minf(rel, 1.0) * 180.0
+
+
+func _fetch_my_skill() -> void:
+	var url: String = Settings.master_url.strip_edges().trim_suffix("/")
+	if url == "":
+		return
+	if _skill_http == null:
+		_skill_http = HTTPRequest.new()
+		_skill_http.timeout = 3.0
+		add_child(_skill_http)
+		_skill_http.request_completed.connect(func(_r: int, code: int, _h: PackedStringArray, body: PackedByteArray) -> void:
+			if code != 200:
+				return
+			var d = JSON.parse_string(body.get_string_from_utf8())
+			if d is Dictionary and d.has("skill"):
+				my_skill = int(d["skill"]))
+	_skill_http.cancel_request()
+	_skill_http.request(url + "/profile?id=" + Settings.profile_hash())
 
 
 var _qp_fallback := false   # Quick Play (main menu): fall back to bots
