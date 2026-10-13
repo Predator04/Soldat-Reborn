@@ -23,6 +23,14 @@ jobs:
       - name: Python deps for map audit
         run: pip install numpy scipy pillow shapely
 
+      - name: Build master server for the gate's online tests
+        # The gate's ranked / matchmaking / friends / relay stages run a real
+        # master server from ../server/master-server/dist — the runner has to
+        # build it (the game repo checkout doesn't include it).
+        run: |
+          git clone --depth 1 https://github.com/Predator04/soldat-master-server.git ../server/master-server
+          cd ../server/master-server && go build -o dist/soldat-master-linux-amd64 .
+
       - name: Release gate (quick — static, boots, MP smokes, all modes)
         env:
           GODOT_BIN: ${{ github.workspace }}/Godot_v4.7.2-stable_linux.x86_64
