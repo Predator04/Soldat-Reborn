@@ -27,7 +27,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 G="${GODOT_BIN:-$HOME/godot/Godot_v4.7.2-stable_linux.x86_64}"
 QUICK=0; OUT="build/gate"; ONLY="A B N C D R F E"; MODESEL="0 1 2 3 4 5 6 7 8 9"
-NETSEL="ctf dm two fill ranked friends respawn killcam drive rejoin relay host listen lan soak m3 m7 m9"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
+NETSEL="ctf dm two fill ranked friends respawn killcam drive rejoin relay host listen lan soak m3 m7 m9 m2"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --quick) QUICK=1;; --out) OUT="$2"; shift;; --only) ONLY="$2"; shift;;
@@ -199,6 +199,26 @@ case " $NETSEL " in *" ranked "*)
   kill $rpid 2>/dev/null; wait $rpid 2>/dev/null
   line=$(grep -m1 "RANKED-TEST" "$OUT/net_ranked.log")
   if echo "$line" | grep -q "RANKED-TEST ok" && [ "$(errs "$OUT/net_ranked.log")" = "0" ]; then pass "C net leaderboard: $line"; else fail "C net leaderboard: '${line:-no result}' errors=$(errs "$OUT/net_ranked.log")"; fi
+;; esac
+case " $NETSEL " in *" m2 "*)
+  # M2 turret mount/dismount over the real client->host RPC path (#235/#254
+  # regression): the mount used to recurse the host to death, the dismount
+  # used to leave the host's turret occupied. SMOKE-M2 drives both packets
+  # and asserts the end state came back through the host.
+  port=$((7700 + RANDOM % 200))
+  timeout 45 "$G" --headless -- --dedicated --port $port --map abel --mode 0 > "$OUT/net_m2_host.log" 2>&1 &
+  m2pid=$!
+  for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_m2_host.log" 2>/dev/null && break; sleep 0.5; done
+  sleep 2
+  timeout 30 "$G" --headless -- --smoke-m2 --port $port --smoke-secs=10 > "$OUT/net_m2.log" 2>&1
+  kill $m2pid 2>/dev/null; wait $m2pid 2>/dev/null
+  line=$(grep -m1 "SMOKE-M2" "$OUT/net_m2.log")
+  m2he=$(errs "$OUT/net_m2_host.log"); m2ce=$(errs "$OUT/net_m2.log")
+  if echo "$line" | grep -q "SMOKE-M2 ok" && [ "$m2he" = "0" ] && [ "$m2ce" = "0" ]; then
+    pass "C net m2 turret: $line"
+  else
+    fail "C net m2 turret: '${line:-no result}' host_errs=$m2he client_errs=$m2ce"
+  fi
 ;; esac
 case " $NETSEL " in *" friends "*)
   # Clan tag + friends: a tagged player shows up by name in the master's game

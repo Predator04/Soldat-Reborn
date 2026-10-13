@@ -14,6 +14,8 @@ WHAT="${1:-all}"
 KEYDIR="$(cd .. && pwd)/keys"
 UBER="${UBER_APK_SIGNER:-$HOME/tools/uber.jar}"
 mkdir -p build build/old
+# Git Bash: Windows Godot can't write MSYS /tmp — use a path both understand.
+TMPX="$(cygpath -m "${TMPDIR:-/tmp}" 2>/dev/null || echo /tmp)"
 
 # Move a previous build to build/old/SoldatReborn-<time>.<ext> (unique name, so
 # a copy that's still running is never overwritten); drop copies over a day old.
@@ -30,13 +32,13 @@ if [ "$WHAT" = all ] || [ "$WHAT" = win ]; then
   # Rename the current build out of the way (allowed while it runs), export to
   # a temp file, then move the new one in.
   retire build/SoldatReborn.exe exe
-  "$G" --headless --export-release "Windows Desktop" /tmp/SoldatReborn.exe >/dev/null 2>&1
-  mv /tmp/SoldatReborn.exe build/SoldatReborn.exe
+  "$G" --headless --export-release "Windows Desktop" "$TMPX/SoldatReborn.exe" >/dev/null 2>&1
+  mv "${TMPDIR:-/tmp}/SoldatReborn.exe" build/SoldatReborn.exe
   # Game pack alone, for the headless dedicated server (official server pulls
   # it from the GitHub release and runs it with the Linux Godot binary).
   rm -f build/SoldatReborn.pck
-  "$G" --headless --export-pack "Windows Desktop" /tmp/SoldatReborn.pck >/dev/null 2>&1
-  mv /tmp/SoldatReborn.pck build/SoldatReborn.pck
+  "$G" --headless --export-pack "Windows Desktop" "$TMPX/SoldatReborn.pck" >/dev/null 2>&1
+  mv "${TMPDIR:-/tmp}/SoldatReborn.pck" build/SoldatReborn.pck
   # #237: sign the exe so the self-updater can prove the download genuine
   # (keys/update-sign-key.pem; the matching public key is compiled into the
   # game). A release without this .sig is refused by every updated client.
@@ -55,9 +57,16 @@ if [ "$WHAT" = all ] || [ "$WHAT" = android ]; then
   printf '#!/bin/sh\nexit 0\n' > "$SDK/platform-tools/adb"
   printf '#!/bin/sh\nexit 0\n' > "$SDK/build-tools/34.0.0/apksigner"
   chmod +x "$SDK/platform-tools/adb" "$SDK/build-tools/34.0.0/apksigner"
+  # Editor settings live in different places per OS (Linux vs Windows).
   ES="$HOME/.config/godot/editor_settings-4.7.tres"
+  if [ ! -f "$ES" ] && [ -n "$APPDATA" ]; then
+    ES="$(cygpath "$APPDATA")/Godot/editor_settings-4.7.tres"
+  fi
   JAVA_HOME_GUESS="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"
-  python3 - "$ES" "$SDK" "$JAVA_HOME_GUESS" <<'PY'
+  # Git Bash: hand Godot Windows-style paths (cygpath -m), else the native ones.
+  SDK_ES="$(cygpath -m "$SDK" 2>/dev/null || echo "$SDK")"
+  JH_ES="$(cygpath -m "$JAVA_HOME_GUESS" 2>/dev/null || echo "$JAVA_HOME_GUESS")"
+  python3 - "$ES" "$SDK_ES" "$JH_ES" <<'PY'
 import re, sys
 f, sdk, jh = sys.argv[1:4]
 s = open(f).read()
@@ -69,12 +78,21 @@ PY
   cp export_presets.cfg /tmp/export_presets.bak
   trap 'cp /tmp/export_presets.bak export_presets.cfg' EXIT
   sed -i 's/^package\/signed=true/package\/signed=false/' export_presets.cfg
-  "$G" --headless --export-release "Android" /tmp/SoldatReborn.apk >/dev/null 2>&1
+  # The preset's debug-keystore path may point at another machine's home
+  # (e.g. /home/... from the Linux box) — rewrite it to this machine's.
+  DBGKS="$(cygpath "$APPDATA" 2>/dev/null)/Godot/keystores/debug.keystore"
+  if [ ! -f "$DBGKS" ]; then
+    DBGKS="$HOME/.local/share/godot/keystores/debug.keystore"
+  fi
+  if [ -f "$DBGKS" ]; then
+    sed -i "s|^keystore/debug=.*|keystore/debug=\"$(cygpath -m "$DBGKS" 2>/dev/null || echo "$DBGKS")\"|" export_presets.cfg
+  fi
+  "$G" --headless --export-release "Android" "$TMPX/SoldatReborn.apk" >/dev/null 2>&1
   cp /tmp/export_presets.bak export_presets.cfg
   PW="$(sed -n 's/^password: //p' "$KEYDIR/KEYSTORE_INFO.txt")"
-  java -jar "$UBER" -a /tmp/SoldatReborn.apk --ks "$KEYDIR/soldat-reborn.keystore" --ksAlias soldatreborn \
+  java -jar "$UBER" -a "$TMPX/SoldatReborn.apk" --ks "$KEYDIR/soldat-reborn.keystore" --ksAlias soldatreborn \
     --ksPass "$PW" --ksKeyPass "$PW" --overwrite 2>&1 | grep -E "verified|Successfully|ERROR" || true
   retire build/SoldatReborn.apk apk
-  cp /tmp/SoldatReborn.apk build/SoldatReborn.apk
+  cp "${TMPDIR:-/tmp}/SoldatReborn.apk" build/SoldatReborn.apk
   sync; ls -la build/SoldatReborn.apk
 fi

@@ -112,6 +112,8 @@ func _maybe_run_smoke_test() -> void:
 		call_deferred("_smoke_botfire")
 	elif "--smoke-join" in args:
 		call_deferred("_smoke_join")
+	elif "--smoke-m2" in args:
+		call_deferred("_smoke_join")
 	elif "--smoke-lan" in args:
 		call_deferred("_smoke_lan")
 	elif "--smoke-query" in args:
@@ -412,6 +414,8 @@ func _smoke_join() -> void:
 	# --smoke-drive (v1.19): walk to the nearest buggy, ask the host for a seat,
 	# drive right for 2.5 s. SMOKE-DRIVE reports the seat the host granted and
 	# how far the buggy moved on this (the driving) peer.
+	if "--smoke-m2" in OS.get_cmdline_user_args():
+		call_deferred("_smoke_m2", 0)
 	if "--smoke-drive" in OS.get_cmdline_user_args():
 		get_tree().create_timer(3.0).timeout.connect(_smoke_drive.bind(0))
 	if "--smoke-die" in OS.get_cmdline_user_args():
@@ -1137,6 +1141,54 @@ func lan_ips() -> Array:
 
 # (--smoke-drive) The join can take a few seconds on a busy machine: wait for
 # the buggies and our body before starting.
+var _m2_mount_seen := false   # --smoke-m2: the relayed mount came back
+
+
+# --smoke-m2 (#235/#254 regression): a CLIENT mounts and dismounts an M2 via
+# the real RPC path. The mount used to recurse the host to death; the dismount
+# used to leave the host's turret occupied. Both assertions run on the client,
+# which only sees the right end state if the host stayed alive, applied BOTH
+# sides, and relayed them back.
+func _smoke_m2(tries: int) -> void:
+	var mn = get_tree().current_scene
+	var m2s: Array = get_tree().get_nodes_in_group("m2_gun")
+	if mn == null or mn.get("player") == null or not is_instance_valid(mn.player) or m2s.is_empty():
+		if tries < 16:
+			get_tree().create_timer(0.5).timeout.connect(_smoke_m2.bind(tries + 1))
+		else:
+			print("SMOKE-M2 FAIL no-m2 m2s=%d" % m2s.size())
+		return
+	var pl = mn.player
+	var m2 = m2s[0]
+	var mid: int = int(m2.get("m2_id"))
+	var pid: int = multiplayer.get_unique_id()
+	pl.global_position = (m2 as Node2D).global_position + Vector2(0, -8)
+	pl.velocity = Vector2.ZERO
+	var m2i: int = m2.get_instance_id()
+	get_tree().create_timer(0.4).timeout.connect(func() -> void:
+		# Exactly what pressing F at the turret sends (m2.gd mount path).
+		mn.rpc_id(1, "net_m2_mount", mid, pid))
+	get_tree().create_timer(1.4).timeout.connect(func() -> void:
+		var g = instance_from_id(m2i)
+		var op = g.get("operator") if g != null else null
+		_m2_mount_seen = op != null and is_instance_valid(op)
+		# And exactly what a move-key tap sends (m2.gd dismount path).
+		if _m2_mount_seen:
+			mn.rpc_id(1, "net_m2_dismount", mid))
+	get_tree().create_timer(2.4).timeout.connect(func() -> void:
+		var g = instance_from_id(m2i)
+		var op = g.get("operator") if g != null else null
+		var cleared: bool = op == null or not is_instance_valid(op)
+		var alive: bool = multiplayer.multiplayer_peer != null and multiplayer.multiplayer_peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED
+		# PASS needs: the host survived both RPCs (alive), the mount round
+		# tripped (else dismount had nothing to clear — checked via the
+		# mid-step flag), and the dismount cleared the operator everywhere.
+		print("SMOKE-M2 %s host_alive=%s operator_cleared=%s" % [
+			"ok" if (alive and cleared and _m2_mount_seen) else "FAIL",
+			str(alive), str(cleared)])
+		get_tree().quit())
+
+
 func _smoke_drive(tries: int) -> void:
 	var mn = get_tree().current_scene
 	var vs: Array = get_tree().get_nodes_in_group("vehicle")
