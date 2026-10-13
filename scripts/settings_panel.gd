@@ -457,6 +457,20 @@ func _build_mods(box: VBoxContainer) -> void:
 			MatchConfig.host_broadcast(),
 		"%d"))
 
+	# #256: per-weapon bans — the classic "pistol only / no sniper" server
+	# customization (community ask, OpenSoldat #118). Applies to new spawns.
+	var bans_lbl := Label.new()
+	bans_lbl.text = "Weapon bans (host + single player)"
+	UITheme.style_body(bans_lbl, 13, UITheme.COL_TEXT_DIM)
+	box.add_child(bans_lbl)
+	box.add_child(UITheme.make_weapon_ban_grid(Settings.weapon_bans, func(nm: String, banned: bool) -> void:
+		if banned and not Settings.weapon_bans.has(nm):
+			Settings.weapon_bans.append(nm)
+		elif not banned:
+			Settings.weapon_bans.erase(nm)
+		Settings.save()
+		MatchConfig.host_broadcast()))
+
 	var reset := _make_button("RESET MODS")
 	reset.pressed.connect(func() -> void:
 		Settings.mod_gravity = 1.0
@@ -465,6 +479,7 @@ func _build_mods(box: VBoxContainer) -> void:
 		Settings.mod_speed = 1.0
 		Settings.bot_count = -1
 		Settings.bot_skill = 3
+		Settings.weapon_bans.clear()
 		Settings.save()
 		# Rebuild the card body so slider positions reflect the reset.
 		for c in box.get_children():

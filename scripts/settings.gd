@@ -4,6 +4,9 @@ extends Node
 const PATH := "user://settings.cfg"
 const ControlsMap = preload("res://scripts/controls_map.gd")
 
+## #256: the weapon roster (single source: game_lists.gd).
+const GameListsSrc = preload("res://scripts/game_lists.gd")
+
 var sfx_volume := 1.0          # 0.0 = muted, 1.0 = full
 var music_volume := 0.55       # 0.0..1.0 — separate from sfx so a quiet music track doesn't kill weapon SFX
 var music_muted := false
@@ -44,6 +47,9 @@ var help_seen := 0             # matches that auto-showed the controls card
 var bot_chatter := true        # bots trash-talk in chat now and then
 var spawn_primary := 2         # limbo weapon menu pick (AK-74)
 var spawn_secondary := 0       # (USSOCOM)
+# #256: weapons the host removed from the match (names from player.gd's
+# tables). Synced to clients through MatchConfig like the other host mods.
+var weapon_bans: Array = []
 var camera_lead := true        # view slides toward where you aim (Soldat style)
 var blood_intensity := 1.0     # 0.0..1.5 — visual gore multiplier (particles + gib count in gostek/gibs)
 
@@ -255,6 +261,13 @@ func load_settings() -> void:
 	help_seen = int(cf.get_value("game", "help_seen", 0))
 	spawn_primary = clampi(int(cf.get_value("loadout", "primary", 2)), 0, 9)
 	spawn_secondary = clampi(int(cf.get_value("loadout", "secondary", 0)), 0, 3)
+	# #256: keep only names that are real weapons (corrupt/hand-edited files).
+	var bans: Array = []
+	for nm in str(cf.get_value("loadout", "weapon_bans", "")).split(","):
+		nm = nm.strip_edges()
+		if nm != "" and GameListsSrc.WEAPON_NAMES.has(nm) and not bans.has(nm):
+			bans.append(nm)
+	weapon_bans = bans
 	blood_intensity = clampf(float(cf.get_value("game", "blood_intensity", 1.0)), 0.0, 1.5)
 	cos_head = str(cf.get_value("cosmetics", "head", "helm"))
 	cos_vest = bool(cf.get_value("cosmetics", "vest", true))
@@ -377,6 +390,7 @@ func _write_file() -> void:
 	cf.set_value("game", "help_seen", help_seen)
 	cf.set_value("loadout", "primary", spawn_primary)
 	cf.set_value("loadout", "secondary", spawn_secondary)
+	cf.set_value("loadout", "weapon_bans", ",".join(PackedStringArray(weapon_bans)))
 	cf.set_value("game", "blood_intensity", blood_intensity)
 	cf.set_value("cosmetics", "head", cos_head)
 	cf.set_value("cosmetics", "vest", cos_vest)

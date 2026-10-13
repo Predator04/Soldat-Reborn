@@ -1433,6 +1433,9 @@ func _spawn_map_weapon_pickups() -> void:
 	for wp_def in wps:
 		if typeof(wp_def) != TYPE_DICTIONARY:
 			continue
+		# #256: banned weapons don't enter the world at all.
+		if MatchConfig.weapon_banned(str(wp_def.get("weapon", "AK-74"))):
+			continue
 		var wp := WeaponPickup.new()
 		wp.weapon_name = str(wp_def.get("weapon", "AK-74"))
 		wp.team = -1
@@ -1570,8 +1573,25 @@ func net_m2_fire(m2_id: int, muzzle: Vector2, aim_dir: Vector2, shooter_team: in
 func _apply_spawn_loadout(p: Node) -> void:
 	if Settings.advance or Settings.game_mode == Settings.MODE_GG:
 		return
-	p.set("weapon_index", clampi(Settings.spawn_primary, 0, 9))
-	p.set("secondary_index", clampi(Settings.spawn_secondary, 0, 3))
+	# #256: a banned pick falls back to the first allowed weapon in that slot.
+	var prim: Array = p.get("weapons")
+	var wi: int = clampi(Settings.spawn_primary, 0, prim.size() - 1)
+	if MatchConfig.weapon_banned(str(prim[wi]["name"])):
+		wi = 0
+		for i in prim.size():
+			if not MatchConfig.weapon_banned(str(prim[i]["name"])):
+				wi = i
+				break
+	var sec: Array = p.get("secondary")
+	var si: int = clampi(Settings.spawn_secondary, 0, sec.size() - 1)
+	if MatchConfig.weapon_banned(str(sec[si]["name"])):
+		si = 0
+		for j in sec.size():
+			if not MatchConfig.weapon_banned(str(sec[j]["name"])):
+				si = j
+				break
+	p.set("weapon_index", wi)
+	p.set("secondary_index", si)
 
 func _spawn_player() -> void:
 	var p := player_scene.instantiate()
@@ -2082,10 +2102,24 @@ func _team_spawn_list(t: int) -> Array:
 	return all.slice(0, maxi(1, int(ceil(all.size() / 2.0))))
 
 
+## #256: the classic bot loadout (last bot brings the LAW), falling through
+## the primary roster when the pick is banned for the match.
+func _bot_loadout(want_law: bool) -> String:
+	var tbl: Array = player.get("weapons") if player != null and is_instance_valid(player) else []
+	var want := "LAW" if want_law else "AK-74"
+	if not MatchConfig.weapon_banned(want):
+		return want
+	if not tbl.is_empty():
+		for w in tbl:
+			if not MatchConfig.weapon_banned(str(w["name"])):
+				return str(w["name"])
+	return "AK-74"
+
+
 func _spawn_bot_at(i: int, desired: int) -> void:
 	var spots: Array = _map["bot_spawns"]
 	var slot: Vector2 = spots[i % spots.size()]
-	var loadout := "LAW" if i == desired - 1 else "AK-74"
+	var loadout := _bot_loadout(i == desired - 1)
 	var mode: int = Settings.game_mode
 	if Settings.is_team_mode():
 		if mode == Settings.MODE_INF:
@@ -4362,6 +4396,93 @@ func _tick_vote(delta: float) -> void:
 		_resolve_vote(vote_yes * 2 > _eligible_voters())
 	if not vote_active:
 		_vote_cooldown = maxf(0.0, _vote_cooldown - delta)
+
+
+# ── Host chat commands (#257) — the classic Soldat server set, driven from
+# the chat line. Host / single-player only; the HUD rejects clients.
+
+## /addbot [skill 1-5] [name] — one more bot, optionally skilled and named.
+func host_addbot(skill: int, bot_name: String) -> void:
+	if Net.is_networked() and not Net.is_host():
+		return
+	if skill > 0:
+		Settings.bot_skill = clampi(skill, 1, 5)
+	# Remember who exists so the new arrival can be picked out afterwards —
+	# _bots_by_id is only populated in MP, and _live_bots() order is spawn order.
+	var before: Dictionary = {}
+	for b in _live_bots():
+		before[b.get_instance_id()] = true
+	Settings.bot_count = clampi(Settings.bot_count + 1, 0, 32)
+	_reconcile_bots()
+	if bot_name != "":
+		for b in _live_bots():
+			if not before.has(b.get_instance_id()):
+				b.set("display_name", bot_name.left(24))
+				break
+	Settings.save()
+	MatchConfig.host_broadcast()
+
+## /bots <n> — set the bot count live.
+func host_set_bots(n: int) -> void:
+	if Net.is_networked() and not Net.is_host():
+		return
+	Settings.bot_count = clampi(n, 0, 32)
+	_reconcile_bots()
+	Settings.save()
+	MatchConfig.host_broadcast()
+
+## /kick <name> — disconnect a peer or remove a bot (case-insensitive,
+## unique-prefix match). Returns false when nobody matched.
+func host_kick(name: String) -> bool:
+	if name == "":
+		return false
+	var want := name.to_lower()
+	if Net.is_networked() and Net.is_host():
+		for pid in _peer_names.keys():
+			if str(_peer_names[pid]).to_lower().begins_with(want):
+				if multiplayer.multiplayer_peer != null:
+					multiplayer.multiplayer_peer.disconnect_peer(int(pid))
+				return true
+	for b in _live_bots():
+		if str(b.get("display_name")).to_lower().begins_with(want):
+			# Keep the configured count in step so reconcile doesn't respawn it.
+			Settings.bot_count = maxi(0, Settings.bot_count - 1)
+			_despawn_bot(b)
+			Settings.save()
+			MatchConfig.host_broadcast()
+			return true
+	return false
+
+## /restart, /map <name|index>, /gamemode <n|name> — full match restart onto
+## the given map + mode, on every peer.
+func host_restart_to(map_idx: int, mode_idx: int) -> void:
+	if Net.is_networked():
+		if not Net.is_host():
+			return
+		bcast("net_match_restart", [clampi(map_idx, 0, MAPS.size() - 1), clampi(mode_idx, 0, Net.MODE_NAMES.size() - 1)], true)
+	else:
+		net_match_restart(map_idx, mode_idx)
+
+## /say <text> — host announcement in everyone's chat feed.
+func host_say(text: String) -> void:
+	if text == "":
+		return
+	if Net.is_networked() and Net.is_host():
+		bcast("net_chat", ["HOST", text.left(200), "global", -1], true)
+	else:
+		var hud := get_node_or_null("HUD")
+		if hud != null and hud.has_method("post_chat"):
+			hud.post_chat("HOST", text.left(200), false)
+
+## /ff — flip friendly fire and tell everyone.
+func host_toggle_ff() -> void:
+	if Net.is_networked() and not Net.is_host():
+		return
+	MatchConfig.host_friendly_fire = not MatchConfig.host_friendly_fire
+	MatchConfig.host_broadcast()
+	var hud := get_node_or_null("HUD")
+	if hud != null and hud.has_method("post_chat"):
+		hud.post_chat("HOST", "Friendly fire is now %s." % ("ON" if MatchConfig.host_friendly_fire else "OFF"), false)
 
 
 func request_vote(kind: String, arg: String) -> void:

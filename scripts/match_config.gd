@@ -16,6 +16,8 @@ extends Node
 
 # ── Client-side cache (populated by net_apply). Host + SP ignore these
 # entirely; the getters short-circuit to Settings for them.
+const GameLists = preload("res://scripts/game_lists.gd")
+
 var _cfg_gravity: float = 1.0
 var _cfg_jet: float = 1.0
 var _cfg_damage: float = 1.0
@@ -25,6 +27,7 @@ var _cfg_bot_count: int = -1
 var _cfg_bot_skill: int = 3
 var _cfg_game_mode: int = 0
 var _cfg_map_index: int = 0
+var _cfg_weapon_bans: Array = []    # #256: names removed from the match
 var _broadcast_scheduled := false   # #245: debounced host_broadcast pending
 
 # Host-only match knob: even in team modes, bullets/grenades/rockets/melee can
@@ -87,6 +90,16 @@ func bot_skill() -> int:
 	return _cfg_bot_skill if Net.is_client() else int(Settings.bot_skill)
 
 
+## #256: is this weapon banned for the match? (Host/SP reads Settings live so
+## the panel takes effect immediately; clients read the broadcast snapshot.
+## Gun Game's rung and Rambo's bow are match OBJECTIVES — callers exempt them.)
+func weapon_banned(wname: String) -> bool:
+	if wname == "":
+		return false
+	var bans: Array = _cfg_weapon_bans if Net.is_client() else (Settings.weapon_bans as Array)
+	return bans.has(wname)
+
+
 # ── Broadcast pipeline. Host wraps up its Settings snapshot + host_friendly_fire
 # into a Dictionary and RPCs it out; every remote peer applies to its cache.
 func to_dict() -> Dictionary:
@@ -100,6 +113,7 @@ func to_dict() -> Dictionary:
 		"bot_skill": int(Settings.bot_skill),
 		"game_mode": int(Settings.game_mode),
 		"map_index": int(Settings.map_index),
+		"bans": (Settings.weapon_bans as Array).duplicate(),
 	}
 
 
@@ -113,6 +127,14 @@ func apply_dict(d: Dictionary) -> void:
 	_cfg_bot_skill = int(d.get("bot_skill", 3))
 	_cfg_game_mode = int(d.get("game_mode", 0))
 	_cfg_map_index = int(d.get("map_index", 0))
+	# #256: only real names survive (a hostile host packet can't smuggle junk).
+	var bans: Array = []
+	var bl = d.get("bans", [])
+	if typeof(bl) == TYPE_ARRAY:
+		for nm in bl:
+			if typeof(nm) == TYPE_STRING and GameLists.WEAPON_NAMES.has(nm) and not bans.has(nm):
+				bans.append(nm)
+	_cfg_weapon_bans = bans
 
 
 func host_broadcast() -> void:

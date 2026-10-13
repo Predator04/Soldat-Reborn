@@ -38,3 +38,11 @@ const MODE_NAMES := [
 	"Infiltration", "Hold the Flag", "Rambomatch", "Pointmatch",
 	"Domination", "Battle Royale", "Gun Game",
 ]
+
+## #256: the full weapon roster in player.gd's table order (12 primaries,
+## then 4 secondaries). Host weapon bans and their UI render in this order.
+const WEAPON_NAMES := [
+	"Deagles", "MP5", "AK-74", "Steyr AUG", "Spas-12", "Ruger 77",
+	"M79", "Barrett", "Minimi", "Minigun", "Flamethrower", "Rambo Bow",
+	"USSOCOM", "Knife", "Chainsaw", "LAW",
+]

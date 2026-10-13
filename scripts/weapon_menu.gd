@@ -161,6 +161,11 @@ func _gui_input(event: InputEvent) -> void:
 
 ## slot 0..9 = primary, 100+ = secondary. Takes effect on the next spawn.
 func _pick(slot: int) -> void:
+	# #256: banned weapons are visible but struck out — not pickable.
+	var banned_tbl: Array = _secondary if slot >= 100 else _weapons
+	var banned_i: int = slot - 100 if slot >= 100 else slot
+	if banned_i >= 0 and banned_i < banned_tbl.size() and MatchConfig.weapon_banned(str(banned_tbl[banned_i]["name"])):
+		return
 	if slot >= 100:
 		Settings.spawn_secondary = clampi(slot - 100, 0, _secondary.size() - 1)
 	else:
@@ -220,18 +225,18 @@ func _draw() -> void:
 		if i >= weapons.size():
 			break
 		var w: Dictionary = weapons[i]
-		var is_current: bool = wi == i
+		var is_current: bool = wi == i and not MatchConfig.weapon_banned(str(w["name"]))
 		var is_hover: bool = _hover_slot == i
-		_draw_row(String(PRIMARY_KEYS[i]), str(w["name"]), y, is_current, is_hover)
+		_draw_row(String(PRIMARY_KEYS[i]), str(w["name"]), y, is_current, is_hover, MatchConfig.weapon_banned(str(w["name"])))
 		y += ROW_H
 	y += GAP
 	_draw_header("Secondary Weapon", y)
 	y += HDR_H
 	for j in secondary.size():
 		var w2: Dictionary = secondary[j]
-		var is_current2: bool = si == j
+		var is_current2: bool = si == j and not MatchConfig.weapon_banned(str(w2["name"]))
 		var is_hover2: bool = _hover_slot == 100 + j
-		_draw_row(str(j + 1), str(w2["name"]), y, is_current2, is_hover2)
+		_draw_row(str(j + 1), str(w2["name"]), y, is_current2, is_hover2, MatchConfig.weapon_banned(str(w2["name"])))
 		y += ROW_H
 	if not Input.get_connected_joypads().is_empty():
 		_draw_outlined_text(tr("D-pad: ↑↓ primary · ←→ secondary"), Vector2(4, y + 14), 12, Color(0.75, 0.8, 0.88))
@@ -256,7 +261,7 @@ func _draw_header(text: String, y: float) -> void:
 	draw_rect(Rect2(2, y + _hdr_font_size + 3, PANEL_W - 4, 1), UITheme.COL_ACCENT_DIM, true)
 
 
-func _draw_row(key: String, name: String, y: float, is_current: bool, is_hover: bool) -> void:
+func _draw_row(key: String, name: String, y: float, is_current: bool, is_hover: bool, banned: bool = false) -> void:
 	# Background chip for current / hovered rows. Slight bleed left so the panel edge reads.
 	if is_current or is_hover:
 		var bg := COL_CURRENT if is_current else COL_HOVER
@@ -270,9 +275,13 @@ func _draw_row(key: String, name: String, y: float, is_current: bool, is_hover: 
 		name_col = COL_CURRENT
 	elif is_hover:
 		name_col = COL_HOVER
+	if banned:
+		# #256: host removed this weapon from the match — dim it and say so.
+		name_col = Color(name_col.r, name_col.g, name_col.b, 0.35)
 	var text_y: float = y + (ROW_H + _font_size) * 0.5 - 1.0
-	_draw_outlined_text(key + ".", Vector2(10, text_y), _font_size, COL_ROW_KEY)
-	_draw_outlined_text(name, Vector2(28, text_y), _font_size, name_col)
+	_draw_outlined_text(key + ".", Vector2(10, text_y), _font_size, Color(COL_ROW_KEY.r, COL_ROW_KEY.g, COL_ROW_KEY.b, 0.35 if banned else 1.0))
+	var label := name + "  (banned)" if banned else name
+	_draw_outlined_text(label, Vector2(28, text_y), _font_size, name_col)
 
 
 func _draw_tooltip(w: Dictionary, near: Vector2) -> void:

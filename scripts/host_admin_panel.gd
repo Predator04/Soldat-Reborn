@@ -165,6 +165,23 @@ func _build() -> void:
 			MatchConfig.host_broadcast(),
 		"%d"))
 
+	# #256: per-weapon bans — the classic "no sniper / pistol only" server
+	# rule. Takes effect for new spawns; every peer's weapon menu updates
+	# from the broadcast.
+	var bans_lbl := Label.new()
+	bans_lbl.text = "Weapon bans (new spawns; Gun Game rungs + Rambo bow stay)"
+	UITheme.style_body(bans_lbl, 13, UITheme.COL_TEXT_DIM)
+	col.add_child(bans_lbl)
+	col.add_child(UITheme.make_weapon_ban_grid(Settings.weapon_bans, func(nm: String, banned: bool) -> void:
+		if banned and not Settings.weapon_bans.has(nm):
+			Settings.weapon_bans.append(nm)
+		elif not banned:
+			Settings.weapon_bans.erase(nm)
+		Settings._slider_burst = true
+		Settings.save()
+		Settings._slider_burst = false
+		MatchConfig.host_broadcast()))
+
 	col.add_child(UITheme.spacer(4))
 	col.add_child(UITheme.make_section_header("Match Restart"))
 

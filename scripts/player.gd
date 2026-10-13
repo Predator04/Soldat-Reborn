@@ -1029,6 +1029,10 @@ func _switch_weapon(idx: int) -> void:
 	# effect duration — swapping to a primary would defeat "no primary use".
 	if bonus_kind == "berserker":
 		return
+	# #256: banned weapons can't be switched to (the menu hides them; this
+	# covers number keys and any programmatic switch). idx is a PRIMARY slot.
+	if idx >= 0 and idx < weapons.size() and MatchConfig.weapon_banned(str(weapons[idx]["name"])):
+		return
 	# Advance: block hotkeys pointing to still-locked primaries.
 	if Settings.advance and not _is_primary_unlocked(idx):
 		return
@@ -1070,6 +1074,11 @@ func _toggle_secondary() -> void:
 	# Berserker locks us on the knife slot (#78) — Q would take us back to
 	# a primary, undoing the effect.
 	if bonus_kind == "berserker":
+		return
+	# #256: Q must not swap into a banned weapon on either side.
+	if using_secondary and MatchConfig.weapon_banned(str(weapons[weapon_index]["name"])):
+		return
+	if not using_secondary and MatchConfig.weapon_banned(str(secondary[secondary_index]["name"])):
 		return
 	# Advance: don't swap into a slot whose weapon isn't unlocked yet.
 	if Settings.advance:
@@ -1516,6 +1525,9 @@ func _loadout_mag(weapon_name: String) -> int:
 func try_pickup_weapon(weapon_name: String, mag: int = -1) -> bool:
 	# Only the authority peer mutates the loadout — otherwise net_state loops.
 	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
+		return false
+	# #256: banned weapons never enter the match.
+	if MatchConfig.weapon_banned(weapon_name):
 		return false
 	# Only clear the thrown flag if the pickup we're absorbing is one WE threw —
 	# otherwise walking over a stranger's pickup silently re-arms a thrown weapon

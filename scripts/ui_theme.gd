@@ -509,3 +509,40 @@ static func wrap_panel(inner: Control, title: String) -> PanelContainer:
 	col.add_child(rule)
 	col.add_child(inner)
 	return pc
+
+
+## #256: grid of per-weapon toggle chips for the host's weapon-ban set.
+## `bans` is the current list of banned names; on_toggle gets (name, banned)
+## and is expected to update the source of truth (the grid refreshes itself).
+static func make_weapon_ban_grid(bans: Array, on_toggle: Callable) -> Control:
+	var GameLists = preload("res://scripts/game_lists.gd")
+	var grid := GridContainer.new()
+	grid.columns = 4
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 6)
+	for nm in GameLists.WEAPON_NAMES:
+		var banned := bans.has(nm)
+		var b := Button.new()
+		b.toggle_mode = true
+		b.text = nm
+		b.custom_minimum_size = Vector2(112, 30)
+		b.tooltip_text = "Remove %s from the match (menus, spawns, bots, pickups). Gun Game rungs and the Rambo bow are match rules and stay." % nm
+		b.button_pressed = banned
+		_style_ban_chip(b, banned)
+		b.toggled.connect(func(on: bool) -> void:
+			_style_ban_chip(b, on)
+			on_toggle.call(nm, on))
+		grid.add_child(b)
+	return grid
+
+
+static func _style_ban_chip(b: Button, banned: bool) -> void:
+	if banned:
+		b.add_theme_color_override("font_color", Color(0.96, 0.42, 0.36))
+		b.add_theme_color_override("font_pressed_color", Color(0.96, 0.42, 0.36))
+		if not b.text.ends_with(" ✕"):
+			b.text += " ✕"
+	else:
+		b.add_theme_color_override("font_color", COL_TEXT)
+		b.add_theme_color_override("font_pressed_color", COL_TEXT)
+		b.text = b.text.trim_suffix(" ✕")

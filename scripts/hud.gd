@@ -268,7 +268,7 @@ func _ready() -> void:
 	command_line.offset_right = -12
 	command_line.offset_top = -110
 	command_line.offset_bottom = -80
-	command_line.placeholder_text = "/votemap N   /votekick name   /victory  /smoke  /tabac  /takeoff  /mercy  /kill  /brutalkill"
+	command_line.placeholder_text = "/votemap N   /votekick name   /addbot   /kick name   /gamemode N   /map name   /restart   /say   /ff   /victory  /kill"
 	command_line.custom_minimum_size = Vector2(0, 28)
 	command_line.visible = false
 	command_line.text_submitted.connect(_on_command_submitted)
@@ -570,7 +570,7 @@ func set_rewind(on: bool) -> void:
 
 
 func open_command(prefill: String = "/") -> void:
-	_open_line("cmd", prefill, "/votemap N   /votekick name   /victory  /smoke  /mercy  /kill")
+	_open_line("cmd", prefill, "/votemap N   /addbot   /kick name   /gamemode N   /map name   /restart   /say   /ff   /victory  /kill")
 
 
 func open_chat(scope: String) -> void:
@@ -607,7 +607,7 @@ func _close_command() -> void:
 func _on_command_submitted(text: String) -> void:
 	var t := text.strip_edges()
 	if is_instance_valid(player) and t != "":
-		if _line_mode == "cmd" and t.begins_with("/") and _try_vote_command(t):
+		if _line_mode == "cmd" and t.begins_with("/") and (_try_vote_command(t) or _try_host_command(t)):
 			_close_command()
 			return
 		if _line_mode == "cmd":
@@ -651,6 +651,93 @@ func _try_vote_command(raw: String) -> bool:
 			main.cancel_vote()
 		return true
 	return false
+
+
+# Host chat commands (#257) — the classic Soldat server set. Host / SP only.
+# Returns true when the text was one of ours (the caller skips chat/gestures).
+func _try_host_command(raw: String) -> bool:
+	var lower := raw.to_lower()
+	var main := get_parent()
+	if main == null or not main.has_method("host_addbot"):
+		return false
+	var parts := raw.split(" ", false)
+	var cmd := parts[0].to_lower()
+	var body := raw.substr(parts[0].length()).strip_edges()
+	var cmds := ["/addbot", "/kick", "/bots", "/gamemode", "/map", "/restart", "/say", "/ff"]
+	var hit := false
+	for c in cmds:
+		if cmd == c:
+			hit = true
+			break
+	if not hit:
+		return false
+	if Net.is_networked() and not Net.is_host():
+		post_chat("HOST", "That command is host only.", false)
+		return true
+	match cmd:
+		"/addbot":
+			var skill := 0
+			var bot_name := body
+			if body != "" and body.split(" ")[0].is_valid_int():
+				skill = int(body.split(" ")[0])
+				bot_name = body.substr(body.split(" ")[0].length()).strip_edges()
+			if skill != 0 and (skill < 1 or skill > 5):
+				post_chat("HOST", "Usage: /addbot [skill 1-5] [name]", false)
+				return true
+			main.host_addbot(skill, bot_name)
+			post_chat("HOST", "Bot added." + (" %s" % bot_name if bot_name != "" else ""), false)
+		"/bots":
+			if body.is_valid_int():
+				main.host_set_bots(int(body))
+			else:
+				post_chat("HOST", "Usage: /bots <count>", false)
+		"/kick":
+			if body == "":
+				post_chat("HOST", "Usage: /kick <name>", false)
+			elif not main.host_kick(body):
+				post_chat("HOST", "No player or bot named \"%s\"." % body, false)
+		"/gamemode":
+			var mi := _resolve_mode_arg(body)
+			if mi < 0:
+				post_chat("HOST", "Usage: /gamemode <0-9 or name>", false)
+			else:
+				main.host_restart_to(int(Settings.map_index), mi)
+		"/map":
+			var mp := _resolve_map_arg(body)
+			if mp < 0:
+				post_chat("HOST", "Usage: /map <name or index>", false)
+			else:
+				main.host_restart_to(mp, int(Settings.game_mode))
+		"/restart":
+			main.host_restart_to(int(Settings.map_index), int(Settings.game_mode))
+		"/say":
+			if body == "":
+				post_chat("HOST", "Usage: /say <message>", false)
+			else:
+				main.host_say(body)
+		"/ff":
+			main.host_toggle_ff()
+	return true
+
+
+func _resolve_mode_arg(a: String) -> int:
+	if a.is_valid_int():
+		return clampi(int(a), 0, Net.MODE_NAMES.size() - 1)
+	var la := a.to_lower()
+	for i in Net.MODE_NAMES.size():
+		if str(Net.MODE_NAMES[i]).to_lower().begins_with(la):
+			return i
+	return -1
+
+
+func _resolve_map_arg(a: String) -> int:
+	if a.is_valid_int():
+		return clampi(int(a), 0, Net.MAP_NAMES.size() - 1)
+	var la := a.to_lower()
+	for i in Net.MAP_NAMES.size():
+		if str(Net.MAP_NAMES[i]).to_lower().begins_with(la):
+			return i
+	return -1
 
 
 func _update_vote_ui() -> void:

@@ -2,6 +2,15 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.33.0] — 2026-10-13
+
+### Added — the community's classic asks
+- **Weapon bans** (#256). The most-requested server customization in Soldat history (OpenSoldat #118: *"server can't customize which weapons... the only way requires recompiling"*). The host (or single player) toggles any weapon off in Host Settings / the Mods card — a banned weapon disappears from the weapon menu (shown struck out), can't be switched to, never spawns (loadouts fall back to the next allowed weapon), is never given to bots, and its map pickups don't appear. Clients receive the ban list with the rest of the host config. Instant "pistol only", "no sniper", "knives out" nights. Gun Game rungs and the Rambo bow are match objectives and stay.
+- **Host chat commands** (#257) — the classic Soldat server set, typed straight into chat (host / single player): `/addbot [skill 1-5] [name]`, `/kick <name>`, `/bots <n>`, `/gamemode <0-9|name>`, `/map <name|index>`, `/restart`, `/say <msg>`, `/ff`. Names match by unique prefix; unknown names say so; clients are told commands are host-only.
+
+### Testing
+- New release-gate stage: weapon bans + host commands end to end (COMMUNITY-TEST).
+
 ## [1.32.1] — 2026-10-13
 
 ### Fixed — crashes & stability

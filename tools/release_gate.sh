@@ -433,6 +433,7 @@ ft() {  # key script timeout TAG label
 if has F; then
   ft grenade grenade_test.gd 90 GRENADE-TEST "grenade cooking"
   ft ppickup persistent_pickup_test.gd 120 PPICKUP-TEST "map weapon pickups persist + regenerate in place (#241/#254)"
+  ft community community_test.gd 90 COMMUNITY-TEST "host weapon bans (#256) + host chat commands (#257)"
   ft training training_test.gd 90 TRAINING-TEST "training"
   ft fire fire_test.gd 100 FIRE-TEST "every primary fires"
   ft weapons weapon_test.gd 175 WEAPON-TEST "every weapon hits (player + bots)"
