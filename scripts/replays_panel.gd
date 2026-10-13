@@ -106,22 +106,27 @@ func watch_replay(path: String) -> bool:
 		_status.text = tr("Couldn't read this replay (corrupt or from a newer version).")
 		return false
 	var h: Dictionary = h_v
-	Net.replay_restore = {"map_index": Settings.map_index, "custom_map_path": Settings.custom_map_path, "game_mode": Settings.game_mode}
-	Net.set_singleplayer()
-	Settings.game_mode = int(h.get("mode", 0))
-	if int(h.get("map_index", -1)) >= 0:
-		Settings.map_index = int(h.map_index)
-		Settings.custom_map_path = ""
-	else:
+	# #254: stage everything that can fail BEFORE mutating Settings/Net — a
+	# late failure used to leave the player's game mode replaced by the
+	# replay's and a stale replay_restore behind.
+	var custom_map := ""
+	if int(h.get("map_index", -1)) < 0:
 		var mp := Recorder.DIR + "_replay_map.json"
 		var f := FileAccess.open(mp, FileAccess.WRITE)
 		if f == null:
-			# #250: disk full / read-only storage crashed WATCH here on a null.
 			_status.text = tr("Couldn't save this replay's map (storage full or read-only?).")
 			return false
 		f.store_string(str(h.get("map_json", "")))
 		f.close()
-		Settings.custom_map_path = mp
+		custom_map = mp
+	Net.replay_restore = {"map_index": Settings.map_index, "custom_map_path": Settings.custom_map_path, "game_mode": Settings.game_mode}
+	Net.set_singleplayer()
+	Settings.game_mode = int(h.get("mode", 0))
+	if custom_map == "":
+		Settings.map_index = int(h.map_index)
+		Settings.custom_map_path = ""
+	else:
+		Settings.custom_map_path = custom_map
 	Net.replay_path = path
 	get_tree().change_scene_to_file("res://scenes/main.tscn")
 	return true

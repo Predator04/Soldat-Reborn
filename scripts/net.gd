@@ -635,6 +635,7 @@ signal relay_ready          # host: the relay gave us a room code
 signal relay_failed(msg: String)
 var relay_code := ""        # "R-XXXXXX" while hosting / after joining via relay
 var via_relay := false
+var relay_lost := false     # #254: hosting relay socket died mid-match (status stays honest)
 
 
 ## Host through the relay at `master_url`. Wait for relay_ready (code in
@@ -647,6 +648,7 @@ func host_game_relay(master_url: String, map_index: int = 0) -> bool:
 		return false
 	peer.hosted.connect(func(c: String) -> void:
 		relay_code = "R-" + c
+		relay_lost = false
 		_refresh_host_status()
 		relay_ready.emit())
 	peer.failed.connect(func(msg: String) -> void:
@@ -655,9 +657,13 @@ func host_game_relay(master_url: String, map_index: int = 0) -> bool:
 		# instead of heartbeat-POSTing a code the server no longer knows.
 		if relay_code != "":
 			relay_code = ""
+			relay_lost = true
 			_stop_master_heartbeat()
+			# _refresh_host_status now reports the loss (and survives the
+			# peer-disconnect refreshes that follow in the same poll).
 			_refresh_host_status()
-		_set_status("Relay: " + msg)
+		else:
+			_set_status("Relay: " + msg)
 		relay_failed.emit(msg))
 	multiplayer.multiplayer_peer = peer
 	mode = Mode.HOST
@@ -731,6 +737,7 @@ func leave() -> void:
 	custom_map_json = ""
 	via_relay = false
 	relay_code = ""
+	relay_lost = false
 	_pending_clients.clear()
 	_set_status("")
 	# Stop the dedicated-mode master heartbeat — no session to advertise.
@@ -1407,7 +1414,15 @@ func _refresh_host_status() -> void:
 		return
 	var lines: Array = []
 	if via_relay:
-		_set_status(("Hosting through the relay · join code %s (works from anywhere)" % relay_code) if relay_code != "" else "Connecting to the relay...")
+		# #254: after a mid-match relay loss the peer-disconnect refresh used
+		# to overwrite the error with "Connecting to the relay..." (code is
+		# empty by then) — say what actually happened instead.
+		if relay_lost:
+			_set_status("Hosting without the relay — the relay connection was lost (re-host to get a new join code)")
+		elif relay_code != "":
+			_set_status("Hosting through the relay · join code %s (works from anywhere)" % relay_code)
+		else:
+			_set_status("Connecting to the relay...")
 		return
 	var lc := lan_code()
 	lines.append(("Hosting · LAN join code %s" % lc) if lc != "" else "Hosting on port %d" % _host_port)

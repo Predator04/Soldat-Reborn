@@ -158,6 +158,17 @@ def release(tag):
             call("PATCH", "/repos/%s/releases/%d" % (REPO, rel["id"]), {"body": body})
             print("release notes updated")
     have = {a["name"]: a for a in rel.get("assets", [])}
+    # #254: never publish an exe without its updater signature — every client
+    # since v1.32.1 refuses an unsigned update, so the release would look
+    # dead. Also refuse a stale sig: an exe rebuilt after its sig was made
+    # fails verification just the same.
+    exe_p = os.path.join(ROOT, "build", "SoldatReborn.exe")
+    sig_p = exe_p + ".sig"
+    if os.path.exists(exe_p):
+        if not os.path.exists(sig_p):
+            raise SystemExit(f"build/SoldatReborn.exe exists but {sig_p} is missing — run tools/build_release.sh (it signs the exe). Refusing to publish an unsigned update.")
+        if os.path.getmtime(exe_p) > os.path.getmtime(sig_p) + 2:
+            raise SystemExit("build/SoldatReborn.exe is newer than its .sig — re-run tools/build_release.sh. Refusing to publish a mismatched signature.")
     for f, ctype in (("SoldatReborn.exe", "application/vnd.microsoft.portable-executable"),
                      ("SoldatReborn.exe.sig", "application/octet-stream"),  # #237 updater signature
                      ("SoldatReborn.apk", "application/vnd.android.package-archive"),

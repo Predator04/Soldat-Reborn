@@ -120,11 +120,12 @@ func _on_board(_r: int, code: int, _h: PackedStringArray, body: PackedByteArray)
 		if not (row is Dictionary):
 			continue
 		var nm := str(row.get("name", "?")).replace("[", "(").replace("]", ")")
-		var k := int(row.get("k", 0))
-		var de := maxi(1, int(row.get("d", 0)))
+		# #254: nested containers (`{"k": []}`) abort int() — go through _i().
+		var k := _i(row.get("k", 0))
+		var de := maxi(1, _i(row.get("d", 0)))
 		var col := "#ffd257" if nm == me_name else "#e6edf5"
 		t += "[cell]%d   [/cell][cell][color=%s]%s[/color]   [/cell][cell]%d   [/cell][cell]%s   [/cell][cell]%.2f   [/cell][cell]%d[/cell]" % [
-			int(row.get("rank", 0)), col, nm, int(row.get("xp", 0)), tr(tier_for(int(row.get("xp", 0)))), float(k) / de, int(row.get("w", 0))]
+			_i(row.get("rank", 0)), col, nm, _i(row.get("xp", 0)), tr(tier_for(_i(row.get("xp", 0)))), float(k) / de, _i(row.get("w", 0))]
 	t += "[/table]"
 	_list.text = t
 	loaded_rows = rows.size()
@@ -137,15 +138,28 @@ func _on_me(_r: int, code: int, _h: PackedStringArray, body: PackedByteArray) ->
 	if not bool(d.get("found", false)):
 		_me.text = "[b]%s[/b]  ·  [color=#a8b0bc]%s[/color]" % [Settings.player_name.replace("[", "("), tr("Unranked - finish a round on the official server to get on the board.")]
 		return
-	# #239: same shape check for the profile half.
+	# #239: same shape check for the profile half (#254: _i() for nested junk).
 	var p_v = d.get("profile", {})
 	var p: Dictionary = p_v if typeof(p_v) == TYPE_DICTIONARY else {}
-	var xp := int(p.get("xp", 0))
+	var xp := _i(p.get("xp", 0))
 	_me.text = "[b][color=#ffd257]%s[/color][/b]  ·  %s  ·  #%d / %d  ·  %d XP\n[color=#a8b0bc]%d %s · %d %s · %d %s · %d %s[/color]" % [
-		str(p.get("name", "")).replace("[", "("), tr(tier_for(xp)), int(d.get("rank", 0)), int(d.get("total", 0)), xp,
-		int(p.get("k", 0)), tr("kills"), int(p.get("c", 0)), tr("caps"), int(p.get("w", 0)), tr("wins"), int(p.get("m", 0)), tr("matches")]
+		str(p.get("name", "")).replace("[", "("), tr(tier_for(xp)), _i(d.get("rank", 0)), _i(d.get("total", 0)), xp,
+		_i(p.get("k", 0)), tr("kills"), _i(p.get("c", 0)), tr("caps"), _i(p.get("w", 0)), tr("wins"), _i(p.get("m", 0)), tr("matches")]
 	# Matchmaking skill (avg XP per match, 3+ matches): what Quick Play uses.
 	if d.has("skill"):
-		_me.text += "\n[color=#9fd3ff]%s[/color]" % (tr("Skill %d - Quick Play matches you with players near this") % int(d["skill"]))
+		_me.text += "\n[color=#9fd3ff]%s[/color]" % (tr("Skill %d - Quick Play matches you with players near this") % _i(d["skill"]))
 	else:
 		_me.text += "\n[color=#a8b0bc]%s[/color]" % tr("Skill: play 3 online matches to get matched by skill")
+
+
+## #254: int() that survives hostile JSON — a nested Array/Dictionary value
+## aborts a plain int() and kills the whole callback; anything non-numeric
+## reads as 0.
+static func _i(v: Variant) -> int:
+	match typeof(v):
+		TYPE_INT, TYPE_FLOAT, TYPE_BOOL:
+			return int(v)
+		TYPE_STRING:
+			return int(v) if v.is_valid_int() else 0
+		_:
+			return 0

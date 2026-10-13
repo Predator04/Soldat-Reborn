@@ -59,6 +59,7 @@ func _physics_process(delta: float) -> void:
 			active = true
 			mag_on_drop = -1
 			visible = true
+			collision_layer = 1
 		return
 	if not persistent:
 		_life -= delta
@@ -110,12 +111,21 @@ func _on_body_entered(body: Node) -> void:
 		if picked:
 			_consumed = true
 			Sfx.pickup(global_position)
+			# #254: clear the host replica's drop gate for this weapon — the
+			# owner's own copy clears in try_pickup_weapon, but the host's
+			# bounds state lives on ITS replica of their body.
+			var dt = body.get("_drop_times")
+			if dt is Dictionary:
+				dt.erase(weapon_name)
 			if persistent:
-				# #241: map slot regenerates in place instead of leaving the
-				# map permanently emptier.
+				# #241/#254: map slot regenerates in place instead of leaving the
+				# map permanently emptier. Drop the collision layer too — an
+				# invisible body must not eat bullets or shove soldiers for
+				# the whole 8 s.
 				active = false
 				_respawn_t = 8.0
 				visible = false
+				collision_layer = 0
 			else:
 				queue_free()
 

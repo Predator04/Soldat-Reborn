@@ -1482,8 +1482,10 @@ func net_m2_mount(m2_id: int, peer_id: int) -> void:
 @rpc("any_peer", "call_local", "reliable")
 func net_m2_dismount(m2_id: int) -> void:
 	# #106: only the current operator may dismount themselves — reject any
-	# client trying to knock another player off the turret. #235: relay without
-	# local=true so the handler doesn't re-enter with the client as sender.
+	# client trying to knock another player off the turret. #235/#254: relay
+	# without local=true so the handler doesn't re-enter with the client as
+	# sender, and DON'T return — the host must fall through and apply the
+	# dismount too, or its replica keeps the operator pinned at the turret.
 	if Net.is_networked() and Net.is_host():
 		var d_sender := multiplayer.get_remote_sender_id() if multiplayer.has_multiplayer_peer() else 0
 		# (call_local reports the host's own id, not 0 — treat that as local.)
@@ -1494,7 +1496,6 @@ func net_m2_dismount(m2_id: int) -> void:
 				if is_instance_valid(op) and int(op.get_multiplayer_authority()) != d_sender:
 					return
 			bcast("net_m2_dismount", [m2_id], false)
-			return
 	var m2 := find_m2(m2_id)
 	if m2 != null and m2.has_method("net_dismount"):
 		m2.net_dismount()
@@ -4406,7 +4407,8 @@ func _vote_chat(msg: String) -> void:
 
 func _resolve_map_name(idx: int) -> String:
 	# Prefer the actual runtime rotation (procedural + bundled classics), fall
-	# back to the host-admin MAP_NAMES list which mirrors menu.gd.
+	# back to the shared game_lists.gd list (#251 — the host-admin copy is
+	# that same list now).
 	if idx >= 0 and idx < MAPS.size():
 		return str(MAPS[idx].get("name", "Map %d" % idx))
 	return "Map %d" % idx
@@ -4871,6 +4873,9 @@ func _broadcast_pickup_state() -> void:
 			"name": str(wp.get("weapon_name")),
 			"team": int(wp.get("team")),
 			"thrower": str(wp.get("thrower_name")),
+			# #254: client copies must know a slot is persistent, or their local
+			# 20 s _life expires a map slot the host keeps forever.
+			"p": bool(wp.get("persistent")),
 			# #247: quantize motion to stop resting bodies from flickering the
 			# change signature (and the wire format) with 1e-5 velocities.
 			"pos": (wp.global_position as Vector2).snapped(Vector2(0.25, 0.25)),
@@ -4923,6 +4928,10 @@ func net_pickup_state(arr: Array) -> void:
 			new_wp.weapon_name = str(entry.get("name", "AK-74"))
 			new_wp.team = int(entry.get("team", 0))
 			new_wp.thrower_name = str(entry.get("thrower", ""))
+			# #254: map slots are persistent on the host — the client copy must
+			# not run its own 20 s _life (the signature-gated stream only
+			# re-sends on change, so nothing would resurrect it).
+			new_wp.persistent = bool(entry.get("p", false))
 			# #94: pull damage from the host's payload instead of reconstructing
 			# by weapon name. Fallback to the legacy Knife=55 rule when the host
 			# is running a pre-#94 build with no "dmg" field.

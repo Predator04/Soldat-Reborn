@@ -54,8 +54,40 @@ var weapon_index := 2   # default primary = AK-74 (Soldat's #3)
 var secondary_index := 0  # default secondary = USSOCOM
 var using_secondary := false
 var fire_cd := 0.0
-# #243: host-side fire-rate gate for net_shoot RPCs from clients.
-var _last_net_shot_ms := -100000
+# #243/#254: host-side fire-rate gate for net_shoot RPCs from clients —
+# keyed per weapon so a legit weapon-swap opener isn't measured against the
+# previous weapon's rate.
+var _last_net_shot_ms: Dictionary = {}
+
+
+## Weapon dict for a net_shoot slot index (≥100 = secondaries); {} if invalid.
+func _weapon_for_slot(weapon_i: int) -> Dictionary:
+	if weapon_i >= 100:
+		var si := weapon_i - 100
+		if si < 0 or si >= secondary.size():
+			return {}
+		return secondary[si]
+	if weapon_i < 0 or weapon_i >= weapons.size():
+		return {}
+	return weapons[weapon_i]
+
+
+## #243: fire-rate sanity. The owner's fire_cd never reaches the host, so a
+## modded client could fire any weapon as fast as it liked (ranked farming,
+## knife spray). Enforce the weapon's own rate host-side with slack for
+## network jitter; local/host shots (sender 0/1) skip the check.
+func _shot_rate_ok(w: Dictionary) -> bool:
+	var shot_sender := multiplayer.get_remote_sender_id() if multiplayer.multiplayer_peer != null else 0
+	if shot_sender == 0 or shot_sender == 1:
+		return true
+	var wname := str(w.get("name", ""))
+	var min_gap: float = maxf(0.03, float(w.get("rate", 0.1)) * 0.6)
+	var now_ms := Time.get_ticks_msec()
+	var last: int = int(_last_net_shot_ms.get(wname, -100000))
+	if now_ms - last < int(min_gap * 1000.0):
+		return false
+	_last_net_shot_ms[wname] = now_ms
+	return true
 var spin_up_t := 0.0    # ramps up while LMB held for weapons with a startup wind-up (Barrett, Minigun)
 var lmb_prev := false   # prev-frame LMB state — resets spin_up_t when the trigger releases
 var reloading := false
@@ -1322,6 +1354,11 @@ func _drop_active_weapon() -> void:
 	var w := _active_weapon()
 	var wname := str(w["name"])
 	var wmag := _active_mag()
+	# #254: mirror the host's bounds locally BEFORE marking the weapon thrown.
+	# The host rejects out-of-bounds drops (below), and a client that had
+	# already switched away would silently lose the weapon for the life.
+	if not _drop_bounds_ok(wname):
+		return
 	_thrown[wname] = true
 	Sfx.throw_gun(_sfx_at())
 	# Mirror _throw_grenade: throwing a weapon (esp. a Knife pickup that deals
@@ -1423,17 +1460,10 @@ func net_request_drop(weapon_name: String, from_pos: Vector2, aim: Vector2, mag:
 	# state instead: per-weapon spacing (a real throw→pickup→throw cycle
 	# takes seconds) plus a rolling per-peer budget, so pickup-spam from a
 	# modded client can't grow the 10 Hz pickup broadcast for everyone.
-	var now := Time.get_ticks_msec()
-	if now - _last_drop_ms < 600:
+	# #254: the dropper runs the same check before sending, so a legit client
+	# never has a drop rejected after it already switched weapons away.
+	if not _drop_bounds_ok(weapon_name):
 		return
-	if now - int(_drop_times.get(weapon_name, 0)) < 8000:
-		return
-	_recent_drops = _recent_drops.filter(func(t): return now - int(t) < 10000)
-	if _recent_drops.size() >= 4:
-		return
-	_recent_drops.append(now)
-	_drop_times[weapon_name] = now
-	_last_drop_ms = now
 	# Snap the pickup to the player's authoritative position — client-reported
 	# from_pos is a hint only. Clamp mag so a modded client can't over-refill on
 	# next pickup (upper bound is the weapon's max; -1 = "full" is banned here
@@ -1442,6 +1472,25 @@ func net_request_drop(weapon_name: String, from_pos: Vector2, aim: Vector2, mag:
 	var max_mag: int = _loadout_mag(weapon_name)
 	var clamped: int = clampi(mag, 0, max_mag) if mag >= 0 else 0
 	net_drop_weapon(weapon_name, global_position, aim, clamped)
+
+
+## #240/#254: drop bounds — ≥600 ms apart, ≤1 drop of a given weapon per 8 s,
+## ≤4 drops per rolling 10 s. Records the drop when accepted (so the dropper's
+## local mirror and the host's authoritative copy stay in sync — both run
+## this). Re-grabbing a weapon clears its 8 s gate (toss-and-catch is legit).
+func _drop_bounds_ok(wname: String) -> bool:
+	var now := Time.get_ticks_msec()
+	if now - _last_drop_ms < 600:
+		return false
+	if now - int(_drop_times.get(wname, 0)) < 8000:
+		return false
+	_recent_drops = _recent_drops.filter(func(t): return now - int(t) < 10000)
+	if _recent_drops.size() >= 4:
+		return false
+	_recent_drops.append(now)
+	_drop_times[wname] = now
+	_last_drop_ms = now
+	return true
 
 
 func _loadout_has(weapon_name: String) -> bool:
@@ -1498,6 +1547,9 @@ func try_pickup_weapon(weapon_name: String, mag: int = -1) -> bool:
 				break
 	if picked and was_thrown_by_me:
 		_thrown.erase(weapon_name)
+		# #254: re-grabbing re-arms the drop gate too — toss-catch-toss is
+		# legitimate play and must not wait out the 8 s window.
+		_drop_times.erase(weapon_name)
 	if picked and not was_thrown_by_me:
 		_pickup_toast(weapon_name.to_upper(), GameInfo.weapon_desc(weapon_name), Color(0.95, 0.9, 0.6))
 	# Gun Game: keep the rung/weapon coupling intact — re-snap to the current
@@ -1791,30 +1843,16 @@ func net_state(pos: Vector2, vel: Vector2, aim: Vector2, face: float, jetting: b
 
 @rpc("any_peer", "call_remote", "reliable")
 func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_proj_id: int = 0) -> void:
+	# Resolve the weapon FIRST so the fire-rate gate runs before _net_accept
+	# relays the shot (#254) — a shot the host rejects must not be fanned out
+	# to the other clients either. Slots ≥ 100 are secondaries at (slot - 100).
+	var w := _weapon_for_slot(weapon_i)
+	if w.is_empty():
+		return
+	if not _shot_rate_ok(w):
+		return
 	if not _net_accept("net_shoot", [shot_pos, dirs, weapon_i, base_proj_id]):
 		return
-	# Slots ≥ 100 are secondaries at (slot - 100).
-	var w: Dictionary
-	if weapon_i >= 100:
-		var si := weapon_i - 100
-		if si < 0 or si >= secondary.size():
-			return
-		w = secondary[si]
-	else:
-		if weapon_i < 0 or weapon_i >= weapons.size():
-			return
-		w = weapons[weapon_i]
-	# #243: fire-rate sanity. The owner's fire_cd never reaches the host, so a
-	# modded client could fire any weapon as fast as it liked (ranked farming,
-	# knife spray). Enforce the weapon's own rate host-side, with slack for
-	# network jitter; local/host shots (sender 0/1) skip the check.
-	var shot_sender := multiplayer.get_remote_sender_id() if multiplayer.multiplayer_peer != null else 0
-	if shot_sender != 0 and shot_sender != 1:
-		var min_gap: float = maxf(0.03, float(w.get("rate", 0.1)) * 0.6)
-		var now_ms := Time.get_ticks_msec()
-		if now_ms - _last_net_shot_ms < int(min_gap * 1000.0):
-			return
-		_last_net_shot_ms = now_ms
 	var kind := str(w.get("kind", "bullet"))
 	var is_explosive := kind == "rocket" or kind == "launcher"
 	muzzle_t = 0.10 if is_explosive else 0.08

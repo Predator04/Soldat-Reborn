@@ -92,12 +92,16 @@ static func can_self_update() -> bool:
 
 
 ## #237: release assets must come from GitHub over TLS. Plain HTTP is only
-## ever acceptable for the gate's local fake server.
+## ever acceptable for the gate's local fake server (host must be exactly
+## localhost / 127.0.0.1 — #254: a prefix check let "localhost.evil.com" in).
 static func asset_url_ok(u: String) -> bool:
 	if u.begins_with("https://"):
 		var host := u.substr(8).get_slice("/", 0).to_lower()
 		return host == "github.com" or host.ends_with(".github.com")
-	return u.begins_with("http://127.0.0.1") or u.begins_with("http://localhost")
+	if u.begins_with("http://"):
+		var lhost := u.substr(7).get_slice("/", 0).to_lower().split(":")[0]
+		return lhost == "localhost" or lhost == "127.0.0.1"
+	return false
 
 
 func pubkey_pem() -> String:

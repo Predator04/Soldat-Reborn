@@ -442,8 +442,12 @@ func _build_mods(box: VBoxContainer) -> void:
 		var n: int = int(round(v))
 		bc_val.text = "Auto" if n < 0 else str(n)
 		Settings.bot_count = n
+		# #254: same drag-tick coalescing as every other slider.
+		Settings._slider_burst = true
 		Settings.save()
+		Settings._slider_burst = false
 		MatchConfig.host_broadcast())
+	bc_slider.drag_ended.connect(func(_changed: bool) -> void: Settings.save())
 
 	box.add_child(_labelled_slider("Bot skill", 1.0, 5.0, 1.0,
 		float(Settings.bot_skill),
