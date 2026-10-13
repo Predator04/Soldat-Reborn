@@ -25,6 +25,7 @@ var _cfg_bot_count: int = -1
 var _cfg_bot_skill: int = 3
 var _cfg_game_mode: int = 0
 var _cfg_map_index: int = 0
+var _broadcast_scheduled := false   # #245: debounced host_broadcast pending
 
 # Host-only match knob: even in team modes, bullets/grenades/rockets/melee can
 # damage teammates. Default OFF matches classic Soldat team play. Persisted for
@@ -115,13 +116,21 @@ func apply_dict(d: Dictionary) -> void:
 
 
 func host_broadcast() -> void:
-	# Push the current host snapshot to every connected peer. Cheap enough to
-	# call unconditionally on every admin-menu change.
+	# Push the current host snapshot to every connected peer. #245: sliders
+	# call this at drag-tick rate — coalesce bursts into one reliable RPC half
+	# a second after the last change so a dragged slider doesn't spam every
+	# client's reliable channel.
 	if not Net.is_host():
 		return
 	if multiplayer.multiplayer_peer == null:
 		return
-	rpc("net_apply", to_dict())
+	if _broadcast_scheduled:
+		return
+	_broadcast_scheduled = true
+	get_tree().create_timer(0.5).timeout.connect(func() -> void:
+		_broadcast_scheduled = false
+		if is_inside_tree() and Net.is_host() and multiplayer.multiplayer_peer != null:
+			rpc("net_apply", to_dict()))
 
 
 @rpc("authority", "reliable")

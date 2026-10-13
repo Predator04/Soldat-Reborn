@@ -10,37 +10,11 @@ extends VBoxContainer
 signal back_pressed
 signal restart_requested
 
-# Map + mode name lists mirrored from menu.gd. Duplication here (instead of a
-# preload) keeps the pause-menu bundle small and avoids pulling in the whole
-# menu scene for its constants.
-const MAP_NAMES := [
-	"Ascent", "Towers", "Pillars",
-	"Nuubia", "Maya", "Aftermath", "Hormone", "Viet",
-	"Scorpion", "Warehouse", "Baire", "Airpirates", "Bunker",
-	"Abel", "Aero", "Amnesia", "April", "Arch",
-	"Arena", "Arena2", "Arena3", "Argy", "Ash",
-	"B2B", "Belltower", "BigFalls", "Biologic", "Blade",
-	"Blox", "Boxed", "Bridge", "Cambodia", "Campeche",
-	"Changeling", "Cobra", "CrackedBoot", "Crucifix", "Daybreak",
-	"Death", "Desert", "DesertWind", "Division", "Dorothy",
-	"Dropdown", "Dusk", "Equinox", "Erbium", "Factory",
-	"Feast", "Flashback", "Flute", "Fortress", "Guardian",
-	"HH", "IceBeam", "Industrial", "Island2k5", "Jungle",
-	"Kampf", "Krab", "Lagrange", "Lanubya", "Laos",
-	"Leaf", "Mayapan", "Messner", "MFM", "Moonshine",
-	"Mossy", "Motheaten", "MrSnowman", "Muygen", "Niall",
-	"Nuclear", "Outpost", "Prison", "Raspberry", "RatCave",
-	"Rescue", "Rise", "Rok", "Rotten", "RR",
-	"Rubik", "Ruins", "Run", "Shau", "Snakebite",
-	"Star", "Steel", "Tower", "Triumph", "TropicCave",
-	"Unlim", "Veoto", "Void", "Voland", "Vortex",
-	"Warlock", "Wretch", "X", "Zajacz",
-]
-const MODE_NAMES := [
-	"Deathmatch", "Teammatch", "Capture the Flag",
-	"Infiltration", "Hold the Flag", "Rambomatch", "Pointmatch",
-	"Domination", "Battle Royale", "Gun Game",
-]
+# #251: shared lists from game_lists.gd — this copy had already drifted from
+# the menu's (it was the undocumented third duplicate).
+const GameLists = preload("res://scripts/game_lists.gd")
+const MAP_NAMES := GameLists.MAP_NAMES
+const MODE_NAMES := GameLists.MODE_NAMES
 const UITheme = preload("res://scripts/ui_theme.gd")
 
 var _pending_map_idx: int = 0
@@ -174,7 +148,9 @@ func _build() -> void:
 		var n: int = int(round(v))
 		bc_val.text = "Auto" if n < 0 else str(n)
 		Settings.bot_count = n
+		Settings._slider_burst = true
 		Settings.save()
+		Settings._slider_burst = false
 		MatchConfig.host_broadcast()
 		# Spawn/despawn bots to match the new count immediately (host/SP only).
 		var m := get_tree().current_scene
@@ -293,7 +269,11 @@ func _labelled_slider(label_text: String, mn: float, mx: float, step: float,
 	row.add_child(vlbl)
 	slider.value_changed.connect(func(v: float) -> void:
 		vlbl.text = val_fmt % v
-		on_change.call(v))
+		# #245: coalesce the closure's Settings.save() while dragging.
+		Settings._slider_burst = true
+		on_change.call(v)
+		Settings._slider_burst = false)
+	slider.drag_ended.connect(func(_changed: bool) -> void: Settings.save())
 	return row
 
 

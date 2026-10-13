@@ -155,6 +155,8 @@ func profile_hash() -> String:
 	return profile_id.sha256_text()
 var training := false          # runtime only: the Training match is running
 var training_saved: Dictionary = {}   # the match settings Training replaced          # first-launch name prompt answered
+var _save_scheduled := false   # #245: a debounced write is pending
+var _slider_burst := false     # #245: set while a settings slider's on_change runs
 ## Official master server + relay (Oracle Cloud, Phoenix). An empty saved value
 ## falls back to it, so Find Games, internet listing and relay work out of the box.
 const DEFAULT_MASTER_URL := "http://161.153.9.69:8080"
@@ -297,6 +299,23 @@ func load_settings() -> void:
 
 
 func save() -> void:
+	# #245: settings sliders fire this at drag-tick rate and the file write is
+	# the expensive part (antivirus scans each write on Windows — same hazard
+	# stats.gd fixed for kills). Slider bursts (flagged by the panel) coalesce
+	# into one write half a second later; every direct caller still writes
+	# synchronously — tests and boot code read the file back immediately.
+	if _slider_burst:
+		if not _save_scheduled:
+			_save_scheduled = true
+			get_tree().create_timer(0.5).timeout.connect(func() -> void:
+				_save_scheduled = false
+				_write_now())
+		return
+	_write_now()
+
+
+## Write immediately, honoring the training swap.
+func _write_now() -> void:
 	# Training swaps in its own match settings; never write those to disk.
 	if training and not training_saved.is_empty():
 		var live := {}
@@ -304,11 +323,22 @@ func save() -> void:
 			live[k] = get(k)
 			set(k, training_saved[k])
 		training = false
-		save()
+		_write_file()
 		training = true
 		for k in live.keys():
 			set(k, live[k])
 		return
+	_write_file()
+
+
+func _exit_tree() -> void:
+	# Quitting with a debounced write still queued — flush it now.
+	if _save_scheduled:
+		_save_scheduled = false
+		_write_now()
+
+
+func _write_file() -> void:
 	# Read-modify-write: keep sections other code owns (controls bindings,
 	# anything a newer build added) instead of truncating the file.
 	var cf := ConfigFile.new()

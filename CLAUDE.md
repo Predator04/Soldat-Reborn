@@ -10,7 +10,7 @@ This directory (`game/`) is the git repo root — note the space in the parent p
 
 ## Key files
 - `main.gd` (~115 KB) — match coordinator: soldier/bot spawn, all game-mode logic, kill feed, scoreboard, round reset, RPC fan-out. Holds `player` (local node), `_players_by_id` (peer_id → node), `_bots_by_id`, `_gg_levels`, `_gg_kills`, `_scores`.
-- `net.gd` — high-level ENet wrapper (autoload). `Mode { SINGLEPLAYER, HOST, CLIENT }`, `DEFAULT_PORT 7777`, `MAX_PEERS 8`, `MAP_NAMES` / `MODE_NAMES` constants (kept in sync with `menu.gd`). Owns `custom_map_json` (custom-map sync, #99) and `is_dedicated`. Also hosts the `--smoke-*` self-test entry points.
+- `net.gd` — high-level ENet wrapper (autoload). `Mode { SINGLEPLAYER, HOST, CLIENT }`, `DEFAULT_PORT 7777`, `MAX_PEERS 8`, `MAP_NAMES` / `MODE_NAMES` (single source: `scripts/game_lists.gd`, #251). Owns `custom_map_json` (custom-map sync, #99) and `is_dedicated`. Also hosts the `--smoke-*` self-test entry points.
 - `player.gd` (~71 KB) — player physics, weapons, F-throw, ladder climb engage/dismount (~lines 401–466).
 - `bot.gd` (~38 KB) — bot AI, has ladder awareness.
 - `gostek.gd` — soldier sprite rendering/animation.

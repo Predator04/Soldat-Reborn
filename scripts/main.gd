@@ -43,6 +43,7 @@ var player_stats: Dictionary = {}
 var _stats_round_active := true
 var _bot_pending: Dictionary = {}    # bot name -> true while its respawn timer runs
 var _ready_peers: Dictionary = {}    # peer_id -> true (host only, gate for outbound state RPCs)
+var _pickup_peer_sig: Dictionary = {} # peer_id -> last pickup-state signature sent (#247)
 # Peers whose main.tscn is loaded — populated on net_client_ready (before the
 # spawn ack). Gates reliable spawn broadcasts so bots/bonuses spawned between
 # the client's "ready" and its ack don't get permanently missed (#84).
@@ -551,10 +552,14 @@ func _spawn_mode_entities() -> void:
 func _apply_world() -> void:
 	# Pull the per-map world rect (ported maps) or fall back to the built-in arena.
 	var w: Dictionary = _map.get("world", {}) if typeof(_map.get("world", {})) == TYPE_DICTIONARY else {}
-	MAP_W = float(w.get("w", DEFAULT_MAP_W))
-	MAP_H = float(w.get("h", DEFAULT_MAP_H))
-	GROUND_Y = float(w.get("ground_y", DEFAULT_GROUND_Y))
-	KILL_Y = float(w.get("kill_y", INF))
+	# #236: clamp regardless of source — map_io sanitizes saved/hosted JSON, but
+	# _geo_candidates sizes the collision index from these and must never see a
+	# giant or negative value (host-sent custom maps, hand-edited files).
+	MAP_W = clampf(float(w.get("w", DEFAULT_MAP_W)), MapIO.WORLD_MIN, MapIO.WORLD_MAX)
+	MAP_H = clampf(float(w.get("h", DEFAULT_MAP_H)), MapIO.WORLD_MIN, MapIO.WORLD_MAX)
+	GROUND_Y = clampf(float(w.get("ground_y", DEFAULT_GROUND_Y)), 50.0, MAP_H)
+	var ky := float(w.get("kill_y", INF))
+	KILL_Y = ky if (ky > 0.0 and is_finite(ky)) else INF
 
 
 func _build_sky() -> void:
@@ -1050,6 +1055,8 @@ var _geo_cols: Array = []
 func _geo_candidates(x: float) -> PackedInt32Array:
 	if _geo_cols.is_empty():
 		var n := int(ceil((MAP_W + 400.0) / GEO_COL_W)) + 1
+		# #236: hard cap — the index is sized from map data, never trust it alone.
+		n = mini(n, 8192)
 		_geo_cols.resize(n)
 		for i in n:
 			_geo_cols[i] = PackedInt32Array()
@@ -1432,6 +1439,8 @@ func _spawn_map_weapon_pickups() -> void:
 		wp.thrower_name = ""
 		wp.damage_on_hit = 0.0
 		wp.global_position = wp_def.get("pos", Vector2.ZERO)
+		# #241: a map slot is part of the level, not a 20 s prop — never expire.
+		wp.persistent = true
 		wp.set_meta("map_spawn", true)
 		if Net.is_networked() and Net.is_host():
 			wp.pickup_id = next_pickup_id()
@@ -1451,16 +1460,11 @@ func net_m2_mount(m2_id: int, peer_id: int) -> void:
 	# In MP the operator's peer id is what all peers use to identify who's driving
 	# the turret. Client-initiated mounts route through host as the authority so
 	# a race between two clients grabbing the same mount is arbitrated centrally.
-	var m_sender := multiplayer.get_remote_sender_id() if multiplayer.has_multiplayer_peer() else 0
-	# (call_local reports the host's own id, not 0 — treat that as local.)
-	if Net.is_networked() and Net.is_host() and m_sender != 0 and m_sender != multiplayer.get_unique_id():
-		# #106: reject spoofed mounts — a client can only mount themselves, not
-		# another peer. Without this guard, any client could force other peers'
-		# screens to show a different player driving the M2.
-		if peer_id != multiplayer.get_remote_sender_id():
-			return
-		# Rebroadcast to everyone (call_local ensures host also applies it).
-		bcast("net_m2_mount", [m2_id, peer_id], true)
+	# #106: reject spoofed mounts — a client can only mount themselves, not
+	# another peer. #235: relay WITHOUT local=true — re-entering this handler
+	# synchronously kept the client as the RPC sender, so the host guard fired
+	# again and recursed endlessly (same class of bug _vehicle_relay fixed).
+	if _m2_relay("net_m2_mount", [m2_id, peer_id], peer_id):
 		return
 	var m2 := find_m2(m2_id)
 	if m2 == null:
@@ -1477,20 +1481,39 @@ func net_m2_mount(m2_id: int, peer_id: int) -> void:
 
 @rpc("any_peer", "call_local", "reliable")
 func net_m2_dismount(m2_id: int) -> void:
-	var d_sender := multiplayer.get_remote_sender_id() if multiplayer.has_multiplayer_peer() else 0
-	if Net.is_networked() and Net.is_host() and d_sender != 0 and d_sender != multiplayer.get_unique_id():
-		# #106: only the current operator may dismount themselves — reject any
-		# client trying to knock another player off the turret.
-		var m2_local := find_m2(m2_id)
-		if m2_local != null:
-			var op = m2_local.get("operator")
-			if is_instance_valid(op) and int(op.get_multiplayer_authority()) != multiplayer.get_remote_sender_id():
-				return
-		bcast("net_m2_dismount", [m2_id], true)
-		return
+	# #106: only the current operator may dismount themselves — reject any
+	# client trying to knock another player off the turret. #235: relay without
+	# local=true so the handler doesn't re-enter with the client as sender.
+	if Net.is_networked() and Net.is_host():
+		var d_sender := multiplayer.get_remote_sender_id() if multiplayer.has_multiplayer_peer() else 0
+		# (call_local reports the host's own id, not 0 — treat that as local.)
+		if d_sender != 0 and d_sender != multiplayer.get_unique_id():
+			var m2_local := find_m2(m2_id)
+			if m2_local != null:
+				var op = m2_local.get("operator")
+				if is_instance_valid(op) and int(op.get_multiplayer_authority()) != d_sender:
+					return
+			bcast("net_m2_dismount", [m2_id], false)
+			return
 	var m2 := find_m2(m2_id)
 	if m2 != null and m2.has_method("net_dismount"):
 		m2.net_dismount()
+
+
+# Host side of an M2 RPC a client sent us: reject it (return true) unless it
+# comes from the peer it concerns; otherwise pass it on to the other peers and
+# return false so the host applies it too by falling through. Mirrors
+# _vehicle_relay — never relay these with local=true (#235).
+func _m2_relay(method: StringName, args: Array, allowed_peer: int) -> bool:
+	if not Net.is_networked() or not Net.is_host():
+		return false
+	var sender := multiplayer.get_remote_sender_id()
+	if sender == 0 or sender == multiplayer.get_unique_id():
+		return false
+	if sender != allowed_peer:
+		return true
+	bcast(method, args, false)
+	return false
 
 
 @rpc("any_peer", "unreliable_ordered")
@@ -1680,6 +1703,10 @@ func _respawn_gate(key: int, base: float, pad: float, fire: Callable) -> void:
 	_rs_early.erase(key)
 	_rs_state[key] = {"ready": pad <= 0.0 or early, "base": false, "tok": tok, "fire": fire}
 	get_tree().create_timer(base).timeout.connect(func() -> void:
+		# #249: SceneTreeTimers always fire, even after a scene change freed
+		# this Main — same guard every other timer lambda here carries.
+		if not is_inside_tree():
+			return
 		var st: Variant = _rs_state.get(key)
 		if st == null or int(st.tok) != tok:
 			return
@@ -1688,6 +1715,8 @@ func _respawn_gate(key: int, base: float, pad: float, fire: Callable) -> void:
 			_rs_fire(key))
 	if pad > 0.0:
 		get_tree().create_timer(base + pad).timeout.connect(func() -> void:
+			if not is_inside_tree():
+				return
 			var st: Variant = _rs_state.get(key)
 			if st != null and int(st.tok) == tok:
 				_rs_fire(key))
@@ -2500,6 +2529,7 @@ func _on_net_peer_disconnected(id: int) -> void:
 		_peer_names.erase(id)
 		_peer_tokens.erase(id)
 		_ready_peers.erase(id)
+		_pickup_peer_sig.erase(id)
 		_connected_peers.erase(id)
 		_push_ready_list()
 		bcast("net_despawn_player", [id], true)
@@ -4831,21 +4861,37 @@ func _broadcast_pickup_state() -> void:
 			continue
 		if int(wp.get("pickup_id")) <= 0:
 			continue
+		# #241: a regenerating map slot is absent from the stream — clients
+		# despawn it, and it comes back the same way when the slot rearms.
+		var wp_active = wp.get("active")
+		if wp_active != null and not bool(wp_active):
+			continue
 		arr.append({
 			"id": int(wp.get("pickup_id")),
 			"name": str(wp.get("weapon_name")),
 			"team": int(wp.get("team")),
 			"thrower": str(wp.get("thrower_name")),
-			"pos": wp.global_position,
-			"vel": wp.linear_velocity,
-			"ang": float(wp.angular_velocity),
-			"rot": float(wp.rotation),
+			# #247: quantize motion to stop resting bodies from flickering the
+			# change signature (and the wire format) with 1e-5 velocities.
+			"pos": (wp.global_position as Vector2).snapped(Vector2(0.25, 0.25)),
+			"vel": (wp.linear_velocity as Vector2).snapped(Vector2.ONE),
+			"ang": roundf(float(wp.angular_velocity) * 8.0) / 8.0,
+			"rot": roundf(float(wp.rotation) * 1000.0) / 1000.0,
 			# #94: carry damage explicitly so future damage-on-hit weapons
 			# (axe/bayonet/etc.) don't silently lose their damage on clients
 			# because we re-derived by name.
 			"dmg": float(wp.get("damage_on_hit")),
 		})
+	# #247: this full snapshot used to fire reliably at 10 Hz regardless of
+	# change — a resting battlefield head-of-line-blocked the unreliable
+	# state streams for nothing. Send only when the world actually changed
+	# (or to a peer that hasn't seen the current state yet, e.g. a fresh
+	# joiner).
+	var sig := str(arr)
 	for pid in _ready_peers.keys():
+		if str(_pickup_peer_sig.get(int(pid), "")) == sig:
+			continue
+		_pickup_peer_sig[int(pid)] = sig
 		rpc_id(int(pid), "net_pickup_state", arr)
 
 

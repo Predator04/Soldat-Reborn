@@ -9,6 +9,7 @@ var _base: Dictionary = {}   # peer id -> {"k","d","c"} already reported
 var _queue: Array = []
 var _http: HTTPRequest
 var _busy := false
+var _tries := 0              # #250: consecutive failures of the queue head
 var sent_reports := 0        # for tests
 
 
@@ -20,9 +21,26 @@ func _ready() -> void:
 		_busy = false
 		if code == 200:
 			sent_reports += 1
-		else:
-			print("RANKED report failed: http %d" % code)
-		_pump())
+			_queue.pop_front()
+			_tries = 0
+			_pump()
+			return
+		# #250: the line used to be popped before the request and dropped on
+		# any failure — flaky networks silently lost ranked results. Retry a
+		# few times, then give up on that line.
+		_tries += 1
+		if _tries >= 3 and not _queue.is_empty():
+			print("RANKED report dropped after %d tries: http %d" % [_tries, code])
+			_queue.pop_front()
+			_tries = 0
+		_retry_later())
+
+
+## Re-attempt the queue head shortly (used by the failure path above).
+func _retry_later() -> void:
+	get_tree().create_timer(2.0).timeout.connect(func() -> void:
+		if is_inside_tree():
+			_pump())
 
 
 func _stats_for(pid: int) -> Dictionary:
@@ -81,6 +99,8 @@ func _pump() -> void:
 	var key := OS.get_environment("SOLDAT_STATS_KEY")
 	if key != "":
 		headers.append("X-Soldat-Key: " + key)
-	var err := _http.request(Net.stats_url.trim_suffix("/") + "/report", headers, HTTPClient.METHOD_POST, str(_queue.pop_front()))
+	# #250: send the queue HEAD without popping — only a 200 pops it.
+	var err := _http.request(Net.stats_url.trim_suffix("/") + "/report", headers, HTTPClient.METHOD_POST, str(_queue[0]))
 	if err != OK:
 		_busy = false
+		_retry_later()

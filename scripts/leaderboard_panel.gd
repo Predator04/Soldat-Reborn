@@ -104,7 +104,10 @@ func _on_board(_r: int, code: int, _h: PackedStringArray, body: PackedByteArray)
 		_list.text = "[color=#f26b52]%s[/color]" % tr("Couldn't reach the master server.")
 		loaded_rows = 0
 		return
-	var rows: Array = d.get("players", [])
+	# #239: shape-check everything — a malformed (or tampered, while the master
+	# URL is plain HTTP) reply must render an empty board, never abort here.
+	var rows_v = d.get("players", [])
+	var rows: Array = rows_v if typeof(rows_v) == TYPE_ARRAY else []
 	if rows.is_empty():
 		_list.text = "[color=#a8b0bc]%s[/color]" % tr("No ranked players yet. Play on the official server to be the first!")
 		loaded_rows = 0
@@ -114,6 +117,8 @@ func _on_board(_r: int, code: int, _h: PackedStringArray, body: PackedByteArray)
 	for hdr in ["#", tr("Name"), "XP", tr("Rank"), "K/D", tr("Wins")]:
 		t += "[cell][b][color=#f5a623]%s[/color][/b]   [/cell]" % hdr
 	for row in rows:
+		if not (row is Dictionary):
+			continue
 		var nm := str(row.get("name", "?")).replace("[", "(").replace("]", ")")
 		var k := int(row.get("k", 0))
 		var de := maxi(1, int(row.get("d", 0)))
@@ -132,7 +137,9 @@ func _on_me(_r: int, code: int, _h: PackedStringArray, body: PackedByteArray) ->
 	if not bool(d.get("found", false)):
 		_me.text = "[b]%s[/b]  ·  [color=#a8b0bc]%s[/color]" % [Settings.player_name.replace("[", "("), tr("Unranked - finish a round on the official server to get on the board.")]
 		return
-	var p: Dictionary = d.get("profile", {})
+	# #239: same shape check for the profile half.
+	var p_v = d.get("profile", {})
+	var p: Dictionary = p_v if typeof(p_v) == TYPE_DICTIONARY else {}
 	var xp := int(p.get("xp", 0))
 	_me.text = "[b][color=#ffd257]%s[/color][/b]  ·  %s  ·  #%d / %d  ·  %d XP\n[color=#a8b0bc]%d %s · %d %s · %d %s · %d %s[/color]" % [
 		str(p.get("name", "")).replace("[", "("), tr(tier_for(xp)), int(d.get("rank", 0)), int(d.get("total", 0)), xp,

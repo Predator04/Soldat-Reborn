@@ -37,7 +37,16 @@ if [ "$WHAT" = all ] || [ "$WHAT" = win ]; then
   rm -f build/SoldatReborn.pck
   "$G" --headless --export-pack "Windows Desktop" /tmp/SoldatReborn.pck >/dev/null 2>&1
   mv /tmp/SoldatReborn.pck build/SoldatReborn.pck
-  sync; ls -la build/SoldatReborn.exe build/SoldatReborn.pck
+  # #237: sign the exe so the self-updater can prove the download genuine
+  # (keys/update-sign-key.pem; the matching public key is compiled into the
+  # game). A release without this .sig is refused by every updated client.
+  if [ ! -f "$KEYDIR/update-sign-key.pem" ]; then
+    echo "MISSING $KEYDIR/update-sign-key.pem — cannot sign the update (see keys/UPDATE_SIGNING.md)" >&2
+    exit 1
+  fi
+  openssl dgst -sha256 -sign "$KEYDIR/update-sign-key.pem" \
+    -out build/SoldatReborn.exe.sig build/SoldatReborn.exe
+  sync; ls -la build/SoldatReborn.exe build/SoldatReborn.exe.sig build/SoldatReborn.pck
 fi
 
 if [ "$WHAT" = all ] || [ "$WHAT" = android ]; then

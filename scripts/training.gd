@@ -50,7 +50,11 @@ static func start_training() -> void:
 	}
 	Settings.training = true
 	Settings.game_mode = 0
-	Settings.map_index = 19
+	# #250: was a hardcoded index 19 — the map list order evolves, so find
+	# Arena2 by name and keep whatever the player had if it's ever missing.
+	var arena2_idx: int = Net.MAP_NAMES.find("Arena2")
+	if arena2_idx >= 0:
+		Settings.map_index = arena2_idx
 	Settings.custom_map_path = ""
 	Settings.bot_count = 0
 	Settings.bot_skill = 1

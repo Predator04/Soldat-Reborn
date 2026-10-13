@@ -459,14 +459,19 @@ if has F; then
   ft quickplay quickplay_test.gd 60 QUICKPLAY-TEST "quick play: no game online -> bot match"
   ft name name_test.gd 60 NAME-TEST "name required before Training / online, easy rename"
   if fon updater; then
-    # Fake GitHub: a releases/latest JSON one version ahead + a 1 MB "exe".
+    # Fake GitHub: a releases/latest JSON one version ahead + a 1 MB "exe",
+    # signed with a throwaway key so the updater's #237 signature gate runs
+    # for real (production releases are signed by ../keys/update-sign-key.pem).
     ud="$OUT/updsrv"; mkdir -p "$ud"; head -c 1048576 /dev/urandom > "$ud/SoldatReborn.exe"
+    openssl genrsa -traditional -out "$ud/test-key.pem" 2048 2>/dev/null
+    openssl rsa -in "$ud/test-key.pem" -pubout -out "$ud/test-key.pub.pem" 2>/dev/null
+    openssl dgst -sha256 -sign "$ud/test-key.pem" -out "$ud/SoldatReborn.exe.sig" "$ud/SoldatReborn.exe"
     uport=$((8100 + RANDOM % 400))
-    printf '{"tag_name":"v99.0.0","body":"test","html_url":"x","assets":[{"name":"SoldatReborn.exe","size":1048576,"browser_download_url":"http://127.0.0.1:%d/SoldatReborn.exe"}]}' $uport > "$ud/latest.json"
+    printf '{"tag_name":"v99.0.0","body":"test","html_url":"x","assets":[{"name":"SoldatReborn.exe","size":1048576,"browser_download_url":"http://127.0.0.1:%d/SoldatReborn.exe"},{"name":"SoldatReborn.exe.sig","size":256,"browser_download_url":"http://127.0.0.1:%d/SoldatReborn.exe.sig"}]}' $uport $uport > "$ud/latest.json"
     python3 -m http.server $uport --bind 127.0.0.1 --directory "$ud" > /dev/null 2>&1 &
     upid=$!; sleep 1
   fi
-  ft updater updater_test.gd 60 UPDATER-TEST "auto-updater: version compare, release check, download + size check, swap script" "--update-url=http://127.0.0.1:${uport:-1}/latest.json"
+  ft updater updater_test.gd 60 UPDATER-TEST "auto-updater: version compare, release check, download + signature check, swap script" "--update-url=http://127.0.0.1:${uport:-1}/latest.json --update-pubkey=$OUT/updsrv/test-key.pub.pem"
   ft achievements achievement_test.gd 60 ACH-TEST "achievements: unlock once, counters, multi-kill, streak, wins"
   if fon updater; then kill $upid 2>/dev/null; wait $upid 2>/dev/null; fi
   ft sound sound_test.gd 100 SOUND-TEST "sound wiring"

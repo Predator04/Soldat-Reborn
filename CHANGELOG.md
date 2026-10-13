@@ -2,6 +2,38 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.32.1] — 2026-10-12
+
+### Fixed — crashes & stability
+- **M2 turrets crashed the host in multiplayer.** A client mounting or dismounting an M2 re-entered the host's RPC handler endlessly (stack overflow). Same class of bug the vehicle relay fixed years ago; the M2 handlers now use that pattern (#235).
+- **Crafted / corrupt maps could freeze or OOM the game.** A map's `world` header was trusted verbatim to size the collision index — a 30-byte edit meant a multi-second freeze (or an out-of-memory kill on phones). Dimensions are now clamped at every entry point: saved files, master-server downloads, and host-sent custom maps (#236).
+- **Leaderboard / friends panels could crash** on a malformed master-server reply (#239).
+
+### Fixed — updater security
+- **Updates are now signature-verified.** The updater applied whatever the GitHub API pointed at, with only a byte count as a check. Releases now ship `SoldatReborn.exe.sig` (RSA over sha256) and the game refuses to install an update whose signature, host, or size doesn't check out (#237).
+
+### Fixed — master server (hardening, live now)
+- Per-IP rate and count caps on server registration; player counts are validated; control characters can't reach the server list (#master-server/1).
+- Relay connections are capped per IP and globally, the join hello must arrive within 10 s, and trickled HTTP bodies are cut off — one address can no longer exhaust the whole service (#master-server/1).
+- Only the relay host can register a listing for their room code; a third party could rename a live room before (#master-server/2).
+- Joining a room whose host just left now gives a clean "no game with that code" instead of hanging connected forever (#master-server/3).
+- Ranked reports are velocity-capped and death-free kill streaks beyond 40 matches stop counting kills (godmode farming) (#master-server/4).
+
+### Fixed — gameplay & online
+- Map-placed weapon pickups no longer vanish 20 s into the match — they persist and regenerate in place after being grabbed (#241).
+- A host whose relay connection drops mid-match is now told, instead of advertising a dead join code forever (#238).
+- Weapon-drop spam from modded clients is bounded host-side (the old check read state that never reached the host) (#240), and fire rates are sanity-checked per weapon (#243).
+- Blood slider at 0 no longer latches low-FX mode on for the whole session (#242).
+- Ranked results are retried on flaky networks instead of being dropped silently (#250).
+
+### Performance
+- Pickup sync only sends when the world actually changed instead of a full reliable snapshot at 10 Hz; vehicle HP broadcasts threshold to 5 % instead of per bullet (#246, #247).
+- Settings sliders no longer rewrite the config file (and, for hosts, RPC every client) on every drag tick (#245).
+- Replay playback rebuilds the kill feed only when it changes instead of every frame (#244); map editor stops hashing the whole map on zoom clicks (#248); cluster-grenade cascades, big-bot gostek sweeps and a few other hot paths tightened (#249).
+
+### Code
+- Map / mode name lists live in one shared file instead of four copies (#251); training pins its map by name instead of a hardcoded index (#250).
+
 ## [1.32.0] — 2026-10-07
 
 ### Added

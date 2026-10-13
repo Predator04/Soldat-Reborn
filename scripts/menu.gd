@@ -12,34 +12,11 @@ const UITheme = preload("res://scripts/ui_theme.gd")
 # Soldat maps bundled from res://assets/maps/*.json (see MapIO.BUNDLED_CLASSICS
 # and #53). Order mirrors the append order in main.gd _ready(), so Settings.map_index
 # resolves to the same map at host time and at scene-load time.
-const MAP_NAMES := [
-	"Ascent", "Towers", "Pillars",
-	"Nuubia", "Maya", "Aftermath", "Hormone", "Viet",
-	"Scorpion", "Warehouse", "Baire", "Airpirates", "Bunker",
-	"Abel", "Aero", "Amnesia", "April", "Arch",
-	"Arena", "Arena2", "Arena3", "Argy", "Ash",
-	"B2B", "Belltower", "BigFalls", "Biologic", "Blade",
-	"Blox", "Boxed", "Bridge", "Cambodia", "Campeche",
-	"Changeling", "Cobra", "CrackedBoot", "Crucifix", "Daybreak",
-	"Death", "Desert", "DesertWind", "Division", "Dorothy",
-	"Dropdown", "Dusk", "Equinox", "Erbium", "Factory",
-	"Feast", "Flashback", "Flute", "Fortress", "Guardian",
-	"HH", "IceBeam", "Industrial", "Island2k5", "Jungle",
-	"Kampf", "Krab", "Lagrange", "Lanubya", "Laos",
-	"Leaf", "Mayapan", "Messner", "MFM", "Moonshine",
-	"Mossy", "Motheaten", "MrSnowman", "Muygen", "Niall",
-	"Nuclear", "Outpost", "Prison", "Raspberry", "RatCave",
-	"Rescue", "Rise", "Rok", "Rotten", "RR",
-	"Rubik", "Ruins", "Run", "Shau", "Snakebite",
-	"Star", "Steel", "Tower", "Triumph", "TropicCave",
-	"Unlim", "Veoto", "Void", "Voland", "Vortex",
-	"Warlock", "Wretch", "X", "Zajacz",
-]
-const MODE_NAMES := [
-	"Deathmatch", "Teammatch", "Capture the Flag",
-	"Infiltration", "Hold the Flag", "Rambomatch", "Pointmatch",
-	"Domination", "Battle Royale", "Gun Game",
-]
+# #251: the lists live in game_lists.gd — one copy for the menu, net
+# (dedicated CLI), host admin panel and replays screen.
+const GameLists = preload("res://scripts/game_lists.gd")
+const MAP_NAMES := GameLists.MAP_NAMES
+const MODE_NAMES := GameLists.MODE_NAMES
 
 var _menu_box: VBoxContainer   # left column; visibility is driven via _menu_root
 var _menu_box2: VBoxContainer  # right column (Network + System)

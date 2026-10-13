@@ -54,6 +54,8 @@ var weapon_index := 2   # default primary = AK-74 (Soldat's #3)
 var secondary_index := 0  # default secondary = USSOCOM
 var using_secondary := false
 var fire_cd := 0.0
+# #243: host-side fire-rate gate for net_shoot RPCs from clients.
+var _last_net_shot_ms := -100000
 var spin_up_t := 0.0    # ramps up while LMB held for weapons with a startup wind-up (Barrett, Minigun)
 var lmb_prev := false   # prev-frame LMB state — resets spin_up_t when the trigger releases
 var reloading := false
@@ -85,6 +87,9 @@ var f_prev := false     # prev-frame F — throw current weapon on rising edge
 var _thrown: Dictionary = {}
 # Host-side rate-limit on drop RPCs so a modded client can't spam pickup spawns.
 var _last_drop_ms: int = 0
+# #240: host-owned drop bookkeeping (the client's _thrown never reaches us).
+var _drop_times: Dictionary = {}
+var _recent_drops: Array = []
 var crouching := false
 var prone := false
 # Roll — S pressed while running triggers a short forward burst (Soldat's roll).
@@ -1412,11 +1417,22 @@ func net_request_drop(weapon_name: String, from_pos: Vector2, aim: Vector2, mag:
 		return
 	if _thrown.has(weapon_name):
 		return
-	# Rate-limit repeated drops (throw cooldown lives on the client; enforce a
-	# floor here too so a hostile client can't spam pickup spawns).
+	# #240: _thrown (above) is authority-local state that is never
+	# synchronized — for a CLIENT's body it always read empty, so only the
+	# rate floor below bounded abuse. Bound drops with host-owned replica
+	# state instead: per-weapon spacing (a real throw→pickup→throw cycle
+	# takes seconds) plus a rolling per-peer budget, so pickup-spam from a
+	# modded client can't grow the 10 Hz pickup broadcast for everyone.
 	var now := Time.get_ticks_msec()
-	if now - _last_drop_ms < 200:
+	if now - _last_drop_ms < 600:
 		return
+	if now - int(_drop_times.get(weapon_name, 0)) < 8000:
+		return
+	_recent_drops = _recent_drops.filter(func(t): return now - int(t) < 10000)
+	if _recent_drops.size() >= 4:
+		return
+	_recent_drops.append(now)
+	_drop_times[weapon_name] = now
 	_last_drop_ms = now
 	# Snap the pickup to the player's authoritative position — client-reported
 	# from_pos is a hint only. Clamp mag so a modded client can't over-refill on
@@ -1718,6 +1734,8 @@ func restore_for_round() -> void:
 	ceasefire_t = CEASEFIRE_SECS
 	# #87: thrown weapons come back on the clean-slate reset.
 	_thrown.clear()
+	_drop_times.clear()
+	_recent_drops.clear()
 	# Gun Game: round reset clears the ladder for a fresh race.
 	if Settings.game_mode == Settings.MODE_GG:
 		gg_level = 0
@@ -1786,6 +1804,17 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_
 		if weapon_i < 0 or weapon_i >= weapons.size():
 			return
 		w = weapons[weapon_i]
+	# #243: fire-rate sanity. The owner's fire_cd never reaches the host, so a
+	# modded client could fire any weapon as fast as it liked (ranked farming,
+	# knife spray). Enforce the weapon's own rate host-side, with slack for
+	# network jitter; local/host shots (sender 0/1) skip the check.
+	var shot_sender := multiplayer.get_remote_sender_id() if multiplayer.multiplayer_peer != null else 0
+	if shot_sender != 0 and shot_sender != 1:
+		var min_gap: float = maxf(0.03, float(w.get("rate", 0.1)) * 0.6)
+		var now_ms := Time.get_ticks_msec()
+		if now_ms - _last_net_shot_ms < int(min_gap * 1000.0):
+			return
+		_last_net_shot_ms = now_ms
 	var kind := str(w.get("kind", "bullet"))
 	var is_explosive := kind == "rocket" or kind == "launcher"
 	muzzle_t = 0.10 if is_explosive else 0.08

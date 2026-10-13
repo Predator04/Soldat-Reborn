@@ -7,6 +7,11 @@ extends Object
 
 const MAPS_DIR := "user://maps/"
 
+# #236: sane world-rect bounds — the collision column index is sized from w/h,
+# so loaded JSON gets clamped into this range before main.gd ever sees it.
+const WORLD_MIN := 800.0
+const WORLD_MAX := 20000.0
+
 
 static func ensure_dir() -> void:
 	if not DirAccess.dir_exists_absolute(MAPS_DIR):
@@ -158,6 +163,18 @@ static func _v2(v: Variant, fallback: Vector2 = Vector2.ZERO) -> Vector2:
 	return Vector2(float(v[0]), float(v[1]))
 
 
+## Numeric-or-fallback for hostile JSON values (nested arrays/dicts convert to
+## garbage or error — #236).
+static func _num_or(v: Variant, fallback: float) -> float:
+	if typeof(v) == TYPE_FLOAT or typeof(v) == TYPE_INT:
+		return float(v)
+	if typeof(v) == TYPE_BOOL:
+		return 1.0 if v else 0.0
+	if typeof(v) == TYPE_STRING:
+		return float(v) if v.is_valid_float() else fallback
+	return fallback
+
+
 static func json_to_map(text: String) -> Dictionary:
 	var parsed = JSON.parse_string(text)
 	if typeof(parsed) != TYPE_DICTIONARY:
@@ -285,9 +302,34 @@ static func json_to_map(text: String) -> Dictionary:
 		if parsed.has(key):
 			m[key] = str(parsed[key])
 	# World rect (w / h / ground_y / kill_y / floor_visible) + sky gradient.
-	for key in ["world", "sky"]:
-		if parsed.has(key) and typeof(parsed[key]) == TYPE_DICTIONARY:
-			m[key] = parsed[key]
+	# #236: world sizes the collision column index on the host — clamp the
+	# numerics so a crafted or corrupt map can't request a giant / negative
+	# allocation or smuggle wrong types through.
+	if parsed.has("world") and typeof(parsed["world"]) == TYPE_DICTIONARY:
+		var wd: Dictionary = {}
+		var src_w: Dictionary = parsed["world"]
+		for wk in src_w.keys():
+			var wv = src_w[wk]
+			match wk:
+				"w":
+					wd["w"] = clampf(_num_or(wv, 0.0), WORLD_MIN, WORLD_MAX)
+				"h":
+					wd["h"] = clampf(_num_or(wv, 0.0), WORLD_MIN, WORLD_MAX)
+				"ground_y":
+					wd["ground_y"] = clampf(_num_or(wv, 0.0), 50.0, WORLD_MAX)
+				"kill_y":
+					# Drop non-positive / non-finite kill_y — main falls back to INF.
+					if typeof(wv) == TYPE_FLOAT or typeof(wv) == TYPE_INT:
+						var kf := float(wv)
+						if kf > 0.0 and is_finite(kf):
+							wd["kill_y"] = kf
+				"floor_visible":
+					wd["floor_visible"] = wv if typeof(wv) == TYPE_BOOL else true
+		# A world header missing w/h entirely is not worth keeping — defaults apply.
+		if wd.has("w") or wd.has("h"):
+			m["world"] = wd
+	if parsed.has("sky") and typeof(parsed["sky"]) == TYPE_DICTIONARY:
+		m["sky"] = parsed["sky"]
 	# Merged collision outlines (ported maps): [{points: flat, col?}].
 	if parsed.has("collision") and typeof(parsed["collision"]) == TYPE_ARRAY:
 		var coll: Array = []

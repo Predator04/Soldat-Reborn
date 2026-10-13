@@ -1,6 +1,9 @@
 extends RigidBody2D
 ## Grenade — bounces, fuses, explodes with area damage.
 
+# #249: cluster cascades reloaded the scene per explosion at runtime.
+const FRAG_SCENE: PackedScene = preload("res://scenes/grenade.tscn")
+
 var team := 0
 var killer_name := ""
 var fuse := 1.7
@@ -173,14 +176,13 @@ func _explode() -> void:
 	# Cluster parent spawns 5 fragment sub-grenades on death; short random fuses cascade the pops.
 	if cluster:
 		var parent := get_parent()
-		var frag_scene: PackedScene = load("res://scenes/grenade.tscn") as PackedScene
-		if frag_scene != null and parent != null:
+		if FRAG_SCENE != null and parent != null:
 			# Seed from the (network-synced) blast point so every peer throws the
 			# same fan of fragments instead of each rolling its own.
 			var rng := RandomNumberGenerator.new()
 			rng.seed = hash(Vector2i(global_position.round()))
 			for i in 5:
-				var frag := frag_scene.instantiate()
+				var frag := FRAG_SCENE.instantiate()
 				frag.global_position = global_position + Vector2(rng.randf_range(-6.0, 6.0), -8.0)
 				frag.team = team
 				frag.killer_name = killer_name

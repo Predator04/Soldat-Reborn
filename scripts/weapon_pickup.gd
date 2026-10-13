@@ -15,6 +15,12 @@ var damage_on_hit := 0.0 # non-zero for Knife
 var mag_on_drop: int = -1
 var _consumed := false
 var _life := 20.0        # despawn if not picked up in 20s
+# #241: map-placed pickups persist for the whole match — grabbed slots go
+# quiet for a cooldown and regenerate in place (the pickup state stream tells
+# clients when a slot despawns/respawns by including it or not).
+var persistent := false
+var active := true       # false while a persistent slot is regenerating
+var _respawn_t := 0.0
 var _grace := 0.15       # brief window where the thrower can't re-grab it
 # Unique id assigned by host so client-side pickups can be tracked in state sync.
 var pickup_id: int = 0
@@ -46,7 +52,16 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	_life -= delta
+	if _respawn_t > 0.0:
+		_respawn_t -= delta
+		if _respawn_t <= 0.0:
+			_consumed = false
+			active = true
+			mag_on_drop = -1
+			visible = true
+		return
+	if not persistent:
+		_life -= delta
 	_grace = maxf(0.0, _grace - delta)
 	if _life <= 0.0:
 		queue_free()
@@ -95,7 +110,14 @@ func _on_body_entered(body: Node) -> void:
 		if picked:
 			_consumed = true
 			Sfx.pickup(global_position)
-			queue_free()
+			if persistent:
+				# #241: map slot regenerates in place instead of leaving the
+				# map permanently emptier.
+				active = false
+				_respawn_t = 8.0
+				visible = false
+			else:
+				queue_free()
 
 
 func _body_has_weapon(body: Node, wname: String) -> bool:

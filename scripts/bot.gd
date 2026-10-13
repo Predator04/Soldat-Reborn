@@ -218,21 +218,17 @@ const RUN_SPEED := 235.0
 const JUMP_VEL := -360.0
 const JET_THRUST := -1800.0
 const MAX_FALL := 1200.0
-# Match the actual weapon speeds so bullets read the same coming from bots as
-# from players: AK-74 = 1050, LAW rocket = 720.
-const BULLET_SPEED := 1050.0
 const ENGAGE_RANGE := 720.0
-const ROCKET_SPEED := 720.0
 const ROCKET_MIN_RANGE := 180.0  # LAW splashes 130px — don't rocket own feet
 const HOP_COOLDOWN := 1.2  # min gap between wander bunny-hops so bots don't hop-spam
 const WANDER_FLIP_MIN := 3.0
 const WANDER_FLIP_MAX := 6.0
 # Ladder awareness (#89) — bots mirror the player's climb engage/dismount so
-# ladder-gated targets are reachable. Constants match player.gd so the physics
-# and detection footprint read the same.
-const CLIMB_SPEED := 150.0
-const CLIMB_BODY_PAD_TOP := 24.0
-const CLIMB_BODY_PAD_BOTTOM := 6.0
+# ladder-gated targets are reachable. #251: the climb constants come from
+# player.gd itself — they used to be hand-copied and had started to drift.
+const CLIMB_SPEED := PlayerArt.CLIMB_SPEED
+const CLIMB_BODY_PAD_TOP := PlayerArt.CLIMB_BODY_PAD_TOP
+const CLIMB_BODY_PAD_BOTTOM := PlayerArt.CLIMB_BODY_PAD_BOTTOM
 const LADDER_SEEK_RANGE := 150.0   # walk to a ladder within this horizontal band
 const LADDER_SEEK_UP := -40.0      # target must be at least this many px above
 

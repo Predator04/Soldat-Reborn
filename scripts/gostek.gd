@@ -139,6 +139,7 @@ const SKIN := Color(0.98, 0.82, 0.65)
 static var _tex_cache: Dictionary = {}
 # instance_id (int) -> { anim: String, phase: float, last_msec: int, frame: PackedVector2Array }
 static var _states: Dictionary = {}
+static var _last_gc_ms := 0   # #249: rate-limits the stale-state sweep
 
 
 static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> void:
@@ -376,7 +377,11 @@ static func _tick(node: CanvasItem, gs: Dictionary) -> PackedVector2Array:
 	# Sweep stale entries — if a soldier is freed without a Gostek.forget()
 	# call, its instance_id never gets resolved back to a live node. Drop those
 	# so the static _states dict doesn't leak across scene reloads (#86.3).
-	if _states.size() > 32:
+	# #249: above 32 soldiers the sweep ran per soldier per frame (O(n²) —
+	# ~1100 instance_from_id calls/frame at 33); time-gate it instead.
+	var now_ms := Time.get_ticks_msec()
+	if _states.size() > 32 and now_ms - _last_gc_ms > 1000:
+		_last_gc_ms = now_ms
 		_gc_states()
 	var st: Dictionary = _states.get(id, {})
 	if st.is_empty():

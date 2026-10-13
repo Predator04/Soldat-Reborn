@@ -78,6 +78,10 @@ func _poll() -> void:
 		_status = MultiplayerPeer.CONNECTION_DISCONNECTED
 		if was == MultiplayerPeer.CONNECTION_CONNECTING:
 			failed.emit("Couldn't reach the relay (%s)" % _url)
+		elif was == MultiplayerPeer.CONNECTION_CONNECTED and host_mode:
+			# #238: the host's own relay socket died mid-match — without this it
+			# just watched peers vanish while Net still advertised the join code.
+			failed.emit("The relay connection was lost")
 		for pid in _peers.keys():
 			peer_disconnected.emit(int(pid))
 		_peers.clear()

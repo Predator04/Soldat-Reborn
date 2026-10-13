@@ -5,9 +5,11 @@ extends PanelContainer
 signal closed
 
 const Recorder := preload("res://scripts/replay_recorder.gd")
-const MODE_NAMES := ["Deathmatch", "Teammatch", "Capture the Flag", "Infiltration", "Hold the Flag", "Rambomatch", "Pointmatch", "Domination", "Battle Royale", "Gun Game"]
+# #251: shared list — this local copy could drift from the menu's.
+const MODE_NAMES := preload("res://scripts/game_lists.gd").MODE_NAMES
 
 var _list: VBoxContainer
+var _status: Label                # #250: surfaces corrupt-replay / write failures
 var _focus_btn: Control = null
 var rows_shown := -1     # for tests
 
@@ -35,6 +37,10 @@ func _ready() -> void:
 	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_list.add_theme_constant_override("separation", 4)
 	scroll.add_child(_list)
+	_status = Label.new()
+	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	UITheme.style_body(_status, 13, UITheme.COL_TEXT_DIM)
+	box.add_child(_status)
 	var back := UITheme.make_button("BACK")
 	back.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	back.pressed.connect(func() -> void:
@@ -93,8 +99,13 @@ func _row(path: String) -> Control:
 func watch_replay(path: String) -> bool:
 	var d := Recorder.load_file(path)
 	if d.is_empty():
+		_status.text = tr("Couldn't read this replay (corrupt or from a newer version).")
 		return false
-	var h: Dictionary = d.get("header", {})
+	var h_v = d.get("header", {})
+	if typeof(h_v) != TYPE_DICTIONARY:
+		_status.text = tr("Couldn't read this replay (corrupt or from a newer version).")
+		return false
+	var h: Dictionary = h_v
 	Net.replay_restore = {"map_index": Settings.map_index, "custom_map_path": Settings.custom_map_path, "game_mode": Settings.game_mode}
 	Net.set_singleplayer()
 	Settings.game_mode = int(h.get("mode", 0))
@@ -104,6 +115,10 @@ func watch_replay(path: String) -> bool:
 	else:
 		var mp := Recorder.DIR + "_replay_map.json"
 		var f := FileAccess.open(mp, FileAccess.WRITE)
+		if f == null:
+			# #250: disk full / read-only storage crashed WATCH here on a null.
+			_status.text = tr("Couldn't save this replay's map (storage full or read-only?).")
+			return false
 		f.store_string(str(h.get("map_json", "")))
 		f.close()
 		Settings.custom_map_path = mp

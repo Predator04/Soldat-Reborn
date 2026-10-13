@@ -382,7 +382,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseButton:
 		_handle_mouse_button(event)
-		_checkpoint()
+		# #248: _checkpoint() hashes the entire map — it ran for wheel zooms
+		# and MMB pans too, stringifying megabytes per burst on big maps.
+		# Only the editing buttons can mutate anything.
+		var mb := event as InputEventMouseButton
+		if mb.button_index == MOUSE_BUTTON_LEFT or mb.button_index == MOUSE_BUTTON_RIGHT:
+			_checkpoint()
 	elif event is InputEventMouseMotion:
 		_handle_mouse_motion(event)
 	elif event is InputEventKey and event.pressed and not event.echo:

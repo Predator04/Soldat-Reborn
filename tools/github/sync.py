@@ -159,6 +159,7 @@ def release(tag):
             print("release notes updated")
     have = {a["name"]: a for a in rel.get("assets", [])}
     for f, ctype in (("SoldatReborn.exe", "application/vnd.microsoft.portable-executable"),
+                     ("SoldatReborn.exe.sig", "application/octet-stream"),  # #237 updater signature
                      ("SoldatReborn.apk", "application/vnd.android.package-archive"),
                      ("SoldatReborn.pck", "application/octet-stream")):
         p = os.path.join(ROOT, "build", f)

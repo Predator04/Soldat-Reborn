@@ -59,7 +59,18 @@ func _ready() -> void:
 	add_child(_http)
 	_http.request_completed.connect(func(_r: int, code: int, _h: PackedStringArray, body: PackedByteArray) -> void:
 		var d = JSON.parse_string(body.get_string_from_utf8()) if code == 200 else null
-		_servers = d.get("servers", []) if typeof(d) == TYPE_DICTIONARY else []
+		# #239: sanitize the whole list on receipt — a non-Array `servers` or a
+		# non-Array `names` used to abort _render / where_is mid-loop.
+		_servers = []
+		if typeof(d) == TYPE_DICTIONARY:
+			var sv = d.get("servers", [])
+			if typeof(sv) == TYPE_ARRAY:
+				for s in sv:
+					if s is Dictionary:
+						if typeof(s.get("names", [])) != TYPE_ARRAY:
+							s = s.duplicate()
+							s["names"] = []
+						_servers.append(s)
 		_status.text = "" if typeof(d) == TYPE_DICTIONARY else tr("Couldn't reach the master server.")
 		_render())
 
@@ -75,8 +86,10 @@ func refresh_data() -> void:
 ## Where a name is playing right now, or {}.
 func where_is(nm: String) -> Dictionary:
 	for s in _servers:
-		if s is Dictionary and (s.get("names", []) as Array).has(nm):
-			return s
+		if s is Dictionary:
+			var names = s.get("names", [])
+			if typeof(names) == TYPE_ARRAY and (names as Array).has(nm):
+				return s
 	return {}
 
 

@@ -6,6 +6,7 @@ extends SceneTree
 ## the Windows swap script.
 
 var _u: Node
+var _U                    # loaded updater script (statics in _process)
 var _t := 0.0
 var _t0 := 0
 var _st := 0
@@ -14,7 +15,8 @@ var _log: Array = []
 
 
 func _initialize() -> void:
-	var U = load("res://scripts/updater.gd")
+	_U = load("res://scripts/updater.gd")
+	var U = _U
 	for c in [["1.21.2", "1.21.1", true], ["v1.22.0", "1.21.9", true], ["1.21.1", "1.21.1", false], ["1.9.0", "1.21.0", false], ["2.0", "1.99.99", true]]:
 		if U.is_newer(c[0], c[1]) != c[2]:
 			_bad.append("is_newer%s" % str(c))
@@ -50,6 +52,28 @@ func _process(d: float) -> bool:
 				_log.append("download=%s %s" % [_u.state, _u.error])
 				if _u.state != "ready":
 					return _end("download failed")
+				# #237: the downloaded file must carry a signature that verifies
+				# against the release key — and a tampered byte must fail.
+				var f := OS.get_user_data_dir().path_join("updater_test.bin")
+				if not _U.verify_signature(f, _u.last_sig, _u.pubkey_pem()):
+					_bad.append("verify_signature rejected a genuine file")
+				var fh := FileAccess.open(f, FileAccess.READ_WRITE)
+				fh.seek(100)
+				var b := fh.get_8()
+				fh.seek(100)
+				fh.store_8((b + 1) % 256)
+				fh.close()
+				if _U.verify_signature(f, _u.last_sig, _u.pubkey_pem()):
+					_bad.append("verify_signature accepted a tampered file")
+				# Hijacked asset hosts / plain HTTP off-localhost are refused.
+				if _U.asset_url_ok("http://evil.example/SoldatReborn.exe"):
+					_bad.append("asset_url_ok allowed a foreign plain-HTTP host")
+				if _U.asset_url_ok("https://evil.example/SoldatReborn.exe"):
+					_bad.append("asset_url_ok allowed a foreign HTTPS host")
+				if not _U.asset_url_ok("https://github.com/Predator04/Soldat-Reborn/releases/download/v1/SoldatReborn.exe"):
+					_bad.append("asset_url_ok refused github.com")
+				if not _U.asset_url_ok("http://127.0.0.1:8123/SoldatReborn.exe"):
+					_bad.append("asset_url_ok refused the gate's local server")
 				return _end("")
 	return false
 

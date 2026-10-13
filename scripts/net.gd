@@ -13,17 +13,13 @@ enum Mode { SINGLEPLAYER, HOST, CLIENT }
 const DEFAULT_PORT := 7777
 const MAX_PEERS := 8
 
-# Kept in-sync with menu.gd — used by --map/--mode CLI resolution before the
-# menu ever loads (dedicated mode boots straight into main.tscn).
-# Same list the menu / host admin use (all 102 maps) — the old 13-entry copy
-# clamped dedicated `--map 50` to Bunker and couldn't resolve most names.
-const _MenuScript = preload("res://scripts/menu.gd")
-var MAP_NAMES: Array = _MenuScript.MAP_NAMES
-const MODE_NAMES := [
-	"Deathmatch", "Teammatch", "Capture the Flag",
-	"Infiltration", "Hold the Flag", "Rambomatch", "Pointmatch",
-	"Domination", "Battle Royale", "Gun Game",
-]
+# Used by --map/--mode CLI resolution before the menu ever loads (dedicated
+# mode boots straight into main.tscn). #251: single shared copy in
+# game_lists.gd — the old 13-entry local copy clamped dedicated `--map 50`
+# to Bunker and couldn't resolve most names.
+const GameLists = preload("res://scripts/game_lists.gd")
+var MAP_NAMES: Array = GameLists.MAP_NAMES
+const MODE_NAMES := GameLists.MODE_NAMES
 
 var mode: int = Mode.SINGLEPLAYER
 var status := ""
@@ -654,6 +650,13 @@ func host_game_relay(master_url: String, map_index: int = 0) -> bool:
 		_refresh_host_status()
 		relay_ready.emit())
 	peer.failed.connect(func(msg: String) -> void:
+		# #238: fires both when hosting never got going AND when a live
+		# host's relay socket drops mid-match — stop advertising a dead room
+		# instead of heartbeat-POSTing a code the server no longer knows.
+		if relay_code != "":
+			relay_code = ""
+			_stop_master_heartbeat()
+			_refresh_host_status()
 		_set_status("Relay: " + msg)
 		relay_failed.emit(msg))
 	multiplayer.multiplayer_peer = peer

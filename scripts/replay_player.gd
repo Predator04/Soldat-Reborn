@@ -16,6 +16,7 @@ var speed := 1.0
 var playing := true
 var follow_id := -1              # soldier id the camera follows; -1 = free cam
 var _fi := 0                     # frame index at or before t
+var _feed_sig := ""              # #244: window membership signature of the kill feed
 var _puppets: Dictionary = {}    # id -> Puppet
 var _cam: Camera2D
 var _ui: CanvasLayer
@@ -284,9 +285,26 @@ func _apply_soldiers(a: Array, b: Array, k: float) -> void:
 
 
 func _update_feed() -> void:
+	# #244: the window membership only changes when an event enters/leaves the
+	# 6 s span — rebuilding 5 labels every frame churned ~300 Control
+	# alloc/frees per second during playback.
+	var sig := ""
+	var shown := 0
+	for i in range(events.size() - 1, -1, -1):
+		var e0: Array = events[i]
+		var et0 := float(e0[0])
+		if et0 > t or t - et0 > 6.0:
+			continue
+		sig += "%d," % i
+		shown += 1
+		if shown >= 5:
+			break
+	if sig == _feed_sig:
+		return
+	_feed_sig = sig
 	for c in _feed.get_children():
 		c.queue_free()
-	var shown := 0
+	shown = 0
 	for i in range(events.size() - 1, -1, -1):
 		var e: Array = events[i]
 		var et := float(e[0])

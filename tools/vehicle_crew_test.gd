@@ -57,6 +57,10 @@ func _process(d: float) -> bool:
 		return false
 	p.set("ceasefire_t", 0.0)
 	p.set("health", 100.0)
+	# The foe is parked downrange of the solo-fire phase — keep it alive to be
+	# the gunner's target in st 5 (where its health must be allowed to drop).
+	if _st < 5 and is_instance_valid(_foe):
+		_foe.set("health", 1000.0)
 	match _st:
 		0:
 			for v in get_nodes_in_group("vehicle"):
@@ -106,6 +110,17 @@ func _process(d: float) -> bool:
 				_st = 4
 				_st_t = 0.0
 		4:
+			# The foe can legitimately die to the solo-fire phase before the
+			# teammate boards — re-grab a live bot instead of hammering a freed
+			# node (which aborted this handler every frame).
+			if not is_instance_valid(_foe):
+				_foe = null
+				for b in get_nodes_in_group("soldier"):
+					if b != _mate and is_instance_valid(b) and not bool(b.get("dead")) and int(b.get("team")) != int(_mate.get("team")):
+						_foe = b
+						break
+				if _foe == null:
+					return _fail("no live enemy bot left to use as the gunner target")
 			if _car.gunner() == _mate:
 				_log.append("bot boarded %.1fs" % _st_t)
 				_foe.set("health", 1000.0)
@@ -117,6 +132,8 @@ func _process(d: float) -> bool:
 			elif _st_t > 8.0:
 				return _fail("teammate bot never took the gun seat")
 		5:
+			if not is_instance_valid(_foe):
+				return _fail("target bot died before the gunner could hit it")
 			_foe.global_position.y = (_car as Node2D).global_position.y - 20
 			_foe.set("ceasefire_t", 0.0)
 			_mate.set("target", _foe)

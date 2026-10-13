@@ -74,8 +74,13 @@ func _draw() -> void:
 	draw_string(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(color.r, color.g, color.b, _a))
 
 
+static var _self_script: GDScript = null   # #249: skip the path lookup per attach
+
+
 static func attach(host: Node, label: String, col: Color, lift_px: float = 26.0) -> Node2D:
-	var l := (load("res://scripts/item_label.gd") as GDScript).new() as Node2D
+	if _self_script == null:
+		_self_script = load("res://scripts/item_label.gd") as GDScript
+	var l := _self_script.new() as Node2D
 	l.set("text", label)
 	l.set("color", col)
 	l.set("lift", lift_px)

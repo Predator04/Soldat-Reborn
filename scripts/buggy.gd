@@ -52,6 +52,7 @@ var RUNOVER_DMG_PER_SPEED := 0.3
 var BULLET_ARMOR := 1.0         # damage multiplier for non-explosive hits
 var spawn_pos := Vector2.ZERO
 var hp := MAX_HP
+var _last_sent_hp := MAX_HP   # #246: last HP value broadcast to peers
 var alive := true
 var team := -1                      # driver's team (bullets use this); -1 empty
 var display_name := "Buggy"
@@ -617,11 +618,19 @@ func take_damage(amount: float, killer := "", weapon := "", killer_team := -1) -
 	if killer != "":
 		last_hitter = killer
 		last_hitter_team = killer_team
+	# #246: a hosed vehicle used to fire a reliable RPC per bullet (~15/s for
+	# a Minigun) on the same channel as the state streams. Only sync HP once
+	# it has moved meaningfully; the destroy path always sends.
 	var main := get_parent()
-	if main != null and main.has_method("vehicle_send"):
-		main.vehicle_send("net_vehicle_hp", [vehicle_id, hp], true)
 	if hp <= 0.0:
+		if main != null and main.has_method("vehicle_send"):
+			main.vehicle_send("net_vehicle_hp", [vehicle_id, hp], true)
 		_host_destroy(last_hitter, last_hitter_team)
+		return
+	if absf(_last_sent_hp - hp) >= MAX_HP * 0.05:
+		_last_sent_hp = hp
+		if main != null and main.has_method("vehicle_send"):
+			main.vehicle_send("net_vehicle_hp", [vehicle_id, hp], true)
 
 
 func apply_hp(v: float) -> void:
@@ -739,6 +748,7 @@ func unstick() -> void:
 func apply_respawn() -> void:
 	alive = true
 	hp = MAX_HP
+	_last_sent_hp = MAX_HP
 	heat = 0.0
 	overheated = false
 	global_position = spawn_pos

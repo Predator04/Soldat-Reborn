@@ -333,8 +333,11 @@ func _build_game(box: VBoxContainer) -> void:
 		Settings.blood_intensity,
 		func(v: float) -> void:
 			Settings.blood_intensity = v
-			# Lo-fi tracks blood_intensity==0 for cleanliness: no gibs, no particles.
-			Settings.lofi = v <= 0.01 or Settings.lofi
+			# Lo-fi tracks blood_intensity==0 for cleanliness: no gibs, no
+			# particles. #242: derive from the graphics quality each time —
+			# `or Settings.lofi` latched it on for the whole session once
+			# blood hit 0 and dragging it back up did nothing.
+			Settings.lofi = Settings.gfx_quality == 0 or v <= 0.01
 			Settings.save(),
 		"%.2fx"))
 	# Sub-mode chips — Realistic / Survival / Advance stay here since they're
@@ -499,7 +502,12 @@ func _labelled_slider(label_text: String, mn: float, mx: float, step: float,
 	row.add_child(vlbl)
 	slider.value_changed.connect(func(v: float) -> void:
 		vlbl.text = val_fmt % v
-		on_change.call(v))
+		# #245: the closure's Settings.save() coalesces while the user drags;
+		# releasing the handle writes immediately.
+		Settings._slider_burst = true
+		on_change.call(v)
+		Settings._slider_burst = false)
+	slider.drag_ended.connect(func(_changed: bool) -> void: Settings.save())
 	return row
 
 
