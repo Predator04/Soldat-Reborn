@@ -1306,15 +1306,21 @@ func _find_nearby_m2() -> Node2D:
 
 
 func _find_ladder_overlap() -> Node2D:
-	# Rect-vs-rect between the soldier body (feet-anchored, ~14×24) and each
-	# ladder Area2D's stored bounds. Picks the ladder whose center-x is closest
-	# so a soldier straddling two ladders latches onto the nearer one.
-	var pcx: float = global_position.x
-	var pfeet: float = global_position.y
+	return find_ladder_overlap(get_tree(), global_position)
+
+
+## Shared ladder sensing (player + bot both use it — the two copies had
+## drifted in wording only, but kept as one so they can't drift in behavior).
+## Rect-vs-rect between the soldier body (feet-anchored, ~14×24) and each
+## ladder Area2D's stored bounds. Picks the ladder whose center-x is closest
+## so a soldier straddling two ladders latches onto the nearer one.
+static func find_ladder_overlap(tree: SceneTree, pos: Vector2) -> Node2D:
+	var pcx: float = pos.x
+	var pfeet: float = pos.y
 	var phead: float = pfeet - CLIMB_BODY_PAD_TOP
 	var closest: Node2D = null
 	var best_dx: float = 1e9
-	for lad in get_tree().get_nodes_in_group("ladder"):
+	for lad in tree.get_nodes_in_group("ladder"):
 		if not is_instance_valid(lad):
 			continue
 		var lx: float = float(lad.get_meta("center_x", lad.global_position.x))

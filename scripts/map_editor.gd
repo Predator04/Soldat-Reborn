@@ -956,7 +956,8 @@ func _build_ui() -> void:
 			_map.erase("terrain_texture")
 		else:
 			_map["terrain_texture"] = path
-		_set_status("Terrain texture: %s" % (path if path != "" else "(none)")))
+		_set_status("Terrain texture: %s" % (path if path != "" else "(none)"))
+		_checkpoint())
 	top.add_child(tex_ob)
 
 	var floor_lbl := Label.new()
@@ -972,7 +973,8 @@ func _build_ui() -> void:
 			_map.erase("floor_texture")
 		else:
 			_map["floor_texture"] = path
-		_set_status("Floor texture: %s" % (path if path != "" else "(none)")))
+		_set_status("Floor texture: %s" % (path if path != "" else "(none)"))
+		_checkpoint())
 	top.add_child(floor_ob)
 
 	# Bottom status bar.

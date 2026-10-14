@@ -989,29 +989,8 @@ func _has_line_of_sight(t: Node2D) -> bool:
 
 
 func _find_ladder_overlap() -> Node2D:
-	# Mirrors player.gd::_find_ladder_overlap — rect-vs-rect against each
-	# ladder Area2D's stored bounds. Body half-width ~7 (bot shape 14×24, feet-anchored).
-	var pcx: float = global_position.x
-	var pfeet: float = global_position.y
-	var phead: float = pfeet - CLIMB_BODY_PAD_TOP
-	var closest: Node2D = null
-	var best_dx: float = 1e9
-	for lad in get_tree().get_nodes_in_group("ladder"):
-		if not is_instance_valid(lad):
-			continue
-		var lx: float = float(lad.get_meta("center_x", lad.global_position.x))
-		var half_w: float = float(lad.get_meta("half_w", 10.0))
-		var top: float = float(lad.get_meta("top_y", lad.global_position.y - 60.0))
-		var bot: float = float(lad.get_meta("bottom_y", lad.global_position.y + 60.0))
-		var dxl: float = absf(pcx - lx)
-		if dxl > half_w + 8.0:
-			continue
-		if pfeet + CLIMB_BODY_PAD_BOTTOM < top - 2.0 or phead > bot + 2.0:
-			continue
-		if dxl < best_dx:
-			best_dx = dxl
-			closest = lad
-	return closest
+	# One shared implementation with the player (#251 follow-up).
+	return PlayerArt.find_ladder_overlap(get_tree(), global_position)
 
 
 func _find_seek_ladder(dx: float, dy: float) -> Node2D:

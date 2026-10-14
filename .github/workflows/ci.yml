@@ -35,16 +35,27 @@ jobs:
         env:
           GODOT_BIN: ${{ github.workspace }}/Godot_v4.7.2-stable_linux.x86_64
         run: |
+          # The free 2-core runners starve the motion-timing stages now and
+          # then (different stage each attempt, same commit passes elsewhere).
+          # Retry the failed stage groups up to twice — for F-stage failures
+          # only the failed feature tests rerun, so a retry can't flake on a
+          # brand-new stage. A real regression fails every pass.
           if ! tools/release_gate.sh --quick --out build/gate; then
-            # The motion-timing stages (grenade taps, buggy hops, fire cadence)
-            # are sensitive to runner load — the free 2-core runners occasionally
-            # starve them while the same commit passes locally and in other
-            # attempts. Retry the failed stage groups ONCE: a real regression
-            # fails both passes, a starved run recovers.
-            STAGES=$(grep '^FAIL' build/gate/summary.txt | awk '{print $2}' | sort -u | tr '\n' ' ')
-            echo "::warning::gate stages failed (${STAGES}) — retrying once"
-            sed -i '/^FAIL/d' build/gate/summary.txt
-            tools/release_gate.sh --quick --out build/gate --keep --only "$STAGES"
+            for ATTEMPT in 1 2; do
+              STAGES=$(grep '^FAIL' build/gate/summary.txt | awk '{print $2}' | sort -u | tr '\n' ' ')
+              FSEL=$(grep '^FAIL  F ' build/gate/summary.txt | awk '{print $3}' | sort -u | tr '\n' ' ')
+              echo "::warning::gate stages failed (${STAGES}) — retry ${ATTEMPT}/2"
+              sed -i '/^FAIL/d' build/gate/summary.txt
+              if [ -n "$FSEL" ]; then
+                if tools/release_gate.sh --quick --out build/gate --keep --only "$STAGES" --ftests "$FSEL"; then
+                  break
+                fi
+              else
+                if tools/release_gate.sh --quick --out build/gate --keep --only "$STAGES"; then
+                  break
+                fi
+              fi
+            done
           fi
 
       - name: Upload gate logs

@@ -2891,20 +2891,15 @@ func net_spawn_ack() -> void:
 			continue
 		if int(wp.get("pickup_id")) <= 0:
 			continue
-		arr.append({
-			"id": int(wp.get("pickup_id")),
-			"name": str(wp.get("weapon_name")),
-			"team": int(wp.get("team")),
-			"thrower": str(wp.get("thrower_name")),
-			"pos": wp.global_position,
-			"vel": wp.linear_velocity,
-			"ang": float(wp.angular_velocity),
-			"rot": float(wp.rotation),
-			# #94: carry damage explicitly so future damage-on-hit weapons
-			# (axe/bayonet/etc.) don't silently lose their damage on clients
-			# because we re-derived by name.
-			"dmg": float(wp.get("damage_on_hit")),
-		})
+		# #254 review nit: skip regenerating map slots — a joiner shouldn't
+		# see a ghost the next broadcast tick would immediately despawn.
+		var wp_active = wp.get("active")
+		if wp_active != null and not bool(wp_active):
+			continue
+		arr.append(_pickup_entry(wp))
+	# ...and seed the per-peer signature (same builder = same bytes as the
+	# next 10 Hz tick, so it isn't resent, #247 review nit).
+	_pickup_peer_sig[sender] = str(arr)
 	if not arr.is_empty():
 		rpc_id(sender, "net_pickup_state", arr)
 	for m2 in get_tree().get_nodes_in_group("m2_gun"):
@@ -4976,6 +4971,31 @@ func next_pickup_id() -> int:
 	return id
 
 
+## One pickup's stream entry — shared by the 10 Hz broadcast and the late-joiner
+## push so both produce byte-identical arrays (the per-peer change signature
+## seeded at join must match what the next tick would send, #247/#254).
+func _pickup_entry(wp) -> Dictionary:
+	return {
+		"id": int(wp.get("pickup_id")),
+		"name": str(wp.get("weapon_name")),
+		"team": int(wp.get("team")),
+		"thrower": str(wp.get("thrower_name")),
+		# #254: client copies must know a slot is persistent, or their local
+		# 20 s _life expires a map slot the host keeps forever.
+		"p": bool(wp.get("persistent")),
+		# #247: quantize motion to stop resting bodies from flickering the
+		# change signature (and the wire format) with 1e-5 velocities.
+		"pos": (wp.global_position as Vector2).snapped(Vector2(0.25, 0.25)),
+		"vel": (wp.linear_velocity as Vector2).snapped(Vector2.ONE),
+		"ang": roundf(float(wp.angular_velocity) * 8.0) / 8.0,
+		"rot": roundf(float(wp.rotation) * 1000.0) / 1000.0,
+		# #94: carry damage explicitly so future damage-on-hit weapons
+		# (axe/bayonet/etc.) don't silently lose their damage on clients
+		# because we re-derived by name.
+		"dmg": float(wp.get("damage_on_hit")),
+	}
+
+
 func _broadcast_pickup_state() -> void:
 	# Collect every host-authoritative pickup body + its live physics state.
 	var arr: Array = []
@@ -4989,25 +5009,7 @@ func _broadcast_pickup_state() -> void:
 		var wp_active = wp.get("active")
 		if wp_active != null and not bool(wp_active):
 			continue
-		arr.append({
-			"id": int(wp.get("pickup_id")),
-			"name": str(wp.get("weapon_name")),
-			"team": int(wp.get("team")),
-			"thrower": str(wp.get("thrower_name")),
-			# #254: client copies must know a slot is persistent, or their local
-			# 20 s _life expires a map slot the host keeps forever.
-			"p": bool(wp.get("persistent")),
-			# #247: quantize motion to stop resting bodies from flickering the
-			# change signature (and the wire format) with 1e-5 velocities.
-			"pos": (wp.global_position as Vector2).snapped(Vector2(0.25, 0.25)),
-			"vel": (wp.linear_velocity as Vector2).snapped(Vector2.ONE),
-			"ang": roundf(float(wp.angular_velocity) * 8.0) / 8.0,
-			"rot": roundf(float(wp.rotation) * 1000.0) / 1000.0,
-			# #94: carry damage explicitly so future damage-on-hit weapons
-			# (axe/bayonet/etc.) don't silently lose their damage on clients
-			# because we re-derived by name.
-			"dmg": float(wp.get("damage_on_hit")),
-		})
+		arr.append(_pickup_entry(wp))
 	# #247: this full snapshot used to fire reliably at 10 Hz regardless of
 	# change — a resting battlefield head-of-line-blocked the unreliable
 	# state streams for nothing. Send only when the world actually changed

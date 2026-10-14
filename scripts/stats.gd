@@ -297,13 +297,11 @@ func record_suicide() -> void:
 
 func record_shot() -> void:
 	shots += 1
-	# Cheap batch-write: only flush every 20 shots so we don't hammer the file.
 	_mark()
 
 
 func record_hit() -> void:
 	hits += 1
-	# Flush every 5 — hits are rarer than shots.
 	_mark()
 
 
