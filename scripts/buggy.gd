@@ -28,6 +28,10 @@ var GUN_SPREAD := 0.035
 var HEAT_PER_SHOT := 0.035    # ~2 s of continuous fire to overheat
 var HEAT_COOL := 0.45         # per second
 var RESPAWN_TIME := 25.0
+# #259: an untouched, displaced vehicle returns to its spawn point after this
+# long (occupied / damaged / entered reset the clock). Overridable for tests.
+var idle_respawn_time := 60.0
+const STUCK_UNSTICK_TIME := 3.0   # driven but motionless this long -> lift out
 var EXPLODE_RADIUS := 150.0
 var EXPLODE_DAMAGE := 120.0
 var EXPLOSIVE_MUL := 1.6      # rockets / grenades hurt it more than bullets
@@ -78,6 +82,9 @@ var _smoke_t := 0.0
 var _solo_fire_t := 0.0         # >0 while a lone driver is firing
 var _bot_hold := false          # bot gunner letting the barrel cool
 var _no_driver_t := 0.0
+var _idle_t := 0.0            # #259: seconds since anyone touched the vehicle
+var _stuck_t := 0.0           # #259: driver throttling but we're not moving
+var _adopt_settle := false    # #259: idle respawned, adopt the rest spot as home
 var _bd_check := 0.0            # bot driver: stuck / progress tracking
 var _bd_last_x := 0.0
 var _bd_stuck_t := 0.0
@@ -179,6 +186,7 @@ func request_exit(s: Node2D) -> void:
 func set_seat(seat: int, s: Node2D) -> void:
 	if seat < 0 or seat >= seats.size():
 		return
+	_idle_t = 0.0   # #259: entering counts as touching
 	var old = seats[seat]
 	if is_instance_valid(old) and old != s and old.has_method("dismount_m2"):
 		old.dismount_m2()
@@ -261,6 +269,7 @@ func _physics_process(delta: float) -> void:
 	if is_sim():
 		_simulate(delta)
 		_send_state(delta)
+		_touch_tick(delta)
 	else:
 		_follow(delta)
 	_place_occupants()
@@ -280,6 +289,36 @@ func _is_host_side() -> bool:
 	return not Net.is_networked() or Net.is_host()
 
 
+## #259: abandoned or wedged vehicles don't stay that way. Runs on whichever
+## peer simulates this body. While occupied (or recently damaged/entered) the
+## clock stays at zero; an empty vehicle displaced from its spawn for
+## idle_respawn_time goes home through the same respawn RPC a wreck uses.
+## A driver who's throttling into something without moving gets lifted out of
+## the terrain (unstick) after a few seconds — teleporting an OCCUPIED vehicle
+## would be jarring, so the full reset only ever fires while empty.
+func _touch_tick(delta: float) -> void:
+	var occupied := false
+	for o in seats:
+		if o != null and is_instance_valid(o):
+			occupied = true
+			break
+	if occupied:
+		_idle_t = 0.0
+		_stuck_t = maxf(0.0, _stuck_t - delta)
+		return
+	_idle_t += delta
+	# Stuck-while-driven tracking lives in _simulate where throttle is known;
+	# for the empty case only the idle clock matters.
+	if _is_host_side() and idle_respawn_time > 0.0 and _idle_t >= idle_respawn_time \
+			and global_position.distance_to(spawn_pos) > 24.0:
+		_idle_t = 0.0
+		var main := get_parent()
+		if main != null and main.has_method("vehicle_send"):
+			main.vehicle_send("net_vehicle_respawn", [vehicle_id], true)
+		else:
+			apply_respawn()
+
+
 func _simulate(delta: float) -> void:
 	var throttle := 0.0
 	var hop := false
@@ -292,6 +331,21 @@ func _simulate(delta: float) -> void:
 		throttle = bi.x
 		hop = bi.y > 0.5
 	var on_floor := is_on_floor()
+	# #259: after an idle respawn, once the body has settled at rest, adopt
+	# that spot as home — otherwise a spawn recorded mid-fall re-triggers the
+	# idle reset every cycle (gentle 60 s bobbing).
+	if _adopt_settle and on_floor and velocity.length() < 8.0:
+		_adopt_settle = false
+		spawn_pos = global_position
+	# #259: driver wants to move, we're grounded, but nothing is happening —
+	# count it up and lift the body out of whatever it's wedged in.
+	if throttle != 0.0 and on_floor and absf(velocity.x) < 8.0 and absf(velocity.y) < 20.0:
+		_stuck_t += delta
+		if _stuck_t >= STUCK_UNSTICK_TIME:
+			_stuck_t = 0.0
+			unstick()
+	else:
+		_stuck_t = maxf(0.0, _stuck_t - delta * 2.0)
 	if on_floor:
 		if throttle != 0.0:
 			var cap: float = MAX_SPEED if signf(throttle) == face or absf(velocity.x) < 30.0 else REVERSE_SPEED
@@ -615,6 +669,7 @@ func take_damage(amount: float, killer := "", weapon := "", killer_team := -1) -
 	if not (weapon in EXPLOSIVE_WEAPONS):
 		amount *= BULLET_ARMOR
 	hp -= amount
+	_idle_t = 0.0   # #259: taking a hit counts as touching
 	if killer != "":
 		last_hitter = killer
 		last_hitter_team = killer_team
@@ -749,6 +804,8 @@ func apply_respawn() -> void:
 	alive = true
 	hp = MAX_HP
 	_last_sent_hp = MAX_HP
+	_idle_t = 0.0
+	_stuck_t = 0.0
 	heat = 0.0
 	overheated = false
 	global_position = spawn_pos

@@ -2,6 +2,14 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.33.1] — 2026-10-13
+
+### Fixed — vehicles
+- **Buggies and tanks no longer stay stuck or abandoned forever** (#259). A vehicle nobody has touched (occupied, damaged, or entered) for 60 s returns to its spawn point through the same respawn a wreck uses — fresh hull included. A driver who's throttling into an obstacle without moving gets lifted out of the terrain after ~3 s (the unstick sweep). Occupied vehicles are never teleported. Applies to both buggies and tanks.
+
+### Testing
+- New release-gate stage: idle respawn home, touch resets the clock, occupied never teleports (VRESET-TEST).
+
 ## [1.33.0] — 2026-10-13
 
 ### Added — the community's classic asks
