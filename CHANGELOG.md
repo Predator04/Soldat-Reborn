@@ -2,6 +2,11 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.33.3] — 2026-10-14
+
+### Security
+- **The master server connection is now HTTPS** (#252). The default server list / relay / leaderboard endpoint is `https://161-153-9-69.sslip.io` with a Let's Encrypt certificate (Caddy in front of the master, auto-renewing); the relay upgrades to `wss://`, so the server list, matchmaking, and relayed match packets are encrypted and tamper-proof in transit. The old plain endpoint stays up for one release so older builds keep working; a custom master URL still goes wherever you point it.
+
 ## [1.33.2] — 2026-10-14
 
 ### Internal

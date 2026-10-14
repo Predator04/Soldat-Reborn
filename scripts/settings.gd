@@ -165,7 +165,10 @@ var _save_scheduled := false   # #245: a debounced write is pending
 var _slider_burst := false     # #245: set while a settings slider's on_change runs
 ## Official master server + relay (Oracle Cloud, Phoenix). An empty saved value
 ## falls back to it, so Find Games, internet listing and relay work out of the box.
-const DEFAULT_MASTER_URL := "http://161.153.9.69:8080"
+# #252: HTTPS via Caddy (Let's Encrypt) on the same box; relay upgrades to
+# wss:// automatically (relay_peer.ws_url). Plain http://...:8080 stays up for
+# one transition release for older builds.
+const DEFAULT_MASTER_URL := "https://161-153-9-69.sslip.io"
 var master_url := DEFAULT_MASTER_URL
 var recent_servers: Array = []   # "ip:port", newest first (Browse -> Recent)
 
