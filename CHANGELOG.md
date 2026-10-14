@@ -2,6 +2,12 @@
 
 All notable changes to Soldat Reborn.
 
+## [1.33.2] — 2026-10-14
+
+### Internal
+- Structure batch 1 of [#258](https://github.com/Predator04/Soldat-Reborn/issues/258): the name prompt and the update / WHAT'S-NEW UI moved out of `menu.gd` into `name_prompt.gd` and `menu_update.gd` (~300 lines, no behavior change — the server-browser extraction follows in the next batch). Also a nit pass: late joiners' pickup snapshot now shares its entry builder with the broadcast stream, the map editor's texture dropdowns create undo checkpoints, and the bots' ladder sensing is one shared implementation with the player's (#251 follow-up).
+- Master server: relay broadcasts no longer hold the room lock while writing — a stalled peer can't delay joins/kicks for the whole room.
+
 ## [1.33.1] — 2026-10-13
 
 ### Fixed — vehicles

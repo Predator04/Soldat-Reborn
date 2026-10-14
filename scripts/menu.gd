@@ -7,6 +7,8 @@ const MapGen = preload("res://scripts/map_gen.gd")
 const ControlsMenu = preload("res://scripts/controls_menu.gd")
 const SettingsPanel = preload("res://scripts/settings_panel.gd")
 const UITheme = preload("res://scripts/ui_theme.gd")
+const NamePromptUI = preload("res://scripts/name_prompt.gd")
+const MenuUpdate = preload("res://scripts/menu_update.gd")
 
 # Slots 0..2 are the three procedural remakes; slots 3..12 are the classic
 # Soldat maps bundled from res://assets/maps/*.json (see MapIO.BUNDLED_CLASSICS
@@ -593,98 +595,11 @@ func _build_credits() -> void:
 ## First launch: ask what to call the player (used in kill feed, scoreboard,
 ## multiplayer). Skippable; Settings -> Game changes it later.
 static func has_real_name() -> bool:
-	var n := Settings.player_name.strip_edges()
-	return Settings.name_set and n != "" and n != "Player"
+	return NamePromptUI.has_real_name()
 
 
-# Name prompt. First launch: pick a name, then Training or the menu (no skip).
-# Later: CHANGE NAME on the menu, or any Training / online button while the
-# name is still the default, opens it with `then` run after saving.
 func _build_name_prompt(then: Callable = Callable(), changing := false) -> void:
-	var root := PanelContainer.new()
-	root.add_theme_stylebox_override("panel", UITheme.panel_style())
-	root.set_anchors_preset(Control.PRESET_CENTER, true)
-	root.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	root.grow_vertical = Control.GROW_DIRECTION_BOTH
-	add_child(root)
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 12)
-	box.custom_minimum_size = Vector2(440, 0)
-	root.add_child(box)
-	box.add_child(UITheme.make_screen_title("YOUR NAME" if changing else "WELCOME, SOLDIER"))
-	var lbl := Label.new()
-	lbl.text = "What should we call you? It shows in the kill feed, the scoreboard and online."
-	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	UITheme.style_body(lbl)
-	box.add_child(lbl)
-	var edit := LineEdit.new()
-	edit.max_length = 24
-	edit.placeholder_text = "Type your name"
-	edit.text = Settings.player_name if has_real_name() else ""
-	edit.custom_minimum_size = Vector2(0, 38)
-	UITheme.style_lineedit(edit)
-	box.add_child(edit)
-	# Optional clan tag, shown as "«TAG» Name".
-	var tag_edit := LineEdit.new()
-	tag_edit.max_length = 4
-	tag_edit.placeholder_text = tr("Clan tag (optional, up to 4 letters)")
-	tag_edit.text = Settings.clan_tag
-	tag_edit.custom_minimum_size = Vector2(0, 34)
-	UITheme.style_lineedit(tag_edit)
-	box.add_child(tag_edit)
-	var hint := Label.new()
-	hint.add_theme_font_size_override("font_size", 13)
-	hint.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)
-	box.add_child(hint)
-	var buttons: Array = []
-	var first := not changing and then.is_null()
-	var train: Button = null
-	if first:
-		train = _make_button("START WITH TRAINING", true)
-		box.add_child(train)
-		buttons.append(train)
-	var go := _make_button("TO THE MENU" if first else ("SAVE" if then.is_null() else "SAVE AND CONTINUE"), not first)
-	box.add_child(go)
-	buttons.append(go)
-	var cancel: Button = null
-	if not first:
-		cancel = _make_button("CANCEL")
-		box.add_child(cancel)
-	_menu_root.visible = false
-	var valid := func(t: String) -> bool:
-		var c := t.strip_edges()
-		return c != "" and c.to_lower() != "player"
-	var refresh := func(t: String) -> void:
-		var ok: bool = valid.call(t)
-		for b in buttons:
-			(b as Button).disabled = not ok
-		hint.text = "" if ok else ("Pick something other than \"Player\"." if t.strip_edges().to_lower() == "player" else "Type a name to continue.")
-	edit.text_changed.connect(refresh)
-	refresh.call(edit.text)
-	var close := func() -> void:
-		root.queue_free()
-		_menu_root.visible = true
-		_refresh_name_btn()
-		UITheme.safe_grab_focus_deferred(_menu_first_focus)
-	var finish := func(after: Callable) -> void:
-		if not valid.call(edit.text):
-			refresh.call(edit.text)
-			return
-		Settings.player_name = edit.text.strip_edges().left(24)
-		Settings.clan_tag = Settings.clean_tag(tag_edit.text)
-		Settings.name_set = true
-		Settings.save()
-		close.call()
-		if not after.is_null():
-			after.call()
-	go.pressed.connect(func() -> void: finish.call(then))
-	if train != null:
-		train.pressed.connect(func() -> void: finish.call(start_training_match))
-	edit.text_submitted.connect(func(_t: String) -> void: finish.call(then))
-	if cancel != null:
-		cancel.pressed.connect(close)
-	_name_prompt_root = root
-	UITheme.safe_grab_focus_deferred(edit)
+	NamePromptUI.build(self, then, changing)
 
 
 # ── Updates (scripts/updater.gd lives on the tree root so a download survives
@@ -695,125 +610,19 @@ var _upd_panel: PanelContainer = null
 
 
 static func updater(tree: SceneTree) -> Node:
-	var u := tree.root.get_node_or_null("Updater")
-	if u == null:
-		u = Updater.new()
-		u.name = "Updater"
-		tree.root.add_child.call_deferred(u)
-	return u
+	return MenuUpdate.updater(tree)
 
 
 func _build_update_button() -> void:
-	_upd_btn = Button.new()
-	UITheme.style_button(_upd_btn, 16, true)
-	_upd_btn.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	_upd_btn.offset_top = 16
-	_upd_btn.offset_left = 16
-	_upd_btn.custom_minimum_size = Vector2(0, 38)
-	_upd_btn.visible = false
-	_upd_btn.pressed.connect(_on_update_pressed)
-	add_child(_upd_btn)
-	var u := updater(get_tree())
-	u.state_changed.connect(_refresh_update_ui)
-	_refresh_update_ui.call_deferred()
-	var forced := str(OS.get_cmdline_user_args()).contains("--update-url=")
-	if Settings.check_updates and DisplayServer.get_name() != "headless" and (forced or not OS.has_feature("editor")) \
-			and not Net.is_dedicated and str(u.get("state")) == "idle":
-		u.check.call_deferred()
+	MenuUpdate.build_button(self)
 
 
 func _refresh_update_ui() -> void:
-	if _upd_btn == null or not is_inside_tree():
-		return
-	var u := updater(get_tree())
-	var st := str(u.get("state"))
-	var ver := Updater.current_version()
-	_upd_btn.disabled = false
-	_upd_btn.tooltip_text = "Checks GitHub for a newer version of the game."
-	match st:
-		"available":
-			_upd_btn.text = "  %s v%s  " % [tr("UPDATE AVAILABLE:"), str(u.get("latest"))]
-		"downloading":
-			_upd_btn.text = "  %s %d%%  " % [tr("DOWNLOADING UPDATE"), int(float(u.get("progress")) * 100.0)]
-			_upd_btn.disabled = true
-		"ready":
-			_upd_btn.text = "  %s v%s  " % [tr("RESTART TO UPDATE TO"), str(u.get("latest"))]
-		"checking":
-			_upd_btn.text = "  v%s · %s  " % [ver, tr("CHECKING FOR UPDATES...")]
-			_upd_btn.disabled = true
-		"none":
-			_upd_btn.text = "  v%s · %s  " % [ver, tr("UP TO DATE")]
-		"failed":
-			if str(u.get("latest")) != "":
-				_upd_btn.text = "  UPDATE FAILED · RETRY  "
-			else:
-				_upd_btn.text = "  v%s · %s  " % [ver, tr("CHECK FOR UPDATES")]
-			_upd_btn.tooltip_text = str(u.get("error"))
-		_:
-			_upd_btn.text = "  v%s · %s  " % [ver, tr("CHECK FOR UPDATES")]
-	# Always shown: the current version, and one click to check again.
-	_upd_btn.visible = true
+	MenuUpdate.refresh_ui(self)
 
 
 func _on_update_pressed() -> void:
-	var u := updater(get_tree())
-	var st := str(u.get("state"))
-	if st == "ready":
-		u.apply_and_restart()
-		return
-	if st == "failed" and str(u.get("latest")) != "":
-		u.start()
-		return
-	if st in ["idle", "none", "failed"]:
-		u.check()
-		return
-	if _upd_panel != null:
-		_upd_panel.queue_free()
-	_upd_panel = PanelContainer.new()
-	_upd_panel.add_theme_stylebox_override("panel", UITheme.panel_style())
-	_upd_panel.set_anchors_preset(Control.PRESET_CENTER, true)
-	_upd_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_upd_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-	add_child(_upd_panel)
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 10)
-	box.custom_minimum_size = Vector2(560, 0)
-	_upd_panel.add_child(box)
-	box.add_child(UITheme.make_screen_title("UPDATE TO v%s" % str(u.get("latest"))))
-	var sub := Label.new()
-	sub.text = "You have v%s." % Updater.current_version()
-	UITheme.style_body(sub)
-	box.add_child(sub)
-	var notes := RichTextLabel.new()
-	notes.bbcode_enabled = true
-	var txt := str(u.get("notes"))
-	notes.text = md_to_bb(txt.left(2400)) + ("..." if txt.length() > 2400 else "")
-	notes.custom_minimum_size = Vector2(540, 260)
-	notes.add_theme_font_size_override("normal_font_size", 13)
-	notes.add_theme_color_override("default_color", UITheme.COL_TEXT)
-	box.add_child(notes)
-	var how := Label.new()
-	how.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	how.add_theme_font_size_override("font_size", 13)
-	how.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)
-	how.text = "The new version downloads in the background (you can keep playing). Then press RESTART TO UPDATE: the game closes, swaps itself and starts again. Your settings, stats and maps are kept." \
-			if Updater.can_self_update() else "This opens the download in your browser. Install the downloaded file to update; your settings, stats and maps are kept."
-	box.add_child(how)
-	var go := _make_button("UPDATE NOW" if Updater.can_self_update() else "DOWNLOAD", true)
-	go.pressed.connect(func() -> void:
-		_upd_panel.queue_free()
-		_upd_panel = null
-		_menu_root.visible = true
-		u.start())
-	box.add_child(go)
-	var later := _make_button("LATER")
-	later.pressed.connect(func() -> void:
-		_upd_panel.queue_free()
-		_upd_panel = null
-		_menu_root.visible = true)
-	box.add_child(later)
-	_menu_root.visible = false
-	UITheme.safe_grab_focus_deferred(go)
+	MenuUpdate.on_pressed(self)
 
 
 var _name_prompt_root: Control = null
@@ -821,10 +630,7 @@ var _name_btn: Button = null
 
 
 func _refresh_name_btn() -> void:
-	if _name_btn != null:
-		var t := "  %s  ·  LV %d  ·  %s  " % [Settings.display_name() if has_real_name() else tr("No name yet"), Stats.level_for(Stats.xp()), tr("CHANGE NAME")]
-		if _name_btn.text != t:
-			_name_btn.text = t
+	NamePromptUI.refresh_btn_text(self)
 
 
 ## Run `action` once the player has a real name (asks first if not).
@@ -1369,109 +1175,22 @@ func _do_rejoin() -> void:
 	_join_server(Net.last_server_ip, Net.last_server_port)
 
 
-# After an update (auto-updater or a new download): show this version's
-# changelog section once. First-ever launch just records the version.
+# Update / what's-new helpers live in menu_update.gd (#258); these wrappers
+# keep every call site stable.
 static func changelog_section(version: String) -> String:
-	var f := FileAccess.open("res://CHANGELOG.md", FileAccess.READ)
-	if f == null:
-		return ""
-	var txt := f.get_as_text()
-	var head := "## [%s]" % version
-	var i := txt.find(head)
-	if i < 0:
-		return ""
-	var j := txt.find("\n## [", i + head.length())
-	var sec := txt.substr(i, (j - i) if j > 0 else -1)
-	sec = sec.substr(sec.find("\n") + 1).strip_edges()
-	return md_to_bb(sec)
+	return MenuUpdate.changelog_section(version)
 
 
-## Every version newer than `since`, newest first (capped), as short notes.
-## Players who update across several releases see everything they missed.
 static func changelog_since(since: String, current: String, max_sections: int = 6) -> String:
-	var f := FileAccess.open("res://CHANGELOG.md", FileAccess.READ)
-	if f == null:
-		return ""
-	var txt := f.get_as_text()
-	var out := PackedStringArray()
-	var i := txt.find("## [%s]" % current)
-	while i >= 0 and out.size() < max_sections:
-		var e := txt.find("]", i)
-		var ver := txt.substr(i + 4, e - i - 4)
-		if ver == since:
-			break
-		var j := txt.find("\n## [", i + 4)
-		var sec := txt.substr(i, (j - i) if j > 0 else -1)
-		sec = sec.substr(sec.find("\n") + 1).strip_edges()
-		out.append("[b][color=#ffffff]v%s[/color][/b]\n%s" % [ver, md_to_bb(sec, true)])
-		i = j + 1 if j > 0 else -1
-	return "\n\n".join(out)
+	return MenuUpdate.changelog_since(since, current, max_sections)
 
 
-## Changelog markdown -> RichTextLabel bbcode (headers, bullets). `short`
-## keeps just the first sentence of each bullet (the headline).
 static func md_to_bb(sec: String, short: bool = false) -> String:
-	var out := PackedStringArray()
-	for line in sec.replace("**", "").replace("`", "").split("\n"):
-		var l := line.strip_edges(false, true)
-		if l.begins_with("### "):
-			out.append("\n[b][color=#f5a623]%s[/color][/b]" % l.substr(4).to_upper())
-		elif l.strip_edges().begins_with("- "):
-			var ind := l.length() - l.strip_edges(true, false).length()
-			var item := l.strip_edges().substr(2)
-			if short:
-				if ind > 0:
-					continue  # sub-bullets are detail
-				var dot := item.find(". ")
-				if dot > 0 and dot < 200:
-					item = item.left(dot + 1)
-				elif item.length() > 200:
-					item = item.left(197) + "..."
-			out.append("%s• %s" % ["    ".repeat(ind / 2), item])
-		else:
-			out.append(l)
-	return "\n".join(out).strip_edges()
+	return MenuUpdate.md_to_bb(sec, short)
 
 
 func _maybe_whats_new() -> void:
-	var v := str(ProjectSettings.get_setting("application/config/version", ""))
-	if Settings.last_seen_version == v:
-		return
-	var first := Settings.last_seen_version == ""
-	var prev := Settings.last_seen_version
-	Settings.last_seen_version = v
-	Settings.save()
-	if first:
-		return
-	var sec := changelog_since(prev, v)
-	if sec == "":
-		return
-	var root := PanelContainer.new()
-	root.add_theme_stylebox_override("panel", UITheme.panel_style())
-	root.set_anchors_preset(Control.PRESET_CENTER, true)
-	root.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	root.grow_vertical = Control.GROW_DIRECTION_BOTH
-	add_child(root)
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 10)
-	box.custom_minimum_size = Vector2(600, 0)
-	root.add_child(box)
-	box.add_child(UITheme.make_screen_title(tr("WHAT'S NEW")))
-	var notes := RichTextLabel.new()
-	notes.bbcode_enabled = true
-	notes.text = sec.left(4000)
-	notes.scroll_active = true
-	notes.custom_minimum_size = Vector2(580, 320)
-	notes.add_theme_font_size_override("normal_font_size", 13)
-	notes.add_theme_color_override("default_color", UITheme.COL_TEXT)
-	box.add_child(notes)
-	var ok := _make_button("GOT IT", true)
-	ok.pressed.connect(func() -> void:
-		root.queue_free()
-		_menu_root.visible = true)
-	box.add_child(ok)
-	_menu_root.visible = false
-	UITheme.safe_grab_focus_deferred(ok)
+	MenuUpdate.maybe_whats_new(self)
 
 
 func _on_browse_pressed() -> void:
