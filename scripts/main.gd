@@ -2218,6 +2218,50 @@ func _despawn_bot(b: Node) -> void:
 		b.queue_free()
 
 
+## #263: move bots from the bigger team to the smaller until they're within
+## one, picking the lowest-scoring movers (least disruptive). Humans are never
+## moved. Host/SP only; clients see the result through the bot state mirror.
+func _balance_teams() -> void:
+	if not (not Net.is_networked() or Net.is_host()):
+		return
+	for _guard in 16:
+		var counts := {TEAM_BLUE: 0, TEAM_RED: 0}
+		var bots := {TEAM_BLUE: [], TEAM_RED: []}
+		for sld in get_tree().get_nodes_in_group("soldier"):
+			if not is_instance_valid(sld):
+				continue
+			var t: int = int(sld.get("team"))
+			if not counts.has(t):
+				continue
+			counts[t] += 1
+			if sld.get("bot_id") != null and not bool(sld.get("dead")):
+				bots[t].append(sld)
+		var diff: int = counts[TEAM_BLUE] - counts[TEAM_RED]
+		if absi(diff) <= 1:
+			return
+		var from_t: int = TEAM_BLUE if diff > 0 else TEAM_RED
+		var to_t: int = TEAM_RED if diff > 0 else TEAM_BLUE
+		if bots[from_t].is_empty():
+			return   # imbalance is all-human — respect their choices
+		# Least-disruptive mover: fewest kills this match (K from player_stats).
+		var mover = bots[from_t][0]
+		var best_score := INF
+		for b in bots[from_t]:
+			var st: Dictionary = player_stats.get(str(b.get("display_name")), {})
+			var sc: float = float(st.get("k", 0))
+			if sc < best_score:
+				best_score = sc
+				mover = b
+		mover.set("team", to_t)
+		mover.set("color", bot_color_for_team(to_t))
+		# Respawn at the new team's base so the mover isn't behind enemy lines.
+		var tl: Array = _team_spawn_list(to_t)
+		if not tl.is_empty():
+			(mover as Node2D).global_position = _safe_spawn_near(tl[0], to_t)
+		hud.post_chat("HOST", "%s switched to %s to balance the teams." % [
+			str(mover.get("display_name")), "BLUE" if to_t == TEAM_BLUE else "RED"], false)
+
+
 func _spawn_bot(pos: Vector2, team: int, bname: String, loadout: String = "AK-74") -> void:
 	if not is_inside_tree():
 		return
@@ -4144,6 +4188,10 @@ func _end_round_by_time() -> void:
 func _reset_round() -> void:
 	scores.clear()
 	_stuck_time.clear()
+	# #263: even the teams between rounds (bots only — never touch a human's
+	# chosen side). Snowballed lobbies were the classic complaint.
+	if Settings.is_team_mode() and Settings.game_mode != Settings.MODE_INF:
+		_balance_teams()
 	# Flags home, nobody carrying — a carrier teleported to spawn used to start
 	# the next round holding the enemy flag next to their own base.
 	for f in flags:

@@ -455,6 +455,8 @@ if has F; then
   ft ppickup persistent_pickup_test.gd 120 PPICKUP-TEST "map weapon pickups persist + regenerate in place (#241/#254)"
   ft community community_test.gd 90 COMMUNITY-TEST "host weapon bans (#256) + host chat commands (#257)"
   ft vreset vehicle_reset_test.gd 90 VRESET-TEST "vehicles: idle respawn home, touch resets, occupied never teleports (#259)"
+  ft move movement_test.gd 90 MOVE-TEST "movement tech: tap vs held jump height, prone air fast fall (#262)"
+  ft balance balance_test.gd 90 BALANCE-TEST "auto team balance at round reset, bots only (#263)"
   ft training training_test.gd 90 TRAINING-TEST "training"
   ft fire fire_test.gd 100 FIRE-TEST "every primary fires"
   ft weapons weapon_test.gd 175 WEAPON-TEST "every weapon hits (player + bots)"

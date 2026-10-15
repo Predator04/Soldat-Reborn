@@ -210,6 +210,8 @@ var _bonus_saved_color: Color = Color(1, 1, 1)
 # ── Feel ───────────────────────────────────────────────
 var coyote_t := 0.0
 var jump_buffer_t := 0.0
+var _jump_hold_t := 1.0   # >= JUMP_SUSTAIN when not in a fresh jump (#262)
+var _jump_cut_done := true
 var shake := 0.0
 var cam: Camera2D
 var jet_particles: CPUParticles2D
@@ -231,6 +233,14 @@ const AIR_ACCEL := 950.0
 const AIR_FRICTION := 45.0
 const GROUND_FRICTION := 1700.0
 const JUMP_VEL := -345.0
+# Movement tech (original tutorial's half/full jump): holding jump sustains
+# the rise for a short window (a full-height jump — exactly today's height);
+# releasing early cuts the rise (a short hop). Tap-to-hop, hold-to-jump.
+const JUMP_SUSTAIN := 0.20      # seconds of reduced gravity while held
+const JUMP_SUSTAIN_GRAV := 0.45 # gravity multiplier during the sustain window
+const JUMP_CUT_MULT := 0.55     # upward velocity kept when jump is released early
+# Prone in the air drops you faster (prone-cancel) — classic momentum killer.
+const PRONE_FALL_GRAV := 1.5
 const JET_THRUST := -1720.0
 const JET_DRAIN := 40.0
 const JET_REGEN := 32.0
@@ -610,6 +620,8 @@ func _physics_process(delta: float) -> void:
 		# mod_gravity so peak height feels the same under heavier gravity.
 		if jump_buffer_t > 0.0 and coyote_t > 0.0:
 			velocity.y = JUMP_VEL * mg
+			_jump_hold_t = 0.0
+			_jump_cut_done = false
 			# Scale the hop's lateral clamp by speed_mul so the Predator/Berserker
 			# bonuses (and any host speed mod) can boost a hop above the base
 			# BUNNY_SPEED cap — otherwise the powerup felt inert while airborne (#86.5).
@@ -620,7 +632,22 @@ func _physics_process(delta: float) -> void:
 			Sfx.jump(global_position)
 
 		if not on_floor:
-			velocity.y += GRAVITY * mg * delta
+			var g_mul := 1.0
+			# #262 hold-scaling: fresh jump + button held + still rising →
+			# reduced gravity for the sustain window (full-height jump).
+			if _jump_hold_t < JUMP_SUSTAIN and jump_pressed and velocity.y < 0.0 and not jet_on:
+				g_mul = JUMP_SUSTAIN_GRAV
+				_jump_hold_t += delta
+			else:
+				_jump_hold_t = JUMP_SUSTAIN
+			# Released early while rising → cut the hop short (once per jump).
+			if not _jump_cut_done and not jump_pressed and velocity.y < -100.0 and not jet_on:
+				velocity.y *= JUMP_CUT_MULT
+				_jump_cut_done = true
+			# Prone-cancel: prone in the air drops you faster.
+			if prone:
+				g_mul = maxf(g_mul, PRONE_FALL_GRAV)
+			velocity.y += GRAVITY * g_mul * mg * delta
 			velocity.y = minf(velocity.y, MAX_FALL)
 
 	# aim — gamepad right stick when deflected past its deadzone, then the

@@ -1,0 +1,60 @@
+name: Uptime
+
+# Watches the live master server. If /health stops answering, an issue opens
+# (one at a time); when a later run succeeds, the open issue auto-closes with
+# a recovery note. 15-minute cadence; scheduled workflows on the default
+# branch of a public repo cost nothing.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check master server health
+        id: check
+        run: |
+          BODY=$(mktemp)
+          CODE=$(curl -sS -m 25 -o "$BODY" -w "%{http_code}" https://161-153-9-69.sslip.io/health || echo 000)
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "body=$(head -c 200 "$BODY" | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+          echo "at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Open issue on failure (at most one)
+        if: steps.check.outputs.code != '200'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          OPEN=$(gh issue list -R "$GITHUB_REPOSITORY" --state open --search "in:title [uptime]" --json number --jq 'length')
+          if [ "$OPEN" = "0" ]; then
+            gh issue create -R "$GITHUB_REPOSITORY" \
+              -t "[uptime] master server unreachable (HTTP ${{ steps.check.outputs.code }})" \
+              -b "The 15-minute health check failed at ${{ steps.check.outputs.at }} UTC.
+
+          HTTPS health endpoint returned \`${{ steps.check.outputs.code }}\` (body: \`${{ steps.check.outputs.body }}\`).
+
+          Triage from the dev machine:
+          \`\`\`
+          curl https://161-153-9-69.sslip.io/health
+          ssh -i server/oracle/soldat-master-key ubuntu@161.153.9.69 'systemctl status soldat-master caddy --no-pager'
+          \`\`\`
+          This issue closes itself when a check succeeds again." \
+              -l bug -l "area: online"
+          else
+            echo "failure recorded; uptime issue already open"
+          fi
+
+      - name: Close open uptime issue on recovery
+        if: steps.check.outputs.code == '200'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for N in $(gh issue list -R "$GITHUB_REPOSITORY" --state open --search "in:title [uptime]" --json number --jq '.[].number'); do
+            gh issue close -R "$GITHUB_REPOSITORY" "$N" \
+              -c "Recovered — health check passed at ${{ steps.check.outputs.at }} UTC (body: \`${{ steps.check.outputs.body }}\`)."
+          done
