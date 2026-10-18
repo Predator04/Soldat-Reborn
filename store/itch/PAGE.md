@@ -13,7 +13,7 @@ Everything to paste into itch.io when you create the project
 - **Genre:** Action · **Tags:** 2D, Multiplayer, Shooter, Online, Capture the Flag, Jetpack, Retro, Bots, Local Multiplayer, Godot
 - **Platforms:** Windows, Android
 - **Cover image:** cover_630x500.png
-- **Screenshots:** screenshots/01…08 (upload in order)
+- **Screenshots:** screenshots/01…08 (upload in order; refreshed for v1.35)
 - **Gameplay GIF:** gameplay.gif (itch shows it on the page; also good for social posts)
 - **Community:** turn on Comments (players report bugs there)
 
