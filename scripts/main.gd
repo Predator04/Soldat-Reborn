@@ -19,6 +19,15 @@ const NavGraph = preload("res://scripts/nav_graph.gd")
 signal kill(killer_name: String, victim_name: String, weapon_name: String, killer_team: int, victim_team: int)
 signal objective(kind: String, team: int, who: String)   # grab/drop/return/capture/dom/point
 
+# System helpers (#258): plain child Nodes holding the code for one system each.
+# Match state stays on Main (tests, HUD and peers read it here); every @rpc and
+# every method other scripts call by name keeps a delegate below, so RPC paths
+# and the public API are unchanged.
+const MatchVehicles = preload("res://scripts/match_vehicles.gd")
+const MatchBonuses = preload("res://scripts/match_bonuses.gd")
+var _vehicles_sys: MatchVehicles = null   # match_vehicles.gd
+var _bonuses: MatchBonuses = null   # match_bonuses.gd
+
 var player: Node2D = null            # LOCAL player (whichever peer owns us)
 var hud: CanvasLayer = null
 var killcam: Node2D = null           # killcam_rewind.gd — replays the last seconds before your death
@@ -167,28 +176,11 @@ var vote_starter := ""           # display_name of who called it
 var _vote_voters: Dictionary = {}  # host-only: peer_id → true (already voted)
 var _vote_cooldown := 0.0          # host-only: gate between votes
 
-# ── Bonus pickups (#78) ───────────────────────────────
-# Host-authoritative: host places boxes, detects collection, applies effect
-# to the toucher and schedules the box slot's respawn. Clients mirror boxes
-# via net_bonus_spawn / net_bonus_despawn.
-const BONUS_RESPAWN := 20.0
-const BONUS_EFFECT_DURATION := 30.0
-const BONUS_MAX_SLOTS := 3
-# Medikits / grenade kits (v1.18) — Soldat map pickups, bots take them too.
-const KIT_RESPAWN := 25.0
-const KIT_MAX_EACH := 6
-var _bonus_slot_kind: Array = []     # host: "" = random bonus, else fixed kit kind
-var _kit_poll_t := 0.0
 var _bonus_boxes: Dictionary = {}    # bonus_id → node (host + client)
-var _bonus_slots: Array = []         # host: list of Vector2 spawn positions
-var _bonus_slot_cd: Array = []       # host: seconds until each slot respawns
-var _bonus_slot_active: Array = []   # host: bonus_id currently occupying each slot (0 = empty)
-var _next_bonus_id: int = 1          # host: monotonic id minter
 # Weapon-pickup sync — host broadcasts (id, pos, vel, ang) so client-frozen
 # pickup bodies mirror the host's physics timeline (#34).
 var _pickup_sync_cd := 0.0
 const PICKUP_SYNC_HZ := 10.0
-var _next_pickup_id: int = 1
 # #107: throttle DOM/PM/BR mode-state broadcasts so we don't spam a
 # per-peer RPC every host frame for objectives that change at UI speed.
 var _mode_sync_cd := 0.0
@@ -424,6 +416,20 @@ const Tank = preload("res://scripts/tank.gd")
 var _vehicles: Dictionary = {}   # vehicle_id -> buggy node (every peer)
 
 
+func _init() -> void:
+	_vehicles_sys = _attach(MatchVehicles.new(), "MatchVehicles")
+	_bonuses = _attach(MatchBonuses.new(), "MatchBonuses")
+
+
+## A system helper is an internal child: freed with Main, invisible to
+## get_children(), and never the target of an RPC (those stay on Main).
+func _attach(h: Node, n: String) -> Node:
+	h.name = n
+	h.set("main", self)
+	add_child(h, false, Node.INTERNAL_MODE_FRONT)
+	return h
+
+
 func _ready() -> void:
 	TrustGuard.reset_match()
 	# Dev override: `--mode=N` on the command line sets game_mode for headless smoke tests.
@@ -498,8 +504,8 @@ func _ready() -> void:
 		hud.add_child(tr)
 	_maybe_build_touch_controls()
 	_spawn_mode_entities()
-	_spawn_bonus_boxes_init()
-	_spawn_vehicles()
+	_bonuses._spawn_bonus_boxes_init()
+	_vehicles_sys._spawn_vehicles()
 	kill.connect(_on_kill_scored)
 	if not Net.is_dedicated and not Settings.training:
 		recorder = preload("res://scripts/replay_recorder.gd").new()
@@ -1033,8 +1039,8 @@ func _build_terrain() -> void:
 			float(ld.get("w", 20.0)), float(ld.get("h", 120.0)))
 	_spawn_scenery()
 	_spawn_scenery_hints()
-	_spawn_m2_mounts()
-	_spawn_map_weapon_pickups()
+	_vehicles_sys._spawn_m2_mounts()
+	_bonuses._spawn_map_weapon_pickups()
 
 
 # ── Placement geometry (no physics queries needed) ─────────────────────────
@@ -1407,164 +1413,24 @@ func _soft_blank_tex() -> Texture2D:
 	return _soft_blank
 
 
-func _spawn_m2_mounts() -> void:
-	var mounts: Array = _map.get("m2_mounts", [])
-	if mounts.is_empty():
-		return
-	var M2 = preload("res://scripts/m2.gd")
-	var idx: int = 0
-	for pos in mounts:
-		var m2 := Node2D.new()
-		m2.set_script(M2)
-		m2.position = pos
-		m2.name = "M2_%d" % idx
-		m2.set("m2_id", idx)
-		idx += 1
-		add_child(m2)
-
-
-func _spawn_map_weapon_pickups() -> void:
-	# #113: map editor can place resting weapon pickups. Only the host spawns
-	# them — clients receive them via the normal pickup state stream.
-	var wps: Array = _map.get("weapon_pickups", [])
-	if wps.is_empty():
-		return
-	if Net.is_networked() and not Net.is_host():
-		return
-	for wp_def in wps:
-		if typeof(wp_def) != TYPE_DICTIONARY:
-			continue
-		# #256: banned weapons don't enter the world at all.
-		if MatchConfig.weapon_banned(str(wp_def.get("weapon", "AK-74"))):
-			continue
-		var wp := WeaponPickup.new()
-		wp.weapon_name = str(wp_def.get("weapon", "AK-74"))
-		wp.team = -1
-		wp.thrower_name = ""
-		wp.damage_on_hit = 0.0
-		wp.global_position = wp_def.get("pos", Vector2.ZERO)
-		# #241: a map slot is part of the level, not a 20 s prop — never expire.
-		wp.persistent = true
-		wp.set_meta("map_spawn", true)
-		if Net.is_networked() and Net.is_host():
-			wp.pickup_id = next_pickup_id()
-		add_child(wp)
-
-
-func find_m2(id: int) -> Node2D:
-	# Called by m2.gd RPC receivers to look up their peer counterpart.
-	for m in get_tree().get_nodes_in_group("m2_gun"):
-		if is_instance_valid(m) and int(m.get("m2_id")) == id:
-			return m
-	return null
-
-
 @rpc("any_peer", "call_local", "reliable")
 func net_m2_mount(m2_id: int, peer_id: int) -> void:
-	# In MP the operator's peer id is what all peers use to identify who's driving
-	# the turret. Client-initiated mounts route through host as the authority so
-	# a race between two clients grabbing the same mount is arbitrated centrally.
-	# #106: reject spoofed mounts — a client can only mount themselves, not
-	# another peer. #235: relay WITHOUT local=true — re-entering this handler
-	# synchronously kept the client as the RPC sender, so the host guard fired
-	# again and recursed endlessly (same class of bug _vehicle_relay fixed).
-	if _m2_relay("net_m2_mount", [m2_id, peer_id], peer_id):
-		return
-	var m2 := find_m2(m2_id)
-	if m2 == null:
-		return
-	# Find operator by peer_id.
-	var op: Node2D = null
-	if _players_by_id.has(peer_id):
-		op = _players_by_id[peer_id]
-	if not is_instance_valid(op):
-		return
-	if m2.has_method("net_mount"):
-		m2.net_mount(op)
+	_vehicles_sys.net_m2_mount(m2_id, peer_id)
 
 
 @rpc("any_peer", "call_local", "reliable")
 func net_m2_dismount(m2_id: int) -> void:
-	# #106: only the current operator may dismount themselves — reject any
-	# client trying to knock another player off the turret. #235/#254: relay
-	# without local=true so the handler doesn't re-enter with the client as
-	# sender, and DON'T return — the host must fall through and apply the
-	# dismount too, or its replica keeps the operator pinned at the turret.
-	if Net.is_networked() and Net.is_host():
-		var d_sender := multiplayer.get_remote_sender_id() if multiplayer.has_multiplayer_peer() else 0
-		# (call_local reports the host's own id, not 0 — treat that as local.)
-		if d_sender != 0 and d_sender != multiplayer.get_unique_id():
-			var m2_local := find_m2(m2_id)
-			if m2_local != null:
-				var op = m2_local.get("operator")
-				if is_instance_valid(op) and int(op.get_multiplayer_authority()) != d_sender:
-					return
-			bcast("net_m2_dismount", [m2_id], false)
-	var m2 := find_m2(m2_id)
-	if m2 != null and m2.has_method("net_dismount"):
-		m2.net_dismount()
-
-
-# Host side of an M2 RPC a client sent us: reject it (return true) unless it
-# comes from the peer it concerns; otherwise pass it on to the other peers and
-# return false so the host applies it too by falling through. Mirrors
-# _vehicle_relay — never relay these with local=true (#235).
-func _m2_relay(method: StringName, args: Array, allowed_peer: int) -> bool:
-	if not Net.is_networked() or not Net.is_host():
-		return false
-	var sender := multiplayer.get_remote_sender_id()
-	if sender == 0 or sender == multiplayer.get_unique_id():
-		return false
-	if sender != allowed_peer:
-		return true
-	bcast(method, args, false)
-	return false
+	_vehicles_sys.net_m2_dismount(m2_id)
 
 
 @rpc("any_peer", "unreliable_ordered")
 func net_m2_state(m2_id: int, aim_dir: Vector2) -> void:
-	var m2 := find_m2(m2_id)
-	if m2 == null or not m2.has_method("net_apply_state"):
-		return
-	# Only the current operator may steer the barrel — reject spoofed aim from
-	# non-operators (aim-spoof / attribution exploit).
-	if multiplayer.multiplayer_peer != null:
-		var sender := multiplayer.get_remote_sender_id()
-		var op = m2.get("operator")
-		if not is_instance_valid(op):
-			return
-		var op_peer := int(op.get_multiplayer_authority())
-		if sender == 0:
-			if op_peer != multiplayer.get_unique_id():
-				return
-		elif sender != op_peer:
-			return
-	m2.net_apply_state(aim_dir)
+	_vehicles_sys.net_m2_state(m2_id, aim_dir)
 
 
 @rpc("any_peer", "call_local", "reliable")
 func net_m2_fire(m2_id: int, muzzle: Vector2, aim_dir: Vector2, shooter_team: int, shooter_name: String) -> void:
-	var m2 := find_m2(m2_id)
-	if m2 == null or not m2.has_method("net_apply_fire"):
-		return
-	# Only the current operator may spawn M2 bullets. Also lock shooter_team +
-	# shooter_name to the operator's own so kill attribution can't be forged.
-	var op_team := shooter_team
-	var op_name := shooter_name
-	if multiplayer.multiplayer_peer != null:
-		var sender := multiplayer.get_remote_sender_id()
-		var op = m2.get("operator")
-		if not is_instance_valid(op):
-			return
-		var op_peer := int(op.get_multiplayer_authority())
-		if sender == 0:
-			if op_peer != multiplayer.get_unique_id():
-				return
-		elif sender != op_peer:
-			return
-		op_team = int(op.get("team"))
-		op_name = str(op.get("display_name"))
-	m2.net_apply_fire(muzzle, aim_dir, op_team, op_name)
+	_vehicles_sys.net_m2_fire(m2_id, muzzle, aim_dir, shooter_team, shooter_name)
 
 
 # ── Singleplayer spawn path ───────────────────────────
@@ -2941,7 +2807,7 @@ func net_spawn_ack() -> void:
 		var wp_active = wp.get("active")
 		if wp_active != null and not bool(wp_active):
 			continue
-		arr.append(_pickup_entry(wp))
+		arr.append(_bonuses._pickup_entry(wp))
 	# ...and seed the per-peer signature (same builder = same bytes as the
 	# next 10 Hz tick, so it isn't resent, #247 review nit).
 	_pickup_peer_sig[sender] = str(arr)
@@ -3386,7 +3252,7 @@ func _process(delta: float) -> void:
 			player.health = minf(100.0, float(player.health) + 40.0 * delta)
 		return
 	# Bonus box respawn timer (#78) — host / SP owns spawn cadence.
-	_tick_bonus_boxes(delta)
+	_bonuses._tick_bonus_boxes(delta)
 	# Objectives freeze on the winner screen — re-scoring there used to re-call
 	# _end_round every tick and reset the countdown forever (DOM/BR/HTF).
 	if not round_active:
@@ -3431,7 +3297,7 @@ func _process(delta: float) -> void:
 		_pickup_sync_cd -= delta
 		if _pickup_sync_cd <= 0.0:
 			_pickup_sync_cd = 1.0 / PICKUP_SYNC_HZ
-			_broadcast_pickup_state()
+			_bonuses._broadcast_pickup_state()
 		# DOM cap progress, PM pickup availability, BR zone size — client _process
 		# early-returns before the mode ticks, so without this broadcast clients
 		# see stale objectives (neutral points, ghost diamonds, static BR ring).
@@ -4815,196 +4681,23 @@ func net_vote_end(kind: String, target_label: String, passed: bool, yes_ct: int,
 # is routed via each player's net_bonus_apply RPC (call_local) so every peer
 # applies the same effect to the target replica.
 
-func _spawn_bonus_boxes_init() -> void:
-	# Client: waits for host to broadcast net_bonus_spawn. No local slots needed.
-	if Net.is_networked() and not Net.is_host():
-		return
-	# #113: map editor can supply an explicit "bonus_spawns" list; fall back to
-	# bot spawns when not specified so procedural + legacy maps still spawn bonus
-	# boxes at bot positions.
-	var explicit: Array = _map.get("bonus_spawns", [])
-	var spots: Array = explicit.duplicate() if not explicit.is_empty() \
-		else (_map.get("bot_spawns", []) as Array).duplicate()
-	spots.shuffle()
-	var count: int = mini(BONUS_MAX_SLOTS, spots.size())
-	for i in count:
-		# Lift each slot a bit above the ground so the crate reads floating and
-		# isn't clipped by the terrain body.
-		_bonus_slots.append((spots[i] as Vector2) + Vector2(0, -22.0))
-		_bonus_slot_cd.append(0.0)
-		_bonus_slot_active.append(0)
-		_bonus_slot_kind.append("")
-	# Kits sit on the ground where the map maker put them.
-	for pair in [["medkits", "medkit"], ["grenade_kits", "grenades"]]:
-		var pts: Array = (_map.get(pair[0], []) as Array).duplicate()
-		pts.shuffle()
-		for i in mini(KIT_MAX_EACH, pts.size()):
-			var v = pts[i]
-			var kp: Vector2 = v if v is Vector2 else Vector2(float(v[0]), float(v[1]))
-			_bonus_slots.append(kp + Vector2(0, -14.0))
-			_bonus_slot_cd.append(0.0)
-			_bonus_slot_active.append(0)
-			_bonus_slot_kind.append(pair[1])
-	for i in _bonus_slots.size():
-		_spawn_bonus_at_slot(i)
-
-
-func _spawn_bonus_at_slot(slot_idx: int) -> void:
-	if slot_idx < 0 or slot_idx >= _bonus_slots.size():
-		return
-	if int(_bonus_slot_active[slot_idx]) != 0:
-		return  # slot already occupied
-	var pos: Vector2 = _bonus_slots[slot_idx]
-	var kind: String = str(_bonus_slot_kind[slot_idx]) if slot_idx < _bonus_slot_kind.size() else ""
-	if kind == "":
-		kind = BonusPickup.KINDS[randi() % BonusPickup.KINDS.size()]
-	var bid: int = _next_bonus_id
-	_next_bonus_id += 1
-	_bonus_slot_active[slot_idx] = bid
-	_make_bonus_box_local(bid, pos, kind, slot_idx)
-	# Mirror to every client whose main.tscn is loaded (see #84 for why we key
-	# off _connected_peers rather than the acked-only _ready_peers).
-	if Net.is_networked() and Net.is_host():
-		for pid in _connected_peers.keys():
-			rpc_id(int(pid), "net_bonus_spawn", bid, pos, kind)
-
-
-func _make_bonus_box_local(bid: int, pos: Vector2, kind: String, slot_idx: int) -> void:
-	# Idempotent: if a box with this id already exists (e.g., late client spawn
-	# arrived after we joined), free it before mounting the replacement.
-	if _bonus_boxes.has(bid):
-		var old = _bonus_boxes[bid]
-		if is_instance_valid(old):
-			old.queue_free()
-	var box: Area2D = BonusPickup.new()
-	box.bonus_id = bid
-	box.bonus_kind = kind
-	box.position = pos
-	box.name = "Bonus_%d" % bid
-	box.set_meta("slot", slot_idx)
-	# Host: bind the collision-triggered signal to our collect handler. Client
-	# replicas don't need this — the box is inert until the host says so.
-	if not Net.is_networked() or Net.is_host():
-		box.touched.connect(_on_bonus_touched.bind(bid, slot_idx))
-	_bonus_boxes[bid] = box
-	add_child(box)
-
 
 func _on_bonus_touched(body: Node, bid: int, slot_idx: int) -> void:
-	# Host-only collection. In SP the local player is the sole eligible toucher;
-	# in MP we resolve peer_id via _players_by_id. Bots are ignored — the bonus
-	# system is a player perk.
-	if Net.is_networked() and not Net.is_host():
-		return
-	var box: Node = _bonus_boxes.get(bid, null)
-	if not is_instance_valid(box):
-		return
-	var kind: String = str(box.get("bonus_kind"))
-	if kind in BonusPickup.KIT_KINDS:
-		_collect_kit(body, bid, slot_idx, kind)
-		return
-	var peer_id: int = 0
-	if not Net.is_networked():
-		if body != player:
-			return  # bots + non-player bodies don't collect
-		peer_id = 1
-	else:
-		for pid in _players_by_id.keys():
-			if _players_by_id[pid] == body:
-				peer_id = int(pid)
-				break
-		if peer_id == 0:
-			return  # not a player peer (bot) — ignore
-	# Apply the effect via the target player's call_local RPC so every peer's
-	# replica of that soldier ticks the same effect state.
-	if _players_by_id.has(peer_id):
-		var p = _players_by_id[peer_id]
-		if is_instance_valid(p) and p.has_method("apply_bonus"):
-			p.apply_bonus(kind, BONUS_EFFECT_DURATION)
-	elif not Net.is_networked() and is_instance_valid(player):
-		player.apply_bonus(kind, BONUS_EFFECT_DURATION)
-	# Despawn on every peer.
-	if Net.is_networked() and Net.is_host():
-		bcast("net_bonus_despawn", [bid], false)
-	_despawn_bonus_local(bid)
-	# Free the slot and start the respawn countdown so a new random-kind box
-	# will land there in BONUS_RESPAWN seconds.
-	if slot_idx >= 0 and slot_idx < _bonus_slot_cd.size():
-		_bonus_slot_active[slot_idx] = 0
-		_bonus_slot_cd[slot_idx] = BONUS_RESPAWN
+	_bonuses._on_bonus_touched(body, bid, slot_idx)
 
 
-# Medikit heals to full, grenade kit refills to 3 — for players and bots, and
-# only when it would do something (a full-health soldier leaves the medikit).
 func _collect_kit(body: Node, bid: int, slot_idx: int, kind: String) -> void:
-	if not is_instance_valid(body) or body.get("dead") == true or body.get("health") == null:
-		return
-	if kind == "medkit" and float(body.get("health")) >= 100.0:
-		return
-	if kind == "grenades" and int(body.get("grenades")) >= 3:
-		return
-	if body.has_method("apply_kit"):
-		body.apply_kit(kind)   # player: routed to its owner
-	elif kind == "medkit":
-		body.set("health", 100.0)
-	else:
-		body.set("grenades", 3)
-	kits_taken += 1
-	if Net.is_networked() and Net.is_host():
-		bcast("net_bonus_despawn", [bid], false)
-	_despawn_bonus_local(bid)
-	if slot_idx >= 0 and slot_idx < _bonus_slot_cd.size():
-		_bonus_slot_active[slot_idx] = 0
-		_bonus_slot_cd[slot_idx] = KIT_RESPAWN
-
-
-func _despawn_bonus_local(bid: int) -> void:
-	var box: Node = _bonus_boxes.get(bid, null)
-	if is_instance_valid(box):
-		# Every peer runs this on collection, so everyone hears the pickup.
-		Sfx.pickup_kit(str(box.get("bonus_kind")), (box as Node2D).global_position)
-		box.queue_free()
-	_bonus_boxes.erase(bid)
-
-
-func _tick_bonus_boxes(delta: float) -> void:
-	if _bonus_slots.is_empty():
-		return
-	# body_entered fires once; a soldier already standing on a kit when he
-	# gets hurt (or throws his last grenade) should still pick it up.
-	_kit_poll_t -= delta
-	if _kit_poll_t <= 0.0:
-		_kit_poll_t = 0.3
-		for bid in _bonus_boxes.keys():
-			var box = _bonus_boxes[bid]
-			if not is_instance_valid(box) or not (str(box.get("bonus_kind")) in BonusPickup.KIT_KINDS):
-				continue
-			for b in (box as Area2D).get_overlapping_bodies():
-				if b is CharacterBody2D:
-					_collect_kit(b, int(bid), int(box.get_meta("slot", -1)), str(box.get("bonus_kind")))
-					break
-	for i in _bonus_slot_cd.size():
-		if int(_bonus_slot_active[i]) != 0:
-			continue
-		var cd: float = float(_bonus_slot_cd[i]) - delta
-		_bonus_slot_cd[i] = cd
-		if cd <= 0.0:
-			_spawn_bonus_at_slot(i)
+	_bonuses._collect_kit(body, bid, slot_idx, kind)
 
 
 @rpc("authority", "reliable")
 func net_bonus_spawn(bid: int, pos: Vector2, kind: String) -> void:
-	# Host already has this locally; this RPC targets clients only.
-	if Net.is_host():
-		return
-	_make_bonus_box_local(bid, pos, kind, -1)
+	_bonuses.net_bonus_spawn(bid, pos, kind)
 
 
 @rpc("authority", "reliable")
 func net_bonus_despawn(bid: int) -> void:
-	if Net.is_host():
-		return
-	_despawn_bonus_local(bid)
+	_bonuses.net_bonus_despawn(bid)
 
 
 func _broadcast_flag_state() -> void:
@@ -5030,115 +4723,12 @@ func _broadcast_flag_state() -> void:
 
 
 func next_pickup_id() -> int:
-	var id: int = _next_pickup_id
-	_next_pickup_id += 1
-	return id
-
-
-## One pickup's stream entry — shared by the 10 Hz broadcast and the late-joiner
-## push so both produce byte-identical arrays (the per-peer change signature
-## seeded at join must match what the next tick would send, #247/#254).
-func _pickup_entry(wp) -> Dictionary:
-	return {
-		"id": int(wp.get("pickup_id")),
-		"name": str(wp.get("weapon_name")),
-		"team": int(wp.get("team")),
-		"thrower": str(wp.get("thrower_name")),
-		# #254: client copies must know a slot is persistent, or their local
-		# 20 s _life expires a map slot the host keeps forever.
-		"p": bool(wp.get("persistent")),
-		# #247: quantize motion to stop resting bodies from flickering the
-		# change signature (and the wire format) with 1e-5 velocities.
-		"pos": (wp.global_position as Vector2).snapped(Vector2(0.25, 0.25)),
-		"vel": (wp.linear_velocity as Vector2).snapped(Vector2.ONE),
-		"ang": roundf(float(wp.angular_velocity) * 8.0) / 8.0,
-		"rot": roundf(float(wp.rotation) * 1000.0) / 1000.0,
-		# #94: carry damage explicitly so future damage-on-hit weapons
-		# (axe/bayonet/etc.) don't silently lose their damage on clients
-		# because we re-derived by name.
-		"dmg": float(wp.get("damage_on_hit")),
-	}
-
-
-func _broadcast_pickup_state() -> void:
-	# Collect every host-authoritative pickup body + its live physics state.
-	var arr: Array = []
-	for wp in get_tree().get_nodes_in_group("weapon_pickup"):
-		if not is_instance_valid(wp):
-			continue
-		if int(wp.get("pickup_id")) <= 0:
-			continue
-		# #241: a regenerating map slot is absent from the stream — clients
-		# despawn it, and it comes back the same way when the slot rearms.
-		var wp_active = wp.get("active")
-		if wp_active != null and not bool(wp_active):
-			continue
-		arr.append(_pickup_entry(wp))
-	# #247: this full snapshot used to fire reliably at 10 Hz regardless of
-	# change — a resting battlefield head-of-line-blocked the unreliable
-	# state streams for nothing. Send only when the world actually changed
-	# (or to a peer that hasn't seen the current state yet, e.g. a fresh
-	# joiner).
-	var sig := str(arr)
-	for pid in _ready_peers.keys():
-		if str(_pickup_peer_sig.get(int(pid), "")) == sig:
-			continue
-		_pickup_peer_sig[int(pid)] = sig
-		rpc_id(int(pid), "net_pickup_state", arr)
+	return _bonuses.next_pickup_id()
 
 
 @rpc("authority", "reliable")
 func net_pickup_state(arr: Array) -> void:
-	# Map existing frozen pickups by id, spawn any we haven't seen, and reconcile
-	# positions. Host-only pickups that vanish trigger client-side despawn.
-	var seen: Dictionary = {}
-	var by_id: Dictionary = {}
-	for wp in get_tree().get_nodes_in_group("weapon_pickup"):
-		if not is_instance_valid(wp):
-			continue
-		var pid: int = int(wp.get("pickup_id"))
-		if pid > 0:
-			by_id[pid] = wp
-	for entry in arr:
-		var id: int = int(entry.get("id", 0))
-		if id <= 0:
-			continue
-		seen[id] = true
-		var wp: Node = by_id.get(id) as Node
-		if wp == null:
-			# First time we're hearing about this pickup — spawn a client-frozen copy.
-			# #69: give it a stable name matching the id so future per-instance RPCs
-			# (should we ever add pickup-level state sync) resolve on both peers.
-			var new_wp := WeaponPickup.new()
-			new_wp.pickup_id = id
-			new_wp.name = "Pickup_%d" % id
-			new_wp.weapon_name = str(entry.get("name", "AK-74"))
-			new_wp.team = int(entry.get("team", 0))
-			new_wp.thrower_name = str(entry.get("thrower", ""))
-			# #254: map slots are persistent on the host — the client copy must
-			# not run its own 20 s _life (the signature-gated stream only
-			# re-sends on change, so nothing would resurrect it).
-			new_wp.persistent = bool(entry.get("p", false))
-			# #94: pull damage from the host's payload instead of reconstructing
-			# by weapon name. Fallback to the legacy Knife=55 rule when the host
-			# is running a pre-#94 build with no "dmg" field.
-			if entry.has("dmg"):
-				new_wp.damage_on_hit = float(entry.get("dmg", 0.0))
-			else:
-				new_wp.damage_on_hit = 55.0 if str(entry.get("name", "")) == "Knife" else 0.0
-			new_wp.global_position = entry.get("pos", Vector2.ZERO)
-			add_child(new_wp)
-			wp = new_wp
-		wp.global_position = entry.get("pos", wp.global_position)
-		wp.linear_velocity = entry.get("vel", Vector2.ZERO)
-		wp.angular_velocity = float(entry.get("ang", 0.0))
-		wp.rotation = float(entry.get("rot", 0.0))
-	# Despawn any client-side pickup whose id no longer appears in the host's list.
-	for pid in by_id.keys():
-		if not seen.has(pid):
-			var wp: Node = by_id[pid]
-			if is_instance_valid(wp):
-				wp.queue_free()
+	_bonuses.net_pickup_state(arr)
 
 
 @rpc("authority", "reliable")
@@ -5333,247 +4923,63 @@ func net_bot_state(arr: Array) -> void:
 # single-player applies it directly, the host broadcasts it (and runs it), a
 # client asks the host, which checks the sender and relays it.
 
-func _spawn_vehicles() -> void:
-	if Net.is_networked() and not Net.is_host():
-		return
-	if not Settings.vehicles or Settings.game_mode == Settings.MODE_GG:
-		return
-	var vid := 0
-	for pair in [["vehicle_spawns", "buggy"], ["tank_spawns", "tank"]]:
-		for v in _map.get(pair[0], []):
-			var p: Vector2 = v if v is Vector2 else Vector2(float(v[0]), float(v[1]))
-			_make_vehicle(vid, p + Vector2(0, -4), p + Vector2(0, -4), -1.0, true, pair[1])
-			vid += 1
-
-
-func _make_vehicle(vid: int, spawn: Vector2, pos: Vector2, hp_v: float, alive_v: bool, kind := "buggy") -> Node:
-	if _vehicles.has(vid) and is_instance_valid(_vehicles[vid]):
-		_vehicles[vid].queue_free()
-	var b = Tank.new() if kind == "tank" else Buggy.new()
-	b.name = "%s_%d" % ["Tank" if kind == "tank" else "Buggy", vid]
-	b.vehicle_id = vid
-	b.position = spawn
-	add_child(b)
-	b.spawn_pos = spawn
-	b.global_position = pos
-	if hp_v >= 0.0:
-		b.hp = hp_v
-	if alive_v and spawn.distance_to(pos) < 1.0:
-		b.unstick()
-		b.spawn_pos = b.global_position
-	if not alive_v:
-		b.apply_destroy(pos, "", -1, true)
-	_vehicles[vid] = b
-	return b
-
-
-func find_vehicle(vid: int) -> Node:
-	var v = _vehicles.get(vid, null)
-	return v if is_instance_valid(v) else null
-
 
 func vehicle_send(method: StringName, args: Array, _reliable: bool) -> void:
-	if not Net.is_networked() or not multiplayer.has_multiplayer_peer():
-		callv(method, args)
-		return
-	if Net.is_host():
-		bcast(method, args, true)
-	else:
-		callv("rpc_id", [1, method] + args)
-
-
-# Host side, for a message a client sent us: reject it (return true) unless it
-# comes from the peer allowed to send it; otherwise pass it on to the other
-# peers and return false so the host applies it too. (Relaying with local=true
-# re-entered this handler with the client still as the RPC sender — endless.)
-func _vehicle_relay(method: StringName, args: Array, allowed_peer: int) -> bool:
-	if not Net.is_networked() or not Net.is_host():
-		return false
-	var sender := multiplayer.get_remote_sender_id()
-	if sender == 0 or sender == multiplayer.get_unique_id():
-		return false
-	if sender != allowed_peer:
-		return true
-	bcast(method, args, false)
-	return false
-
-
-# Clients only accept vehicle authority messages from the host.
-func _from_host() -> bool:
-	if not Net.is_networked() or Net.is_host():
-		return true
-	return multiplayer.get_remote_sender_id() == 1
+	_vehicles_sys.vehicle_send(method, args, _reliable)
 
 
 func vehicle_request_seat(v: Node, s: Node, enter: bool) -> void:
-	if not Net.is_networked():
-		_decide_seat(v, s, enter)
-		return
-	if Net.is_host():
-		_decide_seat(v, s, enter)
-	else:
-		rpc_id(1, "net_vehicle_seat_req", int(v.get("vehicle_id")), enter)
+	_vehicles_sys.vehicle_request_seat(v, s, enter)
 
 
 @rpc("any_peer", "call_remote", "reliable")
 func net_vehicle_seat_req(vid: int, enter: bool) -> void:
-	if not Net.is_host():
-		return
-	var v := find_vehicle(vid)
-	var sender := multiplayer.get_remote_sender_id()
-	var s = _players_by_id.get(sender, null)
-	if v == null or not is_instance_valid(s):
-		return
-	_decide_seat(v, s, enter)
+	_vehicles_sys.net_vehicle_seat_req(vid, enter)
 
 
-func _decide_seat(v: Node, s: Node, enter: bool) -> void:
-	if enter:
-		if not v.can_enter(s):
-			return
-		var seat: int = v.free_seat()
-		if seat < 0:
-			return
-		vehicle_send("net_vehicle_seat", [int(v.get("vehicle_id")), seat, _peer_of(s), true], true)
-	else:
-		var seat2: int = v.seat_of(s)
-		if seat2 < 0:
-			return
-		vehicle_send("net_vehicle_seat", [int(v.get("vehicle_id")), seat2, _peer_of(s), false], true)
-
-
-# Host / single-player: a bot takes a free seat (the gunner's, in practice).
 func vehicle_bot_board(v: Node, bot: Node, want_seat := 1) -> void:
-	if Net.is_networked() and not Net.is_host():
-		return
-	if not v.can_enter(bot):
-		return
-	var seat: int = want_seat
-	var cur: Array = v.get("seats")
-	if seat < 0 or seat >= cur.size() or is_instance_valid(cur[seat]):
-		return
-	if Net.is_networked():
-		bcast("net_vehicle_seat_bot", [int(v.get("vehicle_id")), seat, int(bot.get("bot_id")), true], true)
-	else:
-		v.set_seat(seat, bot)   # bot_id is only unique online
+	_vehicles_sys.vehicle_bot_board(v, bot, want_seat)
 
 
 @rpc("any_peer", "call_remote", "reliable")
 func net_vehicle_seat_bot(vid: int, seat: int, bot_id: int, enter: bool) -> void:
-	if not _from_host():
-		return
-	var v := find_vehicle(vid)
-	var b = null
-	for s in get_tree().get_nodes_in_group("soldier"):
-		if is_instance_valid(s) and s.get("bot_id") != null and int(s.get("bot_id")) == bot_id:
-			b = s
-	if v == null or b == null:
-		return
-	if enter:
-		v.set_seat(seat, b)
-	else:
-		v.clear_seat_of(b)
-
-
-func _peer_of(s: Node) -> int:
-	return int(s.get_multiplayer_authority()) if Net.is_networked() else 1
-
-
-func _soldier_for_peer(peer: int) -> Node:
-	if not Net.is_networked():
-		return player
-	var s = _players_by_id.get(peer, null)
-	return s if is_instance_valid(s) else null
+	_vehicles_sys.net_vehicle_seat_bot(vid, seat, bot_id, enter)
 
 
 @rpc("any_peer", "call_remote", "reliable")
 func net_vehicle_seat(vid: int, seat: int, peer: int, enter: bool) -> void:
-	if not _from_host():
-		return
-	var v := find_vehicle(vid)
-	var s := _soldier_for_peer(peer)
-	if v == null or s == null:
-		return
-	if enter:
-		v.set_seat(seat, s)
-	else:
-		v.clear_seat_of(s)
+	_vehicles_sys.net_vehicle_seat(vid, seat, peer, enter)
 
 
 @rpc("any_peer", "call_remote", "reliable")
 func net_vehicle_spawn(vid: int, spawn: Vector2, pos: Vector2, hp_v: float, alive_v: bool, kind: String = "buggy") -> void:
-	if not _from_host():
-		return
-	_make_vehicle(vid, spawn, pos, hp_v, alive_v, kind)
+	_vehicles_sys.net_vehicle_spawn(vid, spawn, pos, hp_v, alive_v, kind)
 
 
 @rpc("any_peer", "call_remote", "unreliable_ordered")
 func net_vehicle_state(vid: int, pos: Vector2, vel: Vector2, tilt: float, f: float, aim: Vector2) -> void:
-	var v := find_vehicle(vid)
-	if v == null:
-		return
-	if _vehicle_relay("net_vehicle_state", [vid, pos, vel, tilt, f, aim], int(v.sim_peer())):
-		return
-	if Net.is_networked() and not Net.is_host() and multiplayer.get_remote_sender_id() != 1:
-		return
-	v.apply_state(pos, vel, tilt, f, aim)
+	_vehicles_sys.net_vehicle_state(vid, pos, vel, tilt, f, aim)
 
 
 @rpc("any_peer", "call_remote", "reliable")
 func net_vehicle_fire(vid: int, muzzle: Vector2, dir: Vector2) -> void:
-	var v := find_vehicle(vid)
-	if v == null:
-		return
-	var shooter: Node = v.gunner() if v.gunner() != null else v.driver()
-	if shooter == null:
-		return
-	if _vehicle_relay("net_vehicle_fire", [vid, muzzle, dir], _peer_of(shooter)):
-		return
-	if Net.is_networked() and not Net.is_host() and multiplayer.get_remote_sender_id() != 1:
-		return
-	# The muzzle must be on the buggy (no firing from across the map).
-	if muzzle.distance_to((v as Node2D).global_position) > 90.0:
-		return
-	v.apply_fire(muzzle, dir.normalized())
+	_vehicles_sys.net_vehicle_fire(vid, muzzle, dir)
 
 
 @rpc("any_peer", "call_remote", "reliable")
 func net_vehicle_hp(vid: int, hp_v: float) -> void:
-	if not _from_host():
-		return
-	var v := find_vehicle(vid)
-	if v != null:
-		v.apply_hp(hp_v)
+	_vehicles_sys.net_vehicle_hp(vid, hp_v)
 
 
 @rpc("any_peer", "call_remote", "reliable")
 func net_vehicle_destroy(vid: int, at: Vector2, killer: String, killer_team: int) -> void:
-	if not _from_host():
-		return
-	var v := find_vehicle(vid)
-	if v != null:
-		v.apply_destroy(at, killer, killer_team)
+	_vehicles_sys.net_vehicle_destroy(vid, at, killer, killer_team)
 
 
 @rpc("any_peer", "call_remote", "reliable")
 func net_vehicle_respawn(vid: int) -> void:
-	if not _from_host():
-		return
-	var v := find_vehicle(vid)
-	if v != null:
-		v.apply_respawn()
+	_vehicles_sys.net_vehicle_respawn(vid)
 
 
-# Run-over damage, decided by the host; the victim's owner applies it.
 func vehicle_hit_soldier(s: Node, dmg: float, killer: String, killer_team: int, vel: Vector2, weapon := "Buggy") -> void:
-	if not Net.is_networked() or s.is_multiplayer_authority():
-		s.set("ceasefire_t", 0.0)
-		s.take_damage(dmg, killer, weapon, killer_team)
-		if s.get("dead") != true:
-			s.set("velocity", Vector2(vel.x * 0.9, -260.0))
-		return
-	if s.has_method("net_vehicle_hurt"):
-		TrustGuard.note_activity(killer, killer_team)
-		if s.has_method("observe_damage"):
-			s.observe_damage(dmg, killer, weapon, killer_team)
-		s.rpc_id(int(s.get_multiplayer_authority()), "net_vehicle_hurt", dmg, killer, killer_team, vel, weapon)
+	_vehicles_sys.vehicle_hit_soldier(s, dmg, killer, killer_team, vel, weapon)
