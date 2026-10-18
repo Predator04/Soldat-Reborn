@@ -13,7 +13,7 @@ Re-audited 2026-10-17 against v1.34 + the unreleased trust checks (see CHANGELOG
 - ✅ Stats, scoreboard, kill feed, spectator, MVP, replays, kill cam, achievements, leaderboard, friends.
 - ✅ In-game Credits & licenses screen — now including the music.
 - ✅ Localization: English, German, Spanish, French, Brazilian Portuguese (`assets/i18n/ui.csv`). Check new strings get translated before each release.
-- ⚠️ Accessibility: colour-blind team option exists (red → orange). Still missing: UI text size / scale, subtitles-style captions for radio calls.
+- ⚠️ Accessibility: colour-blind team option exists (red → orange). ✅ UI text size / scale (Settings → Video → UI scale, 85–130 %, menus + pause + HUD, #272) and Reduce motion. Still missing: subtitles-style captions for radio calls.
 
 ## Multiplayer
 - ✅ Listen host, dedicated server, bots on both, 10 modes; two-client soak tests with zero errors.
