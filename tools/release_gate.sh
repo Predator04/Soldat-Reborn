@@ -86,6 +86,12 @@ if [ "$(grep -c 'include_filter="\*.poa, \*.json' export_presets.cfg)" -ge 2 ]; 
 
 fi
 
+# The tracked class list (.godot/global_script_class_cache.cfg) must match what
+# the import just regenerated, or a non-importing checkout breaks (#275).
+if has A; then
+  if git diff --quiet -- .godot/global_script_class_cache.cfg 2>/dev/null; then pass "A class cache committed and current"; else fail "A .godot/global_script_class_cache.cfg changed on import — commit it (a class_name was added/removed)"; fi
+fi
+
 # ── B boot ──────────────────────────────────────────────────────────────────
 has B && for sc in main menu map_editor; do
   timeout 90 "$G" --headless --quit-after 700 "res://scenes/$sc.tscn" > "$OUT/boot_$sc.log" 2>&1

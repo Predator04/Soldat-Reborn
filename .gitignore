@@ -1,4 +1,8 @@
-.godot/
+.godot/*
+# Tracked on purpose: the global class list (class_name scripts). A checkout
+# that runs the game headless without importing first (e.g. an external self-
+# check) otherwise parses every user of a new class_name as unknown (#274/#275).
+!.godot/global_script_class_cache.cfg
 build/
 *.exe
 GodotEngine/
