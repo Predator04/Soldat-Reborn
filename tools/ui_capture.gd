@@ -141,6 +141,7 @@ func _process(_d: float) -> bool:
 			_m.get_node("PauseMenu").close()
 			_m.hud.scoreboard.peek(0.0)
 			if is_instance_valid(_m.player):
+				_m.player.ceasefire_t = 0.0   # spawn protection would soak the hit
 				_m.player.take_damage(999.0, "Red_Bot_2", "AK-74", 2)
 			_st = 8
 		8:
