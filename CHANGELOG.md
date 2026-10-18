@@ -2,6 +2,20 @@
 
 All notable changes to Soldat Reborn.
 
+## [Unreleased]
+
+### Security — the host now checks what clients say about themselves
+- Each player's own game decides the damage it takes, where it is, and who killed it — that's what keeps the game instant on every connection, but a modified client could ignore hits, teleport, or hand kills to a friend. The host now keeps its own account and steps in when a client's story can't be true (new `trust_guard.gd`):
+  - **Ignored damage:** the host's own hit detection saw a player take two lives' worth of damage while their game reported almost none → host-side death.
+  - **Impossible health:** HP above 100, or rising without a medikit / round reset / Rambo bow, is clamped; repeat offenders die.
+  - **Impossible movement:** faster than anything in the game can push a soldier (teleports, speed hacks) or outside the world → host-side death on the second offence.
+  - **Fake kill credit:** a death is only credited to someone who actually attacked in the last 10 s (and is an enemy unless friendly fire is on); otherwise nobody gets the kill.
+  - Three forced deaths in five minutes is a kick, announced in chat. Bots and the host's own player are never checked; single player is untouched.
+- New release-gate cases play a modified client (godmode, teleport, fake credit) against a dedicated server and require the host to catch each one; every existing online case now also fails if an honest client ever trips a check.
+
+### Credits
+- The three music tracks are now credited in-game and in CREDITS.md: they're renders of the tracker modules in the Soldat base content ("Gore" and "Necromancide" by Marshall Anderson, "Bloody Soil" author unrecorded), CC BY 4.0.
+
 ## [1.34.0] — 2026-10-15
 
 ### Added — movement tech from the original's tutorial

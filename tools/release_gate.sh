@@ -27,7 +27,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 G="${GODOT_BIN:-$HOME/godot/Godot_v4.7.2-stable_linux.x86_64}"
 QUICK=0; OUT="build/gate"; ONLY="A B N C D R F E"; MODESEL="0 1 2 3 4 5 6 7 8 9"
-NETSEL="ctf dm two fill ranked friends respawn killcam drive rejoin relay host listen lan soak m3 m7 m9 m2"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
+NETSEL="ctf dm two trust fill ranked friends respawn killcam drive rejoin relay host listen lan soak m3 m7 m9 m2"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --quick) QUICK=1;; --out) OUT="$2"; shift;; --only) ONLY="$2"; shift;;
@@ -112,11 +112,27 @@ netcase() { # label map mode [extra client flags]
   local ce se; ce=$(errs "$OUT/net_${L}_client.log"); se=$(errs "$OUT/net_${L}_server.log")
   local shots; shots=$(echo "$line" | sed -n 's/.*bot_shots_seen=\([0-9]*\).*/\1/p')
   local gm; gm=$(echo "$line" | sed -n 's/.* gm=\([0-9]*\).*/\1/p')
-  if [ -n "$line" ] && [ "${shots:-0}" -gt 0 ] && [ "$ce" = "0" ] && [ "$se" = "0" ] && [ "${gm:-$3}" = "$3" ]; then
+  # An honest client must never trip the host's trust checks (trust_guard.gd).
+  local tr; tr=$(grep -c "^TRUST " "$OUT/net_${L}_server.log" 2>/dev/null || true)
+  if [ -n "$line" ] && [ "${shots:-0}" -gt 0 ] && [ "$ce" = "0" ] && [ "$se" = "0" ] && [ "${gm:-$3}" = "$3" ] && [ "${tr:-0}" = "0" ]; then
     pass "C net $L: $line"
   else
-    fail "C net $L: '${line:-no SMOKE line}' client_errs=$ce server_errs=$se"
+    fail "C net $L: '${line:-no SMOKE line}' client_errs=$ce server_errs=$se trust_lines=${tr:-0}"
   fi
+}
+# A modified client against a dedicated host: the host's trust checks must
+# catch it (trust_guard.gd). trustcase KIND MAP MODE SECS EXPECT_REGEX
+trustcase() {
+  local K="$1" port=$((7700 + RANDOM % 200))
+  timeout $(( $4 + 50 )) "$G" --headless -- --dedicated --port $port --map "$2" --mode "$3" > "$OUT/net_trust_${K}_server.log" 2>&1 &
+  local spid=$!
+  for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_trust_${K}_server.log" 2>/dev/null && break; sleep 0.5; done
+  sleep 3
+  timeout $(( $4 + 40 )) "$G" --headless -- --smoke-botfire --port $port --smoke-auto --smoke-secs=$4 --smoke-cheat=$K > "$OUT/net_trust_${K}_client.log" 2>&1
+  kill $spid 2>/dev/null; wait $spid 2>/dev/null
+  local e; e=$(( $(errs "$OUT/net_trust_${K}_server.log") + $(errs "$OUT/net_trust_${K}_client.log") ))
+  local hit; hit=$(grep -m1 -E "$5" "$OUT/net_trust_${K}_server.log")
+  if [ -n "$hit" ] && [ "$e" = "0" ]; then pass "C net trust $K: $hit"; else fail "C net trust $K: expected /$5/ errors=$e — $(grep -m3 '^TRUST' "$OUT/net_trust_${K}_server.log" | tr '\n' ' ')"; fi
 }
 if has C; then
 case " $NETSEL " in *" ctf "*) netcase ctf_arena 18 2;; esac
@@ -317,6 +333,11 @@ case " $NETSEL " in *" respawn "*)
   else
     fail "C net client death + respawn: $(grep -hE 'SMOKE-(DIE|RESPAWNED|JOIN-LOCAL|JOIN-PLAYERS)' "$OUT/net_respawn_client.log" | tr '\n' ' ') errors=$e"
   fi
+;; esac
+case " $NETSEL " in *" trust "*)
+  trustcase teleport 18 2 60 "^TRUST kick: "
+  trustcase credit 18 2 20 "^TRUST kill credit stripped: Nobody_Fake"
+  trustcase godmode 18 2 75 "^TRUST forced death: .*ignored damage"
 ;; esac
 case " $NETSEL " in *" killcam "*)
   # A bot "kills" the client: its kill cam rewind plays (~4.3 s) and the host

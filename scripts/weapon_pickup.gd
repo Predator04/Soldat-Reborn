@@ -90,6 +90,8 @@ func _on_body_entered(body: Node) -> void:
 		elif body.has_method("net_remote_damage"):
 			# Remote-owned victim: host detected the contact, but only the victim's
 			# authority peer may mutate its health. Route the damage over RPC (#83).
+			if body.has_method("observe_damage"):
+				body.observe_damage(damage_on_hit, thrower_name, weapon_name, team)
 			body.rpc_id(body.get_multiplayer_authority(), "net_remote_damage", damage_on_hit, thrower_name, weapon_name, team)
 		queue_free()
 		return

@@ -425,6 +425,7 @@ var _vehicles: Dictionary = {}   # vehicle_id -> buggy node (every peer)
 
 
 func _ready() -> void:
+	TrustGuard.reset_match()
 	# Dev override: `--mode=N` on the command line sets game_mode for headless smoke tests.
 	# `--map=N` forces a specific MAPS index (useful for verifying each classic).
 	for arg in OS.get_cmdline_args():
@@ -4282,6 +4283,9 @@ func _restore_living_soldiers_local() -> void:
 		if not is_instance_valid(s) or bool(s.get("dead")):
 			continue
 		if multiplayer.multiplayer_peer != null and not s.is_multiplayer_authority():
+			# A client's own body jumps to its spawn at full health next: let it.
+			if s.has_method("trust_amnesty"):
+				s.trust_amnesty()
 			continue
 		if not s.has_method("restore_for_round"):
 			continue
@@ -4507,6 +4511,18 @@ func host_restart_to(map_idx: int, mode_idx: int) -> void:
 		net_match_restart(map_idx, mode_idx)
 
 ## /say <text> — host announcement in everyone's chat feed.
+## Remove a client whose reported state kept failing the host's checks
+## (trust_guard.gd). Announced in chat so the room knows what happened.
+func trust_kick(peer_id: int, who: String) -> void:
+	if not (Net.is_networked() and Net.is_host()) or multiplayer.multiplayer_peer == null:
+		return
+	if not multiplayer.get_peers().has(peer_id):
+		return
+	print("TRUST kick: %s (peer %d)" % [who, peer_id])
+	host_say("%s was removed: their game kept reporting impossible state." % who)
+	multiplayer.multiplayer_peer.disconnect_peer(peer_id)
+
+
 func host_say(text: String) -> void:
 	if text == "":
 		return
@@ -5557,4 +5573,7 @@ func vehicle_hit_soldier(s: Node, dmg: float, killer: String, killer_team: int, 
 			s.set("velocity", Vector2(vel.x * 0.9, -260.0))
 		return
 	if s.has_method("net_vehicle_hurt"):
+		TrustGuard.note_activity(killer, killer_team)
+		if s.has_method("observe_damage"):
+			s.observe_damage(dmg, killer, weapon, killer_team)
 		s.rpc_id(int(s.get_multiplayer_authority()), "net_vehicle_hurt", dmg, killer, killer_team, vel, weapon)

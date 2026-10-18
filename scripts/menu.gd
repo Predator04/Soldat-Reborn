@@ -557,6 +557,8 @@ Game code: Soldat Reborn contributors (MIT license).
 [b]Soldat[/b] was created by Michał "MM" Marcinkowski (Transhuman Design) with the Soldat community.
 Sounds, weapon / soldier / interface graphics, animations and the classic maps are from the Soldat base content — [color=#9fd0ff]github.com/Soldat/base[/color] — licensed CC BY 4.0 ([color=#9fd0ff]creativecommons.org/licenses/by/4.0[/color]). Repackaged for Godot; see CREDITS.md in the source for details.
 
+Music, from the same Soldat base content (CC BY 4.0), rendered from the original tracker modules: "Gore" and "Necromancide" by Marshall Anderson, made for Soldat; "Bloody Soil" (author not recorded upstream).
+
 Built with the [b]Godot Engine[/b] (MIT license, godotengine.org).
 
 This is an unofficial fan rebuild and is not endorsed by the original Soldat authors."""

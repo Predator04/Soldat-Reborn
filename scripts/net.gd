@@ -579,7 +579,7 @@ func _smoke_botfire() -> void:
 				cur += 1
 		if cur > max_bullets_ref[0]:
 			max_bullets_ref[0] = cur)
-	get_tree().create_timer(20.0).timeout.connect(func() -> void:
+	get_tree().create_timer(_smoke_secs(20.0)).timeout.connect(func() -> void:
 		var main := get_tree().current_scene
 		var pbi = main.get("_players_by_id") if main != null else null
 		var pcount: int = pbi.size() if pbi != null else 0
@@ -943,6 +943,8 @@ var smoke_auto_shots: int = 0
 
 
 func _smoke_auto_start() -> void:
+	if _smoke_arg("--smoke-cheat") != "":
+		get_tree().create_timer(3.0).timeout.connect(_smoke_cheat.bind(_smoke_arg("--smoke-cheat")))
 	if not "--smoke-auto" in OS.get_cmdline_user_args():
 		return
 	var t := Timer.new()
@@ -1554,3 +1556,33 @@ func allow_through_firewall() -> bool:
 	var cmd := "/c netsh advfirewall firewall delete rule name=\"Soldat Reborn\" & netsh advfirewall firewall add rule name=\"Soldat Reborn\" dir=in action=allow program=\"%s\" enable=yes profile=any" % exe
 	var ps := "Start-Process cmd -Verb RunAs -WindowStyle Hidden -ArgumentList '%s'" % cmd.replace("'", "''")
 	return OS.create_process("powershell.exe", ["-NoProfile", "-WindowStyle", "Hidden", "-Command", ps]) > 0
+
+
+# (--smoke-cheat=godmode|teleport|credit) Play a modified client so the gate can
+# check the host's trust checks (trust_guard.gd): godmode ignores every hit,
+# teleport jumps 2500 px each second, credit dies naming a player who never
+# attacked. The verdicts are in the SERVER log (TRUST ... lines).
+func _smoke_cheat(kind: String) -> void:
+	print("SMOKE-CHEAT start kind=%s" % kind)
+	var t := Timer.new()
+	t.wait_time = 1.0
+	t.autostart = true
+	add_child(t)
+	var state := {"credited": false}   # lambdas capture locals by value
+	t.timeout.connect(func() -> void:
+		var mn = get_tree().current_scene
+		var p = mn.get("player") if mn != null else null
+		if p == null or not is_instance_valid(p) or bool(p.get("dead")):
+			return
+		match kind:
+			"godmode":
+				p.test_cheat = "godmode"
+			"teleport":
+				var w: float = float(mn.get("MAP_W")) if mn.get("MAP_W") != null else 4000.0
+				p.position.x = fmod(p.position.x + 2500.0, maxf(w, 1.0))
+			"credit":
+				if not bool(state["credited"]):
+					state["credited"] = true
+					p.ceasefire_t = 0.0
+					p.take_damage(999.0, "Nobody_Fake", "AK-74", 1 - int(p.team))
+	)

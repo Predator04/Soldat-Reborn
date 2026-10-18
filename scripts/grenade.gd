@@ -32,6 +32,8 @@ var _exploded := false
 
 func _ready() -> void:
 	add_to_group("grenade")   # match replays
+	# Kill credit is checked against who was attacking (trust_guard.gd).
+	TrustGuard.note_activity(killer_name, team)
 	_snapshot_net_peers()
 	# Grenades bounce off "only bullets" polys too (terrain layer 2).
 	collision_mask = 1 | 2 | 8  # terrain, bullets-only terrain, soldiers
@@ -151,6 +153,8 @@ func _explode() -> void:
 			var was_alive: bool = not bool(s.get("dead"))
 			if multiplayer.multiplayer_peer == null or s.is_multiplayer_authority():
 				s.take_damage(gdmg, killer_name, wname, team)
+			elif s.has_method("observe_damage"):
+				s.observe_damage(gdmg, killer_name, wname, team)
 			if not is_self and was_alive:
 				preload("res://scripts/bullet.gd").local_hit_feedback(get_tree(), killer_name, s.global_position, gdmg)
 	preload("res://scripts/buggy.gd").splash(get_tree(), global_position, blast_radius, damage * MatchConfig.mod_damage(), killer_name, wname, team)

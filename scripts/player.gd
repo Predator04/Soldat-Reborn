@@ -144,6 +144,10 @@ var gesture_t := 0.0
 # Ends early the moment the soldier fires/throws (Soldat behavior).
 var ceasefire_t := 0.0
 const CEASEFIRE_SECS := 3.0
+# Host-side checks on a remote human's reported state (see trust_guard.gd).
+var _trust: TrustGuard = null
+# Release-gate only: simulate a modified client (see Net --smoke-cheat).
+var test_cheat := ""
 # M2 mount — set to the M2 node while mounted. Skips all normal movement /
 # firing paths; m2.gd drives position + fires directly.
 var mounted_m2: Node2D = null
@@ -1700,6 +1704,9 @@ func _sfx_at() -> Vector2:
 func take_damage(amount: float, killer := "", weapon := "", killer_team := -1) -> void:
 	if dead:
 		return
+	# Release-gate only (--smoke-cheat=godmode): play a client that ignores hits.
+	if test_cheat == "godmode" and killer != display_name:
+		return
 	# Damage is only computed on the victim's authority in MP — guard against accidental
 	# non-authority callers so they don't spam authority-check errors down the death path.
 	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
@@ -1854,6 +1861,17 @@ func net_state(pos: Vector2, vel: Vector2, aim: Vector2, face: float, jetting: b
 	if dead:
 		return
 	if Net.is_host() and sender == auth and auth != 1:
+		# Check the owner's story before anyone else hears it (trust_guard.gd).
+		fuel_val = clampf(fuel_val, 0.0, 100.0)
+		var g := _trust_guard()
+		if g != null:
+			var bow := wi >= 0 and wi < weapons.size() and not use_sec and str(weapons[wi].get("name", "")) == "Rambo Bow" \
+					and Settings.game_mode == Settings.MODE_RM
+			var verdict: Dictionary = g.check_state(pos, hp, bow, _trust_world())
+			hp = float(verdict["hp"])
+			if str(verdict["force"]) != "":
+				_trust_force_death(str(verdict["force"]))
+				return
 		var m := get_parent()
 		if m != null and m.has_method("ready_peer_ids"):
 			for pid in m.ready_peer_ids():
@@ -1898,6 +1916,7 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_
 		return
 	if not _net_accept("net_shoot", [shot_pos, dirs, weapon_i, base_proj_id]):
 		return
+	_trust_note_attack()
 	var kind := str(w.get("kind", "bullet"))
 	var is_explosive := kind == "rocket" or kind == "launcher"
 	muzzle_t = 0.10 if is_explosive else 0.08
@@ -1934,6 +1953,8 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_
 				continue
 			if s.has_method("take_damage") and (multiplayer.multiplayer_peer == null or s.is_multiplayer_authority()):
 				s.take_damage(dmg, display_name, str(w["name"]), team)
+			elif s.has_method("observe_damage"):
+				s.observe_damage(dmg, display_name, str(w["name"]), team)
 			preload("res://scripts/bullet.gd").local_hit_feedback(get_tree(), display_name, s.global_position, dmg, true)
 		return
 	for i in dirs.size():
@@ -1984,6 +2005,7 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_
 func net_grenade(g_pos: Vector2, g_vel: Vector2, g_ang: float, cluster: bool = false, proj_id: int = 0, fuse_left: float = -1.0) -> void:
 	if not _net_accept("net_grenade", [g_pos, g_vel, g_ang, cluster, proj_id, fuse_left]):
 		return
+	_trust_note_attack()
 	var g := grenade_scene.instantiate()
 	# #61: name so every peer's replica lives at the same NodePath — required for
 	# per-projectile state RPCs. proj_id==0 is SP; no rename / no authority swap.
@@ -2009,6 +2031,7 @@ func net_grenade(g_pos: Vector2, g_vel: Vector2, g_ang: float, cluster: bool = f
 
 @rpc("authority", "call_local", "reliable")
 func net_drop_weapon(weapon_name: String, from_pos: Vector2, aim: Vector2, mag: int = -1) -> void:
+	_trust_note_attack()
 	var wp := WeaponPickup.new()
 	wp.weapon_name = weapon_name
 	wp.team = team
@@ -2035,6 +2058,15 @@ func net_drop_weapon(weapon_name: String, from_pos: Vector2, aim: Vector2, mag: 
 
 @rpc("any_peer", "call_remote", "reliable")
 func net_die(killer: String, weapon: String, killer_team: int) -> void:
+	# The victim names its own killer; the host only passes on credit for
+	# someone who was actually attacking (trust_guard.gd).
+	if Net.is_host() and multiplayer.multiplayer_peer != null and not dead:
+		var sender := multiplayer.get_remote_sender_id()
+		if sender != 0 and sender != 1 and sender == get_multiplayer_authority() \
+				and not TrustGuard.kill_credit_ok(killer, display_name, int(team)):
+			print("TRUST kill credit stripped: %s claimed by %s (%s)" % [killer, display_name, weapon])
+			killer = ""
+			killer_team = -1
 	if not _net_accept("net_die", [killer, weapon, killer_team]):
 		return
 	last_killer = killer
@@ -2250,6 +2282,8 @@ func _apply_kit_local(kind: String) -> void:
 		Color(0.55, 1.0, 0.55) if kind == "medkit" else Color(0.85, 0.95, 0.55))
 	if kind == "medkit":
 		health = 100.0
+		if _trust != null:
+			_trust.allow_heal()
 	elif kind == "grenades":
 		grenades = 3
 
@@ -2386,6 +2420,74 @@ func lag_comp_ms() -> int:
 	var mine: int = int(pings.get(str(lp.display_name), 0)) if lp != null and is_instance_valid(lp) else 0
 	var theirs: int = int(pings.get(display_name, 0))
 	return clampi(int((mine + theirs) * 0.75), 0, LAG_COMP_MAX_MS)
+
+
+# ── host-side trust checks (trust_guard.gd) ──
+
+func _trust_guard() -> TrustGuard:
+	if _trust == null and TrustGuard.enabled() and multiplayer.multiplayer_peer != null \
+			and get_multiplayer_authority() != 1:
+		_trust = TrustGuard.new()
+	return _trust
+
+
+func _trust_world() -> Rect2:
+	var m := get_parent()
+	if m == null or m.get("MAP_W") == null:
+		return Rect2()
+	# Sky is open (jets), so only the sides and far below are checked.
+	return Rect2(0.0, -100000.0, float(m.get("MAP_W")), 100000.0 + float(m.get("MAP_H")))
+
+
+func _trust_note_attack() -> void:
+	if not TrustGuard.enabled():
+		return
+	TrustGuard.note_activity(display_name, int(team))
+	if _trust != null:
+		_trust.note_fired()
+
+
+## The host saw damage land on this remote human (the owner applies the real
+## damage; this only feeds the guard). No-op everywhere else.
+func observe_damage(amount: float, killer := "", weapon := "", killer_team := -1) -> void:
+	if dead:
+		return
+	var g := _trust_guard()
+	if g != null:
+		g.observe_hit(amount, killer, weapon, killer_team, display_name, bonus_kind == "vest", CEASEFIRE_SECS)
+
+
+## Round reset: the owner is about to jump to a spawn at full health.
+func trust_amnesty() -> void:
+	if _trust != null:
+		_trust.amnesty()
+
+
+## Host-side death for a client whose reported state failed the checks.
+## Everyone (the owner included) is told, the host's copy dies and schedules
+## the normal respawn, and a strike is recorded; enough strikes is a kick.
+func _trust_force_death(reason: String) -> void:
+	if dead or not Net.is_host():
+		return
+	var auth := get_multiplayer_authority()
+	var k := ""
+	var kw := "Server"
+	var kt := -1
+	if _trust != null and TrustGuard.kill_credit_ok(_trust.last_hitter, display_name, int(team)):
+		k = _trust.last_hitter
+		kw = _trust.last_hitter_weapon
+		kt = _trust.last_hitter_team
+	print("TRUST forced death: %s (peer %d) — %s" % [display_name, auth, reason])
+	last_killer = k
+	last_weapon = kw
+	last_killer_team = kt
+	_fanout("net_die", [k, kw, kt], -1)
+	_die()
+	var strikes := TrustGuard.add_strike(auth)
+	if strikes >= TrustGuard.STRIKES_TO_KICK:
+		var m := get_tree().current_scene
+		if m != null and m.has_method("trust_kick"):
+			m.trust_kick(auth, display_name)
 
 
 func net_apply_pos(pos: Vector2, vel: Vector2) -> void:

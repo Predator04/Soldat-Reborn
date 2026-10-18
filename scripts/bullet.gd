@@ -33,6 +33,8 @@ func _ready() -> void:
 	# Terrain layer 2 = ported "only bullets collide" polys (see main.gd).
 	collision_mask = 1 | 2 | 8  # terrain, bullets-only terrain, soldiers
 	add_to_group("bullet")
+	# Kill credit is checked against who was attacking (trust_guard.gd).
+	TrustGuard.note_activity(killer_name, team)
 	_load_sprite()
 	body_entered.connect(_on_body_entered)
 	var shape := CollisionShape2D.new()
@@ -170,6 +172,8 @@ func _on_body_entered(body: Node) -> void:
 					wname = weapon_name + " (headshot)"
 			if multiplayer.multiplayer_peer == null or body.is_multiplayer_authority():
 				body.take_damage(dmg, killer_name, wname, team)
+			elif body.has_method("observe_damage"):
+				body.observe_damage(dmg, killer_name, wname, team)
 			# Local stats: only when the local player fired this bullet.
 			if _maybe_record_hit() and not is_self:
 				_spawn_popup(minf(dmg, 100.0), dmg >= 999.0 or wname.ends_with("(headshot)"))

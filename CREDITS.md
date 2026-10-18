@@ -19,6 +19,22 @@ the Godot editor) but their content is unmodified from the upstream
 `foo2.png` (mirror-image variants for left-facing draws), both files
 ship as-is.
 
+## Music
+
+`assets/music/*.ogg` are renders of the three tracker modules shipped in the
+same Soldat base distribution (`shared/sfx/modules/`, CC BY 4.0):
+
+| File | Module | Title / author (from the module's own text) |
+|---|---|---|
+| `gore.ogg` | `gore.it` | "Gore" — Marshall Anderson, "made for the game SolDat" |
+| `necro.ogg` | `necro.it` | "Necromancide" — Marshall Anderson, "for Soldat" |
+| `bloody.ogg` | `bloody.xm` | "Bloody Soil" — author not recorded in the module or upstream credits |
+
+Caveat for a paid release: the Gore module's notes thank "anyone whose samples
+I used", so the instrument samples inside it have no recorded origin. The
+upstream repo licenses the files CC BY 4.0, but if the game is sold, replacing
+these three tracks with music of known provenance removes the question.
+
 ## Soldat Reborn
 
 This port ("Soldat Reborn") is a Godot 4.7 rebuild of the Soldat

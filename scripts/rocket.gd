@@ -38,6 +38,8 @@ var _has_target := false
 
 func _ready() -> void:
 	_snapshot_net_peers()
+	# Kill credit is checked against who was attacking (trust_guard.gd).
+	TrustGuard.note_activity(killer_name, team)
 	# Terrain layer 2 = ported "only bullets collide" polys (see main.gd).
 	collision_mask = 1 | 2 | 8  # terrain, bullets-only terrain, soldiers
 	add_to_group("bullet")
@@ -201,6 +203,8 @@ func _explode() -> void:
 		var was_alive: bool = not bool(s.get("dead"))
 		if s.has_method("take_damage") and (multiplayer.multiplayer_peer == null or s.is_multiplayer_authority()):
 			s.take_damage(scaled, killer_name, weapon_name, team)
+		elif s.has_method("observe_damage"):
+			s.observe_damage(scaled, killer_name, weapon_name, team)
 		if not is_self and was_alive:
 			preload("res://scripts/bullet.gd").local_hit_feedback(get_tree(), killer_name, s.global_position, scaled)
 	preload("res://scripts/buggy.gd").splash(get_tree(), global_position, blast_radius, damage, killer_name, weapon_name, team)
