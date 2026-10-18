@@ -40,12 +40,14 @@ func build() -> void:
 		var inw := -nrm
 		var ia: Vector2 = -(joined[ei][0] as Vector2)
 		var ib: Vector2 = -(joined[ei][1] as Vector2)
+		var ra: float = joined[ei][2]
+		var rb: float = joined[ei][3]
 		edges_built += 1
 		var up := clampf(-nrm.y, 0.0, 1.0)
 		var down := clampf(nrm.y, 0.0, 1.0)
 		# Ambient-occlusion band.
 		var ao := 0.30 + down * 0.18
-		_quad(verts, cols, a, b, b + ib * depth, a + ia * depth,
+		_quad(verts, cols, a, b, b + ib * minf(depth, rb), a + ia * minf(depth, ra),
 			Color(0, 0, 0, ao), Color(0, 0, 0, ao), Color(0, 0, 0, 0), Color(0, 0, 0, 0))
 		if up > 0.35:
 			var ground := _sample(mid + inw * 6.0)
@@ -53,9 +55,9 @@ func build() -> void:
 			rim.a = 0.55 * up
 			var rim0 := rim
 			rim0.a = 0.0
-			_quad(verts, cols, a, b, b + ib * 6.0, a + ia * 6.0, rim, rim, rim0, rim0)
+			_quad(verts, cols, a, b, b + ib * minf(6.0, rb), a + ia * minf(6.0, ra), rim, rim, rim0, rim0)
 			var hl := Color(1, 1, 0.92, 0.35 * up)
-			_quad(verts, cols, a, b, b + ib * 1.6, a + ia * 1.6, hl, hl, hl, hl)
+			_quad(verts, cols, a, b, b + ib * minf(1.6, rb), a + ia * minf(1.6, ra), hl, hl, hl, hl)
 			if hi and grass and up > 0.55 and _is_green(ground):
 				_grass(verts, cols, a, b, nrm, ground, L, up, rng)
 	if verts.is_empty():
@@ -133,16 +135,23 @@ func _joined_normals(edges: Array) -> Array:
 	var out: Array = []
 	for i in edges.size():
 		var n: Vector2 = edges[i][2]
-		var ends: Array = []
+		var ends: Array = [n, n, INF, INF]
 		for end in 2:
-			var acc := n
-			var lst: Array = at[Vector2i(((edges[i][end] as Vector2) * 2.0).round())]
+			var v: Vector2 = edges[i][end]
+			var lst: Array = at[Vector2i((v * 2.0).round())]
 			if lst.size() == 2:
 				var j: int = lst[0] if lst[1] == i else lst[1]
 				var nj: Vector2 = edges[j][2]
 				if n.dot(nj) > -0.2:
-					acc = (n + nj).normalized()
-			ends.append(acc)
+					ends[end] = (n + nj).normalized()
+					# Outside (convex) bend: the inward bands of a tight round
+					# cap converge on its centre — cap the depth at ~the local
+					# radius so they don't cross over into a dark star.
+					var far: Vector2 = edges[j][1] if (edges[j][0] as Vector2).distance_to(v) < 1.0 else edges[j][0]
+					var turn := n.angle_to(nj)
+					if absf(turn) > 0.01 and (far - v).dot(n) < 0.0:
+						var seg := minf((edges[i][0] as Vector2).distance_to(edges[i][1]), far.distance_to(v))
+						ends[2 + end] = maxf(1.5, 0.9 * seg / absf(turn))
 		out.append(ends)
 	return out
 
