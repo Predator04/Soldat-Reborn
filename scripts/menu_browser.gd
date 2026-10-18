@@ -302,6 +302,10 @@ func _server_row(d0: Dictionary) -> Button:
 	btn.custom_minimum_size = Vector2(580, 40)
 	btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	UITheme.style_button(btn, 15, false)
+	# Data rows read better in the body face than in the condensed caps (#272).
+	btn.add_theme_font_override("font", UITheme.font("semi"))
+	if UITheme.is_touch():
+		btn.custom_minimum_size.y = 48
 	btn.disabled = not _row_ok(d)   # the host would refuse a different build / no room
 	var relay := str(d.get("relay", ""))
 	if relay != "":

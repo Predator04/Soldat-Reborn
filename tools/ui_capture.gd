@@ -12,12 +12,15 @@ var _n := 0
 var _st := 0
 var _t := 0
 var _m: Node = null
+var _tour := false   # --tour: also every other menu screen (new builds only), no match
+var _tour_i := 0
 
 
 func _initialize() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="): _out = a.substr(6)
 		elif a.begins_with("--tag="): _tag = a.substr(6)
+		elif a == "--tour": _tour = true
 	DirAccess.make_dir_recursive_absolute(_out)
 
 
@@ -106,6 +109,10 @@ func _process(_d: float) -> bool:
 				return false
 			_shot("browser")
 			_m._browse_root.visible = false
+			_m._menu_root.visible = true
+			if _tour:
+				_st = 100
+				return false
 			root.get_node("Net").set_singleplayer()
 			change_scene_to_file("res://scenes/main.tscn")
 			_st = 5
@@ -142,4 +149,46 @@ func _process(_d: float) -> bool:
 			_shot("death")
 			print("UI-CAPTURE done")
 			quit()
+		100:
+			# Tour: open one screen, shoot it, close it.
+			var names := ["host", "join", "stats", "credits", "customize", "leaderboard", "friends", "replays", "library", "controls", "name"]
+			if _tour_i >= names.size():
+				print("UI-CAPTURE done")
+				quit()
+				return false
+			var nm: String = names[_tour_i]
+			match nm:
+				"host": _m._open_host()
+				"join":
+					_m._menu_root.visible = false
+					_m._join_root.visible = true
+				"stats":
+					_m._refresh_stats_labels()
+					_m._menu_root.visible = false
+					_m._stats_root.visible = true
+				"credits": _m._open_credits()
+				"customize": _m._open_customize()
+				"leaderboard": _m._open_leaderboard()
+				"friends": _m._open_friends()
+				"replays": _m._open_replays()
+				"library": _m._open_map_library()
+				"controls":
+					_m._open_settings()
+					_m._settings_panel.controls_pressed.emit()
+				"name": _m._build_name_prompt(Callable(), true)
+			_st = 101
+		101:
+			if _wait(40):
+				return false
+			var names2 := ["host", "join", "stats", "credits", "customize", "leaderboard", "friends", "replays", "library", "controls", "name"]
+			_shot("tour_" + names2[_tour_i])
+			if names2[_tour_i] == "name":
+				_m._name_prompt_root.queue_free()
+			elif names2[_tour_i] == "controls":
+				_m._go_back()
+				_m._go_back()
+			else:
+				_m._go_back()
+			_tour_i += 1
+			_st = 100
 	return false

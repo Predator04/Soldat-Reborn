@@ -53,7 +53,10 @@ func _fit_panels() -> void:
 			_menu_root.offset_top = top
 			_menu_root.offset_bottom = top + h
 	for c in get_children():
-		if not (c is PanelContainer) or not (c as Control).visible:
+		if not (c is Control) or not (c as Control).visible:
+			continue
+		_centre(c as Control)
+		if not (c is PanelContainer):
 			continue
 		var pc := c as PanelContainer
 		var need: float = pc.get_combined_minimum_size().y
@@ -61,6 +64,24 @@ func _fit_panels() -> void:
 		if absf(pc.scale.x - sc) > 0.005:
 			pc.pivot_offset = pc.size * 0.5
 			pc.scale = Vector2(sc, sc)
+
+
+## Centre-anchored screens are kept exactly centred at their minimum size
+## (#272): a panel built while its text was still wrapping at width 0 used to
+## keep that first, taller rect and sit off the bottom of the screen.
+func _centre(c: Control) -> void:
+	if c.anchor_left != 0.5 or c.anchor_right != 0.5 or c.anchor_top != 0.5 or c.anchor_bottom != 0.5:
+		return
+	if UITheme.UIFx.is_animating(c):
+		return
+	var ms := c.get_combined_minimum_size()
+	var l := -floorf(ms.x * 0.5)
+	var t := -floorf(ms.y * 0.5)
+	if absf(c.offset_left - l) > 0.5 or absf(c.offset_top - t) > 0.5 or absf(c.offset_right - (l + ms.x)) > 0.5 or absf(c.offset_bottom - (t + ms.y)) > 0.5:
+		c.offset_left = l
+		c.offset_top = t
+		c.offset_right = l + ms.x
+		c.offset_bottom = t + ms.y
 
 
 func _process(_delta: float) -> void:
@@ -1203,7 +1224,7 @@ func _build_status() -> void:
 func _build_footer() -> void:
 	var foot := Label.new()
 	foot.text = "WASD · W jump · S crouch/roll · X prone · RMB jet · LMB shoot · 1-0 · Q sec · R reload · E nade · F throw · G nade type · Tab scores · H help · F9 GIF"
-	if OS.has_feature("android") or OS.has_feature("mobile") or DisplayServer.is_touchscreen_available():
+	if UITheme.is_touch():
 		foot.text = "Left side: move / jump · right side: aim + hold to fire · on-screen buttons: jet, grenade, reload, swap, throw, prone · tap the top bar for scores"
 	foot.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	foot.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)

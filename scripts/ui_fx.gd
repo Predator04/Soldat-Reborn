@@ -7,7 +7,7 @@ extends Object
 ##
 ## Screens — watch(c, dir): whenever `c` becomes visible in the tree it slides
 ## SLIDE px in from `dir` while fading in (DUR_IN s, cubic ease-out). Only
-## modulate.a and a temporary position delta are animated: input works from the
+## modulate.a and a temporary offset delta are animated: input works from the
 ## first frame (nothing waits on the tween), a hide mid-way cancels it and
 ## restores the exact layout, and a re-show restarts it — interruptible by
 ## construction. Callers keep toggling `visible` as before.
@@ -196,7 +196,14 @@ static func _set_shift(c: Control, v: Vector2) -> void:
 	var cur: Vector2 = c.get_meta("uifx_shift", Vector2.ZERO)
 	if cur == v:
 		return
-	c.position += v - cur
+	# Shift the four offsets (not `position`, which would bake the current —
+	# possibly still settling — size into them): size and growth stay intact
+	# and subtracting the same delta restores the layout exactly.
+	var d := v - cur
+	c.offset_left += d.x
+	c.offset_right += d.x
+	c.offset_top += d.y
+	c.offset_bottom += d.y
 	if v == Vector2.ZERO:
 		c.remove_meta("uifx_shift")
 	else:
