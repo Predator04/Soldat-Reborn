@@ -745,6 +745,9 @@ func _on_kill(killer_name: String, victim_name: String, weapon_name: String, kil
 	feed.add_kill(killer_name, victim_name, weapon_name, kcol)
 	if is_instance_valid(player) and killer_name == str(player.display_name) and victim_name != killer_name:
 		_kill_confirm(victim_name, weapon_name.ends_with("(headshot)"))
+		# Phase B (#271): hit-stop (+ slow-mo look on a multi-kill) — presentation
+		# only, from the replicated kill feed; the match never pauses.
+		ScreenFeel.local_kill(weapon_name)
 
 
 var _confirm_lbl: Label
@@ -845,6 +848,7 @@ func _tick_hit_fx(delta: float) -> void:
 		hp = float(player.get("health"))
 	if hp >= 0.0 and _last_hp >= 0.0 and hp < _last_hp - 0.5:
 		_hit_fx = clampf(_hit_fx + (_last_hp - hp) / 45.0, 0.0, 1.0)
+		ScreenFeel.local_hit(_last_hp - hp)
 	_last_hp = hp
 	if _hit_fx > 0.0:
 		_hit_fx = maxf(0.0, _hit_fx - delta * 2.4)

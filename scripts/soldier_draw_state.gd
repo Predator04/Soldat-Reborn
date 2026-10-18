@@ -35,3 +35,10 @@ var grenade_count := 0
 var use_cluster := false
 var is_local := false
 var show_hp := true
+# Phase B (#271) visual-only offsets, filled by SoldierFeel (squash-and-
+# stretch, recoil). soldier_art.gd applies them to the DRAWN sprite about the
+# feet; the node transform and collision shape never change.
+var fx_scale := Vector2.ONE
+var fx_offset := Vector2.ZERO
+var fx_rot := 0.0
+var fx_kick := 0.0

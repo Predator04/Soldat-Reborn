@@ -318,6 +318,10 @@ func _build_gfx_world() -> void:
 	main.soldier_shadows.name = "SoldierShadows"
 	main.soldier_shadows.set_script(preload("res://scripts/soldier_shadows.gd"))
 	main.add_child(main.soldier_shadows)
+	# Phase B (#271): pooled combat FX (decals / back layer before any soldier,
+	# so blood and debris sit behind them) + screen feel (shake, hit-stop).
+	FxWorld.ensure(main)
+	ScreenFeel.install(main)
 	_build_ambient_fx()
 
 
@@ -385,6 +389,7 @@ func apply_gfx_quality() -> void:
 			main.terrain_fx.build()
 	if main.ambient_fx != null:
 		main.ambient_fx.emitting = G.on(G.HIGH)
+	FxWorld.reconfigure()
 
 
 func _build_terrain() -> void:

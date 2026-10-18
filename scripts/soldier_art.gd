@@ -60,6 +60,12 @@ static func draw_soldier(node: CanvasItem, st: SoldierDrawState) -> void:
 	var muzzle_t: float = st.muzzle_t
 	var health: float = st.health
 	var cosmetics: Dictionary = st.cosmetics
+	# Phase B (#271): squash-and-stretch / recoil (SoldierFeel) — a transform
+	# about the feet applied to the drawn sprite only.
+	var xf := Transform2D(st.fx_rot, st.fx_scale, 0.0, st.fx_offset)
+	var has_xf := not xf.is_equal_approx(Transform2D.IDENTITY)
+	if has_xf:
+		node.draw_set_transform_matrix(xf)
 	if st.jet_on and not dead:
 		_draw_jet_flame(node, facing, Gostek.Custom.JET_COLORS.get(str(cosmetics.get("jet", "")), Color(1.0, 0.35, 0.10)))
 
@@ -89,6 +95,8 @@ static func draw_soldier(node: CanvasItem, st: SoldierDrawState) -> void:
 		"grenades": st.grenade_count,
 		"use_cluster": st.use_cluster,
 	}
+	if has_xf:
+		gs["xf"] = xf
 	Gostek.draw_body(node, gs, body_color)
 
 	# Weapon sprite along aim_dir, mounted at the animated right wrist
@@ -103,7 +111,8 @@ static func draw_soldier(node: CanvasItem, st: SoldierDrawState) -> void:
 	# Recoil: the gun kicks back along the aim for the muzzle flash's life.
 	if muzzle_t > 0.0 and not dead:
 		shoulder -= aim_dir * muzzle_t * 22.0
-	var barrel_end: Vector2 = _draw_weapon_sprite(node, shoulder, aim_dir, facing, st.weapon_name, st.weapon_color, st.weapon_kind, wskin)
+	shoulder -= aim_dir * st.fx_kick * 2.0
+	var barrel_end: Vector2 = _draw_weapon_sprite(node, shoulder, aim_dir, facing, st.weapon_name, st.weapon_color, st.weapon_kind, wskin, xf if has_xf else Transform2D.IDENTITY)
 
 	# Muzzle flash on top of the sprite (bigger/brighter so shots clearly read as muzzle fire).
 	if muzzle_t > 0.0:
@@ -112,6 +121,8 @@ static func draw_soldier(node: CanvasItem, st: SoldierDrawState) -> void:
 		node.draw_circle(flash_pos, 2.5 + m * 18.0, Color(1.0, 0.45, 0.15, m * 0.5))
 		node.draw_circle(flash_pos, 1.8 + m * 13.0, Color(1.0, 0.8, 0.35, m * 0.72))
 		node.draw_circle(flash_pos, 1.2 + m * 8.0, Color(1.0, 1.0, 0.7, m * 0.95))
+	if has_xf:
+		node.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	# HP + optional fuel bar.
 	if st.show_hp:
@@ -149,7 +160,8 @@ static func _draw_weapon_sprite(
 	weapon_name: String,
 	fallback_color: Color,
 	weapon_kind: String,
-	skin: Color = Color.WHITE
+	skin: Color = Color.WHITE,
+	xf: Transform2D = Transform2D.IDENTITY
 ) -> Vector2:
 	var tex := _weapon_texture(weapon_name)
 	if tex == null:
@@ -170,9 +182,16 @@ static func _draw_weapon_sprite(
 	# as the aim wobbles across x=0 (straight up/down).
 	var flip_y := -1.0 if facing < 0.0 else 1.0
 
-	node.draw_set_transform(shoulder, angle, Vector2(1.0, flip_y))
+	var plain := xf == Transform2D.IDENTITY
+	if plain:
+		node.draw_set_transform(shoulder, angle, Vector2(1.0, flip_y))
+	else:
+		node.draw_set_transform_matrix(xf * Transform2D(angle, Vector2(1.0, flip_y), 0.0, shoulder))
 	node.draw_texture_rect(tex, Rect2(Vector2(-grip_offset, -cy_offset), size), false, skin)
-	node.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	if plain:
+		node.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	else:
+		node.draw_set_transform_matrix(xf)
 
 	return shoulder + aim_dir * barrel_len
 

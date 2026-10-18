@@ -11,7 +11,7 @@ var _drift := Vector2.ZERO
 
 func _ready() -> void:
 	z_index = 50
-	_drift = Vector2(randf_range(-18.0, 18.0), -70.0)
+	_drift = Vector2(preload("res://scripts/gfx.gd").rf(-18.0, 18.0), -70.0)
 
 
 func _process(delta: float) -> void:
