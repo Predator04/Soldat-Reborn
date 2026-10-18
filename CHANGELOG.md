@@ -15,6 +15,7 @@ All notable changes to Soldat Reborn.
 
 ### Internal
 - Structure batch 2 of [#258](https://github.com/Predator04/Soldat-Reborn/issues/258): `hud.gd` split — the vote prompt (`vote_panel.gd`), the end-of-round map vote (`next_map_panel.gd`), the kill feed and chat feed (`kill_feed.gd` / `chat_feed.gd`, sharing one expiring-line lane in `timed_feed.gd`) and the typed command / chat line with the vote + host commands (`hud_commands.gd`) are their own scripts; every HUD method other scripts call stays as a thin delegate (no behavior change).
+- Structure batch 3 of [#258](https://github.com/Predator04/Soldat-Reborn/issues/258): `main.gd` (5,600 lines) split by system into `match_net.gd` (joining clients, player bodies, broadcasts), `match_modes.gd` (objectives, scoring, round end), `match_votes.gd` (votes + host commands), `match_bots.gd`, `match_vehicles.gd`, `match_bonuses.gd` and `match_world.gd` (terrain, geometry, anti-stuck); `main.gd` keeps the match state, boot / spawn flow and every RPC entry point (same node path and names — the network protocol is unchanged), now ~1,600 lines. No behavior change.
 
 ### Credits
 - The three music tracks are now credited in-game and in CREDITS.md: they're renders of the tracker modules in the Soldat base content ("Gore" and "Necromancide" by Marshall Anderson, "Bloody Soil" author unrecorded), CC BY 4.0.

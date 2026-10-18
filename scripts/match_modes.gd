@@ -180,7 +180,7 @@ func _drop_flag(f: Node2D, at: Vector2) -> void:
 		_objective_event("return", ft, "")
 		return
 	var p := Vector2(at.x, gy)
-	if not main._spot_is_clear(p + Vector2(0, -1)):
+	if not main._world._spot_is_clear(p + Vector2(0, -1)):
 		f.position = f.get_meta("home")
 		_objective_event("return", ft, "")
 		return
@@ -947,10 +947,10 @@ func _jitter_spawn(base: Vector2) -> Vector2:
 	# Small random sideways offset so respawns don't stack — but only onto open
 	# air with real ground below (a blind ±140 px shift used to drop players
 	# inside walls or over pits on the tighter ported maps).
-	var safe_base := main._find_free_spot_near(base)
+	var safe_base := main._world._find_free_spot_near(base)
 	for _i in 6:
 		var c := safe_base + Vector2(randf_range(-140.0, 140.0), 0.0)
-		if c.x < 60.0 or c.x > main.MAP_W - 60.0 or not main._spot_is_clear(c):
+		if c.x < 60.0 or c.x > main.MAP_W - 60.0 or not main._world._spot_is_clear(c):
 			continue
 		var gy := main._geom_ground_y(c.x, c.y - 2.0)
 		if gy == INF or gy > minf(main.KILL_Y, main.GROUND_Y + 1.0) or gy - c.y > 600.0:

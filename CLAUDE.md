@@ -9,12 +9,24 @@ This directory (`game/`) is the git repo root — note the space in the parent p
 - Autoloads (`project.godot`): `Sfx`, `Settings`, `Net`, `GifRecorder`, `Stats`, `Music`, `MatchConfig`.
 
 ## Key files
-- `main.gd` (~115 KB) — match coordinator: soldier/bot spawn, all game-mode logic, kill feed, scoreboard, round reset, RPC fan-out. Holds `player` (local node), `_players_by_id` (peer_id → node), `_bots_by_id`, `_gg_levels`, `_gg_kills`, `_scores`.
+- `main.gd` (~1,600 lines) — match coordinator: boot (`_ready`), the per-frame `_process` dispatch, the single-player spawn path, spectator / kill-cam respawn gate, spawn-point picking, HUD build, and ALL match state (`player` (local node), `_players_by_id` (peer_id → node), `_bots_by_id`, `_gg_levels`, `_gg_kills`, `scores`, `flags`, `vote_*`, `MAPS`, …). Every `@rpc` peers call is declared here (Godot resolves RPCs by node path + method name) as a one-line delegate into a system helper; so are the methods other scripts call by name.
+- System helpers of Main (#258) — plain internal child Nodes created in `main._init` (`_net`, `_modes`, `_votes`, `_bots`, `_vehicles_sys`, `_bonuses`, `_world`), each with a `main` back-reference; they hold code plus only the private state no one else reads. Reach shared state as `main.x`; never declare an `@rpc` in a helper — add the stub on Main.
+  - `match_net.gd` — joining clients (version / name handshake, rejoin, full-world hydration in `_handle_client_ready` + `net_spawn_ack`), player bodies (`net_spawn_player` / `net_despawn_player`, team assignment, `_schedule_peer_respawn`), disconnects, `bcast` / `ready_peer_ids` / `client_send_peer_ids`, chat / radio / kill-feed / objective relays, match / mode / flag state streams, pings.
+  - `match_modes.gd` — every mode's objectives (CTF / INF / HTF flags, Rambo bow, PM, DOM, BR ring, Gun Game ladder), `_on_kill_scored`, streaks, `_objective_event`, round end / `_reset_round` (Survival).
+  - `match_votes.gd` — `/votemap` `/votekick`, the end-of-round next-map vote, host chat commands (`host_addbot` … `host_toggle_ff`, `trust_kick`).
+  - `match_bots.gd` — bot roster (Bots setting, `--fill`, live count changes), spawn / respawn, team balance (#263), chatter + radio call-outs, bot replication (#55).
+  - `match_vehicles.gd` — buggies / tanks (`vehicle_send`, seats, relay checks) and M2 turrets (`net_m2_*` bodies, `_m2_relay`).
+  - `match_bonuses.gd` — bonus boxes (#78), medikits / grenade kits, the weapon-pickup stream (`_pickup_entry`, `net_pickup_state`).
+  - `match_world.gd` — world rect, sky / parallax / weather, terrain bodies + ladders + scenery, gfx layers, plain-geometry placement queries (`_geom_ground_y`, `_spot_is_clear`, …), kill line + anti-stuck watchdog.
 - `net.gd` — high-level ENet wrapper (autoload). `Mode { SINGLEPLAYER, HOST, CLIENT }`, `DEFAULT_PORT 7777`, `MAX_PEERS 8`, `MAP_NAMES` / `MODE_NAMES` (single source: `scripts/game_lists.gd`, #251). Owns `custom_map_json` (custom-map sync, #99) and `is_dedicated`. Also hosts the `--smoke-*` self-test entry points.
 - `player.gd` (~71 KB) — player physics, weapons, F-throw, ladder climb engage/dismount (~lines 401–466).
 - `bot.gd` (~38 KB) — bot AI, has ladder awareness.
 - `gostek.gd` — soldier sprite rendering/animation.
-- `hud.gd` — HUD + mode scoreboards (DM/CTF/Gun-Game rung readout).
+- `hud.gd` — HUD: vitals, mode/score strip (DM/CTF/Gun-Game rung readout), winner banner, death screen, toasts / banners. Keeps every method other scripts call (`post_chat`, `post_radio`, `toast`, `show_death`, `set_killcam`, `announce_objective`, `open_command`, …) and delegates to its parts (#258):
+  - `kill_feed.gd` / `chat_feed.gd` — the two expiring-line lanes, both on `timed_feed.gd` (Timer parented to each line, line cap, order).
+  - `vote_panel.gd` (#77 vote prompt), `next_map_panel.gd` (end-of-round map vote + 1/2/3 keys).
+  - `hud_commands.gd` — the typed line (`/` commands + gestures, T / Y chat): vote commands, host commands, mode / map argument resolvers.
+  - Also `scoreboard.gd`, `hud_bars.gd`, `objective_hud.gd`, `radio_menu.gd`, `weapon_menu.gd`.
 - `weapon_pickup.gd`, `bonus_pickup.gd`, `bullet.gd`, `grenade.gd`, `rocket.gd`, `m2.gd` (stationary gun).
 - `map_editor.gd`, `map_io.gd`, `map_gen.gd` — custom-map tooling. `poa_loader.gd` + `references/poa-format.md` = classic `.pms` map import.
 - Game-mode constants (`MODE_DM`, `MODE_TDM`, `MODE_CTF`, `MODE_INF`, `MODE_HTF`, `MODE_RM`, `MODE_PM`, `MODE_DOM`, `MODE_BR`, `MODE_GG`) live in `Settings.gd`.
