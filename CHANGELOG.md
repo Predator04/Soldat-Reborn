@@ -4,11 +4,11 @@ All notable changes to Soldat Reborn.
 
 ## [1.34.0] — 2026-10-15
 
-### Added — movement tech from the original's tutorial (#262)
+### Added — movement tech from the original's tutorial
 - **Tap-to-hop, hold-to-jump.** Holding jump sustains the rise for a short window (exactly the previous full-height jump); releasing early cuts it into a short hop (~40% height). Bunny-hop chains with held jump are unchanged.
 - **Prone-cancel.** Going prone mid-air drops you noticeably faster — the classic momentum killer and gap-shortener.
 
-### Added — fairer team games (#263)
+### Added — fairer team games
 - **Auto team balance between rounds.** When a team mode's sides differ by more than one at round reset, the lowest-killing bot switches sides (respawned at its new base, announced in chat). Humans are never moved; an all-human stack is left alone out of respect for choice.
 
 ### Ops
