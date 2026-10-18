@@ -1,4 +1,9 @@
-# Store page copy — Soldat Reborn (v1.20)
+# Store page copy — Soldat Reborn
+
+> The CURRENT, complete itch.io kit (copy, checklist, cover, 8 screenshots,
+> gameplay GIF) lives in **store/itch/PAGE.md** — that is the file to edit and
+> follow. This older multi-store draft (Steam/Play wording) is kept for when
+> those stores are pursued; its counts are as of v1.20 and may lag.
 
 Working copy for Steam / itch.io / Google Play. The name is a placeholder until the
 naming question in RETAIL_CHECKLIST.md is settled; swap it everywhere at once.

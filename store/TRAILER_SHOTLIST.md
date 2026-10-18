@@ -1,5 +1,9 @@
 # Trailer shot list (60–75 s)
 
+> Production note (#263): shots can now be captured WITHOUT OBS — render
+> replays headlessly to frames and assemble with ffmpeg. The OBS path below
+> still works when real-GPU capture is preferred.
+
 Capture at 1920×1080 / 60 fps on a real GPU (OBS), game audio on, music low. Turn on
 Settings → Video: FPS overlay off, damage numbers on. Bots at skill 4–5 make the fights
 look busy. Record each shot 3–4× and keep the best take.

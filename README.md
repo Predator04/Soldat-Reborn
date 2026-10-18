@@ -7,14 +7,17 @@ past the classic, with most of Soldat 2's feature list folded in.
 
 ## Features
 
-- **Movement** — run / bunny-hop / jet boots with fuel, crouch, prone, roll, backflip-friendly physics
+- **Movement** — run / bunny-hop / jet boots with fuel, crouch, prone, roll, backflip-friendly physics; tap for a short hop, hold jump for the full leap; prone mid-air drops you faster (prone-cancel)
 - **Weapons** — 10 primaries (Deagles, MP5, AK-74, Steyr AUG, Spas-12, Ruger 77, M79, Barrett, Minimi, Minigun) + 4 secondaries (USSOCOM, Knife, Chainsaw, LAW) + Flamethrower, Rambo Bow, Frag/Cluster grenades, M2 stationary gun
-- **Game modes** — Deathmatch, Pointmatch, Teammatch, Capture the Flag, Rambomatch, Infiltration, Hold the Flag, **Domination**, **Battle Royale** + Realistic/Survival/Advance sub-modes
+- **Game modes** — Deathmatch, Pointmatch, Teammatch, Capture the Flag, Rambomatch, Infiltration, Hold the Flag, **Domination**, **Battle Royale**, **Gun Game** + Realistic/Survival/Advance sub-modes; auto team balance between rounds
 - **Map editor** — in-game editor: place platforms, spawns, flags, control points; save/load custom maps; play-test live
 - **Procedural maps** — seeded generator with re-roll, produces playable layouts for every mode
 - **Classic maps** — 99 original Soldat levels ported from `.pms` with scenery, textured terrain, weather and baked bot navigation (bots play every objective mode on every map)
-- **Polish** — gestures/taunts, chat, weapon throw/pickup, ceasefire, bink, game modifiers, character customization, lo-fi mode, local stats, GIF recording, improved grenade physics
-- **Multiplayer** — host-authoritative ENet (host / join), replicated bots that shoot and damage clients, dedicated headless server mode, server browser with live ping and player counts, Quick Join, automatic rejoin after a dropped connection, LAN-scale sync, authority-owned grenade/rocket transforms so shooter + victim see the same trajectory and impact spot
+- **Polish** — gestures/taunts, chat, weapon throw/pickup, ceasefire, bink, game modifiers, character customization with unlockables, lo-fi mode, local stats, GIF recording, improved grenade physics
+- **Multiplayer** — host-authoritative ENet (host / join), replicated bots that shoot and damage clients, dedicated headless server mode, server browser with live ping and player counts, Quick Join with **skill matchmaking**, automatic rejoin after a dropped connection, **relay hosting with join codes (no port forwarding, ever)**, LAN-scale sync, authority-owned grenade/rocket transforms so shooter + victim see the same trajectory and impact spot
+- **Online services** — a free public master server over HTTPS: live server list, friends with one-click join and clan tags, a career **leaderboard** with ranks and achievements, a shared **map library** (upload, browse, download in-game), and signed auto-updates
+- **Host tools** — the classic chat command set (/addbot, /kick, /map, /restart, /say, /ff, /bots), per-weapon bans for custom nights ("pistol only", "no sniper"), and a live admin panel
+- **Replays & kill cam** — every match is recorded and playable from any seat at any speed; death gets a slow-mo kill-cam rewind
 - **Vehicles** — two-seat buggies (driver + gunner on a mounted machine gun) on 87 of the classic maps and the built-in arenas, and armored tanks with a lobbed-shell turret on the 13 widest maps: run people over, get wrecked by rockets and grenades, respawn at their spot. Bots drive and crew both. Toggle in Settings → Game
 - **Pickups** — medikits and grenade kits where the original maps put them (bots use them too), plus timed bonus crates (Predator, Berserker, Vest, Cluster)
 - **Sound** — positional audio (distance + stereo), footsteps, landings, ricochets, bullet whizz-bys, distant-gunfire tails, death cries, rain / snow ambience, Soldat radio voice lines

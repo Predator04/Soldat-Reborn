@@ -15,10 +15,12 @@ Sources: wiki.soldat.pl "In-game Commands" + "Comprehensive Movement Tutorial".
 ## Taunts
 - ALT + a..z / 1..0 → ready taunts from TAUNTS.TXT (chat macros).
 
-## Server commands (future multiplayer)
-/GAMEMODE 0-6 (0 DM, 1 PM, 2 TM, 3 CTF, 4 RM, 5 INF, 6 HTF), /REALISTIC 0/1,
-/ADVANCE 0/1, /SURVIVAL 0/1, /ADDBOT, /KICK, /BAN, /MAP, /RESTART, /NEXTMAP,
-/FRIENDLYFIRE 0/1, /LIMIT, /TIMELIMIT, /SAY, /PASSWORD.
+## Host chat commands (shipped v1.33.0 — host / single player, typed in chat)
+/ADDBOT [skill 1-5] [name], /KICK <name> (peers or bots, prefix match),
+/BOTS <n>, /GAMEMODE <0-9|name>, /MAP <name|index>, /RESTART, /SAY <msg>, /FF.
+Unimplemented from the original's set: /BAN, /NEXTMAP, /LIMIT, /TIMELIMIT,
+/PASSWORD, /REALISTIC, /ADVANCE, /SURVIVAL as commands (the last three are
+host panel toggles).
 
 ## Movement tech (Haste's tutorial — most is emergent from bunny-hop + jet, but)
 - **Roll**: crouch (S) during horizontal movement → momentary speed burst roll.

@@ -1,6 +1,6 @@
 # Retail readiness checklist
 
-Status as of v1.20.0. ✅ done · ⚠️ needs you (accounts, legal, real hardware) · ❌ not done yet.
+Status as of v1.20.0 — items not re-audited since; the current shipped state is v1.34.x (see CHANGELOG). ✅ done · ⚠️ needs you (accounts, legal, real hardware) · ❌ not done yet.
 
 ## Game
 - ✅ Every mode playable vs bots on all 99 classic maps + 3 built-ins; release gate (static checks, boots, MP smokes, every mode, every map) passes.
