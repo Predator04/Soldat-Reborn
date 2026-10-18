@@ -449,7 +449,11 @@ fi
 # ANY online case (the per-netcase check covers only netcase()); the trust
 # cases themselves play modified clients and are excluded.
 if has C; then
-  tl=$(grep -l "^TRUST " "$OUT"/net_*server*.log 2>/dev/null | grep -v "/net_trust_" | tr '\n' ' ')
+  # (net_drive is excluded: its harness teleports the client next to the buggy,
+  # which the host rightly logs once — one move is not a strike.)
+  tl=$(grep -l "^TRUST " "$OUT"/net_*server*.log 2>/dev/null | grep -v -e "/net_trust_" -e "/net_drive_" | tr '\n' ' ')
+  dl=$(grep -c "^TRUST forced\|^TRUST kick" "$OUT"/net_drive_server.log 2>/dev/null || true)
+  [ "${dl:-0}" = "0" ] || tl="$tl net_drive(forced/kick)"
   if [ -z "$tl" ]; then pass "C trust checks quiet for honest clients (all online cases)"; else fail "C TRUST lines from honest clients in: $tl"; fi
 fi
 
@@ -558,6 +562,8 @@ if has F; then
   ft pad pad_test.gd 60 PAD-TEST "gamepad: radio (L3 + D-pad), limbo loadout (D-pad)"
   ft gfx gfx_test.gd 60 GFX-TEST "graphics presets: terrain depth / grass / post FX / bloom / lights / shadows / caps, live switch"
   ft atmos atmosphere_test.gd 60 ATMOS-TEST "graphics Phase A (#270): cinematic sky / parallax / ambient / post, pooled lights, rim light, live classic switch"
+  ft fxpool fx_test.gd 120 FXPOOL-TEST "graphics Phase B (#271): pooled FX, flat node count, caps per quality, decal ring, Blood 0, hit-stop / shake toggles, sim identical FX on vs off"
+  ft fxbench fx_bench.gd 90 FX-BENCH "graphics Phase B (#271): FX benchmark, 8 gibbings + minigun + 4 explosions, node count flat, FX ms / frame"
   ft killcam killcam_test.gd 60 KILLCAM-TEST "kill cam: rewind w/ slow-mo, respawn waits, skip, live follow"
   ft lagcomp lagcomp_test.gd 60 LAGCOMP-TEST "lag compensation: hits where the shooter saw you, capped"
   ft quickplay quickplay_test.gd 60 QUICKPLAY-TEST "quick play: no game online -> bot match"

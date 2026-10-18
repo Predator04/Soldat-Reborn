@@ -84,6 +84,14 @@ var _last_at: Dictionary = {}   # throttle key -> msec of last play
 var play_counts: Dictionary = {}
 
 
+# Phase B (#271): sound variation (pitch / variant picks) draws from its own
+# stream — the global randf() belongs to gameplay (spread, bot AI, spawns), and
+# a sound that plays (or is skipped at volume 0) must not shift it.
+var _rng := RandomNumberGenerator.new()
+# Slow-mo duck from scripts/gfx/screen_feel.gd (dB, <= 0); applies to new sounds.
+var fx_duck_db := 0.0
+
+
 func _ready() -> void:
 	_warm_all()
 	for _i in POOL_SIZE:
@@ -123,14 +131,14 @@ func shoot(weapon_name := "", at := NOWHERE) -> void:
 		# Far-off firefight: Soldat's muffled distance tails, not the crisp shot.
 		if not _throttle("distgun", 70):
 			return
-		var far := "dist-m79" if weapon_name in ["M79", "LAW"] else "dist-gun%d" % (randi() % 4 + 1)
-		_play_far(far, -10.0, randf_range(0.95, 1.05), at)
+		var far := "dist-m79" if weapon_name in ["M79", "LAW"] else "dist-gun%d" % (_rng.randi() % 4 + 1)
+		_play_far(far, -10.0, _rng.randf_range(0.95, 1.05), at)
 		return
-	_play_key(key, -6.0, randf_range(0.97, 1.03), at)
+	_play_key(key, -6.0, _rng.randf_range(0.97, 1.03), at)
 
 
 func jump(at := NOWHERE) -> void:
-	_play_event("jump", -10.0, randf_range(0.95, 1.05), at)
+	_play_event("jump", -10.0, _rng.randf_range(0.95, 1.05), at)
 
 
 func jet(on: bool) -> void:
@@ -145,17 +153,17 @@ func jet(on: bool) -> void:
 
 
 func gib(at := NOWHERE) -> void:
-	_play_event("gib", -4.0, randf_range(0.9, 1.1), at)
-	_play_key("bonecrack", -8.0, randf_range(0.9, 1.1), at)
+	_play_event("gib", -4.0, _rng.randf_range(0.9, 1.1), at)
+	_play_key("bonecrack", -8.0, _rng.randf_range(0.9, 1.1), at)
 
 
 func explode(at := NOWHERE) -> void:
 	if not _throttle("boom", 35):
 		return
 	if at != NOWHERE and at.distance_to(listener_pos()) > HEAR_DIST * 0.8:
-		_play_far("dist-grenade", -6.0, randf_range(0.95, 1.05), at)
+		_play_far("dist-grenade", -6.0, _rng.randf_range(0.95, 1.05), at)
 		return
-	_play_event("explode", -2.0, randf_range(0.97, 1.03), at)
+	_play_event("explode", -2.0, _rng.randf_range(0.97, 1.03), at)
 
 
 func reload(weapon_name := "", at := NOWHERE) -> void:
@@ -180,14 +188,14 @@ func spinup(weapon_name: String) -> void:
 
 # Melee swing (Knife) — tuned quieter than a fire sample.
 func melee_swing() -> void:
-	_play_event("melee_swing", -8.0, randf_range(0.95, 1.05))
+	_play_event("melee_swing", -8.0, _rng.randf_range(0.95, 1.05))
 
 
 # "You hit someone" grunt — picks a random Soldat hit-arg sample for variety.
 # Called from bullet.gd only when the LOCAL player's shot lands, so it reads as
 # your own hit confirmation and stays silent for remote players.
 func hit() -> void:
-	_play_key(["hit-arg", "hit-arg2", "hit-arg3"][randi() % 3], -6.0, randf_range(0.9, 1.1))
+	_play_key(["hit-arg", "hit-arg2", "hit-arg3"][_rng.randi() % 3], -6.0, _rng.randf_range(0.9, 1.1))
 
 
 # Grenade throw arm-swing.
@@ -216,28 +224,28 @@ func cluster_explode(at := NOWHERE) -> void:
 # Footstep while running. Throttled per soldier by the caller's own cadence.
 func footstep(at: Vector2, crouched := false) -> void:
 	if crouched:
-		_play_key("crouch-move", -20.0, randf_range(0.9, 1.1), at)
+		_play_key("crouch-move", -20.0, _rng.randf_range(0.9, 1.1), at)
 		return
-	_play_key("step" if randi() % 8 == 0 else "step%d" % (randi() % 7 + 2), -17.0, randf_range(0.9, 1.1), at)
+	_play_key("step" if _rng.randi() % 8 == 0 else "step%d" % (_rng.randi() % 7 + 2), -17.0, _rng.randf_range(0.9, 1.1), at)
 
 
 # Touchdown after a fall. `hard` for big drops.
 func land(at: Vector2, hard := false) -> void:
-	_play_key("fall-hard" if hard else "fall", -12.0 if hard else -15.0, randf_range(0.95, 1.05), at)
+	_play_key("fall-hard" if hard else "fall", -12.0 if hard else -15.0, _rng.randf_range(0.95, 1.05), at)
 
 
 # Bullet hitting terrain.
 func ricochet(at: Vector2) -> void:
 	if not _throttle("ric", 45):
 		return
-	_play_key("ric" if randi() % 7 == 0 else "ric%d" % (randi() % 6 + 2), -16.0, randf_range(0.9, 1.1), at)
+	_play_key("ric" if _rng.randi() % 7 == 0 else "ric%d" % (_rng.randi() % 6 + 2), -16.0, _rng.randf_range(0.9, 1.1), at)
 
 
 # An enemy round zipping past the local player's head.
 func whizz(at: Vector2) -> void:
 	if not _throttle("whizz", 90):
 		return
-	_play_key("bulletby" if randi() % 5 == 0 else "bulletby%d" % (randi() % 4 + 2), -10.0, randf_range(0.9, 1.1), at)
+	_play_key("bulletby" if _rng.randi() % 5 == 0 else "bulletby%d" % (_rng.randi() % 4 + 2), -10.0, _rng.randf_range(0.9, 1.1), at)
 
 
 # Pin pulled — start of a grenade cook.
@@ -248,12 +256,12 @@ func grenade_pull() -> void:
 func grenade_bounce(at: Vector2) -> void:
 	if not _throttle("gbounce", 60):
 		return
-	_play_key("grenade-bounce", -12.0, randf_range(0.95, 1.08), at)
+	_play_key("grenade-bounce", -12.0, _rng.randf_range(0.95, 1.08), at)
 
 
 # Death cry; headshots get the Soldat head-chop crunch on top.
 func death(at: Vector2, headshot := false) -> void:
-	_play_key(["playerdeath", "death2", "death3", "death"][randi() % 4], -8.0, randf_range(0.93, 1.07), at)
+	_play_key(["playerdeath", "death2", "death3", "death"][_rng.randi() % 4], -8.0, _rng.randf_range(0.93, 1.07), at)
 	if headshot:
 		_play_key("headchop", -6.0, 1.0, at)
 
@@ -285,7 +293,7 @@ func spawn(at: Vector2) -> void:
 func shell(at: Vector2, shotgun := false) -> void:
 	if not _throttle("shell", 110):
 		return
-	_play_key("gaugeshell" if shotgun else ("shell" if randi() % 2 == 0 else "shell2"), -22.0, randf_range(0.9, 1.1), at)
+	_play_key("gaugeshell" if shotgun else ("shell" if _rng.randi() % 2 == 0 else "shell2"), -22.0, _rng.randf_range(0.9, 1.1), at)
 
 
 func minigun_stop(at := NOWHERE) -> void:
@@ -302,7 +310,7 @@ func listener_pos() -> Vector2:
 
 # Flame short-range spray tick (looped by weapon, one call per shot).
 func flame_fire() -> void:
-	_play_event("flame_fire", -8.0, randf_range(0.95, 1.05))
+	_play_event("flame_fire", -8.0, _rng.randf_range(0.95, 1.05))
 
 
 # Bow shot.
@@ -493,4 +501,4 @@ func _load(file_key: String) -> AudioStreamWAV:
 
 
 func _master_db() -> float:
-	return linear_to_db(clampf(Settings.sfx_volume, 0.0001, 1.0))
+	return linear_to_db(clampf(Settings.sfx_volume, 0.0001, 1.0)) + fx_duck_db

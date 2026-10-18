@@ -25,6 +25,11 @@ uniform float hit = 0.0;
 uniform float impact = 0.0;
 uniform bool aberration_enabled = true;
 uniform float grain = 0.035;
+// Phase B (#271) slow-mo LOOK on a multi-kill (screen_feel.gd), 0 = off:
+// a small zoom punch, a radial time-smear and desaturation. Presentation only.
+uniform float punch = 0.0;
+uniform float smear = 0.0;
+uniform float desat = 0.0;
 uniform float time = 0.0;
 
 // Cinematic grade knobs.
@@ -54,6 +59,9 @@ float hash(vec2 p) {
 
 void fragment() {
 	vec2 uv = SCREEN_UV;
+	if (punch > 0.0) {
+		uv = 0.5 + (uv - 0.5) * (1.0 - 0.045 * punch);
+	}
 	vec2 fromc = uv - 0.5;
 	float split = 0.0;
 	if (aberration_enabled) {
@@ -65,6 +73,14 @@ void fragment() {
 		c = vec3(texture(screen_tex, uv + off).r, texture(screen_tex, uv).g, texture(screen_tex, uv - off).b);
 	} else {
 		c = texture(screen_tex, uv).rgb;
+	}
+	if (smear > 0.0) {
+		// Radial streaks toward the centre: the world reads as smeared in time.
+		vec3 acc = c;
+		for (int i = 1; i <= 6; i++) {
+			acc += texture(screen_tex, uv - fromc * smear * 0.0045 * float(i)).rgb;
+		}
+		c = mix(c, acc / 7.0, clamp(smear, 0.0, 0.85) * smoothstep(0.08, 0.5, length(fromc)));
 	}
 	if (bloom > 0.0) {
 		vec2 px = SCREEN_PIXEL_SIZE * bloom_radius;
@@ -99,6 +115,10 @@ void fragment() {
 	c *= 1.0 - vig * smoothstep(0.36, 0.92, d);
 	// Hit flash: red edges.
 	c = mix(c, vec3(0.55, 0.02, 0.02), hit * 0.45 * smoothstep(0.32, 0.78, d));
+	if (desat > 0.0) {
+		float lg = dot(c, vec3(0.2126, 0.7152, 0.0722));
+		c = mix(c, vec3(lg) * vec3(0.92, 0.97, 1.06), desat);
+	}
 	// Film grain — fine, luminance-weighted, only in cinematic.
 	if (grain > 0.0 && cinematic > 0.01) {
 		float n = hash(uv * vec2(1280.0, 720.0) + fract(time * 7.13) * 91.7) - 0.5;

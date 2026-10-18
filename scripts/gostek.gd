@@ -170,6 +170,10 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 	var arm_pivot: Vector2 = _joint_local(frame, 10, flip)
 
 	var cos: Dictionary = gs.get("cosmetics", {})
+	# Phase B (#271): visual-only squash / recoil transform about the feet
+	# (soldier_art.gd), composed in front of every part transform.
+	var has_xf := gs.has("xf")
+	var xf: Transform2D = gs.get("xf", Transform2D.IDENTITY)
 	# Damage overlay strength (#60). Blood sprites blend over the wounded parts
 	# once HP dips below WOUND_HEALTH; capped so a nearly-dead soldier still
 	# reads as their base color instead of pure red.
@@ -305,7 +309,10 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 			col = vc if not dead else vc.darkened(0.5)
 		elif gun:
 			col = wskin if not dead else wskin.darkened(0.4)
-		node.draw_set_transform(p1, angle, Vector2(sx, sy))
+		if has_xf:
+			node.draw_set_transform_matrix(xf * Transform2D(angle, Vector2(sx, sy), 0.0, p1))
+		else:
+			node.draw_set_transform(p1, angle, Vector2(sx, sy))
 		node.draw_texture_rect(tex, Rect2(-cx, -cy, w, h), false, col)
 
 		# Wound blood overlay (#60). Same transform + rect, so the blood sits
@@ -320,7 +327,10 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 			if wound_tex != null:
 				node.draw_texture_rect(wound_tex, Rect2(-cx, -cy, w, h), false, Color(1.0, 1.0, 1.0, wound_alpha))
 
-	node.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	if has_xf:
+		node.draw_set_transform_matrix(xf)
+	else:
+		node.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 # Local-space position of the given .poa joint (1..20) for the CURRENT

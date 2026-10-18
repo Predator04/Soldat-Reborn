@@ -88,7 +88,7 @@ func apply_fire(muzzle: Vector2, dir: Vector2) -> void:
 	r.killer_name = str(shooter.get("display_name"))
 	r.weapon_name = "Tank"
 	get_parent().add_child(r)
-	Sfx._play_key("law-start", -1.0, randf_range(0.6, 0.66), muzzle)
+	Sfx._play_key("law-start", -1.0, preload("res://scripts/gfx.gd").rf(0.6, 0.66), muzzle)
 	Sfx._play_far("dist-m79", -4.0, 0.7, muzzle)
 	_recoil = 8.0
 	if is_sim():

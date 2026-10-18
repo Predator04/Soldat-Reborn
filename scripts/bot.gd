@@ -1180,7 +1180,7 @@ func net_bot_shoot(muzzle: Vector2, aim: Vector2, proj_id: int = 0, weapon: Stri
 	if get_parent() != null and String(stats["kind"]) != "melee":
 		var GfxS = preload("res://scripts/gfx.gd")
 		var expl := String(stats["kind"]) == "rocket" or String(stats["kind"]) == "launcher"
-		GfxS.muzzle(get_parent(), muzzle, expl)
+		GfxS.muzzle(get_parent(), muzzle, expl, aim)
 		if String(stats["kind"]) == "bullet":
 			GfxS.casing(get_parent(), global_position + Vector2(facing * 2.0, -10.0), facing, active_weapon == "Spas-12")
 	# Debug counter so --smoke-botfire can confirm the RPC reached the client.
@@ -1350,7 +1350,6 @@ func _die() -> void:
 	# defer FX spawn out of the physics flush (bullet body_entered → take_damage path)
 	if not Settings.lofi:
 		_spawn_gibs.call_deferred()
-		_spawn_ragdoll.call_deferred()
 	died.emit()
 	queue_free()
 
@@ -1367,7 +1366,6 @@ func die_replica() -> void:
 	Sfx.death(global_position, last_weapon.ends_with("(headshot)"))
 	if not Settings.lofi:
 		_spawn_gibs.call_deferred()
-		_spawn_ragdoll.call_deferred()
 	died.emit()
 	queue_free()
 
@@ -1409,58 +1407,17 @@ func _spawn_gibs() -> void:
 	# Deferred from _die: the scene may be changing (round/map switch) by now.
 	if not is_inside_tree() or get_parent() == null:
 		return
-	var p := CPUParticles2D.new()
-	p.amount = 46
-	p.lifetime = 0.7
-	p.explosiveness = 1.0
-	p.one_shot = true
-	p.emitting = true
-	p.global_position = global_position
-	p.direction = Vector2(0, -1)
-	p.spread = 180.0
-	p.gravity = Vector2(0, 620)
-	p.initial_velocity_min = 120.0
-	p.initial_velocity_max = 440.0
-	p.scale_amount_min = 2.0
-	p.scale_amount_max = 5.0
-	p.color = Color(0.9, 0.15, 0.15)
-	get_parent().add_child(p)
-	get_tree().create_timer(1.3).timeout.connect(p.queue_free)
-
-
-func _spawn_ragdoll() -> void:
-	# Deferred from _die: the scene may be changing (round/map switch) by now.
-	if not is_inside_tree() or get_parent() == null:
+	# Phase B (#271): pooled limb gibs + blood (scripts/gfx/fx_world.gd) — no
+	# CPUParticles2D / RigidBody2D per death; now also honours the Blood slider.
+	if float(Settings.blood_intensity) <= 0.01:
 		return
-	# physics gib chunks: rigid bodies that fly out and settle on terrain
-	var count := 7
-	for _i in count:
-		var body := RigidBody2D.new()
-		# Gibs are cosmetic — zero collision so they can't snag the player/bots.
-		body.collision_layer = 0
-		body.collision_mask = 0
-		body.position = global_position + Vector2(randf_range(-8.0, 8.0), randf_range(-20.0, 0.0))
-		var shape := CollisionShape2D.new()
-		var rect := RectangleShape2D.new()
-		rect.size = Vector2(randf_range(5.0, 12.0), randf_range(5.0, 12.0))
-		shape.shape = rect
-		body.add_child(shape)
-		var vis := Polygon2D.new()
-		var s := rect.size
-		vis.polygon = PackedVector2Array([
-			Vector2(-s.x / 2.0, -s.y / 2.0),
-			Vector2(s.x / 2.0, -s.y / 2.0),
-			Vector2(s.x / 2.0, s.y / 2.0),
-			Vector2(-s.x / 2.0, s.y / 2.0),
-		])
-		vis.color = color.darkened(randf_range(0.0, 0.35))
-		body.add_child(vis)
-		body.linear_damp = 0.4
-		body.angular_damp = 1.5
-		get_parent().add_child(body)
-		body.linear_velocity = Vector2(randf_range(-260.0, 260.0), randf_range(-520.0, -120.0))
-		body.angular_velocity = randf_range(-14.0, 14.0)
-		get_tree().create_timer(2.5).timeout.connect(body.queue_free)
+	var w := FxWorld.ensure(get_parent())
+	if w != null:
+		w.gib(global_position, velocity, color, cosmetics, _gib_explosive(last_weapon), facing)
+
+
+static func _gib_explosive(weapon: String) -> bool:
+	return weapon in ["LAW", "M79", "Grenade", "Cluster", "Buggy", "Tank", "M2"] or weapon.begins_with("Grenade")
 
 
 ## Compact snapshot for match replays (replay_recorder.gd).
@@ -1476,6 +1433,7 @@ func replay_state() -> Array:
 
 ## Reused every frame by _draw() (SoldierArt.draw_soldier input).
 var _draw_state := SoldierDrawState.new()
+var _feel := SoldierFeel.new()   # squash / recoil / damage flash (#271), visual only
 
 
 func _draw() -> void:
@@ -1524,6 +1482,7 @@ func _draw() -> void:
 	ds.back_weapon_name = back_weapon
 	ds.grenade_count = grenades
 	ds.use_cluster = false
+	_feel.update(self, ds)
 	SoldierArt.draw_soldier(self, ds)
 
 

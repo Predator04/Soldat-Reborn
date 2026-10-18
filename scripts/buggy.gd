@@ -530,7 +530,7 @@ func apply_fire(muzzle: Vector2, dir: Vector2) -> void:
 	if not Sfx._throttle("buggy_mg_%d" % vehicle_id, 60):
 		pass
 	else:
-		Sfx._play_key("m2fire", -8.0, randf_range(0.97, 1.03), muzzle)
+		Sfx._play_key("m2fire", -8.0, preload("res://scripts/gfx.gd").rf(0.97, 1.03), muzzle)
 	heat += HEAT_PER_SHOT
 	if heat >= 1.0 and not overheated:
 		overheated = true

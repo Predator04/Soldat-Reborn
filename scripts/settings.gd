@@ -14,6 +14,9 @@ var music_muted := false
 # `screen_shake > 0` preserves the old "shake on" semantics for legacy readers.
 var screen_shake := true
 var screen_shake_intensity := 1.0
+# Hit-stop on your kills / heavy hits + slow-mo look on multi-kills (#271).
+# Presentation only (scripts/gfx/screen_feel.gd); Screen Shake 0 also turns it off.
+var hit_stop := true
 var fullscreen := false
 var map_index := 0             # which map layout the next game loads
 var custom_map_path := ""      # if non-empty, main.gd loads this JSON map (issue #31)
@@ -226,6 +229,7 @@ func load_settings() -> void:
 		screen_shake_intensity = 1.0 if screen_shake else 0.0
 	else:
 		screen_shake = screen_shake_intensity > 0.01
+	hit_stop = bool(cf.get_value("game", "hit_stop", true))
 	fullscreen = bool(cf.get_value("video", "fullscreen", false))
 	map_index = int(cf.get_value("game", "map_index", 0))
 	custom_map_path = str(cf.get_value("game", "custom_map_path", ""))
@@ -374,6 +378,7 @@ func _write_file() -> void:
 	cf.set_value("audio", "music_muted", music_muted)
 	cf.set_value("game", "screen_shake", screen_shake)
 	cf.set_value("game", "screen_shake_intensity", screen_shake_intensity)
+	cf.set_value("game", "hit_stop", hit_stop)
 	cf.set_value("video", "fullscreen", fullscreen)
 	cf.set_value("game", "map_index", map_index)
 	cf.set_value("game", "custom_map_path", custom_map_path)

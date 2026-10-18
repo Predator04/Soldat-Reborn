@@ -9,9 +9,14 @@ uniform vec3 rim_col = vec3(0.70, 0.84, 1.0);
 uniform vec3 bounce_col = vec3(1.0, 0.62, 0.38);
 uniform float rim_strength = 0.6;
 uniform float bounce_strength = 0.18;
+// Phase B (#271): per-soldier damage flash (soldier_feel.gd sets it for ~2
+// frames through set_instance_shader_parameter, so the material stays shared).
+instance uniform float flash = 0.0;
 
 void fragment() {
-	vec4 c = texture(TEXTURE, UV) * COLOR;
+	// COLOR already carries the texture sample (Godot 4); multiplying it in
+	// again squared every sprite colour and made cinematic soldiers too dark.
+	vec4 c = COLOR;
 	float a = texture(TEXTURE, UV).a;
 	vec2 g = vec2(dFdx(a), dFdy(a));
 	float e = length(g);
@@ -23,5 +28,6 @@ void fragment() {
 		c.rgb += rim_col * edge * key * rim_strength * c.a;
 		c.rgb += bounce_col * edge * back * bounce_strength * c.a;
 	}
+	c.rgb = mix(c.rgb, vec3(1.0), flash * 0.85);
 	COLOR = c;
 }
