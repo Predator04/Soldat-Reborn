@@ -17,6 +17,7 @@ extends Node
 const Gfx = preload("res://scripts/gfx.gd")
 const SKY_SHADER = preload("res://scripts/gfx/sky_cinematic.gdshader")
 const POST_SHADER = preload("res://scripts/gfx/post_cinematic.gdshader")
+const RIM_SHADER = preload("res://scripts/gfx/rim_light.gdshader")
 const ParallaxCinematic = preload("res://scripts/gfx/parallax_cinematic.gd")
 const SkyClassic = preload("res://scripts/sky.gd")
 const ParallaxClassic = preload("res://scripts/parallax.gd")
@@ -42,6 +43,8 @@ var _light_e: Array[float] = []
 var _next_light := 0
 var _time := 0.0
 var _style := ""
+var _rim_mat: ShaderMaterial = null
+var _rim_t := 0.0
 
 
 static func install(main: Node, map: Dictionary) -> Atmosphere:
@@ -154,6 +157,7 @@ func _build() -> void:
 		main.add_child(_ambient)
 	_ensure_lights(main)
 	_apply_post()
+	_apply_rim()
 
 
 func _graded(c: Color, amount: float, keep_hue := 0.85) -> Color:
@@ -266,6 +270,24 @@ func _apply_post() -> void:
 	sm.set_shader_parameter("grain", 0.035 if Gfx.on(Gfx.HIGH) else 0.0)
 
 
+func _apply_rim() -> void:
+	var want := _style == "cinematic"
+	if want and _rim_mat == null:
+		_rim_mat = ShaderMaterial.new()
+		_rim_mat.shader = RIM_SHADER
+	if want:
+		_rim_mat.set_shader_parameter("rim_strength", 0.6 if _night() > 0.5 else 0.4)
+	for grp in ["soldier", "vehicle"]:
+		for n in get_tree().get_nodes_in_group(grp):
+			var ci := n as CanvasItem
+			if ci == null:
+				continue
+			if want and ci.material == null:
+				ci.material = _rim_mat
+			elif not want and ci.material == _rim_mat:
+				ci.material = null
+
+
 func _post_rect() -> ColorRect:
 	var main := get_parent()
 	if main == null:
@@ -300,6 +322,12 @@ func _process(delta: float) -> void:
 		else:
 			l.energy = _light_e[i] * (_light_t[i] / maxf(0.001, _light_life[i]))
 	_impact = maxf(0.0, _impact - delta * 3.0)
+	# Rim light on soldiers + vehicles (cinematic). New bodies spawn all match
+	# long, so re-check a few times a second; assigning a shared material is free.
+	_rim_t -= delta
+	if _rim_t <= 0.0:
+		_rim_t = 0.25
+		_apply_rim()
 	var fx := _post_rect()
 	if fx != null:
 		var sm := fx.material as ShaderMaterial
