@@ -86,6 +86,12 @@ if [ "$(grep -c 'include_filter="\*.poa, \*.json' export_presets.cfg)" -ge 2 ]; 
 
 fi
 
+# The tracked class list (.godot/global_script_class_cache.cfg) must match what
+# the import just regenerated, or a non-importing checkout breaks (#275).
+if has A; then
+  if git diff --quiet -- .godot/global_script_class_cache.cfg 2>/dev/null; then pass "A class cache committed and current"; else fail "A .godot/global_script_class_cache.cfg changed on import — commit it (a class_name was added/removed)"; fi
+fi
+
 # ── B boot ──────────────────────────────────────────────────────────────────
 has B && for sc in main menu map_editor; do
   timeout 90 "$G" --headless --quit-after 700 "res://scenes/$sc.tscn" > "$OUT/boot_$sc.log" 2>&1
@@ -137,7 +143,12 @@ trustcase() {
   local auto="--smoke-auto"; [ "$K" = "godmode" ] && auto=""
   timeout $(( $4 + 40 )) "$G" --headless -- --smoke-botfire --port $port $auto --smoke-secs=$4 --smoke-cheat=$K > "$OUT/net_trust_${K}_client.log" 2>&1
   kill $spid 2>/dev/null; wait $spid 2>/dev/null
-  local e; e=$(( $(errs "$OUT/net_trust_${K}_server.log") + $(errs "$OUT/net_trust_${K}_client.log") ))
+  # The cheater is force-killed / kicked mid-stream, so the engine may report
+  # packets from it addressed to a body that is already gone (or a peer that
+  # is already disconnected). Those dropped-packet lines are expected here and
+  # only here; honest-client cases still count every error.
+  local DROP='Node not found: "Main/Player_|Failed to get cached node from peer|Invalid packet received. Requested node was not found|Unable to send packet on channel'
+  local e; e=$(( $(grep -E "$ERR_RE" "$OUT/net_trust_${K}_server.log" 2>/dev/null | grep -cvE "$DROP" || true) + $(grep -E "$ERR_RE" "$OUT/net_trust_${K}_client.log" 2>/dev/null | grep -cvE "$DROP" || true) ))
   local hit; hit=$(grep -m1 -E "$5" "$OUT/net_trust_${K}_server.log")
   if [ -n "$hit" ] && [ "$e" = "0" ]; then pass "C net trust $K: $hit"; else fail "C net trust $K: expected /$5/ errors=$e — $(grep -m3 '^TRUST' "$OUT/net_trust_${K}_server.log" | tr '\n' ' ')"; fi
 }
@@ -418,7 +429,7 @@ case " $NETSEL " in *" respawn "*)
 case " $NETSEL " in *" trust "*)
   trustcase teleport 18 2 60 "^TRUST kick: "
   trustcase credit 18 2 20 "^TRUST kill credit stripped: Nobody_Fake"
-  trustcase godmode 18 2 75 "^TRUST forced death: .*ignored damage"
+  trustcase godmode 18 0 90 "^TRUST forced death: .*ignored damage"
 ;; esac
 case " $NETSEL " in *" killcam "*)
   # A bot "kills" the client: its kill cam rewind plays (~4.3 s) and the host

@@ -148,6 +148,10 @@ const CEASEFIRE_SECS := 3.0
 var _trust: TrustGuard = null
 # Release-gate only: simulate a modified client (see Net --smoke-cheat).
 var test_cheat := ""
+# How long the dead body lingers as an inert husk for late packets (see _die).
+# A host-forced death (trust_guard) waits longer: the owner keeps sending until
+# the death reaches it, which on a slow / loaded client can take a while.
+var _husk_secs := 1.5
 # M2 mount — set to the M2 node while mounted. Skips all normal movement /
 # firing paths; m2.gd drives position + fires directly.
 var mounted_m2: Node2D = null
@@ -1825,7 +1829,7 @@ func _die() -> void:
 		# and a freed node makes every peer log "Node not found". The husk
 		# ignores them (dead) and the respawn renames it out of the way.
 		_become_husk()
-		get_tree().create_timer(1.5).timeout.connect(func() -> void:
+		get_tree().create_timer(_husk_secs).timeout.connect(func() -> void:
 			if is_instance_valid(self):
 				queue_free())
 	else:
@@ -2491,6 +2495,7 @@ func _trust_force_death(reason: String) -> void:
 	last_weapon = kw
 	last_killer_team = kt
 	_fanout("net_die", [k, kw, kt], -1)
+	_husk_secs = 5.0
 	_die()
 	var strikes := TrustGuard.add_strike(auth)
 	if strikes >= TrustGuard.STRIKES_TO_KICK:
