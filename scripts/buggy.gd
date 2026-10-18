@@ -45,6 +45,7 @@ var EJECT_DMG := 30.0         # a crew member thrown clear of a gentle wreck (he
 # #277: host relay sanity cap on a client-simulated vehicle (px/s over >= 250 ms,
 # falls included — generous on purpose; honest driving never comes close).
 var RELAY_MAX_SPEED := 2000.0
+var state_rx := 0             # remote state packets applied (smoke tests)
 var respawns := 0             # apply_respawn count (host relay check resets on it)
 
 # Seat offsets (local, facing right, before tilt). The soldier's origin sits
@@ -117,6 +118,7 @@ var SHADOW_W := 34.0          # soldier_shadows.gd: contact-shadow half width
 var SHADOW_REACH := 150.0     # ...and how high above the ground it still shows
 # Cosmetic state (never read by the simulation).
 var draws := 0                # _draw calls (gate draw-path test)
+var _onscr := true            # near the camera this frame (redraws only then)
 var _susp := 0.0
 var _susp_v := 0.0
 var _pitch := 0.0
@@ -334,7 +336,7 @@ func _physics_process(delta: float) -> void:
 			_host_destroy(last_hitter, last_hitter_team)
 	_engine_sound()
 	_wheel_rot += velocity.x * delta / 11.0
-	queue_redraw()
+	_redraw()
 
 
 func _is_host_side() -> bool:
@@ -468,6 +470,7 @@ func _send_state(delta: float) -> void:
 func apply_state(pos: Vector2, vel: Vector2, tilt: float, f: float, aim: Vector2) -> void:
 	if is_sim():
 		return
+	state_rx += 1
 	if _target_pos == Vector2.INF or pos.distance_to(global_position) > 300.0:
 		global_position = pos
 	_target_pos = pos
@@ -835,7 +838,7 @@ func _eject(s: Node2D, i: int) -> void:
 func _tick_dead(delta: float) -> void:
 	_engine.stop()
 	_smoke_t += delta
-	queue_redraw()
+	_redraw()
 	if not _is_host_side():
 		return
 	_respawn_t -= delta
@@ -932,6 +935,24 @@ func _process(delta: float) -> void:
 	_fx_tick(delta)
 
 
+## Redraw only while on (or near) the screen: an off-screen vehicle's drawing
+## is never seen, and it is the costliest thing a vehicle does per frame.
+func _redraw() -> void:
+	if _onscr or draws == 0:
+		queue_redraw()
+
+
+func _on_screen() -> bool:
+	var vp := get_viewport()
+	var cam := vp.get_camera_2d() if vp != null else null
+	if cam == null:
+		return true
+	var half := vp.get_visible_rect().size * 0.5 / cam.zoom
+	var c := cam.get_screen_center_position()
+	var m := 140.0 + SHADOW_REACH
+	return absf(global_position.x - c.x) < half.x + m and absf(global_position.y - c.y) < half.y + m
+
+
 func _fxw() -> Object:
 	var w = FxWorld.current
 	return w if w != null and is_instance_valid(w) and w.is_inside_tree() else null
@@ -969,6 +990,10 @@ func _fx_tick(delta: float) -> void:
 	_fx_prev_v = velocity
 	_gun_kick = maxf(0.0, _gun_kick - dt * 40.0)
 	_fx_time += dt
+	var was := _onscr
+	_onscr = _on_screen()
+	if _onscr and not was:
+		queue_redraw()
 	if not alive:
 		_wreck_t += dt
 	else:
@@ -1120,13 +1145,11 @@ static func _buggy_shapes() -> Dictionary:
 
 func _cols(key: String, pts: PackedVector2Array, top: Color, bottom: Color, y0: float, y1: float) -> PackedColorArray:
 	# Gradient colours per hull piece, rebuilt only when the paint changes.
-	var ck := "%s|%s|%s" % [key, top.to_html(), bottom.to_html()]
 	var c = _col_cache.get(key)
-	if c == null or _col_cache.get(key + "#") != ck:
-		c = VArt.vgrad(pts, top, bottom, y0, y1)
+	if c == null or c[0] != top or c[1] != bottom:
+		c = [top, bottom, VArt.vgrad(pts, top, bottom, y0, y1)]
 		_col_cache[key] = c
-		_col_cache[key + "#"] = ck
-	return c
+	return c[2]
 
 
 func _draw_hull(lv: int) -> void:

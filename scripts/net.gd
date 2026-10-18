@@ -454,6 +454,11 @@ func _smoke_join() -> void:
 		call_deferred("_smoke_m2", 0)
 	if "--smoke-drive" in OS.get_cmdline_user_args():
 		get_tree().create_timer(3.0).timeout.connect(_smoke_drive.bind(0))
+	# --smoke-heli (#277): get into a helicopter (the host grants the seat),
+	# spin up, climb, fly sideways, land, get out; then check the host saw it:
+	# once out, the host simulates it and streams its own position back.
+	if "--smoke-heli" in OS.get_cmdline_user_args():
+		get_tree().create_timer(0.5).timeout.connect(_smoke_heli.bind(0))
 	if "--smoke-die" in OS.get_cmdline_user_args():
 		get_tree().create_timer(4.0).timeout.connect(func() -> void:
 			var mn = get_tree().current_scene
@@ -1262,6 +1267,74 @@ func _smoke_drive(tries: int) -> void:
 		else:
 			print("SMOKE-DRIVE lost body (killed during the drive) vehicles=%d" % nv))
 
+
+
+# (--smoke-heli) Teleports next to the helicopter as soon as our body exists
+# (inside the host's spawn grace, so the honest client trips no trust check),
+# then flies it with real input.
+func _smoke_heli(tries: int) -> void:
+	var mn = get_tree().current_scene
+	var heli: Node = null
+	for v in get_tree().get_nodes_in_group("vehicle"):
+		if str(v.get("kind")) == "heli" and bool(v.get("alive")):
+			if heli == null or (mn != null and mn.get("player") != null and is_instance_valid(mn.player) \
+					and (v as Node2D).global_position.distance_to(mn.player.global_position) < (heli as Node2D).global_position.distance_to(mn.player.global_position)):
+				heli = v
+	if mn == null or mn.get("player") == null or not is_instance_valid(mn.player) or heli == null:
+		if tries < 80:
+			get_tree().create_timer(0.1).timeout.connect(_smoke_heli.bind(tries + 1))
+		else:
+			print("SMOKE-HELI none")
+		return
+	var pl = mn.player
+	pl.global_position = (heli as Node2D).global_position + Vector2(-16, -12)
+	pl.velocity = Vector2.ZERO
+	var hid: int = heli.get_instance_id()
+	var pid: int = pl.get_instance_id()
+	var st := {"y0": (heli as Node2D).global_position.y, "x0": 0.0, "top": 0.0, "land": Vector2.ZERO, "seat": -1}
+	var tw := get_tree()
+	tw.create_timer(0.3).timeout.connect(func() -> void:
+		var h = instance_from_id(hid)
+		var p = instance_from_id(pid)
+		if h != null and p != null:
+			h.request_enter(p))
+	tw.create_timer(1.2).timeout.connect(func() -> void:
+		var h = instance_from_id(hid)
+		var p = instance_from_id(pid)
+		st["seat"] = h.seat_of(p) if h != null and p != null else -1
+		Input.action_press("jump"))
+	tw.create_timer(3.9).timeout.connect(func() -> void:
+		Input.action_release("jump")
+		var h = instance_from_id(hid)
+		if h != null:
+			st["top"] = (h as Node2D).global_position.y
+			st["x0"] = (h as Node2D).global_position.x
+		Input.action_press("move_right"))
+	tw.create_timer(5.9).timeout.connect(func() -> void:
+		Input.action_release("move_right")
+		Input.action_press("crouch"))
+	tw.create_timer(9.0).timeout.connect(func() -> void:
+		Input.action_release("crouch")
+		var h = instance_from_id(hid)
+		var p = instance_from_id(pid)
+		if h == null or p == null:
+			print("SMOKE-HELI lost (killed during the flight)")
+			return
+		st["land"] = (h as Node2D).global_position
+		st["rx"] = int(h.state_rx)
+		print("SMOKE-HELI-FLY seat=%d climbed=%d moved=%d hp=%d rpm=%.2f" % [int(st["seat"]), int(float(st["y0"]) - float(st["top"])),
+			int((h as Node2D).global_position.x - float(st["x0"])), int(h.hp), float(h.rpm)])
+		h.request_exit(p))
+	tw.create_timer(11.0).timeout.connect(func() -> void:
+		var h = instance_from_id(hid)
+		var p = instance_from_id(pid)
+		if h == null:
+			print("SMOKE-HELI lost heli")
+			return
+		var land: Vector2 = st["land"]
+		print("SMOKE-HELI seat=%d climbed=%d moved=%d host_dist=%d host_rx=%d out=%s hp=%d" % [int(st["seat"]), int(float(st["y0"]) - float(st["top"])),
+			int(land.x - float(st["x0"])), int((h as Node2D).global_position.distance_to(land)), int(h.state_rx) - int(st.get("rx", 0)),
+			str(p != null and h.seat_of(p) < 0), int(h.hp)]))
 
 
 # ── Server query (ping + live info) ─────────────────────────────────────────

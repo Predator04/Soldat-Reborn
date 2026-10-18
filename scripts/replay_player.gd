@@ -367,7 +367,14 @@ func _draw() -> void:
 		var tank := str(v[0]) == "tank"
 		var vc := Color(0.45, 0.48, 0.4) if bool(v[4]) else Color(0.2, 0.2, 0.2)
 		draw_set_transform(vp, float(v[3]), Vector2.ONE)
-		draw_rect(Rect2(-30 if tank else -24, -14, 60 if tank else 48, 14), vc)
-		draw_circle(Vector2(-16, 2), 7.0, Color(0.12, 0.12, 0.12))
-		draw_circle(Vector2(16, 2), 7.0, Color(0.12, 0.12, 0.12))
+		if str(v[0]) == "heli":
+			# #277: cabin, tail boom, rotor line, skids.
+			draw_rect(Rect2(-36, -42, 80, 30), vc)
+			draw_rect(Rect2(-96, -36, 62, 7), vc)
+			draw_line(Vector2(-64, -57), Vector2(60, -57), Color(0.12, 0.12, 0.12), 2.0)
+			draw_line(Vector2(-30, -1), Vector2(32, -1), Color(0.12, 0.12, 0.12), 2.0)
+		else:
+			draw_rect(Rect2(-30 if tank else -24, -14, 60 if tank else 48, 14), vc)
+			draw_circle(Vector2(-16, 2), 7.0, Color(0.12, 0.12, 0.12))
+			draw_circle(Vector2(16, 2), 7.0, Color(0.12, 0.12, 0.12))
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)

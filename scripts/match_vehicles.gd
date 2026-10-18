@@ -1,6 +1,7 @@
 extends Node
 ## Main's vehicles and M2 turrets (#258 split of main.gd).
-## Buggies / tanks spawn at the map's vehicle_spawns / tank_spawns. The host owns
+## Buggies / tanks / helicopters spawn at the map's vehicle_spawns / tank_spawns /
+## heli_spawns (#277). The host owns
 ## them (damage, wrecks, respawns, who sits where); the driver's peer simulates
 ## movement and streams it. Every message goes through vehicle_send:
 ## single-player applies it directly, the host broadcasts it (and runs it), a
@@ -12,6 +13,9 @@ extends Node
 const Main = preload("res://scripts/main.gd")
 const Tank = preload("res://scripts/tank.gd")
 const Buggy = preload("res://scripts/buggy.gd")
+const Heli = preload("res://scripts/heli.gd")
+const RELAY_SPAN_MS := 250
+const RELAY_WORLD_MARGIN := 600.0
 
 var main: Main
 
@@ -150,7 +154,7 @@ func _spawn_vehicles() -> void:
 	if not Settings.vehicles or Settings.game_mode == Settings.MODE_GG:
 		return
 	var vid := 0
-	for pair in [["vehicle_spawns", "buggy"], ["tank_spawns", "tank"]]:
+	for pair in [["vehicle_spawns", "buggy"], ["tank_spawns", "tank"], ["heli_spawns", "heli"]]:
 		for v in main._map.get(pair[0], []):
 			var p: Vector2 = v if v is Vector2 else Vector2(float(v[0]), float(v[1]))
 			_make_vehicle(vid, p + Vector2(0, -4), p + Vector2(0, -4), -1.0, true, pair[1])
@@ -160,8 +164,8 @@ func _spawn_vehicles() -> void:
 func _make_vehicle(vid: int, spawn: Vector2, pos: Vector2, hp_v: float, alive_v: bool, kind := "buggy") -> Node:
 	if main._vehicles.has(vid) and is_instance_valid(main._vehicles[vid]):
 		main._vehicles[vid].queue_free()
-	var b = Tank.new() if kind == "tank" else Buggy.new()
-	b.name = "%s_%d" % ["Tank" if kind == "tank" else "Buggy", vid]
+	var b = Tank.new() if kind == "tank" else (Heli.new() if kind == "heli" else Buggy.new())
+	b.name = "%s_%d" % [{"tank": "Tank", "heli": "Heli"}.get(kind, "Buggy"), vid]
 	b.vehicle_id = vid
 	b.position = spawn
 	main.add_child(b)
@@ -318,6 +322,8 @@ func net_vehicle_state(vid: int, pos: Vector2, vel: Vector2, tilt: float, f: flo
 	var v := find_vehicle(vid)
 	if v == null:
 		return
+	if _relay_drop(v, pos):
+		return
 	if _vehicle_relay("net_vehicle_state", [vid, pos, vel, tilt, f, aim], int(v.sim_peer())):
 		return
 	if Net.is_networked() and not Net.is_host() and main.multiplayer.get_remote_sender_id() != 1:
@@ -340,6 +346,85 @@ func net_vehicle_fire(vid: int, muzzle: Vector2, dir: Vector2) -> void:
 	if muzzle.distance_to((v as Node2D).global_position) > 90.0:
 		return
 	v.apply_fire(muzzle, dir.normalized())
+
+
+# #277: host-side sanity check on a client-simulated vehicle's stream: no
+# faster than the kind's RELAY_MAX_SPEED measured over >= 250 ms of host time
+# (falls included), never far outside the world. A packet that fails is
+# dropped (the host's copy and everyone else's stay where they were). The
+# history restarts when the simulating peer changes or the vehicle respawns.
+func _relay_drop(v: Node, pos: Vector2) -> bool:
+	if not Net.is_networked() or not Net.is_host():
+		return false
+	var sender := main.multiplayer.get_remote_sender_id()
+	if sender == 0 or sender == main.multiplayer.get_unique_id():
+		return false
+	var mw: float = float(main.MAP_W)
+	var mh: float = float(main.MAP_H)
+	if pos.x < -RELAY_WORLD_MARGIN or pos.x > mw + RELAY_WORLD_MARGIN or pos.y < -RELAY_WORLD_MARGIN * 2.0 or pos.y > mh + RELAY_WORLD_MARGIN:
+		_relay_note(v, "out of world at (%.0f, %.0f)" % [pos.x, pos.y])
+		return true
+	var now := Time.get_ticks_msec()
+	var hist: Array = v.get_meta("relay_hist", [])
+	if int(v.get_meta("relay_peer", -1)) != sender or int(v.get_meta("relay_life", -1)) != int(v.get("respawns")):
+		hist = []
+		v.set_meta("relay_peer", sender)
+		v.set_meta("relay_life", int(v.get("respawns")))
+	# Oldest entry at least RELAY_SPAN_MS old (keep the newest such one).
+	while hist.size() > 1 and now - int(hist[1][0]) >= RELAY_SPAN_MS:
+		hist.pop_front()
+	if hist.size() >= 1 and now - int(hist[0][0]) >= RELAY_SPAN_MS:
+		var span: float = float(now - int(hist[0][0])) / 1000.0
+		var spd: float = pos.distance_to(hist[0][1]) / span
+		if spd > float(v.get("RELAY_MAX_SPEED")):
+			_relay_note(v, "speed %.0f px/s" % spd)
+			return true
+	hist.append([now, pos])
+	v.set_meta("relay_hist", hist)
+	return false
+
+
+func _relay_note(v: Node, why: String) -> void:
+	var now := Time.get_ticks_msec()
+	if now - int(v.get_meta("relay_log_ms", -100000)) > 2000:
+		v.set_meta("relay_log_ms", now)
+		print("TRUST vehicle %s state dropped: %s" % [str(v.name), why])
+
+
+func net_vehicle_fire_seat(vid: int, seat: int, muzzle: Vector2, dir: Vector2) -> void:
+	var v := find_vehicle(vid)
+	if v == null or not v.has_method("apply_fire_seat"):
+		return
+	var cur: Array = v.get("seats")
+	if seat < 0 or seat >= cur.size() or not is_instance_valid(cur[seat]):
+		return
+	var shooter: Node = cur[seat]
+	if Net.is_networked() and Net.is_host():
+		var sender := main.multiplayer.get_remote_sender_id()
+		if sender != 0 and sender != main.multiplayer.get_unique_id():
+			if sender != _peer_of(shooter) or not v.fire_seat_ready(seat):
+				return
+	if _vehicle_relay("net_vehicle_fire_seat", [vid, seat, muzzle, dir], _peer_of(shooter)):
+		return
+	if Net.is_networked() and not Net.is_host() and main.multiplayer.get_remote_sender_id() != 1:
+		return
+	if muzzle.distance_to((v as Node2D).global_position) > 120.0:
+		return
+	v.apply_fire_seat(seat, muzzle, dir.normalized())
+
+
+## Host only: the simulating peer's impact report (#277).
+func net_vehicle_crash(vid: int, dmg: float, speed: float, final: bool) -> void:
+	var v := find_vehicle(vid)
+	if v == null or not v.has_method("host_crash"):
+		return
+	if Net.is_networked():
+		if not Net.is_host():
+			return
+		var sender := main.multiplayer.get_remote_sender_id()
+		if sender != 0 and sender != main.multiplayer.get_unique_id() and sender != int(v.sim_peer()):
+			return
+	v.host_crash(clampf(dmg, 0.0, 400.0), clampf(speed, 0.0, 3000.0), final)
 
 
 func net_vehicle_hp(vid: int, hp_v: float) -> void:

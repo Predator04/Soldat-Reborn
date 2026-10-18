@@ -356,7 +356,7 @@ func _build_game(box: VBoxContainer) -> void:
 	(tag_row.get_child(1) as LineEdit).placeholder_text = "ABCD"
 	(tag_row.get_child(1) as LineEdit).max_length = 4
 	box.add_child(tag_row)
-	box.add_child(_check_button("Vehicles: buggies on maps with room (host decides online)", Settings.vehicles,
+	box.add_child(_check_button("Vehicles: buggies, tanks and helicopters on maps with room (host decides online)", Settings.vehicles,
 		func(on: bool) -> void:
 			Settings.vehicles = on
 			Settings.save()))

@@ -1538,7 +1538,8 @@ func net_bot_state(arr: Array) -> void:
 
 
 # ── Vehicles (v1.19) ──────────────────────────────────
-# Buggies spawn at the map's "vehicle_spawns" (tools/place_vehicles.py). The
+# Buggies spawn at the map's "vehicle_spawns", tanks at "tank_spawns",
+# helicopters at "heli_spawns" (tools/place_vehicles.py). The
 # host owns them (damage, wrecks, respawns, who sits where); the driver's peer
 # simulates movement and streams it. Every message goes through vehicle_send:
 # single-player applies it directly, the host broadcasts it (and runs it), a
@@ -1595,6 +1596,20 @@ func net_vehicle_hp(vid: int, hp_v: float) -> void:
 @rpc("any_peer", "call_remote", "reliable")
 func net_vehicle_destroy(vid: int, at: Vector2, killer: String, killer_team: int, violent: bool) -> void:
 	_vehicles_sys.net_vehicle_destroy(vid, at, killer, killer_team, violent)
+
+
+# #277: a seat-specific weapon (the helicopter pilot's rockets — the gunner's
+# MG stays on net_vehicle_fire).
+@rpc("any_peer", "call_remote", "reliable")
+func net_vehicle_fire_seat(vid: int, seat: int, muzzle: Vector2, dir: Vector2) -> void:
+	_vehicles_sys.net_vehicle_fire_seat(vid, seat, muzzle, dir)
+
+
+# #277: the simulating peer reports a hard landing / wall hit / rotor strike /
+# the crash that ends a spin-out; the host checks the sender and applies it.
+@rpc("any_peer", "call_remote", "reliable")
+func net_vehicle_crash(vid: int, dmg: float, speed: float, final: bool) -> void:
+	_vehicles_sys.net_vehicle_crash(vid, dmg, speed, final)
 
 
 @rpc("any_peer", "call_remote", "reliable")

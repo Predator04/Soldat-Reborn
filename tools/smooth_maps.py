@@ -95,9 +95,9 @@ WELD_EPS = 0.5
 COLOR_THR = 96       # max per-channel (0-255) difference that still gets blended
 
 ENTITY_KEYS_POINT = ("player_spawn", "inf_flag", "htf_flag", "rambo_pos")
-UNAUDITED = ("medkits", "grenade_kits", "vehicle_spawns", "tank_spawns")
+UNAUDITED = ("medkits", "grenade_kits", "vehicle_spawns", "tank_spawns", "heli_spawns")
 ENTITY_KEYS_LIST = ("bot_spawns", "ctf_flags", "m2_mounts", "dom_points", "point_spawns",
-                    "medkits", "grenade_kits", "vehicle_spawns", "tank_spawns", "bonus_spawns")
+                    "medkits", "grenade_kits", "vehicle_spawns", "tank_spawns", "heli_spawns", "bonus_spawns")
 
 
 # ── small helpers ──────────────────────────────────────────────────────────
@@ -400,7 +400,7 @@ def entity_list(m):
             vv = list(v)
             if k in ("dom_points", "point_spawns"):
                 vv = [vv[0], vv[1] + 28.0]
-            elif k in ("vehicle_spawns", "tank_spawns"):
+            elif k in ("vehicle_spawns", "tank_spawns", "heli_spawns"):
                 vv = [vv[0], vv[1] - 4.0]   # [x, ground y]: test the body just above
             out.append(("%s[%d]" % (k, i), vv))
     for t, arr in (m.get("team_spawns") or {}).items():

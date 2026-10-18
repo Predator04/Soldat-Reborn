@@ -1417,7 +1417,7 @@ func _spawn_gibs() -> void:
 
 
 static func _gib_explosive(weapon: String) -> bool:
-	return weapon in ["LAW", "M79", "Grenade", "Cluster", "Buggy", "Tank", "M2"] or weapon.begins_with("Grenade")
+	return weapon in ["LAW", "M79", "Grenade", "Cluster", "Buggy", "Tank", "Heli", "M2"] or weapon.begins_with("Grenade")
 
 
 ## Compact snapshot for match replays (replay_recorder.gd).
@@ -1963,6 +1963,9 @@ func _think_ride() -> bool:
 		var d: Node = v.driver()
 		if d == null or v.gunner() != null or int(d.get("team")) != team:
 			continue
+		# #277: a helicopter only takes a gunner on the ground.
+		if v.has_method("bot_board_ok") and not v.bot_board_ok():
+			continue
 		var dist: float = global_position.distance_to((v as Node2D).global_position)
 		if dist > 480.0 or absf((v as CharacterBody2D).velocity.x) > 160.0:
 			continue
@@ -1991,6 +1994,8 @@ func _think_drive() -> void:
 		return
 	for v in get_tree().get_nodes_in_group("vehicle"):
 		if not is_instance_valid(v) or not v.get("alive") or v.driver() != null:
+			continue
+		if v.has_method("bot_board_ok") and not v.bot_board_ok():
 			continue
 		var vg = v.gunner()
 		if vg != null and int(vg.get("team")) != team:

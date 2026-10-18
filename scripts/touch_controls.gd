@@ -686,5 +686,8 @@ func _throw_label() -> String:
 	elif p.has_method("_find_nearby_m2"):
 		var n = p._find_nearby_m2()
 		if n != null:
-			_throw_lbl = ("DRIVE" if n.driver() == null else "GUNNER") if n.is_in_group("vehicle") else "MOUNT"
+			if n.is_in_group("vehicle"):
+				_throw_lbl = ("PILOT" if str(n.get("kind")) == "heli" else "DRIVE") if n.driver() == null else "GUNNER"
+			else:
+				_throw_lbl = "MOUNT"
 	return _throw_lbl

@@ -1419,7 +1419,7 @@ func net_vehicle_hurt(dmg: float, killer: String, killer_team: int, vel: Vector2
 	if multiplayer.get_remote_sender_id() != 1 or not is_multiplayer_authority():
 		return
 	ceasefire_t = 0.0
-	take_damage(dmg, killer, weapon if weapon in ["Buggy", "Tank"] else "Buggy", killer_team)
+	take_damage(dmg, killer, weapon if weapon in ["Buggy", "Tank", "Heli"] else "Buggy", killer_team)
 	if not dead:
 		velocity = Vector2(vel.x * 0.9, -260.0)
 
@@ -2134,7 +2134,7 @@ func _spawn_gibs() -> void:
 
 
 static func _gib_explosive(weapon: String) -> bool:
-	return weapon in ["LAW", "M79", "Grenade", "Cluster", "Buggy", "Tank", "M2"] or weapon.begins_with("Grenade")
+	return weapon in ["LAW", "M79", "Grenade", "Cluster", "Buggy", "Tank", "Heli", "M2"] or weapon.begins_with("Grenade")
 
 
 ## Compact snapshot for match replays (replay_recorder.gd).

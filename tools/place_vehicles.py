@@ -11,6 +11,18 @@ Maps without a stretch of MIN_RUN px get none (tight maps stay on foot).
     python3 tools/place_vehicles.py            # write all classic maps
     python3 tools/place_vehicles.py --dry      # just report
     python3 tools/place_vehicles.py --builtin  # print spots for main.gd's built-ins
+    python3 tools/place_vehicles.py --heli     # helicopter pads only (#277), see below
+    python3 tools/place_vehicles.py --heli --dry
+
+Helicopters (#277) go on the big, open maps only: world at least HELI_MIN_W x
+HELI_MIN_H and open sky over most of it (HELI_MIN_SKY of the columns have
+HELI_SKY_PX of clear air under the top of the world). A pad is flat ground
+(a HELI_W x HELI_H box rests there on a run of HELI_MIN_RUN px) with
+HELI_CLEAR_W x HELI_CLEAR_H of clear air above it (rotor + room to climb),
+in the main arena, HELI_AVOID px from the buggy / tank spots — one per team
+base on team maps, else one where the sky is most open. --heli touches only
+"heli_spawns" (the buggy / tank spots of the smoothed maps are left exactly as
+they are) and re-checks every pad it writes.
 """
 import glob, json, os, sys
 import numpy as np
@@ -22,9 +34,17 @@ CAR_W, CAR_H = 64.0, 30.0
 MIN_RUN = 700.0          # px of continuous drivable ground
 TANK_W, TANK_H = 90.0, 32.0
 TANK_MIN_RUN = 1600.0    # tanks only on wide maps with a long ground stretch
+HELI_W, HELI_H = 140.0, 70.0
+HELI_MIN_RUN = 200.0     # flat-ish ground under the skids
+HELI_CLEAR_W, HELI_CLEAR_H = 260.0, 420.0
+HELI_MIN_W, HELI_MIN_H = 4500.0, 2300.0
+HELI_SKY_PX = 700.0
+HELI_MIN_SKY = 0.55
+HELI_AVOID = 300.0
+HELI_MAX_MAPS = 15
 
 
-def runs(m, w=CAR_W, h=CAR_H):
+def runs(m, w=CAR_W, h=CAR_H, edge=None):
     sp = MA.Space(m)
     car = MA.fits(sp.solid, w, h)
     # Real ground: solid terrain right under the box. ("The box doesn't fit one
@@ -60,7 +80,7 @@ def runs(m, w=CAR_W, h=CAR_H):
         Rr[:, x] = gi[:, x] * (1 + best)
     tot = (L + Rr - 1) * R
     # Stay a car length away from the ends of the stretch.
-    edge_ok = (np.minimum(L, Rr) * R) >= w * 1.5
+    edge_ok = (np.minimum(L, Rr) * R) >= (w * 1.5 if edge is None else edge)
     return sp, tot, edge_ok
 
 
@@ -134,7 +154,127 @@ def pick_tank(m, avoid):
     return out
 
 
+def sky_fraction(m):
+    """Share of the world's columns with HELI_SKY_PX of clear air below the top."""
+    solid = MA.raster(m)
+    first = np.where(solid.any(0), solid.argmax(0), solid.shape[0])
+    W = solid.shape[1]
+    inner = first[int(60 / R): W - int(60 / R)]
+    return float(np.mean(inner * R >= HELI_SKY_PX)), solid
+
+
+def heli_pads(m, solid=None):
+    """Helicopter pads for one map (list of [x, ground_y]), [] if none fit."""
+    sp, tot, edge_ok = runs(m, HELI_W, HELI_H, edge=HELI_MIN_RUN * 0.4)
+    if solid is None:
+        solid = sp.solid
+    sky = MA.fits(solid, HELI_CLEAR_W, HELI_CLEAR_H)
+    ok = (tot >= HELI_MIN_RUN) & edge_ok & sky
+    ys, xs = np.nonzero(ok)
+    if len(xs) == 0:
+        return []
+    pts = np.stack([xs * R, ys * R], 1)
+    score = tot[ys, xs].astype(float)
+    keep = np.ones(len(xs), bool)
+    for k in ("vehicle_spawns", "tank_spawns"):
+        for a in m.get(k, []) or []:
+            keep &= np.hypot(pts[:, 0] - float(a[0]), pts[:, 1] - float(a[1])) > HELI_AVOID
+    if not keep.any():
+        return []
+    pts, score = pts[keep], score[keep]
+    def first_ok(cost):
+        # Cheapest candidate that also passes the pad re-check (flat, resting,
+        # clear air above), trying the best few thousand.
+        for i in np.argsort(cost)[:3000]:
+            p = [round(float(pts[i, 0]), 1), round(float(pts[i, 1]), 1)]
+            if check_pad(m, p, solid) is None:
+                return p
+        return None
+    out = []
+    bs = bases(m)
+    if len(bs) == 2:
+        for bx, by in bs:
+            d = np.hypot(pts[:, 0] - bx, pts[:, 1] - by)
+            p = first_ok(d - np.minimum(score, 600.0) * 0.3)
+            if p is not None:
+                out.append(p)
+        if len(out) == 2 and abs(out[0][0] - out[1][0]) + abs(out[0][1] - out[1][1]) < 800:
+            out = out[:1]   # both bases would share one pad: keep one
+    else:
+        # The pad with the longest flat run nearest the middle of the map.
+        W = float(MA.world_of(m)[0])
+        p = first_ok(np.abs(pts[:, 0] - W * 0.5) - np.minimum(score, 800.0))
+        if p is not None:
+            out.append(p)
+    return out
+
+
+def check_pad(m, p, solid):
+    """Re-check a written pad: box rests on solid ground, flat, clear air above."""
+    x, y = p
+    cx, cy = int(round(x / R)), int(round(y / R))
+    hw = int(HELI_W / 2 / R)
+    under = solid[cy: cy + int(22 / R) + 1, cx - hw: cx + hw + 1]
+    if under.size == 0 or under.any(0).mean() < 0.6:
+        return "not resting on ground"
+    box = solid[max(0, cy - int(HELI_CLEAR_H / R)): cy, cx - int(HELI_CLEAR_W / 2 / R): cx + int(HELI_CLEAR_W / 2 / R) + 1]
+    if box.any():
+        return "no clear air above"
+    # Flat: ground height under the skid ends within 12 px.
+    hs = []
+    for xx in (cx - hw, cx + hw):
+        col = solid[cy - int(30 / R): cy + int(30 / R), xx]
+        hs.append(int(np.argmax(col)) if col.any() else 999)
+    if abs(hs[0] - hs[1]) * R > 16.0:
+        return "ground not flat (%d px)" % int(abs(hs[0] - hs[1]) * R)
+    return None
+
+
+def main_heli(argv):
+    dry = "--dry" in argv
+    cands = []
+    for f in sorted(glob.glob(os.path.join(MA.GAME, "assets", "maps", "*.json"))):
+        m = json.load(open(f, encoding="utf-8"))
+        W, H, _, _ = MA.world_of(m)
+        if W < HELI_MIN_W or H < HELI_MIN_H:
+            continue
+        sky, solid = sky_fraction(m)
+        if sky < HELI_MIN_SKY:
+            continue
+        cands.append((sky * min(W, 9000.0), f, m, solid, sky))
+    cands.sort(key=lambda c: -c[0])
+    chosen = {}
+    for _, f, m, solid, sky in cands:
+        if len(chosen) >= HELI_MAX_MAPS:
+            break
+        pads = heli_pads(m)
+        bad = [check_pad(m, p, solid) for p in pads]
+        pads = [p for p, b in zip(pads, bad) if b is None]
+        name = os.path.basename(f)[:-5]
+        print("%-12s %5dx%-5d sky=%.2f pads=%s %s" % (name, MA.world_of(m)[0], MA.world_of(m)[1], sky, pads,
+              [b for b in bad if b] or ""))
+        if pads:
+            chosen[f] = pads
+    for f in sorted(glob.glob(os.path.join(MA.GAME, "assets", "maps", "*.json"))):
+        if dry:
+            continue
+        raw = open(f, encoding="utf-8").read()
+        m = json.loads(raw)
+        if f in chosen:
+            if m.get("heli_spawns") == chosen[f]:
+                continue
+            m["heli_spawns"] = chosen[f]
+        elif "heli_spawns" in m:
+            m.pop("heli_spawns")
+        else:
+            continue
+        json.dump(m, open(f, "w", encoding="utf-8"), indent=2)
+    print("maps with helicopters: %d" % len(chosen))
+
+
 def main(argv):
+    if "--heli" in argv:
+        return main_heli(argv)
     dry = "--dry" in argv
     if "--builtin" in argv:
         for m in MA.builtin_maps():

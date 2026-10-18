@@ -41,7 +41,7 @@ credit are caught on the server (forced death, then a kick).
 - **Online services** — a free public master server over HTTPS: live server list, a news line on the main menu, friends with one-click join and clan tags, a career **leaderboard** with ranks and achievements, a shared **map library** (upload, browse, download in-game), and signed auto-updates
 - **Host tools** — the classic chat command set (/addbot, /kick, /map, /restart, /say, /ff, /bots), per-weapon bans for custom nights ("pistol only", "no sniper"), and a live admin panel
 - **Replays & kill cam** — every match is recorded and playable from any seat at any speed; death gets a slow-mo kill-cam rewind
-- **Vehicles** — two-seat buggies (driver + gunner on a mounted machine gun) on 87 of the classic maps and the built-in arenas, and armored tanks with a lobbed-shell turret on the 13 widest maps: run people over, get wrecked by rockets and grenades, respawn at their spot. Bots drive and crew both. Toggle in Settings → Game
+- **Vehicles** — two-seat buggies (driver + gunner on a mounted machine gun) on 87 of the classic maps and the built-in arenas, armored tanks with a lobbed-shell turret on the 13 widest maps, and two-seat **helicopters** (pilot with forward rockets + door gunner) on the 15 biggest open maps: run people over, rain rockets from above, get wrecked by rockets and grenades, respawn at their spot. Detailed, animated, with damage states and burning wrecks. Bots drive, fly and crew them. Toggle in Settings → Game
 - **Pickups** — medikits and grenade kits where the original maps put them (bots use them too), plus timed bonus crates (Predator, Berserker, Vest, Cluster)
 - **Sound** — positional audio (distance + stereo), footsteps, landings, ricochets, bullet whizz-bys, distant-gunfire tails, death cries, rain / snow ambience, Soldat radio voice lines
 - **Round hygiene** — clean-slate reset (full HP/ammo, spawn-slot teleport) in every mode, not just Survival
@@ -62,7 +62,7 @@ credit are caught on the server (forced death, then a kick).
 | R | Reload |
 | E | Throw grenade |
 | G | Toggle grenade type (frag / cluster) |
-| F | Throw away current weapon · get in / out of a buggy · mount an M2 |
+| F | Throw away current weapon · get in / out of a buggy, tank or helicopter · mount an M2 |
 | / | Gesture console — `/victory /smoke /tabac /takeoff /kill /brutalkill /mercy` |
 | T / Y | Chat (global / team); ALT+keys for taunts |
 | V | Team radio: enemy / friendly flag carrier, enemy spotted — up / mid / down |
