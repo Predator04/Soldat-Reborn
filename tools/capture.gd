@@ -14,6 +14,8 @@ var _zoom := 1.0
 var _cam: Camera2D = null
 var _nohud := false
 var _focus: Node2D = null
+var _ab := false   # --ab: each shot saved twice, classic look then cinematic (graphics before/after)
+var _ab_step := 0
 
 
 func _initialize() -> void:
@@ -27,6 +29,7 @@ func _initialize() -> void:
 		elif a.begins_with("--bots="): _bots = int(a.substr(7))
 		elif a.begins_with("--zoom="): _zoom = float(a.substr(7))
 		elif a == "--nohud": _nohud = true
+		elif a == "--ab": _ab = true
 
 
 func _process(_d: float) -> bool:
@@ -72,7 +75,29 @@ func _process(_d: float) -> bool:
 		m.hud.visible = false
 	if _focus != null and _cam != null:
 		_cam.global_position = _focus.global_position + Vector2(0, -40)
-	if (_n - _skip) % _every == 0:
+	if _ab and _ab_step > 0:
+		# Classic frame was saved; give the cinematic look 3 frames to settle.
+		_ab_step += 1
+		if _ab_step == 4:
+			root.get_texture().get_image().save_png("%s/f%03d_after.png" % [_out, _saved])
+			st.visual_style = "classic"
+			load("res://scripts/gfx/atmosphere.gd").restyle(self)
+			_ab_step = 0
+			_saved += 1
+			if _saved >= _frames:
+				quit()
+				return true
+		return false
+	if _ab and _n == _skip:
+		st.visual_style = "classic"
+		load("res://scripts/gfx/atmosphere.gd").restyle(self)
+	if _ab and (_n - _skip) % _every == 0 and _n > _skip:
+		root.get_texture().get_image().save_png("%s/f%03d_before.png" % [_out, _saved])
+		st.visual_style = "cinematic"
+		load("res://scripts/gfx/atmosphere.gd").restyle(self)
+		_ab_step = 1
+		return false
+	if not _ab and (_n - _skip) % _every == 0:
 		root.get_texture().get_image().save_png("%s/f%03d.png" % [_out, _saved])
 		_saved += 1
 		if _saved >= _frames:

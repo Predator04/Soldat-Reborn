@@ -372,99 +372,130 @@ func _physics_process(delta: float) -> void:
 	if not has_peer or is_multiplayer_authority():
 		_record_hitbox()
 
-	# Non-authority replica: state is set by net_state RPCs; just visual bookkeeping.
+	# One handler per state (#258): a non-authority replica only animates;
+	# the local body is either mounted on an M2 / vehicle seat, frozen while
+	# the chat line is open, or live.
 	if has_peer and not is_multiplayer_authority():
-		_net_smooth(delta)
-		muzzle_t = maxf(0.0, muzzle_t - delta * 10.0)
-		if gesture_t > 0.0:
-			gesture_t = maxf(0.0, gesture_t - delta)
-			if gesture_t <= 0.0:
-				gesture_anim = ""
-		# Bonus tick on the replica so predator alpha / berserker red decay in
-		# step with the authority peer (both received the same duration via
-		# call_local). Explicit predator break-on-fire is still broadcast.
-		if bonus_kind != "":
-			bonus_t = maxf(0.0, bonus_t - delta)
-			if bonus_t <= 0.0:
-				_clear_bonus_local()
-		# Predator: other peers see the ghost, self stays visible. This branch
-		# only runs on peers where this body is not the local player, so we
-		# always dim when active. (#78)
-		modulate.a = 0.35 if bonus_kind == "predator" else 1.0
-		jet_particles.emitting = jet_on and not dead
-		jet_particles.color = jet_particle_color(cosmetics)
-		jet_particles.position = Vector2(-facing * 3.3, 1.7)
-		queue_redraw()
-		return
+		_physics_replica(delta)
+	elif mounted_m2 != null:
+		_physics_mounted(delta)
+	elif input_locked:
+		_physics_input_locked(delta)
+	else:
+		_physics_live(delta)
 
-	# Mounted on an M2 — the turret drives position, aim, and firing.
-	if mounted_m2 != null:
-		velocity = Vector2.ZERO
-		if was_jet:
-			Sfx.jet(false)
-			was_jet = false
-		jet_on = false
-		jet_particles.emitting = false
-		muzzle_t = maxf(0.0, muzzle_t - delta * 10.0)
-		# Fuel keeps regenerating while mounted — the operator is stationary on
-		# the sandbag, not draining tanks. Uses the same mod_jet scaling as
-		# grounded regen so mods stay consistent.
-		fuel = minf(100.0, fuel + JET_REGEN * MatchConfig.mod_jet() * delta)
-		# Allow exiting prone/crouch while mounted so the soldier isn't locked
-		# into a stance they can't leave. Toggle on rising edge like normal.
-		var x_now_m := Input.is_action_pressed("prone")
-		if x_now_m and not x_prev and prone:
-			prone = false
-		x_prev = x_now_m
-		if crouching and not Input.is_action_pressed("crouch"):
-			crouching = false
-		_apply_stance_shape()
-		# Recover from bink/ceasefire while mounted too — otherwise a soldier who
-		# mounts mid-fight still shakes forever.
-		bink_t = maxf(0.0, bink_t - delta * 100.0)
-		ceasefire_t = maxf(0.0, ceasefire_t - delta)
-		# Refresh rising-edge prev states so a key held while mounted doesn't
-		# fire a spurious roll/swap/throw on the frame after dismount.
-		s_prev = Input.is_action_pressed("crouch")
-		q_prev = Input.is_action_pressed("secondary_swap")
-		g_prev = Input.is_action_pressed("grenade_toggle")
-		f_prev = Input.is_action_pressed("weapon_throw")
-		lmb_prev = Input.is_action_pressed("fire")
-		queue_redraw()
-		return
 
-	# If the HUD command/chat line is open, freeze inputs: drop x-velocity, apply
-	# gravity so we still fall to ground, and skip all movement/shooting handling.
-	if input_locked:
-		velocity.x = move_toward(velocity.x, 0.0, (GROUND_FRICTION if is_on_floor() else AIR_FRICTION) * delta)
-		if not is_on_floor():
-			velocity.y += GRAVITY * MatchConfig.mod_gravity() * delta
-			velocity.y = minf(velocity.y, MAX_FALL)
-		jet_on = false
-		if was_jet:
-			Sfx.jet(false)
-			was_jet = false
-		jet_particles.emitting = false
-		move_and_slide()
-		if gesture_t > 0.0:
-			gesture_t = maxf(0.0, gesture_t - delta)
-			if gesture_t <= 0.0:
-				gesture_anim = ""
-		# Refresh rising-edge prev states so closing chat with a key still held
-		# doesn't trigger a spurious prone/roll/swap/grenade/throw/fire.
-		x_prev = Input.is_action_pressed("prone")
-		s_prev = Input.is_action_pressed("crouch")
-		q_prev = Input.is_action_pressed("secondary_swap")
-		g_prev = Input.is_action_pressed("grenade_toggle")
-		f_prev = Input.is_action_pressed("weapon_throw")
-		lmb_prev = Input.is_action_pressed("fire")
-		queue_redraw()
-		return
+## Non-authority replica: state is set by net_state RPCs; just visual bookkeeping.
+func _physics_replica(delta: float) -> void:
+	_net_smooth(delta)
+	muzzle_t = maxf(0.0, muzzle_t - delta * 10.0)
+	if gesture_t > 0.0:
+		gesture_t = maxf(0.0, gesture_t - delta)
+		if gesture_t <= 0.0:
+			gesture_anim = ""
+	# Bonus tick on the replica so predator alpha / berserker red decay in
+	# step with the authority peer (both received the same duration via
+	# call_local). Explicit predator break-on-fire is still broadcast.
+	if bonus_kind != "":
+		bonus_t = maxf(0.0, bonus_t - delta)
+		if bonus_t <= 0.0:
+			_clear_bonus_local()
+	# Predator: other peers see the ghost, self stays visible. This branch
+	# only runs on peers where this body is not the local player, so we
+	# always dim when active. (#78)
+	modulate.a = 0.35 if bonus_kind == "predator" else 1.0
+	jet_particles.emitting = jet_on and not dead
+	jet_particles.color = jet_particle_color(cosmetics)
+	jet_particles.position = Vector2(-facing * 3.3, 1.7)
+	queue_redraw()
 
+
+## Mounted on an M2 — the turret drives position, aim, and firing.
+func _physics_mounted(delta: float) -> void:
+	velocity = Vector2.ZERO
+	if was_jet:
+		Sfx.jet(false)
+		was_jet = false
+	jet_on = false
+	jet_particles.emitting = false
+	muzzle_t = maxf(0.0, muzzle_t - delta * 10.0)
+	# Fuel keeps regenerating while mounted — the operator is stationary on
+	# the sandbag, not draining tanks. Uses the same mod_jet scaling as
+	# grounded regen so mods stay consistent.
+	fuel = minf(100.0, fuel + JET_REGEN * MatchConfig.mod_jet() * delta)
+	# Allow exiting prone/crouch while mounted so the soldier isn't locked
+	# into a stance they can't leave. Toggle on rising edge like normal.
+	var x_now_m := Input.is_action_pressed("prone")
+	if x_now_m and not x_prev and prone:
+		prone = false
+	x_prev = x_now_m
+	if crouching and not Input.is_action_pressed("crouch"):
+		crouching = false
+	_apply_stance_shape()
+	# Recover from bink/ceasefire while mounted too — otherwise a soldier who
+	# mounts mid-fight still shakes forever.
+	bink_t = maxf(0.0, bink_t - delta * 100.0)
+	ceasefire_t = maxf(0.0, ceasefire_t - delta)
+	# Refresh rising-edge prev states so a key held while mounted doesn't
+	# fire a spurious roll/swap/throw on the frame after dismount.
+	s_prev = Input.is_action_pressed("crouch")
+	q_prev = Input.is_action_pressed("secondary_swap")
+	g_prev = Input.is_action_pressed("grenade_toggle")
+	f_prev = Input.is_action_pressed("weapon_throw")
+	lmb_prev = Input.is_action_pressed("fire")
+	queue_redraw()
+
+
+## If the HUD command/chat line is open, freeze inputs: drop x-velocity, apply
+## gravity so we still fall to ground, and skip all movement/shooting handling.
+func _physics_input_locked(delta: float) -> void:
+	velocity.x = move_toward(velocity.x, 0.0, (GROUND_FRICTION if is_on_floor() else AIR_FRICTION) * delta)
+	if not is_on_floor():
+		velocity.y += GRAVITY * MatchConfig.mod_gravity() * delta
+		velocity.y = minf(velocity.y, MAX_FALL)
+	jet_on = false
+	if was_jet:
+		Sfx.jet(false)
+		was_jet = false
+	jet_particles.emitting = false
+	move_and_slide()
+	if gesture_t > 0.0:
+		gesture_t = maxf(0.0, gesture_t - delta)
+		if gesture_t <= 0.0:
+			gesture_anim = ""
+	# Refresh rising-edge prev states so closing chat with a key still held
+	# doesn't trigger a spurious prone/roll/swap/grenade/throw/fire.
+	x_prev = Input.is_action_pressed("prone")
+	s_prev = Input.is_action_pressed("crouch")
+	q_prev = Input.is_action_pressed("secondary_swap")
+	g_prev = Input.is_action_pressed("grenade_toggle")
+	f_prev = Input.is_action_pressed("weapon_throw")
+	lmb_prev = Input.is_action_pressed("fire")
+	queue_redraw()
+
+
+## Live local body: input → stance → ladder → movement → aim → move, then
+## weapons, timers, effects and the state stream. Same order as ever.
+func _physics_live(delta: float) -> void:
 	var left := Input.is_action_pressed("move_left")
 	var right := Input.is_action_pressed("move_right")
 	var jump_pressed := Input.is_action_pressed("jump")
+	_live_stance(jump_pressed)
+	var climb_down_pressed := _live_ladder(delta)
+	_live_move(delta, left, right, jump_pressed, climb_down_pressed)
+	_live_aim(delta)
+	move_and_slide()
+	_update_wedge(delta)
+	_live_weapon_keys()
+	_live_grenade(delta)
+	_live_trigger(delta)
+	_live_timers(delta)
+	_live_fx(delta)
+	queue_redraw()
+	_send_state(delta)
 
+
+func _live_stance(jump_pressed: bool) -> void:
 	# Crouch (S hold) + prone (X toggle). Prone locks out crouching.
 	# W/Space or another X press stands us up from prone.
 	var x_now := Input.is_action_pressed("prone")
@@ -489,6 +520,9 @@ func _physics_process(delta: float) -> void:
 	crouching = s_now and roll_t <= 0.0 and not climbing
 	_apply_stance_shape()
 
+
+## Returns whether climb-down (S) is held this tick.
+func _live_ladder(delta: float) -> bool:
 	# ── Ladder / climbing ──────────────────────────────
 	# Detect overlap, engage on W/S press, disengage on overlap loss or a
 	# fresh jump-tap after the engage grace. Climbing suppresses gravity/jet/
@@ -530,7 +564,10 @@ func _physics_process(delta: float) -> void:
 				coyote_t = 0.0
 				jump_buffer_t = 0.0
 				Sfx.jump(global_position)
+	return climb_down_pressed
 
+
+func _live_move(delta: float, left: bool, right: bool, jump_pressed: bool, climb_down_pressed: bool) -> void:
 	var dir := 0.0
 	if left:
 		dir -= 1.0
@@ -654,6 +691,8 @@ func _physics_process(delta: float) -> void:
 			velocity.y += GRAVITY * g_mul * mg * delta
 			velocity.y = minf(velocity.y, MAX_FALL)
 
+
+func _live_aim(delta: float) -> void:
 	# aim — gamepad right stick when deflected past its deadzone, then the
 	# Android touch overlay (#116) when present, mouse otherwise. Stick has to
 	# come first: on a system with both a controller and a mouse a stationary
@@ -685,9 +724,8 @@ func _physics_process(delta: float) -> void:
 				facing = signf(aim_dir.x)
 	_update_camera_lead(stick, delta)
 
-	move_and_slide()
-	_update_wedge(delta)
 
+func _live_weapon_keys() -> void:
 	# primary weapon switching (keys 1..9,0). Numbers map to Soldat's classic slot order.
 	if radio_open:
 		pass
@@ -743,6 +781,8 @@ func _physics_process(delta: float) -> void:
 			_drop_active_weapon()
 	f_prev = f_now
 
+
+func _live_grenade(delta: float) -> void:
 	# grenade — locked out in Gun Game so grenade kills can't skip the ladder.
 	# Soldat-style cooking: pressing pulls the pin and starts the fuse; holding
 	# winds up a harder throw; releasing throws with whatever fuse is left.
@@ -765,6 +805,8 @@ func _physics_process(delta: float) -> void:
 		Sfx.grenade_pull()
 	_g_held_prev = g_held
 
+
+func _live_trigger(delta: float) -> void:
 	# shooting
 	fire_cd -= delta
 	var w_active: Dictionary = _active_weapon()
@@ -824,6 +866,8 @@ func _physics_process(delta: float) -> void:
 					fire_cd = 0.25
 		lmb_prev = lmb
 
+
+func _live_timers(delta: float) -> void:
 	muzzle_t = maxf(0.0, muzzle_t - delta * 10.0)
 	melee_swing_t = maxf(0.0, melee_swing_t - delta)
 	# Bink recovery: at 100 units/sec, a 65-Bink Barrett hit (0.65s) clears in ~2/3 second.
@@ -844,6 +888,8 @@ func _physics_process(delta: float) -> void:
 	roll_cd = maxf(0.0, roll_cd - delta)
 	ceasefire_t = maxf(0.0, ceasefire_t - delta)
 
+
+func _live_fx(delta: float) -> void:
 	# jet particles + sfx transitions
 	if jet_on and not was_jet:
 		Sfx.jet(true)
@@ -861,8 +907,8 @@ func _physics_process(delta: float) -> void:
 	else:
 		cam.offset = Vector2.ZERO
 
-	queue_redraw()
 
+func _send_state(delta: float) -> void:
 	# Broadcast authoritative state to peers who have finished handshake (spawned us).
 	# On host: parent Main tracks ready peers. On client: peer 1 (host) is always ready
 	# because we only spawn locally after receiving spawn RPCs from host.
@@ -1867,7 +1913,7 @@ func net_state(pos: Vector2, vel: Vector2, aim: Vector2, face: float, jetting: b
 		if g != null:
 			var bow := wi >= 0 and wi < weapons.size() and not use_sec and str(weapons[wi].get("name", "")) == "Rambo Bow" \
 					and Settings.game_mode == Settings.MODE_RM
-			var verdict: Dictionary = g.check_state(pos, hp, bow, _trust_world())
+			var verdict: Dictionary = g.check_state(pos, hp, bow, _trust_world(), _trust_riding())
 			hp = float(verdict["hp"])
 			if str(verdict["force"]) != "":
 				_trust_force_death(str(verdict["force"]))
@@ -2155,6 +2201,10 @@ func replay_state() -> Array:
 		roundi(velocity.x), roundi(velocity.y), bits, str(w["name"]), back_wn, roundi(health)]
 
 
+## Reused every frame by _draw() (SoldierArt.draw_soldier input).
+var _draw_state := SoldierDrawState.new()
+
+
 func _draw() -> void:
 	var w := _active_weapon()
 	# For non-authority replicas is_on_floor() is stale (no move_and_slide runs on them),
@@ -2172,35 +2222,34 @@ func _draw() -> void:
 	# #60: the currently-inactive weapon slings across the back. When holding
 	# secondary, the primary rides back; otherwise the chosen secondary does.
 	var back_wn: String = str(weapons[weapon_index]["name"]) if using_secondary else str(secondary[secondary_index]["name"])
-	SoldierArt.draw_soldier(
-		self,
-		color,
-		facing,
-		aim_dir,
-		vel_for_pose,
-		jet_on,
-		dead,
-		w["color"],
-		str(w.get("kind", "bullet")),
-		muzzle_t,
-		health,
-		fuel,
-		true,
-		str(w["name"]),
-		on_floor,
-		reloading,
-		crouching,
-		prone,
-		melee_swing_t > 0.0,
-		gesture_anim,
-		roll_t > 0.0,
-		ceasefire_t > 0.0,
-		cosmetics,
-		back_wn,
-		grenades,
-		use_cluster,
-		is_multiplayer_authority(),
-	)
+	var ds := _draw_state
+	ds.body_color = color
+	ds.facing = facing
+	ds.aim_dir = aim_dir
+	ds.vel = vel_for_pose
+	ds.jet_on = jet_on
+	ds.dead = dead
+	ds.weapon_color = w["color"]
+	ds.weapon_kind = str(w.get("kind", "bullet"))
+	ds.muzzle_t = muzzle_t
+	ds.health = health
+	ds.fuel = fuel
+	ds.show_fuel = true
+	ds.weapon_name = str(w["name"])
+	ds.on_floor = on_floor
+	ds.reloading = reloading
+	ds.crouching = crouching
+	ds.prone = prone
+	ds.melee_swing = melee_swing_t > 0.0
+	ds.gesture_anim = gesture_anim
+	ds.rolling = roll_t > 0.0
+	ds.ceasefire = ceasefire_t > 0.0
+	ds.cosmetics = cosmetics
+	ds.back_weapon_name = back_wn
+	ds.grenade_count = grenades
+	ds.use_cluster = use_cluster
+	ds.is_local = is_multiplayer_authority()
+	SoldierArt.draw_soldier(self, ds)
 	if _cook_t >= 0.0:
 		# Grenade in hand + a fuse ring that empties (and flashes red) as it cooks.
 		var left: float = clampf(1.0 - _cook_t / _cook_fuse(), 0.0, 1.0)
@@ -2429,6 +2478,17 @@ func _trust_guard() -> TrustGuard:
 			and get_multiplayer_authority() != 1:
 		_trust = TrustGuard.new()
 	return _trust
+
+
+## Seated in a buggy / tank or on an M2: the body is placed by the vehicle
+## (getting in snaps it to the seat), so movement isn't the soldier's own.
+func _trust_riding() -> bool:
+	if mounted_m2 != null:
+		return true
+	for v in get_tree().get_nodes_in_group("vehicle"):
+		if v.has_method("seat_of") and int(v.seat_of(self)) >= 0:
+			return true
+	return false
 
 
 func _trust_world() -> Rect2:

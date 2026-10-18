@@ -4,6 +4,13 @@ All notable changes to Soldat Reborn.
 
 ## [Unreleased]
 
+### Added — graphics overhaul, phase A (#270)
+- **New "Cinematic" look** (default; Settings → Video → Visual style, "Classic" keeps the original): an animated shader sky graded from each map's own colours, with a moon, twinkling stars and two layers of drifting clouds that parallax with the camera; five-layer parallax hills with fog, moonlit ridge rims and distant ruins (broken towers, a radio mast with a blinking light, gantries); a soft ambient darkening so lights read; a filmic grade (deep blacks, teal shadows / warm highlights, strong colours kept so team colours, fire and tracers stay readable) with fine film grain and a heavier vignette.
+- **Real light** from muzzle flashes and explosions on High (a fixed pool of 16 lights, nothing created per shot) and a **rim light** on soldiers and vehicles that follows each body's silhouette.
+- **Impact colour split** on nearby explosions (toggle in Settings → Video, with the hit flash).
+- Everything is cosmetic: none of it touches physics, game state or the network. Low quality and headless servers use the classic path.
+- Gate: new F test ATMOS-TEST (both looks, live switching, pooled lights, rim material on/off, post shader swap); `tools/capture.gd --ab` renders classic/cinematic pairs of the same moment.
+
 ### Changed — new name: **Tracerfall**
 - The game is now called **Tracerfall** (#269): menu title, window title, credits, share/join text, the Windows exe description, the Android app label and the store copy. "Soldat" is the original game's name; the credits keep the Soldat attribution. Nothing moves on your machine: settings, stats, replays and updates carry over (the data folder and update files keep their old names).
 
@@ -38,6 +45,12 @@ All notable changes to Soldat Reborn.
   - **Fake kill credit:** a death is only credited to someone who actually attacked in the last 10 s (and is an enemy unless friendly fire is on); otherwise nobody gets the kill.
   - Three forced deaths in five minutes is a kick, announced in chat. Bots and the host's own player are never checked; single player is untouched.
 - New release-gate cases play a modified client (godmode, teleport, fake credit) against a dedicated server and require the host to catch each one; every existing online case now also fails if an honest client ever trips a check.
+
+### Internal
+- Structure batch 1 remainder of [#258](https://github.com/Predator04/Soldat-Reborn/issues/258): the server browser (browse screen, LAN / recent / master lists with live pings, Quick Join / Quick Play, skill matchmaking) moved out of `menu.gd` into `menu_browser.gd` (~430 lines; `menu.gd` 1,910 → 1,530). No behavior change.
+- Structure batch 2 of [#258](https://github.com/Predator04/Soldat-Reborn/issues/258): `hud.gd` split — the vote prompt (`vote_panel.gd`), the end-of-round map vote (`next_map_panel.gd`), the kill feed and chat feed (`kill_feed.gd` / `chat_feed.gd`, sharing one expiring-line lane in `timed_feed.gd`) and the typed command / chat line with the vote + host commands (`hud_commands.gd`) are their own scripts; every HUD method other scripts call stays as a thin delegate (no behavior change).
+- Structure batch 3 of [#258](https://github.com/Predator04/Soldat-Reborn/issues/258): `main.gd` (5,600 lines) split by system into `match_net.gd` (joining clients, player bodies, broadcasts), `match_modes.gd` (objectives, scoring, round end), `match_votes.gd` (votes + host commands), `match_bots.gd`, `match_vehicles.gd`, `match_bonuses.gd` and `match_world.gd` (terrain, geometry, anti-stuck); `main.gd` keeps the match state, boot / spawn flow and every RPC entry point (same node path and names — the network protocol is unchanged), now ~1,600 lines. No behavior change.
+- Structure batch 4 of [#258](https://github.com/Predator04/Soldat-Reborn/issues/258): `SoldierArt.draw_soldier` takes a `SoldierDrawState` object (new `soldier_draw_state.gd`, one reused per soldier) instead of ~26 positional parameters, and `player._physics_process` (~520 lines) is a short dispatch into per-state handlers — replica, mounted (M2 / vehicle), input-locked (chat open) and live, the live path itself in ordered steps (stance, ladder, movement, aim, weapon keys, grenade, trigger, timers, effects, state stream). Physics constants stay in `player.gd`. No behavior change.
 
 ### Credits
 - The three music tracks are now credited in-game and in CREDITS.md: they're renders of the tracker modules in the Soldat base content ("Gore" and "Necromancide" by Marshall Anderson, "Bloody Soil" author unrecorded), CC BY 4.0.

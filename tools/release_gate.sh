@@ -445,6 +445,13 @@ case " $NETSEL " in *" lan "*)
   if echo "$line" | grep -Eq "ping=[0-9]+ players=0/8" && [ "$(errs "$OUT/net_query_client.log")" = "0" ]; then pass "C net server query (ping): $line"; else fail "C net server query: '${line:-no SMOKE-QUERY}'"; fi
 ;; esac
 fi
+# Honest clients must never trip the host's trust checks (trust_guard.gd) in
+# ANY online case (the per-netcase check covers only netcase()); the trust
+# cases themselves play modified clients and are excluded.
+if has C; then
+  tl=$(grep -l "^TRUST " "$OUT"/net_*server*.log 2>/dev/null | grep -v "/net_trust_" | tr '\n' ' ')
+  if [ -z "$tl" ]; then pass "C trust checks quiet for honest clients (all online cases)"; else fail "C TRUST lines from honest clients in: $tl"; fi
+fi
 
 # ── D modes ─────────────────────────────────────────────────────────────────
 MODES=(DM TDM CTF INF HTF RM PM DOM BR GG)
@@ -550,6 +557,7 @@ if has F; then
   ft mapvote mapvote_test.gd 60 MAPVOTE-TEST "end-of-round map vote"
   ft pad pad_test.gd 60 PAD-TEST "gamepad: radio (L3 + D-pad), limbo loadout (D-pad)"
   ft gfx gfx_test.gd 60 GFX-TEST "graphics presets: terrain depth / grass / post FX / bloom / lights / shadows / caps, live switch"
+  ft atmos atmosphere_test.gd 60 ATMOS-TEST "graphics Phase A (#270): cinematic sky / parallax / ambient / post, pooled lights, rim light, live classic switch"
   ft killcam killcam_test.gd 60 KILLCAM-TEST "kill cam: rewind w/ slow-mo, respawn waits, skip, live follow"
   ft lagcomp lagcomp_test.gd 60 LAGCOMP-TEST "lag compensation: hits where the shooter saw you, capped"
   ft quickplay quickplay_test.gd 60 QUICKPLAY-TEST "quick play: no game online -> bot match"
