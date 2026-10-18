@@ -29,6 +29,7 @@ This directory (`game/`) is the git repo root — note the space in the parent p
   - `vote_panel.gd` (#77 vote prompt), `next_map_panel.gd` (end-of-round map vote + 1/2/3 keys).
   - `hud_commands.gd` — the typed line (`/` commands + gestures, T / Y chat): vote commands, host commands, mode / map argument resolvers.
   - Also `scoreboard.gd`, `hud_bars.gd`, `objective_hud.gd`, `radio_menu.gd`, `weapon_menu.gd`.
+- `menu.gd` — main menu screens (title, host / join / settings / stats / credits panels, rejoin, SP map picker). Split out (#258): `name_prompt.gd`, `menu_update.gd` (update + WHAT'S NEW), `menu_news.gd` (#261), `menu_browser.gd` — the server browser (internal child `_browser`: browse / LAN / recent / master lists, Quick Join / Quick Play, skill matchmaking #33); `_browse_root`, `_master_rows`, `my_skill`, `qp_score`, `skill_penalty` stay reachable on the menu for tests.
 - `weapon_pickup.gd`, `bonus_pickup.gd`, `bullet.gd`, `grenade.gd`, `rocket.gd`, `m2.gd` (stationary gun).
 - `map_editor.gd`, `map_io.gd`, `map_gen.gd` — custom-map tooling. `poa_loader.gd` + `references/poa-format.md` = classic `.pms` map import.
 - Game-mode constants (`MODE_DM`, `MODE_TDM`, `MODE_CTF`, `MODE_INF`, `MODE_HTF`, `MODE_RM`, `MODE_PM`, `MODE_DOM`, `MODE_BR`, `MODE_GG`) live in `Settings.gd`.
