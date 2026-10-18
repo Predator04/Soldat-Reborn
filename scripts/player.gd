@@ -1913,7 +1913,7 @@ func net_state(pos: Vector2, vel: Vector2, aim: Vector2, face: float, jetting: b
 		if g != null:
 			var bow := wi >= 0 and wi < weapons.size() and not use_sec and str(weapons[wi].get("name", "")) == "Rambo Bow" \
 					and Settings.game_mode == Settings.MODE_RM
-			var verdict: Dictionary = g.check_state(pos, hp, bow, _trust_world())
+			var verdict: Dictionary = g.check_state(pos, hp, bow, _trust_world(), _trust_riding())
 			hp = float(verdict["hp"])
 			if str(verdict["force"]) != "":
 				_trust_force_death(str(verdict["force"]))
@@ -2478,6 +2478,17 @@ func _trust_guard() -> TrustGuard:
 			and get_multiplayer_authority() != 1:
 		_trust = TrustGuard.new()
 	return _trust
+
+
+## Seated in a buggy / tank or on an M2: the body is placed by the vehicle
+## (getting in snaps it to the seat), so movement isn't the soldier's own.
+func _trust_riding() -> bool:
+	if mounted_m2 != null:
+		return true
+	for v in get_tree().get_nodes_in_group("vehicle"):
+		if v.has_method("seat_of") and int(v.seat_of(self)) >= 0:
+			return true
+	return false
 
 
 func _trust_world() -> Rect2:

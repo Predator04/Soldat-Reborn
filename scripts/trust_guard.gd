@@ -98,6 +98,7 @@ var clamps := 0
 var moves := 0
 var _hist: Array = []      # [ms, pos] of recent state packets
 var _last_clamp_log_ms := -100000
+var _ride_until_ms := 0   # riding (or just got in / out of) a vehicle or M2
 
 
 func _init() -> void:
@@ -138,8 +139,10 @@ func observe_hit(amount: float, killer: String, weapon: String, killer_team: int
 
 
 ## Check one state packet. Returns {"hp": hp to accept, "force": reason or ""}.
-func check_state(pos: Vector2, hp: float, heal_ok_now: bool, world: Rect2) -> Dictionary:
+func check_state(pos: Vector2, hp: float, heal_ok_now: bool, world: Rect2, riding := false) -> Dictionary:
 	var now := Time.get_ticks_msec()
+	if riding:
+		_ride_until_ms = now + 1500   # covers the seat snap in and the eject out
 	var force := ""
 	var h := hp
 	# ── health ──
@@ -162,7 +165,7 @@ func check_state(pos: Vector2, hp: float, heal_ok_now: bool, world: Rect2) -> Di
 	if force == "" and shadow >= SHADOW_KILL_DMG and reported <= shadow * SHADOW_RATIO:
 		force = "ignored damage (host saw %.0f, client reported %.0f)" % [shadow, reported]
 	# ── movement ──
-	if now < amnesty_until_ms:
+	if now < amnesty_until_ms or now < _ride_until_ms:
 		_hist = [[now, pos]]
 	else:
 		_hist.append([now, pos])

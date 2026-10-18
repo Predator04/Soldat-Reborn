@@ -445,6 +445,13 @@ case " $NETSEL " in *" lan "*)
   if echo "$line" | grep -Eq "ping=[0-9]+ players=0/8" && [ "$(errs "$OUT/net_query_client.log")" = "0" ]; then pass "C net server query (ping): $line"; else fail "C net server query: '${line:-no SMOKE-QUERY}'"; fi
 ;; esac
 fi
+# Honest clients must never trip the host's trust checks (trust_guard.gd) in
+# ANY online case (the per-netcase check covers only netcase()); the trust
+# cases themselves play modified clients and are excluded.
+if has C; then
+  tl=$(grep -l "^TRUST " "$OUT"/net_*server*.log 2>/dev/null | grep -v "/net_trust_" | tr '\n' ' ')
+  if [ -z "$tl" ]; then pass "C trust checks quiet for honest clients (all online cases)"; else fail "C TRUST lines from honest clients in: $tl"; fi
+fi
 
 # ── D modes ─────────────────────────────────────────────────────────────────
 MODES=(DM TDM CTF INF HTF RM PM DOM BR GG)
