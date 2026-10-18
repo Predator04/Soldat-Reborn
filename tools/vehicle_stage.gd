@@ -225,7 +225,7 @@ func _run_heli(m: Node, p: Node) -> void:
 		Input.action_press("jump")
 	if _t > 75:
 		_cam.global_position = (h as Node2D).global_position + Vector2(20, 40)
-	if _t == 100:
+	if _t == 86:
 		_save("b_liftoff_wash")
 	if _t == 150:
 		Input.action_release("jump")

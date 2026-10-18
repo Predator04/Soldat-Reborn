@@ -531,10 +531,15 @@ func vehicle_wreck(at: Vector2, radius: float, paint: Color) -> void:
 
 ## Rotor wash: dust blown out along the ground both ways from `at` (the spot
 ## under the rotor). `strength` 0..1 grows as the helicopter gets lower.
-func rotor_wash(at: Vector2, strength: float, spread: float, col := Color(0.66, 0.6, 0.5, 0.3)) -> void:
+func rotor_wash(at: Vector2, strength: float, spread: float, col := Color(0.7, 0.64, 0.54, 0.42)) -> void:
 	if not _near(at, spread):
 		return
 	var r := Gfx.rng
+	for k in (2 if quality >= 2 else 1):
+		_rotor_wash_pair(at, strength, spread, col, r)
+
+
+func _rotor_wash_pair(at: Vector2, strength: float, spread: float, col: Color, r: RandomNumberGenerator) -> void:
 	for side: float in [-1.0, 1.0]:
 		var x := at.x + side * r.randf_range(spread * 0.15, spread * 0.6)
 		_spawn(K_DUST, Vector2(x, at.y - 3), Vector2(side * r.randf_range(160.0, 330.0) * (0.5 + strength * 0.6), r.randf_range(-40, -6)),

@@ -785,6 +785,9 @@ static func _heli_shapes() -> Dictionary:
 	_HS["stab"] = VArt.pv([Vector2(-78, -30), Vector2(-86, -26), Vector2(-90, -26), Vector2(-84, -31)])
 	_HS["pod"] = VArt.pv([Vector2(-4, -13.5), Vector2(20, -13.5), Vector2(26, -11), Vector2(20, -8.5), Vector2(-4, -8.5)])
 	_HS["stripe"] = VArt.pv([Vector2(-36, -33.5), Vector2(-92, -31.6), Vector2(-92, -30.2), Vector2(-36, -31)])
+	_HS["soot"] = VArt.pv([Vector2(-34, -36.5), Vector2(-70, -34), Vector2(-70, -32), Vector2(-34, -31)])
+	_HS["roofline"] = VArt.pv([Vector2(-38, -30), Vector2(-26, -41), Vector2(4, -44), Vector2(24, -41)])
+	_HS["boom_stub"] = VArt.pv([Vector2(0, -16), Vector2(-34, -12), Vector2(-34, -9), Vector2(0, -6)])
 	for k in ["hull", "boom", "fin", "cowl", "pod"]:
 		_HS[k + "_n"] = VArt.normals(_HS[k])
 	return _HS
@@ -840,7 +843,7 @@ func _draw_hull(lv: int) -> void:
 		soot.a = 0.0
 		var soot2 := VArt.SOOT
 		soot2.a = 0.5 if cine else 0.35
-		draw_polygon(VArt.pv([Vector2(-34, -36.5), Vector2(-70, -34), Vector2(-70, -32), Vector2(-34, -31)]), PackedColorArray([soot2, soot, soot, soot2]))
+		draw_polygon(S["soot"], PackedColorArray([soot2, soot, soot, soot2]))
 	draw_colored_polygon(S["stripe"], trim.darkened(0.15) if cine else trim)
 	VArt.part(self, S["fin"], _cols("fin", S["fin"], paint.lightened(0.1), paint.darkened(0.35), -58.0, -29.0), paint, line)
 	VArt.part(self, S["stab"], PackedColorArray(), paint.darkened(0.2), line)
@@ -917,7 +920,7 @@ func _draw_hull(lv: int) -> void:
 		VArt.rim(self, S["fin"], S["fin_n"], face, rt, 0.8)
 		VArt.rim(self, S["cowl"], S["cowl_n"], face, rt, 0.7)
 	elif lv >= 1:
-		draw_polyline(VArt.pv([Vector2(-38, -30), Vector2(-26, -41), Vector2(4, -44), Vector2(24, -41)]), paint.lightened(0.4), 1.0)
+		draw_polyline(S["roofline"], paint.lightened(0.4), 1.0)
 	# Damage fire at the engine.
 	var d := _dmg()
 	if (d >= 0.75 or spinning_out()) and lv >= 1:
@@ -979,7 +982,7 @@ func _draw_wreck(lv: int) -> void:
 	draw_line(Vector2(-4, -58), Vector2(-26, -50), VArt.CHAR_HI, 2.4)
 	draw_line(Vector2(-4, -58), Vector2(14, -64), VArt.CHAR_HI, 2.4)
 	draw_set_transform_matrix(_xf_w * Transform2D(0.25, Vector2(-34, -16)))
-	draw_colored_polygon(VArt.pv([Vector2(0, -16), Vector2(-34, -12), Vector2(-34, -9), Vector2(0, -6)]), VArt.CHAR)
+	draw_colored_polygon(S["boom_stub"], VArt.CHAR)
 	draw_set_transform_matrix(_xf_w)
 	VArt.tube(self, Vector2(-30, -1.5), Vector2(28, -1.0), VArt.CHAR_HI, 2.0)
 	if lv >= 1:
