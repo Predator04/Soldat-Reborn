@@ -13,6 +13,9 @@ All notable changes to Soldat Reborn.
   - Three forced deaths in five minutes is a kick, announced in chat. Bots and the host's own player are never checked; single player is untouched.
 - New release-gate cases play a modified client (godmode, teleport, fake credit) against a dedicated server and require the host to catch each one; every existing online case now also fails if an honest client ever trips a check.
 
+### Internal
+- Structure batch 2 of [#258](https://github.com/Predator04/Soldat-Reborn/issues/258): `hud.gd` split — the vote prompt (`vote_panel.gd`), the end-of-round map vote (`next_map_panel.gd`), the kill feed and chat feed (`kill_feed.gd` / `chat_feed.gd`, sharing one expiring-line lane in `timed_feed.gd`) and the typed command / chat line with the vote + host commands (`hud_commands.gd`) are their own scripts; every HUD method other scripts call stays as a thin delegate (no behavior change).
+
 ### Credits
 - The three music tracks are now credited in-game and in CREDITS.md: they're renders of the tracker modules in the Soldat base content ("Gore" and "Necromancide" by Marshall Anderson, "Bloody Soil" author unrecorded), CC BY 4.0.
 

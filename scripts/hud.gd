@@ -21,7 +21,7 @@ var lbl_timer: Label
 var lbl_score: RichTextLabel
 var lbl_winner: Label
 var lbl_winner_note: Label
-var feed: VBoxContainer
+var feed: KillFeed              # kill_feed.gd
 
 # Death screen state
 var desat_overlay: ColorRect
@@ -35,11 +35,9 @@ var rewind_on := false     # kill cam rewind playing: keep the middle of the scr
 var _dead := false
 
 # /command line for gestures (opened by player.gd when the "/" key is pressed).
-# Reused for T (global chat) and Y (team chat) — _line_mode tracks which.
-var command_line: LineEdit
-var _command_visible := false
-var _line_mode := "cmd"  # "cmd" | "global" | "team"
-var chat_feed: VBoxContainer
+# Reused for T (global chat) and Y (team chat) — hud_commands.gd.
+var command_line: HudCommands   # hud_commands.gd
+var chat_feed: ChatFeed         # chat_feed.gd
 var _left_strip: Control
 var _bars: Control
 var weapon_menu: Control  # left-side Soldat weapon selection panel (#70)
@@ -52,22 +50,17 @@ var lbl_streak: Label
 var _streak_tween: Tween = null
 const STREAK_HOLD := 2.0
 # (#77) Vote prompt — centered upper-third panel with title, tally, timer.
-var vote_panel: PanelContainer
-var lbl_vote_title: Label
-var lbl_vote_tally: Label
-var lbl_vote_timer: Label
+var vote_panel: VotePanel       # vote_panel.gd
 # (#78) Active bonus indicator — bottom-center label showing kind + countdown.
 var lbl_bonus: Label
 const BonusPickup = preload("res://scripts/bonus_pickup.gd")
 static var _taunts: Dictionary = {}
-const CHAT_FEED_MAX := 7
-const CHAT_TTL := 10.0
 const WeaponMenu = preload("res://scripts/weapon_menu.gd")
-
-const FEED_MAX := 5
-const FEED_TTL := 4.0
-
-var _feed_entries: Array = []
+const KillFeed = preload("res://scripts/kill_feed.gd")
+const ChatFeed = preload("res://scripts/chat_feed.gd")
+const VotePanel = preload("res://scripts/vote_panel.gd")
+const NextMapPanel = preload("res://scripts/next_map_panel.gd")
+const HudCommands = preload("res://scripts/hud_commands.gd")
 const ObjectiveHud = preload("res://scripts/objective_hud.gd")
 var objective_hud: Control = null
 
@@ -77,7 +70,8 @@ const GameInfo = preload("res://scripts/game_info.gd")
 
 
 func _ready() -> void:
-	_warm_kill_icons()
+	feed = KillFeed.new()
+	feed.warm_icons()
 	Stats.achievement_unlocked.connect(_on_achievement)
 	_locked_looks = preload("res://scripts/customization.gd").locked_list()
 	Stats.level_up.connect(func(lv: int) -> void: _ach_queue.append(["RANK UP", "you reached level %d" % lv]))
@@ -144,16 +138,6 @@ func _ready() -> void:
 	bars.set("hud", self)
 	add_child(bars)
 	_bars = bars
-	feed = VBoxContainer.new()
-	feed.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	# Offsets (not position) after the anchor preset: the old position=(-320,10)
-	# landed the feed over the centre score strip.
-	feed.offset_left = -14
-	feed.offset_right = -14
-	feed.offset_top = 24
-	feed.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	feed.alignment = BoxContainer.ALIGNMENT_END
-	feed.add_theme_constant_override("separation", 3)
 	add_child(feed)
 	lbl_map = Label.new()
 	lbl_map.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -262,27 +246,12 @@ func _ready() -> void:
 	add_child(lbl_rec)
 
 	# /command line — hidden until the local player presses "/".
-	command_line = LineEdit.new()
-	command_line.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	command_line.offset_left = 12
-	command_line.offset_right = -12
-	command_line.offset_top = -110
-	command_line.offset_bottom = -80
-	command_line.placeholder_text = "/votemap N   /votekick name   /addbot   /kick name   /gamemode N   /map name   /restart   /say   /ff   /victory  /kill"
-	command_line.custom_minimum_size = Vector2(0, 28)
-	command_line.visible = false
-	command_line.text_submitted.connect(_on_command_submitted)
-	command_line.gui_input.connect(_on_command_gui_input)
+	command_line = HudCommands.new()
+	command_line.hud = self
 	add_child(command_line)
 
 	# Chat feed — recent messages scroll bottom-up above the ammo readout.
-	chat_feed = VBoxContainer.new()
-	chat_feed.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	chat_feed.offset_left = 14
-	chat_feed.offset_top = -260
-	chat_feed.offset_bottom = -140
-	chat_feed.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	chat_feed.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	chat_feed = ChatFeed.new()
 	add_child(chat_feed)
 
 	radio_menu = preload("res://scripts/radio_menu.gd").new()
@@ -360,55 +329,9 @@ func _ready() -> void:
 	lbl_streak.visible = false
 	add_child(lbl_streak)
 
-	# Vote prompt (#77) — centered near the top-third of the screen so it doesn't
-	# eat the crosshair. Semi-opaque background so the tally reads over any map.
-	vote_panel = PanelContainer.new()
-	vote_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	vote_panel.offset_top = 250
-	vote_panel.offset_bottom = 240
-	vote_panel.offset_left = -260
-	vote_panel.offset_right = 260
-	vote_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var vote_bg := StyleBoxFlat.new()
-	vote_bg.bg_color = Color(0.05, 0.05, 0.09, 0.85)
-	vote_bg.border_color = Color(0.95, 0.82, 0.4, 0.9)
-	vote_bg.border_width_left = 2
-	vote_bg.border_width_right = 2
-	vote_bg.border_width_top = 2
-	vote_bg.border_width_bottom = 2
-	vote_bg.corner_radius_top_left = 6
-	vote_bg.corner_radius_top_right = 6
-	vote_bg.corner_radius_bottom_left = 6
-	vote_bg.corner_radius_bottom_right = 6
-	vote_bg.content_margin_left = 14
-	vote_bg.content_margin_right = 14
-	vote_bg.content_margin_top = 8
-	vote_bg.content_margin_bottom = 8
-	vote_panel.add_theme_stylebox_override("panel", vote_bg)
-	vote_panel.visible = false
+	# Vote prompt (#77) — vote_panel.gd.
+	vote_panel = VotePanel.new()
 	add_child(vote_panel)
-	var vote_col := VBoxContainer.new()
-	vote_col.add_theme_constant_override("separation", 4)
-	vote_panel.add_child(vote_col)
-	lbl_vote_title = Label.new()
-	lbl_vote_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lbl_vote_title.add_theme_font_size_override("font_size", 18)
-	lbl_vote_title.add_theme_color_override("font_color", Color(1.0, 0.9, 0.55))
-	lbl_vote_title.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
-	lbl_vote_title.add_theme_constant_override("outline_size", 3)
-	vote_col.add_child(lbl_vote_title)
-	lbl_vote_tally = Label.new()
-	lbl_vote_tally.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lbl_vote_tally.add_theme_font_size_override("font_size", 16)
-	lbl_vote_tally.add_theme_color_override("font_color", Color(0.85, 0.95, 1.0))
-	lbl_vote_tally.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
-	lbl_vote_tally.add_theme_constant_override("outline_size", 3)
-	vote_col.add_child(lbl_vote_tally)
-	lbl_vote_timer = Label.new()
-	lbl_vote_timer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lbl_vote_timer.add_theme_font_size_override("font_size", 13)
-	lbl_vote_timer.add_theme_color_override("font_color", Color(0.7, 0.78, 0.9))
-	vote_col.add_child(lbl_vote_timer)
 
 	# Bonus effect indicator (#78) — bottom-center over the ammo/weapon strip,
 	# but shifted up enough that it doesn't overlap the standard HUD readouts.
@@ -445,29 +368,7 @@ func announce_objective(kind: String, team: int, who: String) -> void:
 		"dom": txt = "%s captured point %s" % [str(_team_display_info(team)["name"]), who]
 		"point": txt = "%s +1 point" % who
 		_: return
-	var lbl := Label.new()
-	lbl.text = txt
-	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	lbl.add_theme_font_size_override("font_size", 14)
-	lbl.add_theme_color_override("font_color", _team_display_info(team).get("color", Color(1, 0.85, 0.35)))
-	lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
-	lbl.add_theme_constant_override("outline_size", 3)
-	feed.add_child(lbl)
-	feed.move_child(lbl, 0)
-	_feed_entries.push_front(lbl)
-	while _feed_entries.size() > FEED_MAX:
-		var old: Control = _feed_entries.pop_back()
-		if is_instance_valid(old):
-			old.queue_free()
-	var t := Timer.new()
-	t.wait_time = FEED_TTL
-	t.one_shot = true
-	t.autostart = true
-	lbl.add_child(t)
-	t.timeout.connect(func() -> void:
-		_feed_entries.erase(lbl)
-		if is_instance_valid(lbl):
-			lbl.queue_free())
+	feed.add_text(txt, _team_display_info(team).get("color", Color(1, 0.85, 0.35)))
 
 
 func show_streak_banner(killer_name: String, title: String, killer_team: int, count: int) -> void:
@@ -501,29 +402,7 @@ func post_streak_ended(ender_name: String, victim_name: String, streak_len: int,
 		return
 	var info := _team_display_info(ender_team)
 	var col: Color = info.get("color", Color(1.0, 0.85, 0.35))
-	var lbl := Label.new()
-	lbl.text = tr("%s ended %s's %d-kill streak") % [ender_name, victim_name, streak_len]
-	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	lbl.add_theme_font_size_override("font_size", 14)
-	lbl.add_theme_color_override("font_color", col)
-	lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
-	lbl.add_theme_constant_override("outline_size", 3)
-	feed.add_child(lbl)
-	feed.move_child(lbl, 0)
-	_feed_entries.push_front(lbl)
-	while _feed_entries.size() > FEED_MAX:
-		var old: Control = _feed_entries.pop_back()
-		if is_instance_valid(old):
-			old.queue_free()
-	var t := Timer.new()
-	t.wait_time = FEED_TTL
-	t.one_shot = true
-	t.autostart = true
-	lbl.add_child(t)
-	t.timeout.connect(func() -> void:
-		_feed_entries.erase(lbl)
-		if is_instance_valid(lbl):
-			lbl.queue_free())
+	feed.add_text(tr("%s ended %s's %d-kill streak") % [ender_name, victim_name, streak_len], col)
 
 
 func set_spectate_target(name: String, col: Color) -> void:
@@ -569,201 +448,38 @@ func set_rewind(on: bool) -> void:
 			m.spectator._notify_hud()
 
 
+## Typed line (gestures / commands / chat) — hud_commands.gd.
 func open_command(prefill: String = "/") -> void:
-	_open_line("cmd", prefill, "/votemap N   /addbot   /kick name   /gamemode N   /map name   /restart   /say   /ff   /victory  /kill")
+	command_line.open_command(prefill)
 
 
 func open_chat(scope: String) -> void:
-	if scope == "team":
-		_open_line("team", "", "[TEAM] Y — say to your team")
-	else:
-		_open_line("global", "", "[GLOBAL] T — say to everyone")
-
-
-func _open_line(mode: String, prefill: String, placeholder: String) -> void:
-	if not is_instance_valid(player) or bool(player.get("dead")):
-		return
-	if _command_visible:
-		return
-	_command_visible = true
-	_line_mode = mode
-	command_line.text = prefill
-	command_line.placeholder_text = placeholder
-	command_line.visible = true
-	command_line.grab_focus()
-	command_line.caret_column = command_line.text.length()
-	player.set("input_locked", true)
+	command_line.open_chat(scope)
 
 
 func _close_command() -> void:
-	_command_visible = false
-	command_line.visible = false
-	command_line.text = ""
-	command_line.release_focus()
-	if is_instance_valid(player):
-		player.set("input_locked", false)
+	command_line.close_command()
 
 
-func _on_command_submitted(text: String) -> void:
-	var t := text.strip_edges()
-	if is_instance_valid(player) and t != "":
-		if _line_mode == "cmd" and t.begins_with("/") and (_try_vote_command(t) or _try_host_command(t)):
-			_close_command()
-			return
-		if _line_mode == "cmd":
-			if t.begins_with("/") and player.has_method("apply_gesture"):
-				player.apply_gesture(t)
-			elif player.has_method("send_chat"):
-				player.send_chat("global", t)
-		elif _line_mode == "team" and player.has_method("send_chat"):
-			player.send_chat("team", t)
-		elif player.has_method("send_chat"):
-			player.send_chat("global", t)
-	_close_command()
-
-
-# Vote chat commands (#77): /votemap <n|name>, /votekick <peer|name>,
-# /votecancel (host only). Returns true if the text was a vote command so the
-# caller skips the gesture / chat path.
 func _try_vote_command(raw: String) -> bool:
-	var lower := raw.to_lower()
-	var main := get_parent()
-	if main == null:
-		return false
-	if lower == "/votemap" or lower.begins_with("/votemap "):
-		var arg := raw.substr("/votemap".length()).strip_edges()
-		if arg == "":
-			post_chat("VOTE", "Usage: /votemap <index-or-name>", false)
-			return true
-		if main.has_method("request_vote"):
-			main.request_vote("votemap", arg)
-		return true
-	if lower == "/votekick" or lower.begins_with("/votekick "):
-		var arg := raw.substr("/votekick".length()).strip_edges()
-		if arg == "":
-			post_chat("VOTE", "Usage: /votekick <peer-id-or-name>", false)
-			return true
-		if main.has_method("request_vote"):
-			main.request_vote("votekick", arg)
-		return true
-	if lower == "/votecancel":
-		if main.has_method("cancel_vote"):
-			main.cancel_vote()
-		return true
-	return false
+	return command_line.try_vote_command(raw)
 
 
-# Host chat commands (#257) — the classic Soldat server set. Host / SP only.
-# Returns true when the text was one of ours (the caller skips chat/gestures).
 func _try_host_command(raw: String) -> bool:
-	var lower := raw.to_lower()
-	var main := get_parent()
-	if main == null or not main.has_method("host_addbot"):
-		return false
-	var parts := raw.split(" ", false)
-	var cmd := parts[0].to_lower()
-	var body := raw.substr(parts[0].length()).strip_edges()
-	var cmds := ["/addbot", "/kick", "/bots", "/gamemode", "/map", "/restart", "/say", "/ff"]
-	var hit := false
-	for c in cmds:
-		if cmd == c:
-			hit = true
-			break
-	if not hit:
-		return false
-	if Net.is_networked() and not Net.is_host():
-		post_chat("HOST", "That command is host only.", false)
-		return true
-	match cmd:
-		"/addbot":
-			var skill := 0
-			var bot_name := body
-			if body != "" and body.split(" ")[0].is_valid_int():
-				skill = int(body.split(" ")[0])
-				bot_name = body.substr(body.split(" ")[0].length()).strip_edges()
-			if skill != 0 and (skill < 1 or skill > 5):
-				post_chat("HOST", "Usage: /addbot [skill 1-5] [name]", false)
-				return true
-			main.host_addbot(skill, bot_name)
-			post_chat("HOST", "Bot added." + (" %s" % bot_name if bot_name != "" else ""), false)
-		"/bots":
-			if body.is_valid_int():
-				main.host_set_bots(int(body))
-			else:
-				post_chat("HOST", "Usage: /bots <count>", false)
-		"/kick":
-			if body == "":
-				post_chat("HOST", "Usage: /kick <name>", false)
-			elif not main.host_kick(body):
-				post_chat("HOST", "No player or bot named \"%s\"." % body, false)
-		"/gamemode":
-			var mi := _resolve_mode_arg(body)
-			if mi < 0:
-				post_chat("HOST", "Usage: /gamemode <0-9 or name>", false)
-			else:
-				main.host_restart_to(int(Settings.map_index), mi)
-		"/map":
-			var mp := _resolve_map_arg(body)
-			if mp < 0:
-				post_chat("HOST", "Usage: /map <name or index>", false)
-			else:
-				main.host_restart_to(mp, int(Settings.game_mode))
-		"/restart":
-			main.host_restart_to(int(Settings.map_index), int(Settings.game_mode))
-		"/say":
-			if body == "":
-				post_chat("HOST", "Usage: /say <message>", false)
-			else:
-				main.host_say(body)
-		"/ff":
-			main.host_toggle_ff()
-	return true
+	return command_line.try_host_command(raw)
 
 
 func _resolve_mode_arg(a: String) -> int:
-	if a.is_valid_int():
-		return clampi(int(a), 0, Net.MODE_NAMES.size() - 1)
-	var la := a.to_lower()
-	for i in Net.MODE_NAMES.size():
-		if str(Net.MODE_NAMES[i]).to_lower().begins_with(la):
-			return i
-	return -1
+	return command_line.resolve_mode_arg(a)
 
 
 func _resolve_map_arg(a: String) -> int:
-	if a.is_valid_int():
-		return clampi(int(a), 0, Net.MAP_NAMES.size() - 1)
-	var la := a.to_lower()
-	for i in Net.MAP_NAMES.size():
-		if str(Net.MAP_NAMES[i]).to_lower().begins_with(la):
-			return i
-	return -1
+	return command_line.resolve_map_arg(a)
 
 
 func _update_vote_ui() -> void:
-	if vote_panel == null:
-		return
-	var main := get_parent()
-	if main == null or main.get("vote_active") == null:
-		vote_panel.visible = false
-		return
-	var active: bool = bool(main.get("vote_active"))
-	if not active:
-		vote_panel.visible = false
-		return
-	var kind: String = str(main.get("vote_kind"))
-	var target: String = str(main.get("vote_target_str"))
-	var yes_ct: int = int(main.get("vote_yes"))
-	var no_ct: int = int(main.get("vote_no"))
-	var tl: float = float(main.get("vote_time_left"))
-	var starter: String = str(main.get("vote_starter"))
-	var verb: String = tr("change map to") if kind == "votemap" else tr("kick")
-	lbl_vote_title.text = tr("Vote (%s): %s %s?") % [starter, verb, target]
-	lbl_vote_tally.text = tr("[F1] Yes %d    ·    [F2] No %d") % [yes_ct, no_ct]
-	if not Input.get_connected_joypads().is_empty():
-		lbl_vote_tally.text += "   (" + tr("pad: R3 = yes") + ")"
-	lbl_vote_timer.text = "%ds" % int(ceil(tl))
-	vote_panel.visible = true
+	if vote_panel != null:
+		vote_panel.refresh(get_parent())
 
 
 func _update_bonus_ui() -> void:
@@ -904,7 +620,7 @@ func _tick_info_labels(delta: float) -> void:
 
 
 func toggle_radio() -> void:
-	if radio_menu == null or _command_visible:
+	if radio_menu == null or command_line.is_open:
 		return
 	radio_menu.player = player
 	radio_menu.toggle()
@@ -914,36 +630,13 @@ func toggle_radio() -> void:
 func post_radio(author: String, text: String) -> void:
 	if not is_instance_valid(chat_feed):
 		return
-	post_chat(author, text, true)
-	var last := chat_feed.get_child(chat_feed.get_child_count() - 1) as Label
-	if last != null:
-		last.text = "(RADIO) %s: %s" % [author, text]
-		last.add_theme_color_override("font_color", Color(1.0, 0.85, 0.45))
+	chat_feed.add_radio(author, text)
 
 
 func post_chat(author: String, msg: String, is_team: bool) -> void:
 	if not is_instance_valid(chat_feed):
 		return
-	var lbl := Label.new()
-	lbl.text = ("(TEAM) %s: %s" % [author, msg]) if is_team else ("%s: %s" % [author, msg])
-	var col := Color(0.6, 0.95, 1.0) if is_team else Color(0.95, 0.95, 0.95)
-	lbl.add_theme_font_size_override("font_size", 14)
-	lbl.add_theme_color_override("font_color", col)
-	lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-	lbl.add_theme_constant_override("outline_size", 3)
-	chat_feed.add_child(lbl)
-	while chat_feed.get_child_count() > CHAT_FEED_MAX:
-		var old := chat_feed.get_child(0)
-		chat_feed.remove_child(old)
-		old.queue_free()
-	var t := Timer.new()
-	t.wait_time = CHAT_TTL
-	t.one_shot = true
-	t.autostart = true
-	lbl.add_child(t)
-	t.timeout.connect(func() -> void:
-		if is_instance_valid(lbl):
-			lbl.queue_free())
+	chat_feed.add_chat(author, msg, is_team)
 
 
 func get_taunt(key: String) -> String:
@@ -983,12 +676,6 @@ func _load_taunts() -> void:
 		}
 		for k in defaults:
 			_taunts[k] = defaults[k]
-
-
-func _on_command_gui_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_ESCAPE:
-			_close_command()
 
 
 func _make_label(pos: Vector2, col: Color) -> Label:
@@ -1045,36 +732,9 @@ func _hide_death() -> void:
 	desat_overlay.visible = false
 
 
-const KILL_ICON_DIR := "res://assets/interface-gfx/guns/"
-const KILL_ICONS := {
-	"Minigun": "0", "Deagles": "1", "MP5": "2", "AK-74": "3", "Steyr AUG": "4",
-	"Spas-12": "5", "Ruger 77": "6", "M79": "7", "Barrett": "8", "Minimi": "9",
-	"USSOCOM": "10", "Knife": "knife", "Chainsaw": "chainsaw", "LAW": "law",
-	"Flamethrower": "flamer", "Rambo Bow": "bow", "M2": "m2", "Fist": "fist",
-}
-var _kill_icon_cache: Dictionary = {}
-
-
-## Kill-feed icons, loaded with the HUD instead of on the first kill.
-func _warm_kill_icons() -> void:
-	for w in KILL_ICONS.keys() + ["Grenade", "Cluster"]:
-		_kill_icon(str(w))
-
-
+## Kill-feed weapon icon (kill_feed.gd); hud_bars.gd reads it for the vitals box.
 func _kill_icon(weapon: String) -> Texture2D:
-	var w := weapon.replace(" (headshot)", "")
-	if _kill_icon_cache.has(w):
-		return _kill_icon_cache[w]
-	var path := ""
-	if KILL_ICONS.has(w):
-		path = KILL_ICON_DIR + str(KILL_ICONS[w]) + ".png"
-	elif w == "Grenade":
-		path = "res://assets/interface-gfx/nade.png"
-	elif w == "Cluster":
-		path = "res://assets/interface-gfx/cluster-nade.png"
-	var tex: Texture2D = load(path) if path != "" and ResourceLoader.exists(path) else null
-	_kill_icon_cache[w] = tex
-	return tex
+	return feed.kill_icon(weapon)
 
 
 func _on_kill(killer_name: String, victim_name: String, weapon_name: String, killer_team: int, _victim_team: int) -> void:
@@ -1082,51 +742,9 @@ func _on_kill(killer_name: String, victim_name: String, weapon_name: String, kil
 	# color instead of everyone-not-us collapsing to red.
 	var info := _team_display_info(killer_team)
 	var kcol: Color = info.get("color", Color(1.0, 0.45, 0.45))
-	# Soldat-style row: killer · weapon icon · victim (text fallback for
-	# weapons without an icon, e.g. the BR zone).
-	var lbl := HBoxContainer.new()
-	lbl.alignment = BoxContainer.ALIGNMENT_END
-	lbl.add_theme_constant_override("separation", 6)
-	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var tex := _kill_icon(weapon_name)
-	var parts: Array = [killer_name, "", victim_name]
-	for i in 3:
-		if i == 1 and tex != null:
-			var ic := TextureRect.new()
-			ic.texture = tex
-			ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-			ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-			ic.custom_minimum_size = Vector2(maxf(18.0, 20.0 * float(tex.get_width()) / maxf(1.0, float(tex.get_height()))), 20)
-			if weapon_name.ends_with("(headshot)"):
-				ic.modulate = Color(1.0, 0.6, 0.5)
-			lbl.add_child(ic)
-			continue
-		var t := Label.new()
-		t.text = parts[i] if i != 1 else "[%s]" % weapon_name
-		t.add_theme_font_size_override("font_size", 15)
-		t.add_theme_color_override("font_color", kcol if i == 0 else (Color(0.9, 0.9, 0.92) if i == 2 else Color(0.8, 0.8, 0.85)))
-		t.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
-		t.add_theme_constant_override("outline_size", 3)
-		lbl.add_child(t)
-	feed.add_child(lbl)
-	feed.move_child(lbl, 0)
-	_feed_entries.push_front(lbl)
+	feed.add_kill(killer_name, victim_name, weapon_name, kcol)
 	if is_instance_valid(player) and killer_name == str(player.display_name) and victim_name != killer_name:
 		_kill_confirm(victim_name, weapon_name.ends_with("(headshot)"))
-	while _feed_entries.size() > FEED_MAX:
-		var old: Control = _feed_entries.pop_back()
-		if is_instance_valid(old):
-			old.queue_free()
-	# Timer parented to the label so it dies with the label instead of orphan-firing 4s later.
-	var t := Timer.new()
-	t.wait_time = FEED_TTL
-	t.one_shot = true
-	t.autostart = true
-	lbl.add_child(t)
-	t.timeout.connect(func() -> void:
-		_feed_entries.erase(lbl)
-		if is_instance_valid(lbl):
-			lbl.queue_free())
 
 
 var _confirm_lbl: Label
@@ -1168,7 +786,7 @@ func _input(event: InputEvent) -> void:
 	# Vote hotkeys (#77) — F1/F2 rebindable. Only meaningful while a vote is
 	# active. Ignored while the command line is open so a "yes" typed as text
 	# doesn't accidentally cast when the user hits F1.
-	if _command_visible:
+	if command_line.is_open:
 		return
 	var main := get_parent()
 	if main == null or not bool(main.get("vote_active")):
@@ -1443,46 +1061,8 @@ func _update_match_ui() -> void:
 		lbl_winner_note.visible = lbl_winner.visible and full != ""
 
 
-# ── End-of-round map vote (winner screen) ──
-var next_map_panel: PanelContainer = null
-var _nm_btns: Array = []
-var _nm_title: Label = null
-
-
-func _build_next_map_panel() -> void:
-	next_map_panel = PanelContainer.new()
-	next_map_panel.add_theme_stylebox_override("panel", UITheme.panel_style(Color(0.05, 0.05, 0.09, 0.85), UITheme.COL_ACCENT_DIM))
-	# Top centre, under the score strip: the end-of-round scoreboard covers
-	# the bottom half.
-	next_map_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	next_map_panel.offset_left = -330
-	next_map_panel.offset_right = 330
-	next_map_panel.offset_top = 150
-	next_map_panel.offset_bottom = 240
-	var vb := VBoxContainer.new()
-	vb.add_theme_constant_override("separation", 6)
-	next_map_panel.add_child(vb)
-	_nm_title = Label.new()
-	_nm_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	UITheme.style_body(_nm_title, 15, UITheme.COL_ACCENT_HI)
-	vb.add_child(_nm_title)
-	var hb := HBoxContainer.new()
-	hb.add_theme_constant_override("separation", 8)
-	vb.add_child(hb)
-	for i in 3:
-		var b := UITheme.make_small_button("", 200, 40)
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		b.focus_mode = Control.FOCUS_NONE
-		var idx := i
-		b.pressed.connect(func() -> void:
-			var m := get_parent()
-			if m != null and m.has_method("vote_next_map"):
-				m.vote_next_map(idx))
-		hb.add_child(b)
-		_nm_btns.append(b)
-	next_map_panel.visible = false
-	next_map_panel.add_to_group("touch_passthrough")   # taps reach the buttons
-	add_child(next_map_panel)
+# ── End-of-round map vote (winner screen) — next_map_panel.gd ──
+var next_map_panel: NextMapPanel = null
 
 
 func _update_next_map(main: Node, active: bool) -> void:
@@ -1493,42 +1073,15 @@ func _update_next_map(main: Node, active: bool) -> void:
 			next_map_panel.visible = false
 		return
 	if next_map_panel == null:
-		_build_next_map_panel()
-	next_map_panel.visible = true
-	var tally: Array = main.next_map_tally
-	var mine: int = int(main.my_next_map_vote)
-	var pad := not Input.get_connected_joypads().is_empty()
-	var keys := ["↑", "→", "↓"]
-	_nm_title.text = tr("NEXT MAP - vote: %s") % ("1 / 2 / 3" + ("  ·  D-pad ↑ → ↓" if pad else "")) + "   ·   %ds" % int(ceil(float(main.winner_end_t)))
-	for i in 3:
-		var b: Button = _nm_btns[i]
-		b.visible = i < choices.size()
-		if not b.visible:
-			continue
-		var n := int(tally[i]) if i < tally.size() else 0
-		b.text = "%d%s  %s%s" % [i + 1, ("/" + keys[i]) if pad else "", main.next_map_name(i), ("   (%d)" % n) if n > 0 else ""]
-		b.modulate = Color(1.0, 0.85, 0.4) if i == mine else Color(1, 1, 1)
+		next_map_panel = NextMapPanel.new()
+		add_child(next_map_panel)
+	next_map_panel.refresh(main)
 
 
 func _next_map_key(event: InputEvent) -> bool:
-	if next_map_panel == null or not next_map_panel.visible:
+	if next_map_panel == null:
 		return false
-	var pick := -1
-	if event is InputEventKey and event.pressed and not event.echo:
-		var kc: int = (event as InputEventKey).physical_keycode
-		if kc >= KEY_1 and kc <= KEY_3:
-			pick = kc - KEY_1
-		elif kc >= KEY_KP_1 and kc <= KEY_KP_3:
-			pick = kc - KEY_KP_1
-	elif event is InputEventJoypadButton and event.pressed:
-		pick = {JOY_BUTTON_DPAD_UP: 0, JOY_BUTTON_DPAD_RIGHT: 1, JOY_BUTTON_DPAD_DOWN: 2}.get((event as InputEventJoypadButton).button_index, -1)
-	if pick < 0:
-		return false
-	var m := get_parent()
-	if m != null and m.has_method("vote_next_map"):
-		m.vote_next_map(pick)
-	get_viewport().set_input_as_handled()
-	return true
+	return next_map_panel.handle_key(event)
 
 
 func _render_gg_scoreboard(main: Node) -> void:
