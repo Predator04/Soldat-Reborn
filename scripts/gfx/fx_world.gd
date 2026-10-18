@@ -483,7 +483,7 @@ func gib(at: Vector2, base_vel: Vector2, body: Color, cos: Dictionary, explosive
 	# [texture key, local offset from the feet, tint kind, wound key]
 	var parts: Array = [
 		["klata", Vector2(0, -13), 0, "klata"],
-		[head_key, Vector2(1, -20), 2 if head_key.begins_with("hair") or head_key == "morda" else 3, "morda"],
+		[head_key, Vector2(1, -20), 2 if head_key.begins_with("hair") or head_key == "morda" else 3, "morda" if head_key == "morda" else ""],
 		["biodro", Vector2(0, -7), 0, "biodro"],
 		["udo", Vector2(-2, -5), 1, "udo"],
 		["ramie", Vector2(3, -14), 0, "ramie"],

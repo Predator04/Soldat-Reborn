@@ -29,7 +29,7 @@ func _process(_d: float) -> bool:
 		return false
 	if _n == 2:
 		_G = load("res://scripts/gfx.gd")
-		st.bot_count = 0
+		st.bot_count = 3
 		st.game_mode = 0
 		st.map_index = _map
 		st.custom_map_path = ""
@@ -54,27 +54,38 @@ func _process(_d: float) -> bool:
 		_cam.make_current()
 		_t = 0
 	_t += 1
-	var w = m.get_node("FxWorld")
 	if _t == 1:
+		# Real deaths through the game's own path (works on older builds too, so
+		# the same staging renders a before / after pair): bots are moved in
+		# front of the camera and killed — one by a blast, two by bullets.
 		_G.explosion(m, p + Vector2(170, -10), 100.0)
-		for i in 3:
-			w.gib(p + Vector2(70 + i * 22, -2), Vector2(40 * (i - 1), -40), [Color(0.2, 0.35, 0.85), Color(0.8, 0.2, 0.15), Color(0.3, 0.6, 0.3)][i], {}, i == 1, 1.0 if i != 0 else -1.0)
+		var i := 0
+		for b in get_nodes_in_group("soldier"):
+			if b == m.player or b.get("loadout") == null or bool(b.get("dead")) or i >= 3:
+				continue
+			b.global_position = p + Vector2(70 + i * 24, -2)
+			b.set("ceasefire_t", 0.0)
+			b.take_damage(999.0, "QA", "LAW" if i == 1 else "AK-74", 0)
+			i += 1
 	if _t <= 120 and _t % 3 == 0:
 		var dir := Vector2.RIGHT.rotated(sin(_t * 0.2) * 0.12)
-		_G.muzzle(m, p + Vector2(12, -12), false, dir)
+		if Callable(_G, "muzzle").get_argument_count() >= 4:
+			_G.muzzle(m, p + Vector2(12, -12), false, dir)
+		else:
+			_G.muzzle(m, p + Vector2(12, -12), false)
 		_G.casing(m, p + Vector2(2, -10), 1.0)
 		var FX = load("res://scripts/impact_fx.gd")
 		FX.spawn(m, p + Vector2(250, -14) + dir * 30.0, -dir, "wall")
 		if _t % 9 == 0:
 			FX.spawn(m, p + Vector2(60, -14), -dir, "blood")
-	if _t == 30:
+	if _t == 30 and m.get_node_or_null("ScreenFeel") != null:
 		# Hit-stop + multi-kill slow-mo look (presentation only).
 		var SF = load("res://scripts/gfx/screen_feel.gd")
 		var f = m.get_node("ScreenFeel")
 		SF.local_kill("LAW")
 		SF.local_kill("AK-74")
 		print("FX-STAGE hit-stops=%d slow-mos=%d" % [f.hitstops, f.slowmos])
-	if _t == 32:
+	if _t == 32 and m.get_node_or_null("ScreenFeel") != null:
 		print("FX-STAGE held frames captured=%d" % m.get_node("ScreenFeel").captured)
 	if _t in SHOTS:
 		root.get_texture().get_image().save_png("%s/s%03d.png" % [_out, _t])
