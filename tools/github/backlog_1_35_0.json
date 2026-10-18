@@ -1,0 +1,85 @@
+[
+ {
+  "title": "Host trust checks: godmode, teleport/speed, impossible HP, fake kill credit",
+  "labels": [
+   "bug",
+   "area: multiplayer"
+  ],
+  "close": true,
+  "version": "1.35.0",
+  "body": "Human soldiers are simulated by their own client (damage taken, movement, death report). A modified client could ignore hits, teleport, or credit kills to a friend. New `scripts/trust_guard.gd`: the host shadows each remote human's damage with its own hit detection (`observe_damage` at every hit site), clamps HP above 100 or unexplained heals, checks speed (>4000 px/s over 250 ms) and world bounds, and only credits kills to someone who attacked in the last 10 s (enemy unless FF). Violations = host-side forced death; 3 in 5 min = kick, announced in chat. Gate: C net `trust` plays godmode / teleport / fake-credit clients and requires each to be caught; every netcase fails on a TRUST line from an honest client."
+ },
+ {
+  "title": "Host-decided hits for human players (closes partial-damage / infinite-fuel / aim cheats)",
+  "labels": [
+   "enhancement",
+   "area: multiplayer"
+  ],
+  "close": false,
+  "version": "1.35.0",
+  "body": "Follow-up to the trust checks. Subtle cheats still pass: taking a fraction of damage, infinite jet fuel, aim assistance. Closing them means the host resolves every hit on humans (lag-comp plumbing exists: `lag_comp_ms`, `hitbox_at`) instead of the victim's client. That changes feel on laggy connections, so it's parked until real-internet playtests can tune it. Unpark trigger: playtests done, or real cheating reports.",
+  "open": true
+ },
+ {
+  "title": "Credit the music tracks (provenance traced)",
+  "labels": [
+   "area: audio"
+  ],
+  "close": true,
+  "version": "1.35.0",
+  "body": "bloody/gore/necro.ogg are renders of the tracker modules in Soldat base (`shared/sfx/modules/`, CC BY 4.0): \"Gore\" and \"Necromancide\" by Marshall Anderson (made for Soldat), \"Bloody Soil\" author unrecorded. Now credited in-game and in CREDITS.md. Residual risk for a paid release: the Gore module thanks unnamed sample sources."
+ },
+ {
+  "title": "Re-audit RETAIL_CHECKLIST.md for v1.34",
+  "labels": [
+   "area: qa"
+  ],
+  "close": true,
+  "version": "1.35.0",
+  "body": "Was dated v1.20 and wrong in places (said no relay, English only). Re-audited: relay + HTTPS master, 5 languages, colour-blind option, trust checks, music provenance, the rename decision, privacy policy still missing, AAB still needs a gradle build on a PC."
+ },
+ {
+  "title": "Rename the game to Tracerfall",
+  "labels": [
+   "enhancement",
+   "area: platform"
+  ],
+  "close": false,
+  "version": "1.35.0",
+  "body": "\"Soldat\" is the original game's name. Decision 2026-10-17: Tracerfall (no existing game found by web search; still needs a USPTO / Steam / itch check by the owner). Display name everywhere (title, window, menus, store copy, README, export product names). Keep internal identifiers that would break existing installs: user data dir (custom user dir keeps the old one), Android package id, updater asset filenames (SoldatReborn.exe/.apk/.pck), LAN tag, repo name. Credits keep the Soldat attribution.",
+  "open": true
+ },
+ {
+  "title": "Graphics Phase A: lighting, post-processing, parallax backgrounds",
+  "labels": [
+   "enhancement",
+   "area: graphics"
+  ],
+  "close": false,
+  "version": "1.35.0",
+  "body": "Dark, gritty, high-contrast grade with neon accents (Classic grade kept as an option). Dynamic 2D lights with generated normal maps / rim light on soldiers, muzzle + explosion lights, AO along terrain, bloom / LUT grading / vignette / optional impact chromatic aberration, multi-layer parallax + animated sky. Cosmetic only; readability first; before/after screenshots + gate.",
+  "open": true
+ },
+ {
+  "title": "Graphics Phase B: particles, shaders, screen feel, gore (pooled)",
+  "labels": [
+   "enhancement",
+   "area: graphics"
+  ],
+  "close": false,
+  "version": "1.35.0",
+  "body": "Pooled muzzle flashes, casings, jet exhaust, blood spray + persistent decals, gibs, debris, smoke, dust, sparks; heat distortion, damage / hit-stop flash, rim glow; squash-and-stretch, procedural recoil; tuned shake, hit-stop and multi-kill slow-mo (local presentation only, never the simulation). Nothing instantiated per frame in combat.",
+  "open": true
+ },
+ {
+  "title": "Graphics Phase C: menus, UI and HUD overhaul",
+  "labels": [
+   "enhancement",
+   "area: ui"
+  ],
+  "close": false,
+  "version": "1.35.0",
+  "body": "Animated screen transitions, hover / press feedback, animated background, consistent type and design language, subtle accents, settings with live preview, minimal HUD with clean icons \u2014 matching the in-game art direction. Built on the split hud / menu files (#258).",
+  "open": true
+ }
+]
