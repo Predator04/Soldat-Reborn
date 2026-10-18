@@ -147,7 +147,7 @@ def release(tag):
     rel = call("GET", "/repos/%s/releases/tags/%s" % (REPO, tag))
     if rel is None:
         rel = call("POST", "/repos/%s/releases" % REPO, {
-            "tag_name": tag, "target_commitish": "main", "name": "Soldat Reborn " + tag,
+            "tag_name": tag, "target_commitish": "main", "name": "Tracerfall " + tag,
             "body": changelog_section(tag) + "\n\n**Downloads:** `SoldatReborn.exe` (Windows) and `SoldatReborn.apk` (Android). `SoldatReborn.pck` is the game pack for dedicated servers."})
         print("release created", tag)
     else:

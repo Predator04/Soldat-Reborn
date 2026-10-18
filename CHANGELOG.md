@@ -2,7 +2,7 @@
 
 All notable changes to Soldat Reborn.
 
-## [Unreleased]
+## [1.35.0] — 2026-10-18 — Tracerfall
 
 ### Added — helicopter (#277)
 - **New vehicle: the helicopter**, on the 15 biggest, most open classic maps (Messner, Fortress, Industrial, Airpirates, Outpost, B2B, Warehouse, Rescue, Veoto, Moonshine, Cobra, Abel, Crucifix, Belltower, Island2k5 — a pad per team base on team maps). Two seats: the **pilot** (W / Space / jet = climb, S = descend, A/D = fly; gamepad left stick; the touch stick) fires a **pair of rockets every 3 s** within a cone around the nose (aim at the other side and it turns round); the **door gunner** works the machine gun out of the side door with a wide arc. The rotor needs about a second to spin up before it lifts; it carries momentum, tilts into its speed, settles gently with no input, can't climb past the top of the world and lands on its skids.
