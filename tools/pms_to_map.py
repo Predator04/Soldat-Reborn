@@ -676,11 +676,16 @@ def fix_entities(m):
     return notes
 
 
-def regen_bundled(pms_dir, maps_dir, scale=DEFAULT_SCALE):
+def regen_bundled(pms_dir, maps_dir, scale=DEFAULT_SCALE, smooth=True):
     """Re-port every bundled map in maps_dir from the matching .pms in pms_dir
     (e.g. a checkout of github.com/opensoldat/base), keeping each JSON's display
-    name and any hand-added keys such as "weather"."""
+    name and any hand-added keys such as "weather". Each fresh map then goes
+    through tools/smooth_maps.py (rounded corners, #273) unless smooth=False."""
     import glob
+    smoother = None
+    if smooth:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import smooth_maps as smoother
     pms_by_stem = {}
     for f in glob.glob(os.path.join(pms_dir, "**", "*.pms"), recursive=True):
         st = os.path.splitext(os.path.basename(f))[0].lower()
@@ -705,14 +710,17 @@ def regen_bundled(pms_dir, maps_dir, scale=DEFAULT_SCALE):
         print("%-12s %5d x %-5d  fixes=%d" % (stem, m["world"]["w"], m["world"]["h"], len(fixes)))
         for n in fixes:
             print("      ", n)
+        if smoother is not None:
+            smoother.process_file(jf, log=lambda t: print("      ", t.strip()))
 
 
 def main():
     if len(sys.argv) >= 2 and sys.argv[1] == "--regen":
-        # python3 tools/pms_to_map.py --regen <opensoldat-base-dir> [maps-dir]
+        # python3 tools/pms_to_map.py --regen <opensoldat-base-dir> [maps-dir] [--no-smooth]
         here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        maps_dir = sys.argv[3] if len(sys.argv) > 3 else os.path.join(here, "assets", "maps")
-        regen_bundled(sys.argv[2], maps_dir)
+        rest = [a for a in sys.argv[3:] if not a.startswith("--")]
+        maps_dir = rest[0] if rest else os.path.join(here, "assets", "maps")
+        regen_bundled(sys.argv[2], maps_dir, smooth="--no-smooth" not in sys.argv)
         return
     ap = argparse.ArgumentParser()
     ap.add_argument("input", help="Path to input .pms")
