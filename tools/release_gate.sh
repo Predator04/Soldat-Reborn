@@ -458,6 +458,7 @@ if has F; then
   ft move movement_test.gd 90 MOVE-TEST "movement tech: tap vs held jump height, prone air fast fall (#262)"
   ft balance balance_test.gd 90 BALANCE-TEST "auto team balance at round reset, bots only (#263)"
   ft training training_test.gd 90 TRAINING-TEST "training"
+  ft course movement_course_test.gd 120 COURSE-TEST "movement course: tap/hold gaps, prone drop, bunny lane, best time, settings restored (#262)"
   ft fire fire_test.gd 100 FIRE-TEST "every primary fires"
   ft weapons weapon_test.gd 175 WEAPON-TEST "every weapon hits (player + bots)"
   ft labels label_test.gd 100 LABEL-TEST "labels / explanations"

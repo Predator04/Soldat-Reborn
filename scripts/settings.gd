@@ -160,6 +160,7 @@ static func clean_tag(t: String) -> String:
 func profile_hash() -> String:
 	return profile_id.sha256_text()
 var training := false          # runtime only: the Training match is running
+var training_course := false   # runtime only: Training is on the movement course (#262)
 var training_saved: Dictionary = {}   # the match settings Training replaced          # first-launch name prompt answered
 var _save_scheduled := false   # #245: a debounced write is pending
 var _slider_burst := false     # #245: set while a settings slider's on_change runs

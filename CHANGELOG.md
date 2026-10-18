@@ -2,6 +2,17 @@
 
 All notable changes to Soldat Reborn.
 
+## [Unreleased]
+
+### Added — the movement course
+- **Training phase 2: "Now the moves that make a Soldat"** (#262). After the shooting steps, Training loads a purpose-built Movement Course micro-map: a short gap under a spike ceiling (tap to hop — a held full jump hits the spikes), a wider gap (tap), a long gap (hold for the full jump), a prone-cancel drop from a high ledge into a target ring, and a timed bunny-hop lane that plain running and roll spam can't make. Falling into a pit or touching the spikes puts you straight back at the section start — no death screen. Each section ends with a toast, finishing shows your total time, and the best time is saved in your stats; press RELOAD to run it again. Gap widths, spike height, ring and lane time are calibrated from measured jump / drop / hop physics (numbers in `scripts/movement_course.gd`).
+- **MOVEMENT COURSE button** next to TRAINING on the main menu, so returning players can run the course on its own.
+- Course text goes through the UI translations (German, Spanish, French and Brazilian Portuguese included); with a controller plugged in, Training names the pad button next to the key.
+- **Prone on a gamepad**: the left trigger now goes prone (saved controller layouts pick the new default up).
+
+### Testing
+- New release-gate test (F stage, COURSE-TEST): drives every course gate with the right technique (passes) and the wrong one (full jump into the spikes, tap on the long gap, non-prone drop, running / rolling the lane all fail), checks the best time, RELOAD replay, the Training settings restore, the committed map JSON against its generator and the translations.
+
 ## [1.34.0] — 2026-10-15
 
 ### Added — movement tech from the original's tutorial
