@@ -472,8 +472,8 @@ func _ready() -> void:
 			Settings.map_index = (Settings.map_index + 1) % MAPS.size()
 	_normalize_team_sides()
 	_apply_world()
-	_build_sky()
-	_build_parallax()
+	# Sky + parallax + ambient + post grade (scripts/gfx/atmosphere.gd, #270).
+	Atmosphere.install(self, _map)
 	_build_terrain()
 	_build_gfx_world()
 	# Warm lazily-loaded art during the load, not mid-fight (frame hitches).

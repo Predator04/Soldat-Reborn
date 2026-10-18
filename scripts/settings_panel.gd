@@ -193,6 +193,16 @@ func _build_video(box: VBoxContainer) -> void:
 			m.apply_gfx_quality())
 	gq_row.add_child(gq_pick)
 	box.add_child(gq_row)
+	# Visual style (scripts/gfx/atmosphere.gd): applies live, mid-match.
+	box.add_child(_option_row("Visual style", ["cinematic", "classic"], Settings.visual_style,
+		func(v: String) -> void:
+			Settings.visual_style = v
+			Settings.save()
+			Atmosphere.restyle(get_tree())))
+	box.add_child(_check_button("Impact colour split (explosions / getting hit)", Settings.impact_aberration,
+		func(on: bool) -> void:
+			Settings.impact_aberration = on
+			Settings.save()))
 	box.add_child(_check_button("VSync (no tearing; caps FPS to the monitor)", Settings.vsync,
 		func(on: bool) -> void:
 			Settings.vsync = on

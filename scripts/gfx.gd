@@ -86,7 +86,9 @@ static func flash(parent: Node, at: Vector2, col: Color, radius: float, life: fl
 	n.life = life
 	n.position = at
 	parent.add_child(n)
-	if real_light and on(HIGH):
+	if real_light and on(HIGH) and Atmosphere.pooled_lights():
+		Atmosphere.light(at, col, radius, life * 1.6, 1.6)
+	elif real_light and on(HIGH):
 		var l := PointLight2D.new()
 		l.texture = glow_tex()
 		l.color = col
@@ -100,6 +102,9 @@ static func flash(parent: Node, at: Vector2, col: Color, radius: float, life: fl
 
 
 static func muzzle(parent: Node, at: Vector2, explosive := false) -> void:
+	# Cinematic + High: muzzle flashes light the walls and soldiers around them
+	# (pooled lights, scripts/gfx/atmosphere.gd).
+	Atmosphere.light(at, Color(1.0, 0.72, 0.38), 120.0 if explosive else 70.0, 0.07 if not explosive else 0.12, 0.9)
 	if explosive:
 		flash(parent, at, Color(1.0, 0.6, 0.25), 70.0, 0.12)
 	else:
@@ -109,6 +114,7 @@ static func muzzle(parent: Node, at: Vector2, explosive := false) -> void:
 static func explosion(parent: Node, at: Vector2, radius: float) -> void:
 	if parent == null:
 		return
+	Atmosphere.kick_impact(at, clampf(radius / 90.0, 0.3, 1.0))
 	flash(parent, at, Color(1.0, 0.55, 0.2), radius * 2.2, 0.4, true)
 	flash(parent, at, Color(1.0, 0.9, 0.6), radius * 0.9, 0.12)
 	for i in 7:

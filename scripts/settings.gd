@@ -36,6 +36,8 @@ var show_fps := false          # overlay FPS counter on the HUD
 var pause_on_focus_loss := true  # open the pause menu when the window / app loses focus
 var check_updates := true      # look for a newer release on GitHub at startup
 var colorblind := false        # red team drawn orange (blue / orange)
+var visual_style := "cinematic" # "cinematic" (dark, high-contrast grade + new sky) | "classic" (original look)
+var impact_aberration := true  # brief colour split on nearby explosions / when hit
 var language := ""             # "" = system language; else "en", "es", "pt_BR", "de", "fr"
 const LANGUAGES := [["", "Auto (system)"], ["en", "English"], ["es", "Español"], ["pt_BR", "Português (Brasil)"], ["de", "Deutsch"], ["fr", "Français"]]
 var last_seen_version := ""    # "what's new" shows once per new version
@@ -257,6 +259,8 @@ func load_settings() -> void:
 	pause_on_focus_loss = bool(cf.get_value("game", "pause_on_focus_loss", true))
 	check_updates = bool(cf.get_value("game", "check_updates", true))
 	colorblind = bool(cf.get_value("video", "colorblind", false))
+	visual_style = "classic" if str(cf.get_value("video", "visual_style", "cinematic")) == "classic" else "cinematic"
+	impact_aberration = bool(cf.get_value("video", "impact_aberration", true))
 	language = str(cf.get_value("game", "language", ""))
 	last_seen_version = str(cf.get_value("game", "last_seen_version", ""))
 	vehicles = bool(cf.get_value("game", "vehicles", true))
@@ -387,6 +391,8 @@ func _write_file() -> void:
 	cf.set_value("game", "pause_on_focus_loss", pause_on_focus_loss)
 	cf.set_value("game", "check_updates", check_updates)
 	cf.set_value("video", "colorblind", colorblind)
+	cf.set_value("video", "visual_style", visual_style)
+	cf.set_value("video", "impact_aberration", impact_aberration)
 	cf.set_value("game", "language", language)
 	cf.set_value("game", "last_seen_version", last_seen_version)
 	cf.set_value("game", "vehicles", vehicles)
