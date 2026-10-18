@@ -19,6 +19,7 @@ class Preview extends Node2D:
 	var team_color := Color(0.35, 0.55, 1.0)
 	var weapon := "AK-74"
 	var t := 0.0
+	var _draw_state := SoldierDrawState.new()
 
 	func _process(d: float) -> void:
 		t += d
@@ -28,9 +29,26 @@ class Preview extends Node2D:
 		var aim := Vector2(1.0, -0.12 + 0.12 * sin(t * 0.8)).normalized()
 		var cos: Dictionary = PlayerScript.my_cosmetics()
 		var jet := true
-		SoldierArt.draw_soldier(self, team_color, 1.0, aim, Vector2.ZERO, jet, false, Color.WHITE, "bullet",
-			0.0, 100.0, 0.0, false, weapon, true, false, false, false, false, "", false, false,
-			cos, "USSOCOM", 3, false, false, false)
+		var ds := _draw_state
+		ds.body_color = team_color
+		ds.facing = 1.0
+		ds.aim_dir = aim
+		ds.vel = Vector2.ZERO
+		ds.jet_on = jet
+		ds.dead = false
+		ds.weapon_color = Color.WHITE
+		ds.weapon_kind = "bullet"
+		ds.muzzle_t = 0.0
+		ds.health = 100.0
+		ds.fuel = 0.0
+		ds.show_fuel = false
+		ds.weapon_name = weapon
+		ds.on_floor = true
+		ds.cosmetics = cos
+		ds.back_weapon_name = "USSOCOM"
+		ds.grenade_count = 3
+		ds.show_hp = false
+		SoldierArt.draw_soldier(self, ds)
 		# A tracer flying out of the gun every half second.
 		var tc: Color = Custom.TRACERS.get(str(cos.get("tracer", "")), Color(1.0, 0.85, 0.4))
 		var ph := fmod(t * 1.5, 1.0)

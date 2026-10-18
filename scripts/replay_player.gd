@@ -34,6 +34,7 @@ class Puppet extends Node2D:
 	var st: Array = []           # [id, x, y, aim, facing, vx, vy, bits, weapon, back, hp]
 	var info: Dictionary = {}
 	var label := ""
+	var _draw_state := SoldierDrawState.new()
 
 	func _draw() -> void:
 		if st.is_empty():
@@ -41,10 +42,29 @@ class Puppet extends Node2D:
 		var bits: int = int(st[7])
 		var col := Color.html(str(info.get("color", "ffffff")))
 		var aim := Vector2.RIGHT.rotated(float(st[3]))
-		SoldierArt.draw_soldier(self, col, float(st[4]) if float(st[4]) != 0.0 else 1.0, aim, Vector2(float(st[5]), float(st[6])),
-			bits & 1 != 0, bits & 2 != 0, Color(0.72, 0.72, 0.78), "bullet", 0.0, float(st[10]), 0.0, false, str(st[8]),
-			bits & 4 != 0, bits & 32 != 0, bits & 8 != 0, bits & 16 != 0, false, "", false, false,
-			info.get("cos", {}), str(st[9]), 0, false, false, true)
+		var ds := _draw_state
+		ds.body_color = col
+		ds.facing = float(st[4]) if float(st[4]) != 0.0 else 1.0
+		ds.aim_dir = aim
+		ds.vel = Vector2(float(st[5]), float(st[6]))
+		ds.jet_on = bits & 1 != 0
+		ds.dead = bits & 2 != 0
+		ds.weapon_color = Color(0.72, 0.72, 0.78)
+		ds.weapon_kind = "bullet"
+		ds.muzzle_t = 0.0
+		ds.health = float(st[10])
+		ds.fuel = 0.0
+		ds.show_fuel = false
+		ds.weapon_name = str(st[8])
+		ds.on_floor = bits & 4 != 0
+		ds.reloading = bits & 32 != 0
+		ds.crouching = bits & 8 != 0
+		ds.prone = bits & 16 != 0
+		ds.cosmetics = info.get("cos", {})
+		ds.back_weapon_name = str(st[9])
+		ds.grenade_count = 0
+		ds.show_hp = true
+		SoldierArt.draw_soldier(self, ds)
 		if bits & 2 == 0:
 			var f := ThemeDB.fallback_font
 			var w := f.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x

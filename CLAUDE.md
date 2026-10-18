@@ -19,9 +19,9 @@ This directory (`game/`) is the git repo root — note the space in the parent p
   - `match_bonuses.gd` — bonus boxes (#78), medikits / grenade kits, the weapon-pickup stream (`_pickup_entry`, `net_pickup_state`).
   - `match_world.gd` — world rect, sky / parallax / weather, terrain bodies + ladders + scenery, gfx layers, plain-geometry placement queries (`_geom_ground_y`, `_spot_is_clear`, …), kill line + anti-stuck watchdog.
 - `net.gd` — high-level ENet wrapper (autoload). `Mode { SINGLEPLAYER, HOST, CLIENT }`, `DEFAULT_PORT 7777`, `MAX_PEERS 8`, `MAP_NAMES` / `MODE_NAMES` (single source: `scripts/game_lists.gd`, #251). Owns `custom_map_json` (custom-map sync, #99) and `is_dedicated`. Also hosts the `--smoke-*` self-test entry points.
-- `player.gd` (~71 KB) — player physics, weapons, F-throw, ladder climb engage/dismount (~lines 401–466).
+- `player.gd` (~71 KB) — player physics, weapons, F-throw, ladder climb. `_physics_process` dispatches by state (#258): `_physics_replica` (non-authority), `_physics_mounted` (M2 / vehicle seat), `_physics_input_locked` (chat line open), `_physics_live` → `_live_stance`, `_live_ladder` (climb engage / dismount), `_live_move`, `_live_aim`, `_live_weapon_keys`, `_live_grenade`, `_live_trigger`, `_live_timers`, `_live_fx`, `_send_state`. Shared physics constants live here (bot.gd reads them, #251).
 - `bot.gd` (~38 KB) — bot AI, has ladder awareness.
-- `gostek.gd` — soldier sprite rendering/animation.
+- `gostek.gd` — soldier sprite rendering/animation. `soldier_art.gd` `draw_soldier(node, SoldierDrawState)` paints a soldier (body, weapon, flash, HP / fuel bars); callers (player, bot, replay puppet, customize preview) keep one `SoldierDrawState` (`soldier_draw_state.gd`, class_name) and refill it in `_draw()`.
 - `hud.gd` — HUD: vitals, mode/score strip (DM/CTF/Gun-Game rung readout), winner banner, death screen, toasts / banners. Keeps every method other scripts call (`post_chat`, `post_radio`, `toast`, `show_death`, `set_killcam`, `announce_objective`, `open_command`, …) and delegates to its parts (#258):
   - `kill_feed.gd` / `chat_feed.gd` — the two expiring-line lanes, both on `timed_feed.gd` (Timer parented to each line, line cap, order).
   - `vote_panel.gd` (#77 vote prompt), `next_map_panel.gd` (end-of-round map vote + 1/2/3 keys).

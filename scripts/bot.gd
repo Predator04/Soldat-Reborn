@@ -1474,6 +1474,10 @@ func replay_state() -> Array:
 		roundi(velocity.x), roundi(velocity.y), bits, "USSOCOM" if using_secondary else loadout, loadout if using_secondary else "", roundi(health)]
 
 
+## Reused every frame by _draw() (SoldierArt.draw_soldier input).
+var _draw_state := SoldierDrawState.new()
+
+
 func _draw() -> void:
 	# Aim direction: bots don't track aim_dir as a var — reconstruct it from facing + target.
 	var aim: Vector2 = Vector2(facing, 0.0)
@@ -1499,34 +1503,28 @@ func _draw() -> void:
 	var on_floor := is_on_floor()
 	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
 		on_floor = absf(velocity.y) < 5.0
-	SoldierArt.draw_soldier(
-		self,
-		color,
-		facing,
-		aim,
-		velocity,
-		jet_on,
-		dead,
-		weapon_col,
-		weapon_kind,
-		muzzle_t,
-		health,
-		fuel,
-		false,
-		active_weapon,
-		on_floor,
-		reloading,
-		false,
-		false,
-		false,
-		"",
-		false,
-		ceasefire_t > 0.0,
-		cosmetics,
-		back_weapon,
-		grenades,
-		false,
-	)
+	var ds := _draw_state
+	ds.body_color = color
+	ds.facing = facing
+	ds.aim_dir = aim
+	ds.vel = velocity
+	ds.jet_on = jet_on
+	ds.dead = dead
+	ds.weapon_color = weapon_col
+	ds.weapon_kind = weapon_kind
+	ds.muzzle_t = muzzle_t
+	ds.health = health
+	ds.fuel = fuel
+	ds.show_fuel = false
+	ds.weapon_name = active_weapon
+	ds.on_floor = on_floor
+	ds.reloading = reloading
+	ds.ceasefire = ceasefire_t > 0.0
+	ds.cosmetics = cosmetics
+	ds.back_weapon_name = back_weapon
+	ds.grenade_count = grenades
+	ds.use_cluster = false
+	SoldierArt.draw_soldier(self, ds)
 
 
 # Wedge detection: a rectangular body can come to rest between two steep

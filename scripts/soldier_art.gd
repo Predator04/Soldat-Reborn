@@ -50,40 +50,17 @@ static var _tex_cache: Dictionary = {}
 const Gostek = preload("res://scripts/gostek.gd")
 
 
-static func draw_soldier(
-	node: CanvasItem,
-	body_color: Color,
-	facing: float,
-	aim_dir: Vector2,
-	vel: Vector2,
-	jet_on: bool,
-	dead: bool,
-	weapon_color: Color,
-	weapon_kind: String,
-	muzzle_t: float,
-	health: float,
-	fuel: float,
-	show_fuel: bool,
-	weapon_name: String = "",
-	on_floor: bool = true,
-	reloading: bool = false,
-	crouching: bool = false,
-	prone: bool = false,
-	melee_swing: bool = false,
-	gesture_anim: String = "",
-	rolling: bool = false,
-	ceasefire: bool = false,
-	cosmetics: Dictionary = {},
-	# #60: drives the belt-grenade + back-slung weapon overlays and the blood
-	# damage layer. Callers pass their current runtime state; gostek.gd only
-	# reads these keys via `gs`, so cosmetics stays a pure user-config dict.
-	back_weapon_name: String = "",
-	grenade_count: int = 0,
-	use_cluster: bool = false,
-	is_local: bool = false,
-	show_hp: bool = true,
-) -> void:
-	if jet_on and not dead:
+## Paint one soldier on `node` (its own _draw()). `st` carries the pose,
+## weapon and HUD bits — see soldier_draw_state.gd.
+static func draw_soldier(node: CanvasItem, st: SoldierDrawState) -> void:
+	var body_color: Color = st.body_color
+	var facing: float = st.facing
+	var aim_dir: Vector2 = st.aim_dir
+	var dead: bool = st.dead
+	var muzzle_t: float = st.muzzle_t
+	var health: float = st.health
+	var cosmetics: Dictionary = st.cosmetics
+	if st.jet_on and not dead:
 		_draw_jet_flame(node, facing, Gostek.Custom.JET_COLORS.get(str(cosmetics.get("jet", "")), Color(1.0, 0.35, 0.10)))
 
 	# Jetpack — sits behind the torso on the opposite side of `facing`.
@@ -96,21 +73,21 @@ static func draw_soldier(
 	var gs := {
 		"facing": facing,
 		"aim_dir": aim_dir,
-		"velocity": vel,
-		"on_floor": on_floor,
-		"jet_on": jet_on,
-		"reloading": reloading,
+		"velocity": st.vel,
+		"on_floor": st.on_floor,
+		"jet_on": st.jet_on,
+		"reloading": st.reloading,
 		"dead": dead,
-		"crouching": crouching,
-		"prone": prone,
-		"melee_swing": melee_swing,
-		"gesture_anim": gesture_anim,
-		"rolling": rolling,
+		"crouching": st.crouching,
+		"prone": st.prone,
+		"melee_swing": st.melee_swing,
+		"gesture_anim": st.gesture_anim,
+		"rolling": st.rolling,
 		"cosmetics": cosmetics,
 		"health": health,
-		"back_weapon": back_weapon_name,
-		"grenades": grenade_count,
-		"use_cluster": use_cluster,
+		"back_weapon": st.back_weapon_name,
+		"grenades": st.grenade_count,
+		"use_cluster": st.use_cluster,
 	}
 	Gostek.draw_body(node, gs, body_color)
 
@@ -126,7 +103,7 @@ static func draw_soldier(
 	# Recoil: the gun kicks back along the aim for the muzzle flash's life.
 	if muzzle_t > 0.0 and not dead:
 		shoulder -= aim_dir * muzzle_t * 22.0
-	var barrel_end: Vector2 = _draw_weapon_sprite(node, shoulder, aim_dir, facing, weapon_name, weapon_color, weapon_kind, wskin)
+	var barrel_end: Vector2 = _draw_weapon_sprite(node, shoulder, aim_dir, facing, st.weapon_name, st.weapon_color, st.weapon_kind, wskin)
 
 	# Muzzle flash on top of the sprite (bigger/brighter so shots clearly read as muzzle fire).
 	if muzzle_t > 0.0:
@@ -137,16 +114,16 @@ static func draw_soldier(
 		node.draw_circle(flash_pos, 1.2 + m * 8.0, Color(1.0, 1.0, 0.7, m * 0.95))
 
 	# HP + optional fuel bar.
-	if show_hp:
+	if st.show_hp:
 		node.draw_rect(Rect2(-6.5, HP_BAR_Y, 13.0, 2.0), Color(0.0, 0.0, 0.0, 0.55))
 		node.draw_rect(Rect2(-6.5, HP_BAR_Y, 13.0 * clampf(health / 100.0, 0.0, 1.0), 2.0), Color(0.9, 0.2, 0.2))
-	if show_fuel:
+	if st.show_fuel:
 		node.draw_rect(Rect2(-6.5, HP_BAR_Y + 2.0, 13.0, 1.5), Color(0.0, 0.0, 0.0, 0.55))
-		node.draw_rect(Rect2(-6.5, HP_BAR_Y + 2.0, 13.0 * clampf(fuel / 100.0, 0.0, 1.0), 1.5), Color(0.3, 0.7, 1.0))
+		node.draw_rect(Rect2(-6.5, HP_BAR_Y + 2.0, 13.0 * clampf(st.fuel / 100.0, 0.0, 1.0), 1.5), Color(0.3, 0.7, 1.0))
 
 	# "You" indicator arrow above the head — only over the LOCAL player (the one
 	# actually playing), never over remote players or bots.
-	if is_local and not dead:
+	if st.is_local and not dead:
 		var arrow_col := body_color.lightened(0.25)
 		node.draw_polygon(PackedVector2Array([
 			Vector2(-7.0, -44.0),
@@ -156,7 +133,7 @@ static func draw_soldier(
 
 	# Ceasefire (spawn protection) — soft pulsing cyan aura ring so it reads
 	# immediately as "invulnerable" to shooters.
-	if ceasefire and not dead:
+	if st.ceasefire and not dead:
 		var pulse: float = 0.35 + 0.25 * sin(Time.get_ticks_msec() * 0.012)
 		node.draw_arc(Vector2(0, -8.0), 20.0, 0.0, TAU, 32, Color(0.4, 0.85, 1.0, pulse), 1.6)
 		node.draw_arc(Vector2(0, -8.0), 24.0, 0.0, TAU, 32, Color(0.4, 0.85, 1.0, pulse * 0.55), 1.0)
