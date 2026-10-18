@@ -12,8 +12,6 @@ const MapIO = preload("res://scripts/map_io.gd")
 
 var main: Main
 
-var sky_script := preload("res://scripts/sky.gd")
-var parallax_script := preload("res://scripts/parallax.gd")
 # Anti-stuck watchdog (see _tick_soldier_safety).
 const STUCK_CHECK_HZ := 8.0
 const STUCK_GRACE := 0.35          # seconds embedded before we nudge a soldier out
@@ -52,34 +50,8 @@ func _apply_world() -> void:
 	main.KILL_Y = ky if (ky > 0.0 and is_finite(ky)) else INF
 
 
-func _build_sky() -> void:
-	var sky := Node2D.new()
-	sky.name = "Sky"
-	sky.set_script(sky_script)
-	# Ported maps carry Soldat's own background gradient colours.
-	var sky_cfg: Variant = main._map.get("sky", {})
-	if typeof(sky_cfg) == TYPE_DICTIONARY and not (sky_cfg as Dictionary).is_empty():
-		sky.set("map_top", main._arr_to_color((sky_cfg as Dictionary).get("top", [])))
-		sky.set("map_bottom", main._arr_to_color((sky_cfg as Dictionary).get("bottom", [])))
-	var layer := CanvasLayer.new()
-	layer.layer = -20
-	layer.add_child(sky)
-	main.add_child(layer)
-
-
-func _build_parallax() -> void:
-	var par := Node2D.new()
-	par.name = "Parallax"
-	par.set_script(parallax_script)
-	var sky_cfg: Variant = main._map.get("sky", {})
-	if typeof(sky_cfg) == TYPE_DICTIONARY and not (sky_cfg as Dictionary).is_empty():
-		var bot := main._arr_to_color((sky_cfg as Dictionary).get("bottom", []))
-		if bot.a > 0.0:
-			par.set("tint", bot)
-	var layer := CanvasLayer.new()
-	layer.layer = -15
-	layer.add_child(par)
-	main.add_child(layer)
+# Sky + parallax are built by scripts/gfx/atmosphere.gd (#270; Classic look
+# uses sky.gd / parallax.gd from there).
 
 
 # Per-map weather (#68). Reads _map["weather"] ("rain"/"snow" or ""). Renders as

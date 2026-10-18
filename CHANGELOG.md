@@ -4,6 +4,13 @@ All notable changes to Soldat Reborn.
 
 ## [Unreleased]
 
+### Added — graphics overhaul, phase A (#270)
+- **New "Cinematic" look** (default; Settings → Video → Visual style, "Classic" keeps the original): an animated shader sky graded from each map's own colours, with a moon, twinkling stars and two layers of drifting clouds that parallax with the camera; five-layer parallax hills with fog, moonlit ridge rims and distant ruins (broken towers, a radio mast with a blinking light, gantries); a soft ambient darkening so lights read; a filmic grade (deep blacks, teal shadows / warm highlights, strong colours kept so team colours, fire and tracers stay readable) with fine film grain and a heavier vignette.
+- **Real light** from muzzle flashes and explosions on High (a fixed pool of 16 lights, nothing created per shot) and a **rim light** on soldiers and vehicles that follows each body's silhouette.
+- **Impact colour split** on nearby explosions (toggle in Settings → Video, with the hit flash).
+- Everything is cosmetic: none of it touches physics, game state or the network. Low quality and headless servers use the classic path.
+- Gate: new F test ATMOS-TEST (both looks, live switching, pooled lights, rim material on/off, post shader swap); `tools/capture.gd --ab` renders classic/cinematic pairs of the same moment.
+
 ### Changed — new name: **Tracerfall**
 - The game is now called **Tracerfall** (#269): menu title, window title, credits, share/join text, the Windows exe description, the Android app label and the store copy. "Soldat" is the original game's name; the credits keep the Soldat attribution. Nothing moves on your machine: settings, stats, replays and updates carry over (the data folder and update files keep their old names).
 
