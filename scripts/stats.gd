@@ -132,6 +132,23 @@ func record_event(kind: String) -> void:
 	_check_achievements()
 
 
+## Movement course best time in ms (#262); 0 = never finished.
+func course_best_ms() -> int:
+	return int(counters.get("course_best_ms", 0))
+
+
+## Records a finished movement-course run; true when it's a new best.
+func record_course_time(ms: int) -> bool:
+	if ms <= 0:
+		return false
+	var best := course_best_ms()
+	if best > 0 and ms >= best:
+		return false
+	counters["course_best_ms"] = ms
+	_mark()
+	return true
+
+
 func _ready() -> void:
 	load_stats()
 	# Older builds tallied "AK-74 (headshot)" separately: fold those into the

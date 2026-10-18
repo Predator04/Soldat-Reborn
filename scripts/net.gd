@@ -97,7 +97,7 @@ func _maybe_print_version() -> bool:
 	var ver: String = String(ProjectSettings.get_setting("application/config/version", ""))
 	if ver.is_empty():
 		ver = "unknown"
-	print("Soldat Reborn ", ver)
+	print(preload("res://scripts/game_info.gd").TITLE, " ", ver)
 	get_tree().quit()
 	return true
 
@@ -144,15 +144,22 @@ func _maybe_run_dedicated() -> void:
 		elif a.begins_with("--port="):
 			port = int(a.substr(len("--port=")))
 		elif a == "--map" and i + 1 < args.size():
-			map_index = _resolve_map_arg(args[i + 1])
+			map_index = _resolve_map_arg(args[i + 1], map_index)
 			i += 1
 		elif a.begins_with("--map="):
-			map_index = _resolve_map_arg(a.substr(len("--map=")))
+			map_index = _resolve_map_arg(a.substr(len("--map=")), map_index)
 		elif a == "--mode" and i + 1 < args.size():
-			mode_index = _resolve_mode_arg(args[i + 1])
+			mode_index = _resolve_mode_arg(args[i + 1], mode_index)
 			i += 1
 		elif a.begins_with("--mode="):
-			mode_index = _resolve_mode_arg(a.substr(len("--mode=")))
+			mode_index = _resolve_mode_arg(a.substr(len("--mode=")), mode_index)
+		elif a == "--bans" and i + 1 < args.size():
+			Settings.weapon_bans = parse_bans_arg(args[i + 1])
+			i += 1
+		elif a.begins_with("--bans="):
+			# #264: host weapon bans (#256) from the command line, e.g. the
+			# official server's featured week. "--bans=" clears them.
+			Settings.weapon_bans = parse_bans_arg(a.substr(len("--bans=")))
 		elif a == "--register" and i + 1 < args.size():
 			register_url = args[i + 1]
 			i += 1
@@ -176,8 +183,12 @@ func _maybe_run_dedicated() -> void:
 		call_deferred("_start_dedicated", port, map_index, mode_index)
 
 
-func _resolve_map_arg(v: String) -> int:
-	# Accepts "ctf_Nuubia", "Nuubia", or an integer index. Falls back to Settings on miss.
+func _resolve_map_arg(v: String, fallback: int = -1) -> int:
+	# Accepts "ctf_Nuubia", "Nuubia", or an integer index. On a miss keeps
+	# `fallback` (the value an earlier flag / Settings gave) and says so in
+	# the log (#264: a bad featured.json entry must not take the server down).
+	if fallback < 0:
+		fallback = Settings.map_index
 	if v.is_valid_int():
 		return clampi(int(v), 0, MAP_NAMES.size() - 1)
 	var needle: String = v.strip_edges()
@@ -186,10 +197,13 @@ func _resolve_map_arg(v: String) -> int:
 	for i in MAP_NAMES.size():
 		if String(MAP_NAMES[i]).to_lower() == needle.to_lower():
 			return i
-	return Settings.map_index
+	print("Dedicated: unknown map '%s', keeping %s" % [v, str(MAP_NAMES[clampi(fallback, 0, MAP_NAMES.size() - 1)])])
+	return fallback
 
 
-func _resolve_mode_arg(v: String) -> int:
+func _resolve_mode_arg(v: String, fallback: int = -1) -> int:
+	if fallback < 0:
+		fallback = Settings.game_mode
 	if v.is_valid_int():
 		return clampi(int(v), 0, MODE_NAMES.size() - 1)
 	var needle: String = v.strip_edges().to_lower()
@@ -200,7 +214,29 @@ func _resolve_mode_arg(v: String) -> int:
 	var aliases := {"dm": 0, "tdm": 1, "ctf": 2, "inf": 3, "htf": 4, "rm": 5, "pm": 6, "dom": 7, "br": 8, "gg": 9}
 	if aliases.has(needle):
 		return int(aliases[needle])
-	return Settings.game_mode
+	print("Dedicated: unknown mode '%s', keeping %s" % [v, str(MODE_NAMES[clampi(fallback, 0, MODE_NAMES.size() - 1)])])
+	return fallback
+
+
+## #264: "--bans=Minigun,Steyr AUG,law" -> canonical weapon names (case-
+## insensitive, game_lists.gd WEAPON_NAMES); unknown names are logged and skipped.
+static func parse_bans_arg(v: String) -> Array:
+	var out: Array = []
+	for raw in v.split(",", false):
+		var nm := raw.strip_edges()
+		if nm == "":
+			continue
+		var hit := ""
+		for w in GameLists.WEAPON_NAMES:
+			if String(w).to_lower() == nm.to_lower():
+				hit = String(w)
+				break
+		if hit == "":
+			print("Dedicated: unknown weapon '%s' in --bans, ignored" % nm)
+		elif not out.has(hit):
+			out.append(hit)
+	print("Dedicated: weapon bans: %s" % (", ".join(PackedStringArray(out)) if not out.is_empty() else "none"))
+	return out
 
 
 func _start_dedicated(port: int, map_index: int, mode_index: int) -> void:
@@ -1453,13 +1489,13 @@ func internet_code() -> String:
 func share_text() -> String:
 	var t := ""
 	if via_relay and relay_code != "":
-		return "Soldat Reborn: Join Game > code %s (works from anywhere)" % relay_code
+		return "Tracerfall: Join Game > code %s (works from anywhere)" % relay_code
 	if internet_code() != "":
-		t = "Soldat Reborn: Join Game > code %s" % internet_code()
+		t = "Tracerfall: Join Game > code %s" % internet_code()
 		if lan_code() != "":
 			t += " (same Wi-Fi: %s)" % lan_code()
 	elif lan_code() != "":
-		t = "Soldat Reborn: Join Game > code %s (same network)" % lan_code()
+		t = "Tracerfall: Join Game > code %s (same network)" % lan_code()
 	return t
 
 
@@ -1508,9 +1544,9 @@ func _upnp_work(port: int) -> void:
 	var ip := ""
 	if u.discover(2000, 2, "InternetGatewayDevice") == UPNP.UPNP_RESULT_SUCCESS \
 			and u.get_gateway() != null and u.get_gateway().is_valid_gateway():
-		ok = u.add_port_mapping(port, port, "Soldat Reborn", "UDP", 0) == UPNP.UPNP_RESULT_SUCCESS
+		ok = u.add_port_mapping(port, port, "Tracerfall", "UDP", 0) == UPNP.UPNP_RESULT_SUCCESS
 		if ok:
-			u.add_port_mapping(port + 1, port + 1, "Soldat Reborn query", "UDP", 0)
+			u.add_port_mapping(port + 1, port + 1, "Tracerfall query", "UDP", 0)
 			ip = u.query_external_address()
 	call_deferred("_upnp_done", u, ok, ip, port)
 
@@ -1553,7 +1589,7 @@ func allow_through_firewall() -> bool:
 	if OS.get_name() != "Windows":
 		return false
 	var exe := OS.get_executable_path().replace("/", "\\")
-	var cmd := "/c netsh advfirewall firewall delete rule name=\"Soldat Reborn\" & netsh advfirewall firewall add rule name=\"Soldat Reborn\" dir=in action=allow program=\"%s\" enable=yes profile=any" % exe
+	var cmd := "/c netsh advfirewall firewall delete rule name=\"Soldat Reborn\" & netsh advfirewall firewall delete rule name=\"Tracerfall\" & netsh advfirewall firewall add rule name=\"Tracerfall\" dir=in action=allow program=\"%s\" enable=yes profile=any" % exe
 	var ps := "Start-Process cmd -Verb RunAs -WindowStyle Hidden -ArgumentList '%s'" % cmd.replace("'", "''")
 	return OS.create_process("powershell.exe", ["-NoProfile", "-WindowStyle", "Hidden", "-Command", ps]) > 0
 
@@ -1565,7 +1601,9 @@ func allow_through_firewall() -> bool:
 func _smoke_cheat(kind: String) -> void:
 	print("SMOKE-CHEAT start kind=%s" % kind)
 	var t := Timer.new()
-	t.wait_time = 1.0
+	# Teleport every 0.4 s so two violations land well inside one life even
+	# when bots kill the cheater quickly on a loaded machine.
+	t.wait_time = 0.4 if kind == "teleport" else 1.0
 	t.autostart = true
 	add_child(t)
 	var state := {"credited": false}   # lambdas capture locals by value

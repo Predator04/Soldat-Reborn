@@ -1,10 +1,10 @@
-# Soldat Reborn — Licensing
+# Tracerfall (formerly Soldat Reborn) — Licensing
 
 ## Code (this repository's GDScript)
 
 MIT License
 
-Copyright (c) 2026 Soldat Reborn contributors
+Copyright (c) 2026 Tracerfall contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

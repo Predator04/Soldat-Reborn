@@ -1,4 +1,4 @@
-# AGENTS.md — Soldat Reborn
+# AGENTS.md — Tracerfall (formerly Soldat Reborn)
 
 Godot 4.7 project (GDScript). 2D jetpack shooter.
 
@@ -11,7 +11,7 @@ Godot 4.7 project (GDScript). 2D jetpack shooter.
 
 - This repo = the Godot game only.
 - Master/lobby server is a SEPARATE Go binary: repo `Predator04/soldat-master-server`, hosted on Oracle Cloud (`161.153.9.69:8080`, systemd `soldat-master`). Deploy with the update script in SERVER_HOSTING_NOTES.md (repo root's parent). It is NOT built in this project — don't try to add server logic here.
-- The official game server ("Soldat Reborn Official") runs on the same box, auto-updating from this repo's latest GitHub release.
+- The official game server ("Tracerfall Official") runs on the same box, auto-updating from this repo's latest GitHub release.
 
 ## Dev procedure
 

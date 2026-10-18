@@ -160,6 +160,7 @@ static func clean_tag(t: String) -> String:
 func profile_hash() -> String:
 	return profile_id.sha256_text()
 var training := false          # runtime only: the Training match is running
+var training_course := false   # runtime only: Training is on the movement course (#262)
 var training_saved: Dictionary = {}   # the match settings Training replaced          # first-launch name prompt answered
 var _save_scheduled := false   # #245: a debounced write is pending
 var _slider_burst := false     # #245: set while a settings slider's on_change runs
@@ -171,6 +172,7 @@ var _slider_burst := false     # #245: set while a settings slider's on_change r
 const DEFAULT_MASTER_URL := "https://161-153-9-69.sslip.io"
 var master_url := DEFAULT_MASTER_URL
 var recent_servers: Array = []   # "ip:port", newest first (Browse -> Recent)
+var news_dismissed := ""          # #261: text of the menu news line the player hid
 
 # Convenience: DM / Rambo / Battle Royale / Gun Game are FFA (friendly-fire on), teams disable friendly damage.
 func friendly_fire_on() -> bool:
@@ -183,6 +185,9 @@ func is_team_mode() -> bool:
 
 
 func _ready() -> void:
+	# Window / taskbar title (#269); project config/name stays for the data path.
+	if DisplayServer.get_name() != "headless":
+		DisplayServer.window_set_title(preload("res://scripts/game_info.gd").TITLE)
 	load_settings()
 	# A first launch has no settings file, so load_settings() returns before
 	# it gets to the profile id: make one here (it used to stay empty, and
@@ -312,6 +317,7 @@ func load_settings() -> void:
 		master_url = DEFAULT_MASTER_URL
 	var rs = cf.get_value("net", "recent_servers", [])
 	recent_servers = (rs as Array).duplicate() if rs is Array else []
+	news_dismissed = str(cf.get_value("net", "news_dismissed", "")).left(200)
 
 
 func save() -> void:
@@ -427,6 +433,7 @@ func _write_file() -> void:
 	cf.set_value("net", "profile_id", profile_id)
 	cf.set_value("net", "master_url", master_url)
 	cf.set_value("net", "recent_servers", recent_servers)
+	cf.set_value("net", "news_dismissed", news_dismissed)
 	cf.save(PATH)
 
 

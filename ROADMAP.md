@@ -1,4 +1,4 @@
-# Soldat Reborn — Roadmap
+# Tracerfall (formerly Soldat Reborn) — Roadmap
 
 > **Current status: v1.34.0** (see CHANGELOG.md for the full history).
 > Feature-complete against the original's core loop and well past it: 102 maps
@@ -27,31 +27,31 @@ GitHub issues (every bug/feature is filed there first).
 
 ## Next up
 
-### Infrastructure (blocking nothing, improving everything)
-- [ ] TLS for the master server (#252) — needs a domain; everything else is
-      scripted (see the issue). Plaintext HTTP is the last trust gap.
-- [ ] itch.io page (#224) — mirror the download + screenshots.
-- [ ] Discord Rich Presence (#223) — needs a Discord GDExtension.
+Everything is tracked in [GitHub issues](https://github.com/Predator04/Soldat-Reborn/issues); this list is the order we're taking them in.
 
-### Structure (pay down the god-files — the M2 bug shipped twice because of this)
-- [ ] Split menu.gd (~2.2k lines): server browser, update UI, name prompt
-- [ ] Split hud.gd (~1.5k lines): vote panel, next-map panel, feeds
-- [ ] Split main.gd (~5.3k lines) per system: modes, net sync, votes, vehicles
-- [ ] draw_soldier's 24 positional parameters → a state object
-- [ ] Player::_physics_process (~500 lines) → per-mode state handlers
+### In progress
+- [#262](https://github.com/Predator04/Soldat-Reborn/issues/262) Movement tutorial course (tap/hold jump, prone-cancel, bunny-hop)
+- [#258](https://github.com/Predator04/Soldat-Reborn/issues/258) Split the god-files (hud / main / player physics / draw_soldier; menu browser last)
 
-### Filed and ready (see issues)
-- #261 in-game news line (MOTD) — talk to the players you already have
-- #262 movement tutorial course — teach v1.34's movement tech
-- #263 gameplay trailer rendered from the replay system (feeds #224's itch page)
-- #264 weekly featured mode/map on the official server + #261 tie-in
-- #224 itch.io publish (kit ready — needs the owner's account)
-- #223 Discord Rich Presence (needs an app registration)
+### Graphics overhaul (cosmetic only, never touches the simulation or netcode)
+- [#270](https://github.com/Predator04/Soldat-Reborn/issues/270) Phase A: dynamic 2D lighting, post-processing, parallax backgrounds
+- [#271](https://github.com/Predator04/Soldat-Reborn/issues/271) Phase B: pooled particles, shaders, screen feel, gore
+- [#272](https://github.com/Predator04/Soldat-Reborn/issues/272) Phase C: menus, UI and HUD
+
+### Launch
+- [#263](https://github.com/Predator04/Soldat-Reborn/issues/263) Gameplay trailer rendered from the replay system
+- [#224](https://github.com/Predator04/Soldat-Reborn/issues/224) itch.io page (kit ready in `store/itch`; needs the owner's account)
+- [#223](https://github.com/Predator04/Soldat-Reborn/issues/223) Discord Rich Presence
+- Real-internet playtests with friends (PC + phones) before any paid launch; see RETAIL_CHECKLIST.md
+
+### Recently shipped (unreleased)
+- [#265](https://github.com/Predator04/Soldat-Reborn/issues/265) Host trust checks (godmode, teleport, fake kill credit)
+- [#261](https://github.com/Predator04/Soldat-Reborn/issues/261) Menu news line · [#264](https://github.com/Predator04/Soldat-Reborn/issues/264) Weekly featured mode/map on the official server
 
 ### Parked, with unpark triggers
 - Voice chat — the perennial community ask — unpark when there are enough
   concurrent players for it to matter
 - Superman / cannonball anims — unpark when there's an art direction pass
-- Server-authoritative ranked — unpark when real cheating appears (the
-  current caps + streak freezes hold the line until then)
+- Host-decided hits for humans ([#266](https://github.com/Predator04/Soldat-Reborn/issues/266)): unpark after real-internet playtests or when
+  real cheating shows up (the host trust checks + ranked caps hold the line until then)
 - Workshop-style preset/mod sharing on the map library

@@ -1,4 +1,6 @@
-# Soldat Reborn — project context
+# Tracerfall (formerly Soldat Reborn) — project context
+
+**Name (#269):** the game is shown as **Tracerfall** (`GameInfo.TITLE`; window title set in `Settings._ready`). Internal identifiers deliberately keep the old name: `project.godot` `config/name` (it decides the user:// data folder — changing it orphans every player's settings, stats and replays), the Android package id `com.soldatreborn.game`, the update/release asset names `SoldatReborn.exe/.apk/.pck(.sig)`, the LAN tag and the repo name/URL. Never "fix" those.
 
 2D Soldat remake. Godot 4.7 (GL Compatibility renderer), GDScript, ENet multiplayer.
 This directory (`game/`) is the git repo root — note the space in the parent path `"soldat reborn"`.
@@ -59,7 +61,8 @@ This directory (`game/`) is the git repo root — note the space in the parent p
 - `--smoke-join` — connect to a local host, confirm map + bot replication.
 - `--smoke-botfire` — join + wait 20s, confirm remote bot fire replicates (prints `bot_shots_seen`).
 - `--smoke-dedicated` — dedicated (headless) host smoke.
-- Dedicated server: `--dedicated --port N --map <name|index> --mode <name|index> [--register <master-url>]`.
+- Dedicated server: `--dedicated --port N --map <name|index> --mode <name|index> [--register <master-url>] [--bans=W1,W2]` (later flags win; unknown names log + keep the earlier value, #264).
+- Menu news line (#261): `scripts/menu_news.gd`, fetched from `<master>/news`; headless runs fetch only with `--menu-news` (gate C `news`).
 - `--smoke-auto` (with `--smoke-join` / `--smoke-botfire`) drives the client's soldier with random input; `--smoke-lan` listens 5 s for LAN beacons and prints them.
 - `tools/mp_soak.sh MODE [MAP] [OUT]` — dedicated server + two autopiloted clients (~50 s), prints error counts per log.
 
@@ -82,7 +85,7 @@ This directory (`game/`) is the git repo root — note the space in the parent p
 ## Gotchas
 - GDScript uses TAB indentation — do not convert to spaces.
 - Version string is in `project.godot` (`config/version`); bump it for releases together with `export_presets.cfg` (Android `version/name` + `version/code` = MAJOR*10000+MINOR*100+PATCH, Windows `file_version`/`product_version` = X.Y.Z.0) and the top `CHANGELOG.md` heading — the gate checks they agree.
-- Release gate: `tools/release_gate.sh` (full, ~20 min: static, boots, nav, MP smokes incl. per-mode `m3 m7 m9` + LAN discovery + a two-client autopilot soak, all 10 modes with the autopilot, rules, feature/editor tests, all-map CTF sweep) or `--quick` (CI). Must end `GATE PASSED`; logs in `build/gate/`. Every Godot launch in the gate starts from default settings/controls (the user's files are backed up and restored), so results don't depend on this machine's saved settings. Piecewise runs (for time-limited shells): `--out build/gateN --only "A B"`, then `--keep` with `--only N`, `--only C --net "..."`, `--only D --modes "..."`, `--only R`, `--only F --ftests "features editor grenade training" / "weapons" / "fire labels kits sound" / "radio"`, `--only E --sweep 0:24 …75:101`, `--only E`, `--final`. The error regex also fails on engine messages ("Lambda capture … freed", "while flushing queries").
+- Release gate: `tools/release_gate.sh` (full, ~20 min: static, boots, nav, MP smokes incl. per-mode `m3 m7 m9` + LAN discovery + a two-client autopilot soak, all 10 modes with the autopilot, rules, feature/editor tests, all-map CTF sweep) or `--quick` (CI). Must end `GATE PASSED`; logs in `build/gate/`. Every Godot launch in the gate starts from default settings/controls (the user's files are backed up and restored), so results don't depend on this machine's saved settings. Piecewise runs (for time-limited shells): `--out build/gateN --only "A B"`, then `--keep` with `--only N`, `--only C --net "..."`, `--only D --modes "..."`, `--only R`, `--only F --ftests "features editor grenade training course" / "weapons" / "fire labels kits sound" / "radio"`, `--only E --sweep 0:24 …75:101`, `--only E`, `--final`. The error regex also fails on engine messages ("Lambda capture … freed", "while flushing queries").
 - Host broadcasts from `main.gd` go through `bcast(method, args, local)` (reaches only peers whose Main exists). Dead / disconnected soldiers linger 1.5 s as an inert husk (`player._become_husk`) so in-flight packets still find the node.
 - Host → client RPCs from bots/projectiles go only to acked peers (`ready_peer_ids()`, `_bcast`, `_net_send`); a plain `rpc()` reaches peers still loading and spams "Node not found".
 - MP respawns are scheduled by `main._schedule_peer_respawn`; objective events go through `_objective_event` (never the `kill` signal).
