@@ -24,6 +24,9 @@ var near := Color(0.03, 0.035, 0.06)     # nearest ridge colour
 var rim := Color(0.75, 0.82, 1.0)        # moonlit edge
 var rim_amount := 0.35
 var cinematic := 1.0
+## Fixed view centre instead of the current camera (the menu backdrop drifts
+## this slowly; #272). Vector2.INF = follow the camera.
+var center_override := Vector2.INF
 
 var _peaks: Array = []
 var _ruins: Array = []
@@ -49,11 +52,13 @@ func _process(_delta: float) -> void:
 
 
 func _draw() -> void:
-	var cam := get_viewport().get_camera_2d()
-	if cam == null:
-		return
+	var cc: Vector2 = center_override
+	if cc == Vector2.INF:
+		var cam := get_viewport().get_camera_2d()
+		if cam == null:
+			return
+		cc = cam.get_screen_center_position()
 	var view := get_viewport_rect().size
-	var cc: Vector2 = cam.get_screen_center_position()
 	for i in LAYERS.size():
 		_draw_layer(i, view, cc)
 

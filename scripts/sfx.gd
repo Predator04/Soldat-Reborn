@@ -403,6 +403,14 @@ func ui() -> void:
 	_play_key("menuclick", -8.0, 1.0)
 
 
+# #272: soft tick when a button is hovered / focused (same sample, quieter and
+# higher; throttled so sweeping the mouse across a column isn't a buzz).
+func ui_hover() -> void:
+	if not _throttle("ui_hover", 45):
+		return
+	_play_key("menuclick", -21.0, 1.55)
+
+
 # ── Internals ───────────────────────────────────────────
 
 func _weapon_fire_key(weapon_name: String) -> String:

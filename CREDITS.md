@@ -35,6 +35,15 @@ I used", so the instrument samples inside it have no recorded origin. The
 upstream repo licenses the files CC BY 4.0, but if the game is sold, replacing
 these three tracks with music of known provenance removes the question.
 
+## Fonts
+
+`assets/fonts/` holds four cuts of **Barlow** and **Barlow Condensed**
+(Medium, SemiBold, Condensed Bold, Condensed ExtraBold) by Jeremy Tribby —
+Copyright 2017 The Barlow Project Authors (https://github.com/jpt/barlow).
+Licensed under the SIL Open Font License 1.1; the full license text ships next
+to the files as `assets/fonts/OFL.txt`. Unmodified, taken from
+https://github.com/google/fonts (`ofl/barlow`, `ofl/barlowcondensed`).
+
 ## Tracerfall (formerly Soldat Reborn)
 
 This game ("Tracerfall", formerly "Soldat Reborn") is a Godot 4.7 rebuild of the Soldat

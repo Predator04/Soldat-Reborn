@@ -32,6 +32,8 @@ var _menu_box2: VBoxContainer  # right column (Network + System)
 var _map_thumb: TextureRect = null
 var _host_thumb: TextureRect = null
 var _title_nodes: Array = []    # wordmark / tagline / version — main list only
+var _menu_cols: HBoxContainer = null
+const MENU_TOP := 176.0
 
 
 # Taller sub-panels (Host, Join, Settings, Stats) sit over the wordmark; show
@@ -39,9 +41,22 @@ var _title_nodes: Array = []    # wordmark / tagline / version — main list onl
 # Any centred panel taller than the window (small window, big UI text) is
 # scaled down to fit instead of running off the bottom of the screen.
 func _fit_panels() -> void:
-	var avail: float = get_viewport_rect().size.y - 24.0
+	# size, not the viewport: the menu root is drawn at the UI scale (#272).
+	var avail: float = size.y - 24.0
+	if _menu_root != null and _menu_cols != null:
+		var want: float = _menu_cols.get_combined_minimum_size().y + 34.0
+		# Centred between the title stack and the footer; scrolls when short.
+		var room: float = size.y - 64.0 - MENU_TOP
+		var h: float = minf(want, room)
+		var top: float = MENU_TOP + floorf(maxf(0.0, room - h) * 0.4)
+		if not UITheme.UIFx.is_animating(_menu_root) and (absf(_menu_root.offset_bottom - (top + h)) > 0.5 or absf(_menu_root.offset_top - top) > 0.5):
+			_menu_root.offset_top = top
+			_menu_root.offset_bottom = top + h
 	for c in get_children():
-		if not (c is PanelContainer) or not (c as Control).visible:
+		if not (c is Control) or not (c as Control).visible:
+			continue
+		_centre(c as Control)
+		if not (c is PanelContainer):
 			continue
 		var pc := c as PanelContainer
 		var need: float = pc.get_combined_minimum_size().y
@@ -49,6 +64,24 @@ func _fit_panels() -> void:
 		if absf(pc.scale.x - sc) > 0.005:
 			pc.pivot_offset = pc.size * 0.5
 			pc.scale = Vector2(sc, sc)
+
+
+## Centre-anchored screens are kept exactly centred at their minimum size
+## (#272): a panel built while its text was still wrapping at width 0 used to
+## keep that first, taller rect and sit off the bottom of the screen.
+func _centre(c: Control) -> void:
+	if c.anchor_left != 0.5 or c.anchor_right != 0.5 or c.anchor_top != 0.5 or c.anchor_bottom != 0.5:
+		return
+	if UITheme.UIFx.is_animating(c):
+		return
+	var ms := c.get_combined_minimum_size()
+	var l := -floorf(ms.x * 0.5)
+	var t := -floorf(ms.y * 0.5)
+	if absf(c.offset_left - l) > 0.5 or absf(c.offset_top - t) > 0.5 or absf(c.offset_right - (l + ms.x)) > 0.5 or absf(c.offset_bottom - (t + ms.y)) > 0.5:
+		c.offset_left = l
+		c.offset_top = t
+		c.offset_right = l + ms.x
+		c.offset_bottom = t + ms.y
 
 
 func _process(_delta: float) -> void:
@@ -146,6 +179,14 @@ func _ready() -> void:
 	_browser._build_browse()
 	_build_status()
 	_build_footer()
+	# #272: screens slide + fade in when shown (ui_fx.gd; instant with Reduce
+	# motion); the main list comes back from the left, sub-screens from the
+	# right, the title stack fades. The menu is drawn at the UI scale.
+	var dirs := {_menu_root: Vector2.LEFT}
+	for n in _title_nodes:
+		dirs[n] = Vector2.ZERO
+	UITheme.UIFx.watch_children(self, dirs)
+	UITheme.apply_ui_scale(self)
 	if not has_real_name() and DisplayServer.get_name() != "headless":
 		_build_name_prompt()
 	# Kicked / host lost / version mismatch: say why we're back at the menu.
@@ -171,13 +212,12 @@ func _build_backdrop() -> void:
 
 
 func _build_title() -> void:
-	var title := Label.new()
-	title.text = GameInfo.TITLE_UPPER
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# #272: the wordmark (menu_logo.gd: neon edge, tracer streak on load).
+	var title: Control = preload("res://scripts/menu_logo.gd").new()
+	title.name = "Logo"
 	title.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	title.offset_top = 50
-	title.offset_bottom = 130
-	UITheme.style_title(title, 62)
+	title.offset_top = 26
+	title.offset_bottom = 124
 	add_child(title)
 	_title_nodes.append(title)
 
@@ -186,12 +226,11 @@ func _build_title() -> void:
 	sub.text = "JET BOOTS · BUNNY HOP · RAGDOLL GIBS · ONLINE"
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	sub.offset_top = 132
-	sub.offset_bottom = 158
+	sub.offset_top = 124
+	sub.offset_bottom = 144
+	sub.add_theme_font_override("font", UITheme.font("caps"))
 	sub.add_theme_font_size_override("font_size", 14)
 	sub.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)
-	sub.add_theme_color_override("font_outline_color", UITheme.COL_SHADOW)
-	sub.add_theme_constant_override("outline_size", 2)
 	add_child(sub)
 	_title_nodes.append(sub)
 
@@ -203,9 +242,9 @@ func _build_title() -> void:
 		ver.text += " · build %d" % bn
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ver.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	ver.offset_top = 172
-	ver.offset_bottom = 194
-	ver.add_theme_font_size_override("font_size", 13)
+	ver.offset_top = 146
+	ver.offset_bottom = 164
+	ver.add_theme_font_size_override("font_size", 12)
 	ver.add_theme_color_override("font_color", UITheme.COL_TEXT_MUTED)
 	add_child(ver)
 	_title_nodes.append(ver)
@@ -258,16 +297,19 @@ func _build_menu() -> void:
 	_menu_root.anchor_right = 0.5
 	_menu_root.anchor_top = 0.0
 	_menu_root.anchor_bottom = 0.0
-	_menu_root.offset_left = -372
-	_menu_root.offset_right = 372
-	_menu_root.offset_top = 204
-	_menu_root.offset_bottom = 650  # base height is 720 (stretch "expand"); footer starts ~655
+	_menu_root.offset_left = -380
+	_menu_root.offset_right = 380
+	_menu_root.offset_top = MENU_TOP
+	# Height = the columns', capped by the screen (UI scale, short windows) —
+	# the columns scroll instead of running under the footer (_fit_panels).
+	_menu_root.offset_bottom = 650
 	add_child(_menu_root)
 
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_menu_root.add_child(scroll)
 	var cols := HBoxContainer.new()
+	_menu_cols = cols
 	cols.add_theme_constant_override("separation", 24)
 	cols.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(cols)
@@ -484,10 +526,7 @@ func _build_menu() -> void:
 	_menu_box2.add_child(_map_thumb)
 	var credits_btn := Button.new()
 	credits_btn.text = "Credits & licenses"
-	credits_btn.flat = true
-	credits_btn.add_theme_font_size_override("font_size", 13)
-	credits_btn.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)
-	credits_btn.add_theme_color_override("font_hover_color", UITheme.COL_ACCENT_HI)
+	UITheme.style_link(credits_btn)
 	credits_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	credits_btn.pressed.connect(_open_credits)
 	_menu_box2.add_child(credits_btn)
@@ -532,6 +571,8 @@ Game code: Tracerfall contributors (MIT license).
 Sounds, weapon / soldier / interface graphics, animations and the classic maps are from the Soldat base content — [color=#9fd0ff]github.com/Soldat/base[/color] — licensed CC BY 4.0 ([color=#9fd0ff]creativecommons.org/licenses/by/4.0[/color]). Repackaged for Godot; see CREDITS.md in the source for details.
 
 Music, from the same Soldat base content (CC BY 4.0), rendered from the original tracker modules: "Gore" and "Necromancide" by Marshall Anderson, made for Soldat; "Bloody Soil" (author not recorded upstream).
+
+Fonts: Barlow and Barlow Condensed by Jeremy Tribby / The Barlow Project Authors, SIL Open Font License 1.1 ([color=#9fd0ff]github.com/jpt/barlow[/color]).
 
 Built with the [b]Godot Engine[/b] (MIT license, godotengine.org).
 
@@ -629,8 +670,9 @@ func _go_to_match() -> void:
 		_loading_lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
 		_loading_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_loading_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		_loading_lbl.add_theme_font_override("font", UITheme.font("caps"))
 		_loading_lbl.add_theme_font_size_override("font_size", 40)
-		_loading_lbl.add_theme_color_override("font_color", UITheme.COL_ACCENT)
+		_loading_lbl.add_theme_color_override("font_color", UITheme.COL_TEXT)
 		var bg := ColorRect.new()
 		bg.color = Color(0, 0, 0, 0.65)
 		bg.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -1182,14 +1224,14 @@ func _build_status() -> void:
 func _build_footer() -> void:
 	var foot := Label.new()
 	foot.text = "WASD · W jump · S crouch/roll · X prone · RMB jet · LMB shoot · 1-0 · Q sec · R reload · E nade · F throw · G nade type · Tab scores · H help · F9 GIF"
-	if OS.has_feature("android") or OS.has_feature("mobile") or DisplayServer.is_touchscreen_available():
+	if UITheme.is_touch():
 		foot.text = "Left side: move / jump · right side: aim + hold to fire · on-screen buttons: jet, grenade, reload, swap, throw, prone · tap the top bar for scores"
 	foot.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	foot.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	foot.offset_top = -42
 	foot.offset_bottom = -18
 	foot.add_theme_font_size_override("font_size", 12)
-	foot.add_theme_color_override("font_color", UITheme.COL_TEXT_MUTED)
+	foot.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)
 	add_child(foot)
 	# Only on the main list: sub-panels (Host, Join, Stats ...) reach down there.
 	_title_nodes.append(foot)

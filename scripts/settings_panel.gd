@@ -26,6 +26,10 @@ var _sp_map_paths: Array = []
 
 
 var _root_panel: PanelContainer = null
+var _preview_slot: VBoxContainer = null
+## The live preview (settings_preview.gd) while Settings is open from the main
+## menu; null otherwise (freed on hide, #272).
+var preview: Control = null
 
 
 func _ready() -> void:
@@ -55,20 +59,28 @@ func _build() -> void:
 	_root_panel.add_child(col_root)
 
 	col_root.add_child(UITheme.make_screen_title("SETTINGS"))
-
-	var rule := ColorRect.new()
-	rule.color = UITheme.COL_ACCENT_DIM
-	rule.custom_minimum_size = Vector2(0, 1)
-	col_root.add_child(rule)
+	col_root.add_child(UITheme.make_rule())
 
 	# Scroll region — fixed height so multiple expanded cards don't push the
 	# BACK button off a 720p viewport. 420px comfortably shows a header + a
 	# fully expanded Audio or Game card without cropping.
+	var body := HBoxContainer.new()
+	body.add_theme_constant_override("separation", 18)
+	body.process_mode = Node.PROCESS_MODE_ALWAYS
+	col_root.add_child(body)
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(0, 420)
+	scroll.custom_minimum_size = Vector2(524, 420)
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.process_mode = Node.PROCESS_MODE_ALWAYS
-	col_root.add_child(scroll)
+	body.add_child(scroll)
+	# #272: live preview column (main menu only; in a match the world is the
+	# preview). Built when the panel shows, freed when it hides.
+	_preview_slot = VBoxContainer.new()
+	_preview_slot.name = "PreviewSlot"
+	_preview_slot.visible = false
+	body.add_child(_preview_slot)
+	visibility_changed.connect(_sync_preview)
 
 	var col := VBoxContainer.new()
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -111,12 +123,15 @@ func _make_card(title: String, builder: Callable) -> Control:
 	header.flat = true
 	header.text = "  ▸   " + title.to_upper()
 	header.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	header.custom_minimum_size = Vector2(0, 32)
+	header.custom_minimum_size = Vector2(0, 40 if UITheme.is_touch() else 32)
+	header.add_theme_font_override("font", UITheme.font("caps"))
 	header.add_theme_font_size_override("font_size", 17)
 	header.add_theme_color_override("font_color", UITheme.COL_ACCENT)
 	header.add_theme_color_override("font_hover_color", UITheme.COL_ACCENT_HI)
 	header.add_theme_color_override("font_focus_color", UITheme.COL_ACCENT_HI)
 	header.add_theme_color_override("font_pressed_color", UITheme.COL_ACCENT_HI)
+	header.add_theme_stylebox_override("focus", UITheme._btn_focus_style())
+	UITheme.UIFx.bind_button(header, false)
 	header.process_mode = Node.PROCESS_MODE_ALWAYS
 	col.add_child(header)
 
@@ -199,6 +214,34 @@ func _build_video(box: VBoxContainer) -> void:
 			Settings.visual_style = v
 			Settings.save()
 			Atmosphere.restyle(get_tree())))
+	# #272: UI scale (accessibility: bigger menus + HUD text) — applies live.
+	var us_opts := [0.85, 1.0, 1.15, 1.3]
+	var us_row := HBoxContainer.new()
+	var us_lbl := Label.new()
+	us_lbl.text = "UI scale (menus + HUD)"
+	us_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	UITheme.style_body(us_lbl)
+	us_row.add_child(us_lbl)
+	var us_pick := OptionButton.new()
+	us_pick.name = "UiScale"
+	for v in us_opts:
+		us_pick.add_item("%d%%" % int(round(float(v) * 100.0)))
+	var cur := 1
+	for i in us_opts.size():
+		if absf(float(us_opts[i]) - float(Settings.ui_scale)) < 0.01:
+			cur = i
+	us_pick.selected = cur
+	UITheme.style_option_button(us_pick)
+	us_pick.item_selected.connect(func(i: int) -> void:
+		Settings.ui_scale = float(us_opts[i])
+		Settings.save()
+		UITheme.refresh_ui_scale(get_tree()))
+	us_row.add_child(us_pick)
+	box.add_child(us_row)
+	box.add_child(_check_button("Reduce motion (instant menu transitions, still menu background)", Settings.reduce_motion,
+		func(on: bool) -> void:
+			Settings.reduce_motion = on
+			Settings.save()))
 	box.add_child(_check_button("Impact colour split (explosions / getting hit)", Settings.impact_aberration,
 		func(on: bool) -> void:
 			Settings.impact_aberration = on
@@ -600,3 +643,26 @@ func _make_button(text: String) -> Button:
 	var b := UITheme.make_button(text, false, 280, 40)
 	b.process_mode = Node.PROCESS_MODE_ALWAYS
 	return b
+
+
+# ── Live preview (#272) ───────────────────────────────────
+
+## True when Settings was opened from the main menu (no match running).
+func _menu_context() -> bool:
+	var cs := get_tree().current_scene if is_inside_tree() else null
+	return cs != null and cs.get("hud") == null and cs.get("_menu_root") != null
+
+
+func _sync_preview() -> void:
+	if _preview_slot == null:
+		return
+	var want: bool = is_visible_in_tree() and _menu_context()
+	if want and preview == null:
+		preview = preload("res://scripts/settings_preview.gd").new()
+		preview.name = "SettingsPreview"
+		_preview_slot.add_child(preview)
+		_preview_slot.visible = true
+	elif not want and preview != null:
+		preview.queue_free()
+		preview = null
+		_preview_slot.visible = false

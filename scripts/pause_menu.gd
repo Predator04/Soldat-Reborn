@@ -37,7 +37,7 @@ func _ready() -> void:
 	add_child(_root_panel)
 
 	_dim = ColorRect.new()
-	_dim.color = Color(0, 0, 0, 0.55)
+	_dim.color = Color(0.01, 0.015, 0.025, 0.62)
 	_dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root_panel.add_child(_dim)
@@ -47,6 +47,15 @@ func _ready() -> void:
 	_build_controls_panel()
 	_build_host_admin_panel()
 	_build_quit_confirm()
+	# #272: UI scale + enter animations (ui_fx.gd): the dim fades, the pause
+	# list rises in, sub-screens slide in from the right (instant with Reduce
+	# motion). Opening / closing stays synchronous — only the look animates.
+	UITheme.apply_ui_scale(_root_panel)
+	UITheme.UIFx.watch(_dim, Vector2.ZERO)
+	UITheme.UIFx.watch(_menu_wrapper, Vector2.DOWN)
+	for p in [_settings_panel, _controls_panel, _host_admin_panel]:
+		UITheme.UIFx.watch(p, Vector2.RIGHT)
+	UITheme.UIFx.watch(_quit_confirm_wrapper, Vector2.DOWN)
 
 
 var _menu_wrapper: PanelContainer  # framed panel that hosts _menu_box
@@ -69,7 +78,7 @@ func _build_main_menu() -> void:
 	_menu_box.process_mode = Node.PROCESS_MODE_ALWAYS
 	_menu_wrapper.add_child(_menu_box)
 
-	var title := UITheme.make_screen_title("PAUSED", 44)
+	var title := UITheme.make_screen_title("PAUSED", 46)
 	_menu_box.add_child(title)
 	# Session line: map / mode, and in multiplayer where you're hosting or
 	# connected (so a host can read the address out to LAN friends).
@@ -80,10 +89,7 @@ func _build_main_menu() -> void:
 	_info_lbl.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)
 	_menu_box.add_child(_info_lbl)
 
-	var rule := ColorRect.new()
-	rule.color = UITheme.COL_ACCENT_DIM
-	rule.custom_minimum_size = Vector2(0, 1)
-	_menu_box.add_child(rule)
+	_menu_box.add_child(UITheme.make_rule())
 
 	_menu_box.add_child(UITheme.spacer(4))
 
@@ -169,16 +175,11 @@ func _build_quit_confirm() -> void:
 	var head := Label.new()
 	head.text = "QUIT GAME?"
 	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	head.add_theme_font_size_override("font_size", 26)
+	UITheme.style_head(head, 30)
 	head.add_theme_color_override("font_color", UITheme.COL_ALERT)
-	head.add_theme_color_override("font_outline_color", UITheme.COL_SHADOW)
-	head.add_theme_constant_override("outline_size", 6)
 	_quit_confirm.add_child(head)
 
-	var rule := ColorRect.new()
-	rule.color = UITheme.COL_ACCENT_DIM
-	rule.custom_minimum_size = Vector2(0, 1)
-	_quit_confirm.add_child(rule)
+	_quit_confirm.add_child(UITheme.make_rule())
 
 	_quit_confirm.add_child(UITheme.spacer(4))
 

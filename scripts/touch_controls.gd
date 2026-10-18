@@ -458,9 +458,9 @@ static func _glass_normal() -> StyleBoxFlat:
 	if _sb_normal == null:
 		var s := StyleBoxFlat.new()
 		# Dark semi-transparent glass fill.
-		s.bg_color = Color(0.07, 0.09, 0.12, 0.62)
-		# Warm amber outline echoes the main menu accent colour without demanding attention.
-		s.border_color = Color(0.62, 0.55, 0.32, 0.65)
+		s.bg_color = Color(0.03, 0.04, 0.06, 0.58)
+		# #272 design language: hairline glass edge, ember only when pressed.
+		s.border_color = Color(0.62, 0.72, 0.88, 0.28)
 		s.border_width_left = 1
 		s.border_width_right = 1
 		s.border_width_top = 1
@@ -481,9 +481,9 @@ static func _glass_normal() -> StyleBoxFlat:
 static func _glass_pressed() -> StyleBoxFlat:
 	if _sb_pressed == null:
 		var s := StyleBoxFlat.new()
-		# Amber-tinted press state — visibly hot without going neon.
-		s.bg_color = Color(0.78, 0.55, 0.18, 0.82)
-		s.border_color = Color(1.0, 0.92, 0.62, 0.95)
+		# Ember press state (the UI's warm accent).
+		s.bg_color = Color(1.0, 0.58, 0.16, 0.85)
+		s.border_color = Color(1.0, 0.78, 0.5, 0.95)
 		s.border_width_left = 2
 		s.border_width_right = 2
 		s.border_width_top = 2
@@ -525,8 +525,8 @@ static func _glass_edit() -> StyleBoxFlat:
 static func _pill_style() -> StyleBoxFlat:
 	if _sb_pill == null:
 		var s := StyleBoxFlat.new()
-		s.bg_color = Color(0.08, 0.10, 0.13, 0.85)
-		s.border_color = Color(0.62, 0.55, 0.32, 0.85)
+		s.bg_color = Color(0.03, 0.04, 0.06, 0.8)
+		s.border_color = Color(0.62, 0.72, 0.88, 0.3)
 		s.border_width_left = 1
 		s.border_width_right = 1
 		s.border_width_top = 1
@@ -546,8 +546,8 @@ static func _pill_style() -> StyleBoxFlat:
 static func _pill_style_hi() -> StyleBoxFlat:
 	if _sb_pill_hi == null:
 		var s := StyleBoxFlat.new()
-		s.bg_color = Color(0.78, 0.55, 0.18, 0.92)
-		s.border_color = Color(1.0, 0.92, 0.62, 0.95)
+		s.bg_color = Color(1.0, 0.58, 0.16, 0.9)
+		s.border_color = Color(1.0, 0.78, 0.5, 0.95)
 		s.border_width_left = 2
 		s.border_width_right = 2
 		s.border_width_top = 2

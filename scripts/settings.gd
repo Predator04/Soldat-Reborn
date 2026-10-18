@@ -41,6 +41,8 @@ var check_updates := true      # look for a newer release on GitHub at startup
 var colorblind := false        # red team drawn orange (blue / orange)
 var visual_style := "cinematic" # "cinematic" (dark, high-contrast grade + new sky) | "classic" (original look)
 var impact_aberration := true  # brief colour split on nearby explosions / when hit
+var reduce_motion := false     # #272: instant menu transitions, still menu background, no button motion
+var ui_scale := 1.0            # #272: menus / pause / HUD scale (0.85 … 1.3), accessibility
 var language := ""             # "" = system language; else "en", "es", "pt_BR", "de", "fr"
 const LANGUAGES := [["", "Auto (system)"], ["en", "English"], ["es", "Español"], ["pt_BR", "Português (Brasil)"], ["de", "Deutsch"], ["fr", "Français"]]
 var last_seen_version := ""    # "what's new" shows once per new version
@@ -193,6 +195,8 @@ func _ready() -> void:
 	# Window / taskbar title (#269); project config/name stays for the data path.
 	if DisplayServer.get_name() != "headless":
 		DisplayServer.window_set_title(preload("res://scripts/game_info.gd").TITLE)
+	# #272: the Tracerfall UI theme (fonts + control skins) on the root window.
+	preload("res://scripts/ui_theme.gd").install_global(get_tree().root)
 	load_settings()
 	# A first launch has no settings file, so load_settings() returns before
 	# it gets to the profile id: make one here (it used to stay empty, and
@@ -269,6 +273,8 @@ func load_settings() -> void:
 	colorblind = bool(cf.get_value("video", "colorblind", false))
 	visual_style = "classic" if str(cf.get_value("video", "visual_style", "cinematic")) == "classic" else "cinematic"
 	impact_aberration = bool(cf.get_value("video", "impact_aberration", true))
+	reduce_motion = bool(cf.get_value("video", "reduce_motion", false))
+	ui_scale = clampf(float(cf.get_value("video", "ui_scale", 1.0)), 0.75, 1.5)
 	language = str(cf.get_value("game", "language", ""))
 	last_seen_version = str(cf.get_value("game", "last_seen_version", ""))
 	vehicles = bool(cf.get_value("game", "vehicles", true))
@@ -402,6 +408,8 @@ func _write_file() -> void:
 	cf.set_value("video", "colorblind", colorblind)
 	cf.set_value("video", "visual_style", visual_style)
 	cf.set_value("video", "impact_aberration", impact_aberration)
+	cf.set_value("video", "reduce_motion", reduce_motion)
+	cf.set_value("video", "ui_scale", ui_scale)
 	cf.set_value("game", "language", language)
 	cf.set_value("game", "last_seen_version", last_seen_version)
 	cf.set_value("game", "vehicles", vehicles)

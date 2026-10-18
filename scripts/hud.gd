@@ -40,6 +40,12 @@ var command_line: HudCommands   # hud_commands.gd
 var chat_feed: ChatFeed         # chat_feed.gd
 var _left_strip: Control
 var _bars: Control
+var _ui: Control                # UIRoot: every HUD element, drawn at the UI scale (#272)
+var score_strip: Control        # score_strip.gd
+var _death_band: TextureRect
+var _lbl_elim: Label
+var _respawn_bar: Control
+var _death_total := 2.0
 var weapon_menu: Control  # left-side Soldat weapon selection panel (#70)
 var lbl_fps: Label        # top-right FPS overlay — visible only when Settings.show_fps (#73)
 var lbl_spectate: Label   # "Spectating: <name>" label while dead (#75)
@@ -98,174 +104,225 @@ func _ready() -> void:
 	desat_overlay.visible = false
 	add_child(desat_overlay)
 
-	# Left-cluster backing strip — a dark translucent panel behind
-	# HP/Fuel/Ammo/Weapon/Grenades so the readouts pop over bright sky/terrain.
-	# Placed BEFORE the labels so they render on top.
-	var left_strip := PanelContainer.new()
-	left_strip.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	left_strip.position = Vector2(6, 6)
-	left_strip.custom_minimum_size = Vector2(206, 132)
-	left_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	left_strip.add_theme_stylebox_override("panel", UITheme.hud_strip_style())
-	add_child(left_strip)
-	_left_strip = left_strip
+	# #272: every HUD element lives under one root Control drawn at the UI
+	# scale (Settings → Video → UI scale); the full-screen passes above stay
+	# at native size. Parts find the HUD with UITheme.hud_of().
+	_ui = Control.new()
+	_ui.name = "UIRoot"
+	_ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(_ui)
+	UITheme.apply_ui_scale(_ui)
 
-	# Top-center strip behind the mode/timer/score cluster.
-	var top_strip := PanelContainer.new()
-	top_strip.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	top_strip.offset_left = -260
-	top_strip.offset_right = 260
-	top_strip.offset_top = 4
-	top_strip.offset_bottom = 138  # room for the objective status line
-	top_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	top_strip.add_theme_stylebox_override("panel", UITheme.hud_strip_style())
-	add_child(top_strip)
+	# Vitals card (top left): hud_bars.gd draws the glass card, the vector
+	# icons, the eased bars (with a damage ghost and a low-health pulse) and
+	# the weapon icon; the labels carry the numbers on top of it.
+	var bars := Control.new()
+	bars.name = "VitalsBars"
+	bars.set_script(preload("res://scripts/hud_bars.gd"))
+	bars.set("hud", self)
+	_add(bars)
+	_bars = bars
+	_left_strip = bars
 
-	lbl_health = _make_label(Vector2(14, 10), UITheme.COL_HUD_HEALTH)
-	lbl_fuel = _make_label(Vector2(14, 34), UITheme.COL_HUD_FUEL)
-	lbl_ammo = _make_label(Vector2(14, 58), UITheme.COL_HUD_AMMO)
-	lbl_weapon = _make_label(Vector2(14, 82), UITheme.COL_HUD_WEAPON)
-	lbl_grenades = _make_label(Vector2(14, 106), UITheme.COL_HUD_GRENADE)
+	# Score strip (top centre): glass card + team blocks (score_strip.gd).
+	score_strip = Control.new()
+	score_strip.name = "ScoreStrip"
+	score_strip.set_script(preload("res://scripts/score_strip.gd"))
+	score_strip.set("hud", self)
+	_add(score_strip)
+
+	lbl_health = _vital_label(Vector2(196, 9), 22, UITheme.COL_HUD_HEALTH, 50)
+	lbl_fuel = _vital_label(Vector2(196, 35), 22, UITheme.COL_HUD_FUEL, 50)
+	lbl_weapon = _vital_label(Vector2(16, 66), 15, UITheme.COL_TEXT_DIM, 0, "semi")
+	lbl_ammo = _vital_label(Vector2(38, 86), 26, UITheme.COL_HUD_HEALTH)
+	lbl_grenades = _vital_label(Vector2(160, 92), 16, UITheme.COL_TEXT_DIM, 86)
+	lbl_grenades.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	scoreboard = Control.new()
 	scoreboard.name = "Scoreboard"
 	scoreboard.set_script(preload("res://scripts/scoreboard.gd"))
 	scoreboard.set("hud", self)
 	scoreboard.set("main", get_parent())
-	add_child(scoreboard)
-	var bars := Control.new()
-	bars.name = "VitalsBars"
-	bars.set_script(preload("res://scripts/hud_bars.gd"))
-	bars.set("hud", self)
-	add_child(bars)
-	_bars = bars
-	add_child(feed)
+	_add(scoreboard)
+	_add(feed)
 	lbl_map = Label.new()
 	lbl_map.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl_map.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	lbl_map.offset_top = 8
-	lbl_map.offset_bottom = 30
-	lbl_map.add_theme_font_size_override("font_size", 15)
+	lbl_map.offset_top = 9
+	lbl_map.offset_bottom = 27
+	lbl_map.add_theme_font_override("font", UITheme.font("caps"))
+	lbl_map.add_theme_font_size_override("font_size", 13)
 	lbl_map.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)
 	lbl_map.add_theme_color_override("font_outline_color", UITheme.COL_SHADOW)
 	lbl_map.add_theme_constant_override("outline_size", 3)
-	add_child(lbl_map)
+	_add(lbl_map)
 	lbl_status = Label.new()
 	lbl_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl_status.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	lbl_status.offset_top = 28
-	lbl_status.offset_bottom = 48
+	lbl_status.offset_top = 26
+	lbl_status.offset_bottom = 42
 	lbl_status.add_theme_font_size_override("font_size", 12)
 	lbl_status.add_theme_color_override("font_color", UITheme.COL_INFO)
 	lbl_status.add_theme_color_override("font_outline_color", UITheme.COL_SHADOW)
 	lbl_status.add_theme_constant_override("outline_size", 3)
-	add_child(lbl_status)
+	_add(lbl_status)
 
 	lbl_timer = Label.new()
 	lbl_timer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl_timer.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	lbl_timer.offset_top = 50
-	lbl_timer.offset_bottom = 82
-	lbl_timer.add_theme_font_size_override("font_size", 24)
-	lbl_timer.add_theme_color_override("font_color", UITheme.COL_ACCENT)
-	lbl_timer.add_theme_color_override("font_outline_color", UITheme.COL_SHADOW)
-	lbl_timer.add_theme_constant_override("outline_size", 5)
-	add_child(lbl_timer)
+	lbl_timer.offset_top = 40
+	lbl_timer.offset_bottom = 78
+	UITheme.style_hud_text(lbl_timer, 32, UITheme.COL_TEXT, 5)
+	lbl_timer.add_theme_font_override("font", UITheme.font("hud"))
+	_add(lbl_timer)
 
 	lbl_score = RichTextLabel.new()
 	lbl_score.bbcode_enabled = true
 	lbl_score.fit_content = true
 	lbl_score.scroll_active = false
 	lbl_score.autowrap_mode = TextServer.AUTOWRAP_OFF
+	lbl_score.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	lbl_score.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	lbl_score.offset_top = 82
-	lbl_score.offset_bottom = 112
+	lbl_score.offset_top = 80
+	lbl_score.offset_bottom = 106
+	lbl_score.add_theme_font_override("normal_font", UITheme.font("head"))
+	lbl_score.add_theme_font_override("bold_font", UITheme.font("head"))
 	lbl_score.add_theme_font_size_override("normal_font_size", 18)
 	lbl_score.add_theme_font_size_override("bold_font_size", 18)
-	add_child(lbl_score)
+	lbl_score.add_theme_color_override("font_outline_color", UITheme.COL_SHADOW)
+	lbl_score.add_theme_constant_override("outline_size", 4)
+	_add(lbl_score)
 
 	lbl_winner = Label.new()
 	lbl_winner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl_winner.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lbl_winner.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	lbl_winner.add_theme_font_size_override("font_size", 64)
+	lbl_winner.add_theme_font_override("font", UITheme.font("logo"))
+	lbl_winner.add_theme_font_size_override("font_size", 76)
 	lbl_winner.add_theme_color_override("font_color", UITheme.COL_ACCENT_HI)
-	lbl_winner.add_theme_color_override("font_outline_color", UITheme.COL_SHADOW)
+	lbl_winner.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
 	lbl_winner.add_theme_constant_override("outline_size", 12)
+	lbl_winner.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.5))
+	lbl_winner.add_theme_constant_override("shadow_offset_y", 6)
 	lbl_winner.visible = false
-	add_child(lbl_winner)
+	_add(lbl_winner)
 
 	# Sub-line under the winner banner — explains why a draw happened (#37).
 	lbl_winner_note = Label.new()
 	lbl_winner_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl_winner_note.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lbl_winner_note.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	lbl_winner_note.offset_top = 60
-	lbl_winner_note.add_theme_font_size_override("font_size", 22)
-	lbl_winner_note.add_theme_color_override("font_color", Color(0.85, 0.88, 0.95))
-	lbl_winner_note.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-	lbl_winner_note.add_theme_constant_override("outline_size", 6)
+	lbl_winner_note.offset_top = 64
+	UITheme.style_hud_text(lbl_winner_note, 22, UITheme.COL_TEXT, 6)
+	lbl_winner_note.add_theme_font_override("font", UITheme.font("semi"))
 	lbl_winner_note.visible = false
-	add_child(lbl_winner_note)
+	_add(lbl_winner_note)
 
-	# Death message + respawn countdown.
+	# Death screen (#272): a letterbox band across the lower third with
+	# ELIMINATED, who / what killed you and the respawn countdown + bar — the
+	# middle of the screen stays on the kill cam.
+	_death_band = TextureRect.new()
+	_death_band.name = "DeathBand"
+	var bg := Gradient.new()
+	bg.offsets = PackedFloat32Array([0.0, 0.3, 0.7, 1.0])
+	bg.colors = PackedColorArray([Color(0, 0, 0, 0), Color(0.02, 0.02, 0.03, 0.78), Color(0.02, 0.02, 0.03, 0.78), Color(0, 0, 0, 0)])
+	var bt := GradientTexture2D.new()
+	bt.gradient = bg
+	bt.width = 256
+	bt.height = 4
+	_death_band.texture = bt
+	_death_band.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_death_band.stretch_mode = TextureRect.STRETCH_SCALE
+	_death_band.set_anchors_preset(Control.PRESET_CENTER)
+	_death_band.offset_left = -460
+	_death_band.offset_right = 460
+	_death_band.offset_top = 52
+	_death_band.offset_bottom = 172
+	_death_band.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_death_band.visible = false
+	_add(_death_band)
+	_lbl_elim = Label.new()
+	_lbl_elim.text = tr("ELIMINATED")
+	_lbl_elim.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_lbl_elim.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_lbl_elim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_lbl_elim.offset_top = 72
+	_lbl_elim.offset_bottom = 72
+	_lbl_elim.add_theme_font_override("font", UITheme.font("caps"))
+	_lbl_elim.add_theme_font_size_override("font_size", 16)
+	_lbl_elim.add_theme_color_override("font_color", UITheme.COL_ALERT)
+	_lbl_elim.visible = false
+	_add(_lbl_elim)
+
 	lbl_death = Label.new()
 	lbl_death.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl_death.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lbl_death.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	lbl_death.offset_top = -100
-	lbl_death.offset_bottom = -100
-	lbl_death.add_theme_font_size_override("font_size", 44)
-	lbl_death.add_theme_color_override("font_color", Color(0.95, 0.25, 0.2))
-	lbl_death.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-	lbl_death.add_theme_constant_override("outline_size", 9)
+	lbl_death.offset_top = 102
+	lbl_death.offset_bottom = 102
+	UITheme.style_hud_text(lbl_death, 32, UITheme.COL_TEXT, 6)
+	lbl_death.add_theme_font_override("font", UITheme.font("title"))
 	lbl_death.visible = false
-	add_child(lbl_death)
+	_add(lbl_death)
 
 	lbl_respawn = Label.new()
 	lbl_respawn.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl_respawn.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lbl_respawn.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	lbl_respawn.offset_top = -40
-	lbl_respawn.offset_bottom = -40
-	lbl_respawn.add_theme_font_size_override("font_size", 26)
-	lbl_respawn.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9))
-	lbl_respawn.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-	lbl_respawn.add_theme_constant_override("outline_size", 6)
+	lbl_respawn.offset_top = 136
+	lbl_respawn.offset_bottom = 136
+	lbl_respawn.add_theme_font_override("font", UITheme.font("caps"))
+	lbl_respawn.add_theme_font_size_override("font_size", 15)
+	lbl_respawn.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)
+	lbl_respawn.add_theme_color_override("font_outline_color", UITheme.COL_SHADOW)
+	lbl_respawn.add_theme_constant_override("outline_size", 3)
 	lbl_respawn.visible = false
-	add_child(lbl_respawn)
+	_add(lbl_respawn)
+	_respawn_bar = Control.new()
+	_respawn_bar.name = "RespawnBar"
+	_respawn_bar.set_anchors_preset(Control.PRESET_CENTER)
+	_respawn_bar.offset_left = -110
+	_respawn_bar.offset_right = 110
+	_respawn_bar.offset_top = 152
+	_respawn_bar.offset_bottom = 155
+	_respawn_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_respawn_bar.visible = false
+	_respawn_bar.draw.connect(func() -> void:
+		var w := _respawn_bar.size.x
+		_respawn_bar.draw_rect(Rect2(0, 0, w, 3), Color(1, 1, 1, 0.12))
+		var k := 1.0 - clampf(_death_remaining / maxf(0.01, _death_total), 0.0, 1.0)
+		_respawn_bar.draw_rect(Rect2(0, 0, w * k, 3), UITheme.COL_ACCENT))
+	_add(_respawn_bar)
 
 	# GIF-recording indicator — visible only while the recorder is running.
 	lbl_rec = Label.new()
 	lbl_rec.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	lbl_rec.position = Vector2(14, 132)
-	lbl_rec.add_theme_font_size_override("font_size", 16)
-	lbl_rec.add_theme_color_override("font_color", Color(1.0, 0.35, 0.35))
-	lbl_rec.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-	lbl_rec.add_theme_constant_override("outline_size", 3)
+	lbl_rec.position = Vector2(16, 132)
+	UITheme.style_hud_text(lbl_rec, 15, Color(1.0, 0.35, 0.32), 3)
 	lbl_rec.visible = false
-	add_child(lbl_rec)
+	_add(lbl_rec)
 
 	# /command line — hidden until the local player presses "/".
 	command_line = HudCommands.new()
 	command_line.hud = self
-	add_child(command_line)
+	_add(command_line)
 
 	# Chat feed — recent messages scroll bottom-up above the ammo readout.
 	chat_feed = ChatFeed.new()
-	add_child(chat_feed)
+	_add(chat_feed)
 
 	radio_menu = preload("res://scripts/radio_menu.gd").new()
-	add_child(radio_menu)
+	_add(radio_menu)
 
 	# Weapon selection panel (#70) — death-triggered limbo menu: shows while the
 	# player is dead, hides once they pick a weapon. See weapon_menu.gd _process.
 	weapon_menu = WeaponMenu.new()
-	add_child(weapon_menu)
+	_add(weapon_menu)
 	# First-matches controls card (H toggles).
 	var hint := PanelContainer.new()
 	hint.name = "ControlsHint"
 	hint.set_script(preload("res://scripts/controls_hint.gd"))
-	add_child(hint)
+	_add(hint)
 	weapon_menu.player = player
 
 	# FPS overlay (#73) — top-right corner. Hidden by default; toggle via Settings.
@@ -273,78 +330,63 @@ func _ready() -> void:
 	lbl_fps.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	lbl_fps.offset_right = -14
 	lbl_fps.offset_left = -140
-	lbl_fps.offset_top = -2
+	lbl_fps.offset_top = 2
 	lbl_fps.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	lbl_fps.add_theme_font_size_override("font_size", 14)
-	lbl_fps.add_theme_color_override("font_color", Color(0.65, 1.0, 0.65))
-	lbl_fps.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
-	lbl_fps.add_theme_constant_override("outline_size", 3)
+	UITheme.style_hud_text(lbl_fps, 13, UITheme.COL_GOOD, 3)
+	lbl_fps.add_theme_font_override("font", UITheme.font("hud"))
 	lbl_fps.visible = false
-	add_child(lbl_fps)
+	_add(lbl_fps)
 
-	# Spectator label (#75) — top-center, above the death text so it reads while
-	# the desat overlay is up. Team-colored per current target.
+	# Spectator label (#75) — under the death band so it reads while the
+	# desat overlay is up. Team-colored per current target.
 	lbl_spectate = Label.new()
 	lbl_spectate.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl_spectate.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lbl_spectate.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	lbl_spectate.offset_top = -180
-	lbl_spectate.offset_bottom = -180
-	lbl_spectate.add_theme_font_size_override("font_size", 26)
-	lbl_spectate.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-	lbl_spectate.add_theme_constant_override("outline_size", 6)
+	lbl_spectate.offset_top = 196
+	lbl_spectate.offset_bottom = 196
+	UITheme.style_hud_text(lbl_spectate, 22, UITheme.COL_TEXT, 5)
 	lbl_spectate.visible = false
-	add_child(lbl_spectate)
+	_add(lbl_spectate)
 
 	lbl_spectate_hint = Label.new()
 	lbl_spectate_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl_spectate_hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lbl_spectate_hint.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	lbl_spectate_hint.offset_top = -150
-	lbl_spectate_hint.offset_bottom = -150
+	lbl_spectate_hint.offset_top = 222
+	lbl_spectate_hint.offset_bottom = 222
 	var touch_ui: bool = OS.has_feature("android") or OS.has_feature("mobile") \
 			or DisplayServer.is_touchscreen_available() or "--force-touch" in OS.get_cmdline_user_args()
 	lbl_spectate_hint.text = tr("Tap left / right to switch view") if touch_ui \
 			else tr("← / →  or  LB / RB  next target    ·    C  toggle free-cam")
-	lbl_spectate_hint.add_theme_font_size_override("font_size", 14)
-	lbl_spectate_hint.add_theme_color_override("font_color", Color(0.75, 0.78, 0.85))
+	lbl_spectate_hint.add_theme_font_size_override("font_size", 13)
+	lbl_spectate_hint.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)
 	lbl_spectate_hint.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
 	lbl_spectate_hint.add_theme_constant_override("outline_size", 3)
 	lbl_spectate_hint.visible = false
-	add_child(lbl_spectate_hint)
+	_add(lbl_spectate_hint)
 
-	# Streak / multi-kill banner (#76) — big center-screen text, fades over ~2s.
-	# Positioned above the map/timer strip so it reads over gameplay without
-	# fighting the top bar for space. Font color set per-call to the killer's team.
+	# Streak / multi-kill banner (#76) — big text in the upper third, fades
+	# over ~2s. Font color set per-call to the killer's team.
 	lbl_streak = Label.new()
 	lbl_streak.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl_streak.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lbl_streak.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	lbl_streak.offset_top = -150
-	lbl_streak.offset_bottom = -150
-	lbl_streak.add_theme_font_size_override("font_size", 32)
-	lbl_streak.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-	lbl_streak.add_theme_constant_override("outline_size", 8)
+	lbl_streak.offset_top = -104
+	lbl_streak.offset_bottom = -104
+	UITheme.style_hud_text(lbl_streak, 34, UITheme.COL_TEXT, 8)
+	lbl_streak.add_theme_font_override("font", UITheme.font("title"))
 	lbl_streak.modulate = Color(1, 1, 1, 0)
 	lbl_streak.visible = false
-	add_child(lbl_streak)
+	_add(lbl_streak)
 
 	# Vote prompt (#77) — vote_panel.gd.
 	vote_panel = VotePanel.new()
-	add_child(vote_panel)
+	_add(vote_panel)
 
-	# Bonus effect indicator (#78) — bottom-center over the ammo/weapon strip,
-	# but shifted up enough that it doesn't overlap the standard HUD readouts.
-	lbl_bonus = Label.new()
-	lbl_bonus.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lbl_bonus.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	lbl_bonus.offset_top = -60
-	lbl_bonus.offset_bottom = -30
-	lbl_bonus.add_theme_font_size_override("font_size", 22)
-	lbl_bonus.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-	lbl_bonus.add_theme_constant_override("outline_size", 6)
-	lbl_bonus.visible = false
-	add_child(lbl_bonus)
+	# Bonus effect indicator (#78) — bottom-centre pill.
+	lbl_bonus = _pill_label(-34, 18)
+	_add(lbl_bonus)
 
 	_build_info_labels()
 
@@ -352,7 +394,60 @@ func _ready() -> void:
 	objective_hud = ObjectiveHud.new()
 	objective_hud.main = get_parent()
 	objective_hud.player_ref = func() -> Node2D: return player
-	add_child(objective_hud)
+	_add(objective_hud)
+
+
+## Adds a HUD element under the UI-scaled root.
+func _add(c: Node) -> void:
+	_ui.add_child(c)
+
+
+## A vitals number / line on top of the vitals card.
+func _vital_label(pos: Vector2, size: int, col: Color, w: float = 0.0, kind := "hud") -> Label:
+	var l := Label.new()
+	l.position = pos
+	if w > 0.0:
+		l.size = Vector2(w, 0)
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	l.add_theme_font_override("font", UITheme.font(kind))
+	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_color_override("font_color", col)
+	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.6))
+	l.add_theme_constant_override("outline_size", 3)
+	_add(l)
+	return l
+
+
+## Bottom-centre pill label (bonus / vehicle / toast): sized to its text,
+## grows upward from `bottom` px above the screen edge.
+func _pill_label(bottom: float, size: int) -> Label:
+	var l := Label.new()
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	l.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	l.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	l.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	l.offset_top = bottom
+	l.offset_bottom = bottom
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	l.add_theme_font_override("font", UITheme.font("semi"))
+	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_stylebox_override("normal", UITheme.hud_pill_style(Color(0, 0, 0, 0), 0.62))
+	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.7))
+	l.add_theme_constant_override("outline_size", 3)
+	l.visible = false
+	return l
+
+
+## Pill accent (left edge) in the line's colour.
+func _pill_accent(l: Label, col: Color) -> void:
+	var sb := UITheme.hud_pill_style(col, 0.62)
+	sb.content_margin_left = 14
+	sb.content_margin_right = 14
+	sb.content_margin_top = 5
+	sb.content_margin_bottom = 6
+	l.add_theme_stylebox_override("normal", sb)
 
 
 func announce_objective(kind: String, team: int, who: String) -> void:
@@ -381,7 +476,8 @@ func show_streak_banner(killer_name: String, title: String, killer_team: int, co
 	lbl_streak.text = "%s\n%s  ×%d" % [tr(title).to_upper(), killer_name, count]
 	lbl_streak.add_theme_color_override("font_color", col)
 	lbl_streak.visible = true
-	lbl_streak.modulate = Color(col.r, col.g, col.b, 1.0)
+	lbl_streak.modulate = Color(1, 1, 1, 1.0)
+	UITheme.UIFx.pop(lbl_streak, 0.22)
 	if _streak_tween != null and _streak_tween.is_valid():
 		_streak_tween.kill()
 	_streak_tween = create_tween()
@@ -434,11 +530,12 @@ func set_killcam(name: String, hp: int, weapon: String, col: Color) -> void:
 ## label and the help card while it plays; put them back after.
 func set_rewind(on: bool) -> void:
 	rewind_on = on
-	var hint := get_node_or_null("ControlsHint")
+	var hint := _ui.get_node_or_null("ControlsHint") if _ui != null else null
 	if on:
 		for c in [lbl_death, lbl_respawn, desat_overlay, lbl_spectate, lbl_spectate_hint]:
 			if c != null:
 				c.visible = false
+		_sync_death_extras()
 		if hint != null:
 			hint.visible = false
 	elif _dead:
@@ -494,8 +591,15 @@ func _update_bonus_ui() -> void:
 		return
 	var t: float = float(player.get("bonus_t"))
 	var hint: String = GameInfo.item_short(kind)
-	lbl_bonus.text = "%s  %ds%s" % [BonusPickup.kind_label(kind), int(ceil(t)), ("  ·  " + hint) if hint != "" else ""]
-	lbl_bonus.add_theme_color_override("font_color", BonusPickup.kind_color(kind))
+	var txt := "%s  %ds%s" % [BonusPickup.kind_label(kind), int(ceil(t)), ("  ·  " + hint) if hint != "" else ""]
+	if lbl_bonus.text != txt:
+		lbl_bonus.text = txt
+		lbl_bonus.reset_size()
+	var bcol: Color = BonusPickup.kind_color(kind)
+	if lbl_bonus.get_meta("col", Color.BLACK) != bcol:
+		lbl_bonus.set_meta("col", bcol)
+		lbl_bonus.add_theme_color_override("font_color", bcol)
+		_pill_accent(lbl_bonus, bcol)
 	lbl_bonus.visible = true
 
 
@@ -510,45 +614,36 @@ const TOAST_HOLD := 3.5
 
 
 func _build_info_labels() -> void:
+	# Mode briefing card under the score strip for the first seconds.
 	lbl_mode_banner = Label.new()
 	lbl_mode_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl_mode_banner.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	lbl_mode_banner.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	lbl_mode_banner.offset_left = 220
-	lbl_mode_banner.offset_right = -220
+	lbl_mode_banner.custom_minimum_size = Vector2(560, 0)
+	lbl_mode_banner.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	lbl_mode_banner.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	lbl_mode_banner.offset_top = 150
+	lbl_mode_banner.offset_bottom = 150
 	lbl_mode_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	lbl_mode_banner.add_theme_font_size_override("font_size", 18)
-	lbl_mode_banner.add_theme_color_override("font_color", Color(1.0, 0.92, 0.6))
-	lbl_mode_banner.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-	lbl_mode_banner.add_theme_constant_override("outline_size", 6)
-	add_child(lbl_mode_banner)
-	lbl_toast = Label.new()
-	lbl_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lbl_toast.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	lbl_toast.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	lbl_toast.offset_left = 200
-	lbl_toast.offset_right = -200
-	lbl_toast.offset_top = -120
-	lbl_toast.offset_bottom = -66
-	lbl_toast.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-	lbl_toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	lbl_toast.add_theme_font_size_override("font_size", 17)
-	lbl_toast.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-	lbl_toast.add_theme_constant_override("outline_size", 6)
-	lbl_toast.visible = false
-	add_child(lbl_toast)
-	lbl_vehicle = Label.new()
-	lbl_vehicle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lbl_vehicle.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	lbl_vehicle.offset_top = -98
-	lbl_vehicle.offset_bottom = -64
-	lbl_vehicle.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	lbl_vehicle.add_theme_font_size_override("font_size", 18)
-	lbl_vehicle.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-	lbl_vehicle.add_theme_constant_override("outline_size", 6)
-	lbl_vehicle.visible = false
-	add_child(lbl_vehicle)
+	lbl_mode_banner.add_theme_font_override("font", UITheme.font("semi"))
+	lbl_mode_banner.add_theme_font_size_override("font_size", 17)
+	lbl_mode_banner.add_theme_color_override("font_color", UITheme.COL_TEXT)
+	lbl_mode_banner.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.6))
+	lbl_mode_banner.add_theme_constant_override("outline_size", 3)
+	lbl_mode_banner.add_theme_constant_override("line_spacing", 2)
+	var mb := UITheme.hud_pill_style(UITheme.COL_ACCENT, 0.66)
+	mb.content_margin_left = 18
+	mb.content_margin_right = 18
+	mb.content_margin_top = 10
+	mb.content_margin_bottom = 12
+	mb.set_corner_radius_all(UITheme.RADIUS_PANEL)
+	mb.border_width_left = 0
+	mb.border_width_top = 2
+	lbl_mode_banner.add_theme_stylebox_override("normal", mb)
+	_add(lbl_mode_banner)
+	lbl_toast = _pill_label(-110, 17)
+	_add(lbl_toast)
+	lbl_vehicle = _pill_label(-72, 17)
+	_add(lbl_vehicle)
 	show_mode_banner()
 
 
@@ -567,6 +662,7 @@ func show_mode_banner() -> void:
 	lbl_mode_banner.text = t
 	lbl_mode_banner.modulate.a = 1.0
 	lbl_mode_banner.visible = true
+	UITheme.UIFx.pop(lbl_mode_banner, 0.25)
 	_banner_t = BANNER_HOLD
 
 
@@ -576,8 +672,17 @@ func toast(title: String, desc: String, col: Color = Color(1, 1, 1)) -> void:
 		return
 	lbl_toast.text = title if desc == "" else "%s — %s" % [title, desc]
 	lbl_toast.add_theme_color_override("font_color", col)
+	_pill_accent(lbl_toast, col)
+	# Sized to the text; long lines wrap at 760 px.
+	var tw: float = UITheme.font("semi").get_string_size(lbl_toast.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 17).x
+	lbl_toast.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if tw > 760.0 else TextServer.AUTOWRAP_OFF
+	lbl_toast.custom_minimum_size.x = 760.0 if tw > 760.0 else 0.0
+	lbl_toast.reset_size()
 	lbl_toast.modulate.a = 1.0
+	var was := lbl_toast.visible
 	lbl_toast.visible = true
+	if not was:
+		UITheme.UIFx.pop(lbl_toast)
 	_toast_t = TOAST_HOLD
 
 
@@ -599,8 +704,14 @@ func _tick_vehicle_label() -> void:
 		t += "  ·  solo: slower while firing"
 	elif v.gunner() != null and v.gunner() != player and v.gunner().get("bot_id") != null:
 		t += "  ·  %s on the gun" % str(v.gunner().get("display_name"))
-	lbl_vehicle.text = t
-	lbl_vehicle.add_theme_color_override("font_color", Color(0.95, 0.35, 0.25) if v.overheated or hp_frac < 0.3 else Color(0.95, 0.85, 0.5))
+	if lbl_vehicle.text != t:
+		lbl_vehicle.text = t
+		lbl_vehicle.reset_size()
+	var vcol := UITheme.COL_ALERT if v.overheated or hp_frac < 0.3 else UITheme.COL_ACCENT_HI
+	if lbl_vehicle.get_meta("col", Color.BLACK) != vcol:
+		lbl_vehicle.set_meta("col", vcol)
+		lbl_vehicle.add_theme_color_override("font_color", vcol)
+		_pill_accent(lbl_vehicle, vcol)
 	lbl_vehicle.visible = true
 
 
@@ -678,25 +789,13 @@ func _load_taunts() -> void:
 			_taunts[k] = defaults[k]
 
 
-func _make_label(pos: Vector2, col: Color) -> Label:
-	# HUD readouts — position from top-left, tight outline for high contrast
-	# over bright sky/terrain. Font size 17 matches UITheme.style_hud_label.
-	var l := Label.new()
-	l.position = pos
-	l.add_theme_font_size_override("font_size", 17)
-	l.add_theme_color_override("font_color", col)
-	l.add_theme_color_override("font_outline_color", UITheme.COL_SHADOW)
-	l.add_theme_constant_override("outline_size", 4)
-	add_child(l)
-	return l
-
-
 func show_death(killer: String, weapon: String, respawn_secs: float = 2.0) -> void:
 	_dead = true
 	# Countdown matches the real respawn delay so the label doesn't tick to 0
 	# while the player is still on the floor (INF attackers pay 5s, not 2s).
 	# Pass a negative value to display the "no respawn" survival hint instead.
 	_death_remaining = respawn_secs
+	_death_total = maxf(0.01, respawn_secs)
 	var me: String = str(player.display_name) if is_instance_valid(player) else Settings.display_name()
 	var suicide: bool = killer != "" and killer == me
 	lbl_death.text = (tr("You were killed by %s") % killer) if killer != "" and not suicide else tr("You died")
@@ -705,6 +804,21 @@ func show_death(killer: String, weapon: String, respawn_secs: float = 2.0) -> vo
 	lbl_death.visible = true
 	lbl_respawn.visible = true
 	desat_overlay.visible = true
+	_sync_death_extras()
+	if not rewind_on:
+		UITheme.UIFx.pop(lbl_death, 0.22)
+
+
+## The death band / ELIMINATED / respawn bar follow the death lines.
+func _sync_death_extras() -> void:
+	if _death_band == null:
+		return
+	var on: bool = lbl_death.visible
+	_death_band.visible = on
+	_lbl_elim.visible = on
+	_respawn_bar.visible = on and lbl_respawn.visible and _death_remaining >= 0.0
+	if _respawn_bar.visible:
+		_respawn_bar.queue_redraw()
 
 
 ## "BLUE 3 alive · RED 2 alive" (team modes) or "4 left" (FFA) for the
@@ -730,6 +844,7 @@ func _hide_death() -> void:
 	lbl_death.visible = false
 	lbl_respawn.visible = false
 	desat_overlay.visible = false
+	_sync_death_extras()
 
 
 ## Kill-feed weapon icon (kill_feed.gd); hud_bars.gd reads it for the vitals box.
@@ -742,7 +857,9 @@ func _on_kill(killer_name: String, victim_name: String, weapon_name: String, kil
 	# color instead of everyone-not-us collapsing to red.
 	var info := _team_display_info(killer_team)
 	var kcol: Color = info.get("color", Color(1.0, 0.45, 0.45))
-	feed.add_kill(killer_name, victim_name, weapon_name, kcol)
+	var me: String = str(player.display_name) if is_instance_valid(player) else ""
+	var vcol: Color = (_team_display_info(_victim_team).get("color", Color(0.9, 0.9, 0.92)) as Color).lerp(Color.WHITE, 0.35)
+	feed.add_kill(killer_name, victim_name, weapon_name, kcol, me != "" and (killer_name == me or victim_name == me), vcol)
 	if is_instance_valid(player) and killer_name == str(player.display_name) and victim_name != killer_name:
 		_kill_confirm(victim_name, weapon_name.ends_with("(headshot)"))
 		# Phase B (#271): hit-stop (+ slow-mo look on a multi-kill) — presentation
@@ -764,14 +881,14 @@ func _kill_confirm(victim: String, headshot: bool) -> void:
 		_confirm_lbl.offset_top = 150
 		_confirm_lbl.offset_bottom = 150
 		_confirm_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_confirm_lbl.add_theme_font_size_override("font_size", 17)
-		_confirm_lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-		_confirm_lbl.add_theme_constant_override("outline_size", 4)
-		add_child(_confirm_lbl)
+		UITheme.style_hud_text(_confirm_lbl, 18, UITheme.COL_TEXT, 4)
+		_confirm_lbl.add_theme_font_override("font", UITheme.font("caps"))
+		_add(_confirm_lbl)
 	_confirm_lbl.text = (tr("KILLED  %s  ·  HEADSHOT") if headshot else tr("KILLED  %s")) % victim
-	_confirm_lbl.add_theme_color_override("font_color", Color(1.0, 0.55, 0.45) if headshot else Color(1.0, 0.88, 0.55))
+	_confirm_lbl.add_theme_color_override("font_color", Color(1.0, 0.45, 0.38) if headshot else UITheme.COL_ACCENT_HI)
 	_confirm_lbl.modulate.a = 1.0
 	_confirm_lbl.visible = true
+	UITheme.UIFx.pop(_confirm_lbl, 0.16)
 	if _confirm_tween != null and _confirm_tween.is_valid():
 		_confirm_tween.kill()
 	_confirm_tween = create_tween()
@@ -888,9 +1005,10 @@ func _process(delta: float) -> void:
 			lbl_respawn.text = tr("Waiting for next round") + "  ·  " + _alive_summary()
 		else:
 			_death_remaining -= delta
-			lbl_respawn.text = tr("Respawning in %d") % maxi(0, int(ceil(_death_remaining)))
+			lbl_respawn.text = (tr("Respawning in %d") % maxi(0, int(ceil(_death_remaining)))).to_upper()
 			if _death_remaining <= 0.0:
 				_hide_death()
+		_sync_death_extras()
 	# Prefix the mode (full name) so users know which rules are live.
 	var mode_str: String = GameInfo.mode_title(Settings.game_mode).capitalize() + " · "
 	# Sub-modes append to the tag so players notice.
@@ -909,7 +1027,9 @@ func _process(delta: float) -> void:
 		if main2 != null and main2.has_method("br_zone"):
 			var z: Dictionary = main2.br_zone()
 			mode_str = "Battle Royale · zone %dm · " % int(z.get("radius", 0.0) / 10.0)
-	lbl_map.text = mode_str + map_name
+	var map_line := (mode_str + map_name).to_upper()
+	if lbl_map.text != map_line:
+		lbl_map.text = map_line
 	lbl_status.text = Net.status.get_slice("\n", 0) if Net.is_networked() else ""
 	_update_match_ui()
 	# No body (dead / spectating): hide the empty vitals box; the limbo
@@ -932,8 +1052,10 @@ func _process(delta: float) -> void:
 	var wi: int = int(player.weapon_index)
 	if wi < 0 or wi >= player.weapons.size() or wi >= player.ammo.size():
 		return
-	lbl_health.text = "HP %d" % int(player.health)
-	lbl_fuel.text = "JET %d" % int(player.fuel)
+	# Numbers only: the vector icons beside the bars say what they are (#272).
+	lbl_health.text = "%d" % int(player.health)
+	lbl_fuel.text = "%d" % int(player.fuel)
+	lbl_health.add_theme_color_override("font_color", UITheme.COL_ALERT if float(player.health) < 30.0 else UITheme.COL_HUD_HEALTH)
 	# When the secondary slot is active (Q pressed), show its name/ammo instead of the primary's.
 	var use_sec: bool = bool(player.get("using_secondary"))
 	var w: Dictionary
@@ -950,8 +1072,10 @@ func _process(delta: float) -> void:
 	# Realistic ruleset hides the magazine readout — pilots go by weapon feel.
 	lbl_ammo.visible = not Settings.realistic
 	lbl_fuel.visible = not Settings.realistic
-	lbl_ammo.text = "%d / %d" % [mag, int(w["mag"])] + (("  · " + tr("RELOADING")) if player.reloading else "")
-	lbl_weapon.text = str(w["name"])
+	lbl_ammo.text = (tr("RELOADING")) if player.reloading else "%d / %d" % [mag, int(w["mag"])]
+	lbl_ammo.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM if player.reloading \
+			else (UITheme.COL_ALERT if mag == 0 else UITheme.COL_HUD_HEALTH))
+	lbl_weapon.text = str(w["name"]).to_upper()
 	# Gun Game: overwrite the weapon label with the ladder rung so players see
 	# their race progress at a glance. Knife rung nudges them to close the deal.
 	if Settings.game_mode == Settings.MODE_GG:
@@ -962,14 +1086,14 @@ func _process(delta: float) -> void:
 		var ladder: Array = PlayerScript.GG_LADDER
 		if ladder != null and ladder.size() > 0:
 			if lvl > ladder.size() - 1:
-				lbl_weapon.text = "Gun Game — Golden Knife · kill to win"
+				lbl_weapon.text = "GOLDEN KNIFE · KILL TO WIN"
 			else:
 				var idx: int = clampi(lvl, 0, ladder.size() - 1)
 				var wname: String = str((ladder[idx] as Dictionary).get("name", ""))
-				var suffix: String = "  · Knife kill to win" if lvl >= ladder.size() - 1 else ""
-				lbl_weapon.text = "Gun Game — %s (%d/%d)%s" % [wname, lvl + 1, ladder.size(), suffix]
+				var suffix: String = " · knife to win" if lvl >= ladder.size() - 1 else ""
+				lbl_weapon.text = ("%s · rung %d/%d%s" % [wname, lvl + 1, ladder.size(), suffix]).to_upper()
 	var gtype := "CLUSTER" if bool(player.get("use_cluster")) else "FRAG"
-	lbl_grenades.text = tr("GRENADES %d  [%s]") % [player.grenades, gtype]
+	lbl_grenades.text = "%s ×%d" % [gtype, int(player.grenades)]
 
 
 func _update_match_ui() -> void:
@@ -991,6 +1115,7 @@ func _update_match_ui() -> void:
 		# Reads _gg_levels + _gg_kills off main (host authoritative, mirrored
 		# to clients via net_match_state).
 		_render_gg_scoreboard(main)
+		score_strip.call("set_teams", [])
 	else:
 		# Scoreboard (team_id → "name score" with color), sorted by team_id for stability.
 		var entries: Array = []
@@ -1026,15 +1151,24 @@ func _update_match_ui() -> void:
 				top.append(mine)
 			ordered = top
 		var parts: PackedStringArray = PackedStringArray()
+		var blocks: Array = []
 		for team in ordered:
 			var info := _team_display_info(team)
 			var col: Color = info["color"]
 			var col_hex: String = col.to_html(false)
 			var pts: int = int(scores.get(team, 0))
 			parts.append("[color=#%s][b]%s[/b] %d[/color]" % [col_hex, info["name"], pts])
-		lbl_score.text = "[center]" + "   ·   ".join(parts) + "[/center]"
+			blocks.append([str(info["name"]), col, pts])
+		# Team modes: the two team blocks flank the timer (score_strip.gd);
+		# free-for-all keeps the leaderboard line under it.
+		var team_strip: bool = Settings.is_team_mode() and blocks.size() == 2
+		score_strip.call("set_teams", blocks if team_strip else [])
+		var line := "" if team_strip else "[center]" + "   ·   ".join(parts) + "[/center]"
+		if lbl_score.text != line:
+			lbl_score.text = line
 	# Winner banner
 	var note: String = str(main.get("winner_note")) if main.get("winner_note") != null else ""
+	var winner_was: bool = lbl_winner.visible
 	if not active and winner >= 0:
 		var info := _team_display_info(winner)
 		lbl_winner.text = tr("%s WINS") % info["name"]
@@ -1046,6 +1180,8 @@ func _update_match_ui() -> void:
 		lbl_winner.visible = true
 	else:
 		lbl_winner.visible = false
+	if lbl_winner.visible and not winner_was:
+		UITheme.UIFx.pop(lbl_winner, 0.3)
 	_update_next_map(main, active)
 	if lbl_winner_note != null:
 		# MVP: best kills + 3x captures this round (from the scoreboard stats).
@@ -1078,7 +1214,7 @@ func _update_next_map(main: Node, active: bool) -> void:
 		return
 	if next_map_panel == null:
 		next_map_panel = NextMapPanel.new()
-		add_child(next_map_panel)
+		_add(next_map_panel)
 	next_map_panel.refresh(main)
 
 

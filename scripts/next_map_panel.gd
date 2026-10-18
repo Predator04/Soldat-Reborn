@@ -40,7 +40,7 @@ func _init() -> void:
 
 ## Main is the HUD's parent (the panel is a child of the HUD).
 func _main() -> Node:
-	var h := get_parent()
+	var h := UITheme.hud_of(self)
 	return h.get_parent() if h != null else null
 
 
