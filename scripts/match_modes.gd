@@ -243,7 +243,7 @@ func _tick_ctf() -> void:
 					# Enemy pickup.
 					f.set_meta("carrier", s)
 					_objective_event("grab", flag_team, str(s.get("display_name")))
-					main._bot_radio_efc(flag_team, s)
+					main._bots._bot_radio_efc(flag_team, s)
 				break
 
 
@@ -607,7 +607,7 @@ func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: Str
 		return
 	if not main.round_active or killer_team < 0:
 		return
-	main._maybe_bot_chatter(killer_name, victim_name)
+	main._bots._maybe_bot_chatter(killer_name, victim_name)
 	# Gun Game runs its own ladder BEFORE the generic team/suicide gate.
 	# Suicides are still filtered here so a self-kill can't earn a rung-up.
 	if Settings.game_mode == Settings.MODE_GG:
@@ -635,7 +635,7 @@ func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: Str
 			main.winner_note = "%s reached the golden knife" % killer_name
 			_end_round(killer_team)
 			if Net.is_networked() and Net.is_host():
-				main._broadcast_match_state()
+				main._net._broadcast_match_state()
 			return
 		# Broadcast the new killer level; every peer applies it to the body
 		# they own (host owns bots + host player; each client owns their player).
@@ -652,7 +652,7 @@ func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: Str
 		if Settings.survival:
 			_check_survival_end()
 		if Net.is_networked() and Net.is_host():
-			main._broadcast_match_state()
+			main._net._broadcast_match_state()
 		return
 	# Suicide or team-kill: no score change, but still check survival end so
 	# the round can end on the last soldier down even from friendly fire.
@@ -689,7 +689,7 @@ func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: Str
 		# Survival: last team standing ends the round early.
 		_check_survival_end()
 	if Net.is_networked() and Net.is_host():
-		main._broadcast_match_state()
+		main._net._broadcast_match_state()
 
 
 func _check_survival_end() -> void:
@@ -766,7 +766,7 @@ func _end_round(team: int) -> void:
 	if main.ranked != null:
 		main.ranked.round_end(team)
 	if Net.is_networked() and Net.is_host():
-		main._broadcast_match_state()
+		main._net._broadcast_match_state()
 
 
 func _end_round_by_time() -> void:
@@ -828,7 +828,7 @@ func _reset_round() -> void:
 	# #263: even the teams between rounds (bots only — never touch a human's
 	# chosen side). Snowballed lobbies were the classic complaint.
 	if Settings.is_team_mode() and Settings.game_mode != Settings.MODE_INF:
-		main._balance_teams()
+		main._bots._balance_teams()
 	# Flags home, nobody carrying — a carrier teleported to spawn used to start
 	# the next round holding the enemy flag next to their own base.
 	for f in main.flags:
@@ -875,9 +875,9 @@ func _reset_round() -> void:
 				main._players_by_id.clear()
 				# Peer 1 (host, unless dedicated) + every fully-connected peer.
 				if not Net.is_dedicated:
-					main._spawn_networked_player(1)
+					main._net._spawn_networked_player(1)
 				for pid in main._connected_peers.keys():
-					main._spawn_networked_player(int(pid))
+					main._net._spawn_networked_player(int(pid))
 				# #92: surviving bots kept last round's HP/ammo/pos while players
 				# started fresh — wipe them too and re-spawn via net_spawn_bot so
 				# clients mirror the reset.
@@ -908,7 +908,7 @@ func _reset_round() -> void:
 		else:
 			_restore_living_soldiers_local()
 	if Net.is_networked() and Net.is_host():
-		main._broadcast_match_state()
+		main._net._broadcast_match_state()
 
 
 func _restore_living_soldiers_local() -> void:

@@ -134,7 +134,7 @@ func _make_bonus_box_local(bid: int, pos: Vector2, kind: String, slot_idx: int) 
 	# Host: bind the collision-triggered signal to our collect handler. Client
 	# replicas don't need this — the box is inert until the host says so.
 	if not Net.is_networked() or Net.is_host():
-		box.touched.connect(_on_bonus_touched.bind(bid, slot_idx))
+		box.touched.connect(main._on_bonus_touched.bind(bid, slot_idx))
 	main._bonus_boxes[bid] = box
 	main.add_child(box)
 

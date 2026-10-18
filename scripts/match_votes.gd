@@ -81,7 +81,7 @@ func host_kick(name: String) -> bool:
 		if str(b.get("display_name")).to_lower().begins_with(want):
 			# Keep the configured count in step so reconcile doesn't respawn it.
 			Settings.bot_count = maxi(0, Settings.bot_count - 1)
-			main._despawn_bot(b)
+			main._bots._despawn_bot(b)
 			Settings.save()
 			MatchConfig.host_broadcast()
 			return true

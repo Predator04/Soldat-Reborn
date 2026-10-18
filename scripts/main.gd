@@ -2,7 +2,6 @@ extends Node2D
 ## Main — sky, terrain, players, bots, HUD. Handles singleplayer + networked flows.
 
 var player_scene := preload("res://scenes/player.tscn")
-var bot_scene := preload("res://scenes/bot.tscn")
 var sky_script := preload("res://scripts/sky.gd")
 var parallax_script := preload("res://scripts/parallax.gd")
 var hud_script := preload("res://scripts/hud.gd")
@@ -27,10 +26,14 @@ const MatchVehicles = preload("res://scripts/match_vehicles.gd")
 const MatchBonuses = preload("res://scripts/match_bonuses.gd")
 const MatchVotes = preload("res://scripts/match_votes.gd")
 const MatchModes = preload("res://scripts/match_modes.gd")
+const MatchNet = preload("res://scripts/match_net.gd")
+const MatchBots = preload("res://scripts/match_bots.gd")
 var _vehicles_sys: MatchVehicles = null   # match_vehicles.gd
 var _bonuses: MatchBonuses = null   # match_bonuses.gd
 var _votes: MatchVotes = null   # match_votes.gd
 var _modes: MatchModes = null   # match_modes.gd
+var _net: MatchNet = null   # match_net.gd
+var _bots: MatchBots = null   # match_bots.gd
 
 var player: Node2D = null            # LOCAL player (whichever peer owns us)
 var hud: CanvasLayer = null
@@ -45,7 +48,6 @@ var _peer_team_by_id: Dictionary = {}  # peer_id -> last team (every peer; survi
 # kill-feed / objective events; joiners get a snapshot in net_client_ready.
 var player_stats: Dictionary = {}
 var _stats_round_active := true
-var _bot_pending: Dictionary = {}    # bot name -> true while its respawn timer runs
 var _ready_peers: Dictionary = {}    # peer_id -> true (host only, gate for outbound state RPCs)
 var _pickup_peer_sig: Dictionary = {} # peer_id -> last pickup-state signature sent (#247)
 # Peers whose main.tscn is loaded — populated on net_client_ready (before the
@@ -55,10 +57,8 @@ var _connected_peers: Dictionary = {}
 # Bot registry (host authority) — bot_id → bot node. Mirrored on clients via the
 # net_spawn_bot/net_despawn_bot RPCs so per-bot state can address each replica.
 var _bots_by_id: Dictionary = {}
-var _next_bot_id: int = 1
 var _bot_sync_cd: float = 0.0
 const BOT_SYNC_HZ := 20.0            # host → clients broadcast rate for bot pos/vel/facing/etc.
-const BOT_STATE_CHUNK_MAX := 8       # #102: max bot entries per net_bot_state packet — keeps under ENet MTU (1392 B).
 
 # Team modes: fixed team ids (player joins BLUE, enemy bots on RED).
 const TEAM_BLUE := 1
@@ -391,6 +391,8 @@ func _init() -> void:
 	_bonuses = _attach(MatchBonuses.new(), "MatchBonuses")
 	_votes = _attach(MatchVotes.new(), "MatchVotes")
 	_modes = _attach(MatchModes.new(), "MatchModes")
+	_net = _attach(MatchNet.new(), "MatchNet")
+	_bots = _attach(MatchBots.new(), "MatchBots")
 
 
 ## A system helper is an internal child: freed with Main, invisible to
@@ -485,7 +487,7 @@ func _ready() -> void:
 		add_child(recorder)
 
 	if Net.is_networked():
-		multiplayer.peer_disconnected.connect(_on_net_peer_disconnected)
+		multiplayer.peer_disconnected.connect(_net._on_net_peer_disconnected)
 		if Net.is_host():
 			# Dedicated (headless) host: pure authority, no local player, no camera.
 			# Fill the match with bots so a lone joining client has opponents (#54).
@@ -500,7 +502,7 @@ func _ready() -> void:
 				for _pending in Net.consume_pending_clients():
 					_handle_client_ready(_pending.id, _pending.name, _pending.version, str(_pending.get("token", "")))
 			else:
-				_spawn_networked_player(1)  # host is peer 1
+				_net._spawn_networked_player(1)  # host is peer 1
 				# Listen host: same bot roster as single player (Bots setting;
 				# 0 = none, and Host Settings can change it live).
 				_spawn_bots()
@@ -1646,88 +1648,12 @@ func _spawn_slide_ok(from: Vector2, to: Vector2) -> bool:
 
 
 func _spawn_bots() -> void:
-	var spots: Array = _map["bot_spawns"]
-	# #67: bot_count -1 = "every spawn slot" (legacy). Otherwise cap to the setting.
-	# We recycle spawn positions round-robin if the user asks for more bots than slots.
-	if _bot_fill_active() and Settings.is_team_mode() and Settings.game_mode != Settings.MODE_INF and not spots.is_empty():
-		_reconcile_fill_teams()
-		return
-	var desired: int = _desired_bot_count()
-	if desired <= 0 or spots.is_empty():
-		return
-	for i in desired:
-		_spawn_bot_at(i, desired)
+	_bots._spawn_bots()
 
 
-# Bot fill (dedicated servers, --fill=N): keep the match at N soldiers, with
-# bots stepping aside one-for-one as real players join and coming back when
-# they leave. Otherwise the Bots setting decides.
-func _bot_fill_active() -> bool:
-	return Net.is_networked() and Net.is_host() and Net.is_dedicated and Net.fill_target > 0
-
-
-func _desired_bot_count() -> int:
-	if _bot_fill_active():
-		return maxi(0, Net.fill_target - _connected_peers.size())
-	var spots: Array = _map["bot_spawns"]
-	return spots.size() if MatchConfig.bot_count() < 0 else MatchConfig.bot_count()
-
-
-func _bot_carries_flag(b: Node) -> bool:
-	for f in flags:
-		if is_instance_valid(f) and f.has_meta("carrier") and f.get_meta("carrier") == b:
-			return true
-	return false
-
-
-var _fill_seq := 100
 var ranked: Node = null   # ranked.gd on a dedicated host with a stats URL
 var replay_mode := false  # this scene is showing a recorded match
 var recorder: Node = null # replay_recorder.gd (every match except dedicated servers)
-var _bot_team_by_name: Dictionary = {}   # bot name -> team (live or waiting to respawn)
-
-
-# Team-mode fill: each side is topped up to half the target with bots, so a
-# side with more players gets fewer bots and the teams stay even.
-func _reconcile_fill_teams() -> void:
-	var per_side: int = int(ceil(Net.fill_target / 2.0))
-	for t in [TEAM_BLUE, TEAM_RED]:
-		var humans := 0
-		for pid in _connected_peers.keys():
-			if int(_peer_team_by_id.get(pid, -1)) == t:
-				humans += 1
-		var want: int = maxi(0, per_side - humans)
-		var live_t: Array = _live_bots().filter(func(b): return int(b.team) == t)
-		var pend_t: Array = _bot_pending.keys().filter(func(n): return int(_bot_team_by_name.get(n, -1)) == t)
-		var have: int = live_t.size() + pend_t.size()
-		while have < want:
-			_fill_seq += 1
-			var tl := _team_spawn_list(t)
-			var nm := ("Blue Bot %d" if t == TEAM_BLUE else "Red Bot %d") % _fill_seq
-			_spawn_bot(tl[_fill_seq % tl.size()], t, nm, "AK-74")
-			have += 1
-		while have > want and not pend_t.is_empty():
-			_bot_pending.erase(pend_t.pop_back())
-			have -= 1
-		while have > want and not live_t.is_empty():
-			var rb: Node = null
-			for i in range(live_t.size() - 1, -1, -1):
-				if not _bot_carries_flag(live_t[i]):
-					rb = live_t[i]
-					break
-			if rb == null:
-				break
-			live_t.erase(rb)
-			_despawn_bot(rb)
-			have -= 1
-
-
-# Fill removal (FFA / INF): newest bot first, never the flag carrier.
-func _fill_pick_removal(live: Array) -> Node:
-	for i in range(live.size() - 1, -1, -1):
-		if not _bot_carries_flag(live[i]):
-			return live[i]
-	return null
 
 
 func _team_base(t: int) -> Vector2:
@@ -1845,240 +1771,16 @@ func _team_spawn_list(t: int) -> Array:
 	return all.slice(0, maxi(1, int(ceil(all.size() / 2.0))))
 
 
-## #256: the classic bot loadout (last bot brings the LAW), falling through
-## the primary roster when the pick is banned for the match.
-func _bot_loadout(want_law: bool) -> String:
-	var tbl: Array = player.get("weapons") if player != null and is_instance_valid(player) else []
-	var want := "LAW" if want_law else "AK-74"
-	if not MatchConfig.weapon_banned(want):
-		return want
-	if not tbl.is_empty():
-		for w in tbl:
-			if not MatchConfig.weapon_banned(str(w["name"])):
-				return str(w["name"])
-	return "AK-74"
-
-
-func _spawn_bot_at(i: int, desired: int) -> void:
-	var spots: Array = _map["bot_spawns"]
-	var slot: Vector2 = spots[i % spots.size()]
-	var loadout := _bot_loadout(i == desired - 1)
-	var mode: int = Settings.game_mode
-	if Settings.is_team_mode():
-		if mode == Settings.MODE_INF:
-			# INF: bots are attackers (RED). Player defends solo on BLUE.
-			var rl := _team_spawn_list(TEAM_RED)
-			_spawn_bot(rl[i % rl.size()], TEAM_RED, "Red Bot %d" % (i + 1), loadout)
-		else:
-			# TDM/CTF/HTF/PM: split bots BLUE/RED evenly, each at its own base.
-			var on_blue: bool = i < desired / 2
-			var t: int = TEAM_BLUE if on_blue else TEAM_RED
-			var nm := "Blue Bot %d" % (i + 1) if on_blue else "Red Bot %d" % (i + 1)
-			var tl := _team_spawn_list(t)
-			_spawn_bot(tl[i % tl.size()], t, nm, loadout)
-	else:
-		# DM/RM/GG/BR: every bot is its own team (FFA_BOT_TEAM_BASE + i), so bots
-		# fight each other as well as humans. Ids sit far above peer ids (humans
-		# use team = peer_id in MP FFA, 0 in single-player).
-		_spawn_bot(slot, FFA_BOT_TEAM_BASE + i, "Bot %d" % (i + 1), loadout)
-
-
-# Reconcile the live bot count to MatchConfig.bot_count() — called when the host
-# tweaks the bot-count slider mid-match so new bots appear / extras vanish without
-# a full restart. Host/SP only; clients get spawn/despawn pushed via RPC.
 func _reconcile_bots() -> void:
-	if Net.is_networked() and not Net.is_host():
-		return
-	var spots: Array = _map["bot_spawns"]
-	if spots.is_empty():
-		return
-	if _bot_fill_active() and Settings.is_team_mode() and Settings.game_mode != Settings.MODE_INF:
-		_reconcile_fill_teams()
-		_log_fill.call_deferred()
-		return
-	var desired: int = _desired_bot_count()
-	var live: Array = _live_bots()
-	# Dead bots waiting on their respawn timer count too — otherwise lowering
-	# then raising the slider mid-fight spawned extras AND the pending respawns.
-	var have: int = live.size() + _bot_pending.size()
-	var diff: int = desired - have
-	if diff > 0:
-		for i in range(have, desired):
-			_spawn_bot_at(i, desired)
-	elif diff < 0:
-		var excess: int = -diff
-		for k in _bot_pending.keys():
-			if excess <= 0:
-				break
-			_bot_pending.erase(k)
-			excess -= 1
-		if _bot_fill_active():
-			while excess > 0 and not live.is_empty():
-				var rb: Node = _fill_pick_removal(live)
-				if rb == null:
-					break
-				live.erase(rb)
-				_despawn_bot(rb)
-				excess -= 1
-		else:
-			for i in range(maxi(0, live.size() - excess), live.size()):
-				_despawn_bot(live[i])
-	if _bot_fill_active():
-		_log_fill.call_deferred()
-
-
-func _log_fill() -> void:
-	await get_tree().process_frame
-	var c := {TEAM_BLUE: 0, TEAM_RED: 0}
-	for pid in _connected_peers.keys():
-		var pt: int = int(_peer_team_by_id.get(pid, -1))
-		if c.has(pt):
-			c[pt] += 1
-	for b in _live_bots():
-		if c.has(int(b.team)):
-			c[int(b.team)] += 1
-	for n in _bot_pending.keys():
-		var bt: int = int(_bot_team_by_name.get(n, -1))
-		if c.has(bt):
-			c[bt] += 1
-	print("FILL humans=%d bots=%d blue=%d red=%d" % [_connected_peers.size(), _live_bots().size() + _bot_pending.size(), int(c[TEAM_BLUE]), int(c[TEAM_RED])])
+	_bots._reconcile_bots()
 
 
 func _live_bots() -> Array:
-	var out: Array = []
-	for n in get_tree().get_nodes_in_group("soldier"):
-		if is_instance_valid(n) and n.get("loadout") != null and not bool(n.get("dead")):
-			out.append(n)
-	return out
-
-
-func _despawn_bot(b: Node) -> void:
-	var bid: int = int(b.get("bot_id"))
-	if Net.is_networked() and Net.is_host() and bid > 0:
-		bcast("net_bot_despawn", [bid], false)
-		_bots_by_id.erase(bid)
-	if is_instance_valid(b):
-		b.queue_free()
-
-
-## #263: move bots from the bigger team to the smaller until they're within
-## one, picking the lowest-scoring movers (least disruptive). Humans are never
-## moved. Host/SP only; clients see the result through the bot state mirror.
-func _balance_teams() -> void:
-	if not (not Net.is_networked() or Net.is_host()):
-		return
-	for _guard in 16:
-		var counts := {TEAM_BLUE: 0, TEAM_RED: 0}
-		var bots := {TEAM_BLUE: [], TEAM_RED: []}
-		for sld in get_tree().get_nodes_in_group("soldier"):
-			if not is_instance_valid(sld):
-				continue
-			var t: int = int(sld.get("team"))
-			if not counts.has(t):
-				continue
-			counts[t] += 1
-			if sld.get("bot_id") != null and not bool(sld.get("dead")):
-				bots[t].append(sld)
-		var diff: int = counts[TEAM_BLUE] - counts[TEAM_RED]
-		if absi(diff) <= 1:
-			return
-		var from_t: int = TEAM_BLUE if diff > 0 else TEAM_RED
-		var to_t: int = TEAM_RED if diff > 0 else TEAM_BLUE
-		if bots[from_t].is_empty():
-			return   # imbalance is all-human — respect their choices
-		# Least-disruptive mover: fewest kills this match (K from player_stats).
-		var mover = bots[from_t][0]
-		var best_score := INF
-		for b in bots[from_t]:
-			var st: Dictionary = player_stats.get(str(b.get("display_name")), {})
-			var sc: float = float(st.get("k", 0))
-			if sc < best_score:
-				best_score = sc
-				mover = b
-		mover.set("team", to_t)
-		mover.set("color", bot_color_for_team(to_t))
-		# Respawn at the new team's base so the mover isn't behind enemy lines.
-		var tl: Array = _team_spawn_list(to_t)
-		if not tl.is_empty():
-			(mover as Node2D).global_position = _safe_spawn_near(tl[0], to_t)
-		hud.post_chat("HOST", "%s switched to %s to balance the teams." % [
-			str(mover.get("display_name")), "BLUE" if to_t == TEAM_BLUE else "RED"], false)
+	return _bots._live_bots()
 
 
 func _spawn_bot(pos: Vector2, team: int, bname: String, loadout: String = "AK-74") -> void:
-	if not is_inside_tree():
-		return
-	# Clients never spawn bots directly — the host owns bot lifecycle and pushes
-	# spawn/despawn via net_spawn_bot / net_despawn_bot RPCs (issue #55).
-	if Net.is_networked() and not Net.is_host():
-		return
-	var b := bot_scene.instantiate()
-	_bot_team_by_name[bname] = team
-	b.position = _safe_spawn_near(pos, team)
-	b.team = team
-	b.display_name = bname
-	b.loadout = loadout
-	# Colorize per team so friend/foe reads at a glance (FFA bots get a hue each).
-	b.color = bot_color_for_team(team)
-	# Assign a stable id + set host as authority so the bot's own is_multiplayer_authority()
-	# check gates AI to peer 1. Clients skip _physics_process AI (see bot.gd).
-	var assigned_id: int = 0
-	if Net.is_networked() and Net.is_host():
-		assigned_id = _next_bot_id
-		_next_bot_id += 1
-		b.bot_id = assigned_id
-		b.name = "Bot_%d" % assigned_id
-		b.set_multiplayer_authority(1)
-	# Gun Game: bots share the players' ladder — restore the persisted rung so
-	# a bot that climbed pre-death re-spawns holding the same rung's weapon.
-	if Settings.game_mode == Settings.MODE_GG:
-		b.gg_level = _modes._gg_get(bname)
-	# Bots respawn on the same slot so the match can accumulate score.
-	# Survival gates this — the next spawn only happens on _reset_round.
-	b.died.connect(func() -> void:
-		if assigned_id > 0:
-			_bots_by_id.erase(assigned_id)
-		# Survival: _reset_round respawns everyone — a death on the winner
-		# screen used to schedule an extra body that appeared after the reset.
-		if Settings.survival:
-			return
-		var delay: float = _respawn_delay_for_team(team)
-		_bot_pending[bname] = true
-		get_tree().create_timer(delay).timeout.connect(func() -> void:
-			# Guard against the outer Main being torn down (scene change / quit)
-			# during the respawn window — the SceneTreeTimer keeps firing.
-			if not is_inside_tree():
-				return
-			# Cancelled by _reconcile_bots (slider lowered while dead).
-			if not _bot_pending.has(bname):
-				return
-			_bot_pending.erase(bname)
-			_spawn_bot(_bot_respawn_pos(pos, team), team, bname, loadout)))
-	add_child(b)
-	# Reassert authority after add_child so children added in _ready inherit it.
-	if Net.is_networked() and Net.is_host():
-		b.set_multiplayer_authority(1, true)
-		_bots_by_id[assigned_id] = b
-		# Notify every peer whose main.tscn is loaded so they spawn a replica.
-		# We gate on _connected_peers (populated in net_client_ready) instead of
-		# _ready_peers (populated on net_spawn_ack) so bots spawned in the gap
-		# between the client's "ready" and its ack still reach the joining peer
-		# — otherwise those bots would be permanently invisible to it (#84).
-		# _connected_peers may be empty on the first bot batch (dedicated boot) —
-		# that's fine, joiners get all live bots mirrored in net_client_ready below.
-		for pid in _connected_peers.keys():
-			rpc_id(int(pid), "net_spawn_bot", assigned_id, b.position, team, bname, loadout, b.cosmetics)
-
-
-# Respawn somewhere on the bot's own side (team modes) or any spawn point
-# (FFA), preferring spots away from enemies, instead of always the same slot.
-func _bot_respawn_pos(slot: Vector2, team: int) -> Vector2:
-	if Settings.is_team_mode():
-		if Settings.game_mode == Settings.MODE_INF and team == TEAM_RED:
-			return _pick_spawn_away(_team_spawn_list(TEAM_RED), team)
-		return _team_spawn_pick(team)
-	var bs: Array = _map.get("bot_spawns", [])
-	return _pick_spawn_away(bs, team) if not bs.is_empty() else slot
+	_bots._spawn_bot(pos, team, bname, loadout)
 
 
 # ── Shared ────────────────────────────────────────────
@@ -2152,499 +1854,69 @@ func _bind_local_camera(p: Node) -> void:
 
 # ── Networked spawn path ──────────────────────────────
 
-func _spawn_networked_player(peer_id: int) -> void:
-	# FFA MP (DM/RM): spawn joining players at a random bot_spawn — classic Soldat
-	# spawn-point behavior. Puts them in the action zone instead of the map corner
-	# where player_spawn typically sits (Ascent/Towers/Pillars have player_spawn at
-	# (200,1775) but every bot_spawn is >2000px away, so a fresh joiner would never
-	# actually meet a bot within the first ~10s). Team modes keep player_spawn so
-	# team sides stay coherent. (#57)
-	var t: int = _assign_team_for_peer(peer_id)
-	var base: Vector2 = _map["player_spawn"]
-	if Settings.is_team_mode():
-		base = _team_spawn_pick(t)
-	if Net.is_networked() and not Settings.is_team_mode():
-		var bs: Array = _map.get("bot_spawns", [])
-		if not bs.is_empty():
-			base = _pick_spawn_away(bs, t)
-	var spawn_pos := _modes._jitter_spawn(base)
-	var display_name: String = Settings.display_name() if peer_id == 1 else str(_peer_names.get(peer_id, "Player %d" % peer_id))
-	bcast("net_spawn_player", [peer_id, spawn_pos, display_name, t], true)
-
-
-var _left_team: Dictionary = {}   # host: display name -> team of players who dropped
-
-
-func _assign_team_for_peer(peer_id: int) -> int:
-	# Deathmatch / Rambomatch stay FFA — team = peer_id so every soldier is a
-	# distinct hostile entity.
-	if not Settings.is_team_mode():
-		return peer_id
-	var back_as := str(_peer_names.get(peer_id, ""))
-	if _left_team.has(back_as) and Settings.game_mode != Settings.MODE_INF:
-		var tb: int = int(_left_team[back_as])
-		_left_team.erase(back_as)
-		if tb == TEAM_BLUE or tb == TEAM_RED:
-			return tb
-	# Team modes: alternate BLUE/RED to keep sides balanced. INF is asymmetric —
-	# first peer defends (BLUE), everyone else attacks.
-	var blue_count := 0
-	var red_count := 0
-	for pid in _players_by_id.keys():
-		if int(pid) == peer_id:
-			continue
-		var p = _players_by_id[pid]
-		if not is_instance_valid(p):
-			continue
-		if int(p.team) == TEAM_BLUE:
-			blue_count += 1
-		elif int(p.team) == TEAM_RED:
-			red_count += 1
-	if Settings.game_mode == Settings.MODE_INF:
-		return TEAM_BLUE if blue_count == 0 else TEAM_RED
-	return TEAM_BLUE if blue_count <= red_count else TEAM_RED
-
 
 func _schedule_peer_respawn(peer_id: int, t: int) -> void:
-	if not Net.is_host():
-		return
-	# Survival: _reset_round rebuilds everyone's body; no timer.
-	if Settings.survival:
-		return
-	var delay: float = _respawn_delay_for_team(t)
-	var mode_at_schedule: int = Net.mode
-	# Human players may be watching the kill cam rewind: wait for their
-	# "ready" (sent right away when there's nothing to watch) or the pad.
-	_respawn_gate(peer_id, delay, _killcam_pad(delay), func() -> void:
-		if Net.mode != mode_at_schedule or not is_inside_tree():
-			return
-		# A round reset in between may already have given this peer a body.
-		var cur: Variant = _players_by_id.get(peer_id)
-		if cur != null and is_instance_valid(cur) and not bool((cur as Node).get("dead")):
-			return
-		_respawn_peer(peer_id))
-
-
-func _respawn_peer(peer_id: int) -> void:
-	if not Net.is_host():
-		return
-	# still connected?
-	if peer_id != 1 and not multiplayer.get_peers().has(peer_id):
-		return
-	_spawn_networked_player(peer_id)
-
-
-func _on_net_peer_disconnected(id: int) -> void:
-	if Net.is_host():
-		# Remember the leaver's side so a rejoin (same name) lands on it again;
-		# their K/D stays in player_stats (name-keyed) already.
-		if ranked != null:
-			ranked.player_left(id)
-		Net.heartbeat_soon()
-		var lp = _players_by_id.get(id, null)
-		if lp != null and is_instance_valid(lp) and _peer_names.has(id):
-			_left_team[str(_peer_names[id])] = int(lp.team)
-		_peer_names.erase(id)
-		_peer_tokens.erase(id)
-		_ready_peers.erase(id)
-		_pickup_peer_sig.erase(id)
-		_connected_peers.erase(id)
-		_push_ready_list()
-		bcast("net_despawn_player", [id], true)
-		# If the disconnecting peer was the votekick target, resolve the vote
-		# immediately — no one benefits from a countdown against a phantom.
-		if vote_active and vote_kind == "votekick" and vote_target_arg == id:
-			_votes._resolve_vote(false, "Target left the server")
-		if _bot_fill_active():
-			call_deferred("_reconcile_bots")
-
-
-# ── Bot chatter (host decides, everyone sees it in chat) ───────────────────
-const BOT_KILL_LINES := ["Too easy.", "Next!", "Stay down.", "Get off my map!", "Nice try.",
-	"Boom.", "Who's next?", "Sit.", "That's one.", "Should've jetted.", "gg ez", "Reload that."]
-const BOT_DEATH_LINES := ["Lucky shot!", "I'll be back.", "Lag!", "Ugh...", "Not again!",
-	"Respawning angry.", "Camper!", "Hax.", "You got lucky.", "Ow."]
-var _bot_chat_cd: Dictionary = {}   # bot name -> msec of last line
-
-
-func _is_bot_name(n: String) -> bool:
-	for b in _live_bots():
-		if str(b.get("display_name")) == n:
-			return true
-	for b in _bots_by_id.values():
-		if is_instance_valid(b) and str(b.get("display_name")) == n:
-			return true
-	return n.begins_with("Bot ") or n.begins_with("Red Bot") or n.begins_with("Blue Bot")
-
-
-func _maybe_bot_chatter(killer: String, victim: String) -> void:
-	if not Settings.bot_chatter or killer == "" or killer == victim:
-		return
-	var speaker := ""
-	var lines: Array = []
-	# Mostly react to humans: bots trash-talk the player they killed and
-	# complain when a player gets them; bot-vs-bot stays quieter.
-	var human_involved: bool = not _is_bot_name(killer) or not _is_bot_name(victim)
-	var chance := 0.35 if human_involved else 0.06
-	if randf() > chance:
-		return
-	if _is_bot_name(killer) and (randf() < 0.6 or not _is_bot_name(victim)):
-		speaker = killer
-		lines = BOT_KILL_LINES
-	elif _is_bot_name(victim):
-		speaker = victim
-		lines = BOT_DEATH_LINES
-	if speaker == "":
-		return
-	var now := Time.get_ticks_msec()
-	if now - int(_bot_chat_cd.get(speaker, -100000)) < 12000:
-		return
-	_bot_chat_cd[speaker] = now
-	var msg: String = str(lines[randi() % lines.size()])
-	net_bot_chat(speaker, msg)
-	if Net.is_networked() and multiplayer.has_multiplayer_peer():
-		for pid in _ready_peers.keys():
-			rpc_id(int(pid), "net_bot_chat", speaker, msg)
+	_net._schedule_peer_respawn(peer_id, t)
 
 
 @rpc("authority", "call_local", "reliable")
 func net_bot_chat(author: String, msg: String) -> void:
-	if hud != null and hud.has_method("post_chat"):
-		hud.post_chat(author, msg.left(80), false)
+	_bots.net_bot_chat(author, msg)
 
 
 @rpc("authority", "call_remote", "reliable")
 func net_stats_sync(stats: Dictionary) -> void:
-	if typeof(stats) == TYPE_DICTIONARY:
-		player_stats = stats.duplicate(true)
-
-
-# Rocket / grenade sync (see rocket.gd _net_send). Only the projectile's
-# authority may drive it; unknown names (already exploded here, or spawned
-# before we loaded) are ignored.
-const _PROJ_METHODS := ["net_projectile_state", "net_explode", "net_consume"]
+	_net.net_stats_sync(stats)
 
 
 @rpc("any_peer", "call_remote", "reliable")
 func net_proj(node_name: String, method: String, args: Array) -> void:
-	if not (method in _PROJ_METHODS) or node_name.contains("/") or node_name.contains(".."):
-		return
-	var n := get_node_or_null(NodePath(node_name))
-	if n == null or not n.has_method(method):
-		return
-	if multiplayer.get_remote_sender_id() != n.get_multiplayer_authority():
-		return
-	Net.proj_msgs_seen += 1
-	n.callv(method, args)
+	_net.net_proj(node_name, method, args)
 
 
 func ready_peer_ids() -> Array:
-	return _ready_peers.keys()
-
-
-# Clients learn which peers have loaded the match (host pushes the list on
-# every ack / disconnect) so their own projectiles only address those.
-var _client_ready_list: Array = []
-
-
-func _push_ready_list() -> void:
-	if not Net.is_host():
-		return
-	var ids: Array = _ready_peers.keys()
-	for pid in ids:
-		rpc_id(int(pid), "net_ready_list", ids)
+	return _net.ready_peer_ids()
 
 
 @rpc("authority", "reliable")
 func net_ready_list(ids: Array) -> void:
-	_client_ready_list = ids
+	_net.net_ready_list(ids)
 
 
 func client_send_peer_ids() -> Array:
-	var me := multiplayer.get_unique_id()
-	var out: Array = [1]
-	for pid in _client_ready_list:
-		if int(pid) != me and int(pid) != 1:
-			out.append(int(pid))
-	return out
+	return _net.client_send_peer_ids()
 
 
-## Host broadcast that only reaches peers whose Main scene exists
-## (_connected_peers, set in _handle_client_ready). A plain rpc() also hits
-## peers still loading the match, which log "Node not found: Main" and drop
-## the packet. The joiner gets a full snapshot on ready anyway. `local`
-## mirrors call_local. Non-host callers fall back to a plain rpc().
 func bcast(method: StringName, args: Array = [], local: bool = false) -> void:
-	if not Net.is_networked() or not multiplayer.has_multiplayer_peer():
-		if local:
-			callv(method, args)
-		return
-	if not Net.is_host():
-		callv("rpc", [method] + args)
-		return
-	if local:
-		callv(method, args)
-	var me := multiplayer.get_unique_id()
-	for pid in _connected_peers.keys():
-		if int(pid) != me and multiplayer.get_peers().has(int(pid)):
-			callv("rpc_id", [int(pid), method] + args)
+	_net.bcast(method, args, local)
 
 
 func _handle_client_ready(sender_id: int, joiner_name: String = "", client_version: String = "", token: String = "") -> void:
-	if not Net.is_host():
-		return
-	var sender := sender_id
-	# One ready per connection — a repeat call used to be a free respawn/rename.
-	if _connected_peers.has(sender):
-		return
-	# Version handshake: mismatched builds desync maps/nav/RPCs in odd ways, so
-	# refuse them with a readable reason instead.
-	var host_version := str(ProjectSettings.get_setting("application/config/version", ""))
-	if client_version != host_version:
-		rpc_id(sender, "net_reject", "Version mismatch: host %s, you %s" % [host_version, client_version if client_version != "" else "(old build)"])
-		get_tree().create_timer(0.5).timeout.connect(func() -> void:
-			if multiplayer.has_multiplayer_peer() and multiplayer.multiplayer_peer is ENetMultiplayerPeer:
-				(multiplayer.multiplayer_peer as ENetMultiplayerPeer).disconnect_peer(sender))
-		return
-	# Remember the joiner's chosen display name (sanitized, unique) so
-	# _spawn_networked_player uses it instead of "Player N". Duplicate names
-	# broke kill credit, spawn protection and Gun Game rungs (all name-keyed).
-	# Room for a clan tag ("«TAG» "); square brackets become round so a name
-	# can't inject rich-text markup into everyone's kill feed / scoreboard.
-	var clean_name: String = str(joiner_name).strip_edges().replace("[", "(").replace("]", ")").left(32)
-	if clean_name == "":
-		clean_name = "Player %d" % sender
-	# Rejoin after a drop: the host may not have timed the old connection out
-	# yet. Same name from the same address = the same player coming back, so
-	# retire the stale peer now (keeps their name, score and team).
-	var stale := _stale_peer_for(sender, clean_name, token)
-	if token != "":
-		_peer_tokens[sender] = token
-	if stale > 0:
-		_on_net_peer_disconnected(stale)
-		if multiplayer.multiplayer_peer is ENetMultiplayerPeer:
-			(multiplayer.multiplayer_peer as ENetMultiplayerPeer).disconnect_peer(stale, true)
-	_peer_names[sender] = _unique_display_name(clean_name, sender)
-	# Mark the peer as able to receive reliable spawn RPCs BEFORE we mirror — any
-	# host-initiated spawn between now and net_spawn_ack still needs to reach
-	# this peer, otherwise it'd be permanently invisible (#84).
-	_connected_peers[sender] = true
-	# #97: send the Gun Game rung snapshot FIRST so the spawn RPCs below read
-	# from a populated _gg_levels. Previously the joiner spawned replicas at
-	# rung 0 and only self-healed on the next kill.
-	if Settings.game_mode == Settings.MODE_GG:
-		rpc_id(sender, "net_gg_state_sync", _gg_levels)
-	# tell the new peer about all currently living players
-	for existing_id in _players_by_id.keys():
-		var p = _players_by_id[existing_id]
-		if not is_instance_valid(p) or bool(p.get("dead")):
-			continue   # dead husks respawn through the normal broadcast
-		rpc_id(sender, "net_spawn_player", existing_id, p.position, p.display_name, int(p.team))
-		p.rpc_id(sender, "net_cosmetics", p.cosmetics)
-	# Mirror every live bot to the joining peer so they see the current roster
-	# (dedicated server pre-populates before any client connects — issue #55).
-	for bid in _bots_by_id.keys():
-		var b = _bots_by_id[bid]
-		if not is_instance_valid(b):
-			continue
-		rpc_id(sender, "net_spawn_bot", int(bid), b.position, int(b.team), str(b.display_name), str(b.loadout), b.cosmetics)
-	# Mirror every live bonus box (#78) so the joiner sees the same crates.
-	for bid in _bonus_boxes.keys():
-		var box = _bonus_boxes[bid]
-		if not is_instance_valid(box):
-			continue
-		rpc_id(sender, "net_bonus_spawn", int(bid), box.position, str(box.get("bonus_kind")))
-	# Buggies (v1.19): where they are, their health, who's in them.
-	for vid in _vehicles.keys():
-		var v = _vehicles[vid]
-		if not is_instance_valid(v):
-			continue
-		rpc_id(sender, "net_vehicle_spawn", int(vid), v.get("spawn_pos"), (v as Node2D).global_position, float(v.get("hp")), bool(v.get("alive")), str(v.get("kind")))
-		var seats: Array = v.get("seats")
-		for i in seats.size():
-			if not is_instance_valid(seats[i]):
-				continue
-			if seats[i].get("bot_id") != null:
-				rpc_id(sender, "net_vehicle_seat_bot", int(vid), i, int(seats[i].get("bot_id")), true)
-			else:
-				rpc_id(sender, "net_vehicle_seat", int(vid), i, int(seats[i].get_multiplayer_authority()), true)
-	rpc_id(sender, "net_stats_sync", player_stats)
-	# then spawn a body for the new peer on everyone
-	_spawn_networked_player(sender)
-	if ranked != null:
-		ranked.player_joined(sender)
-	Net.heartbeat_soon()
-	if _bot_fill_active():
-		call_deferred("_reconcile_bots")
-	# NOTE: _ready_peers[sender] is set only when the client acks the spawn (net_spawn_ack).
-	# Otherwise net_state (unreliable_ordered) can beat the reliable spawn RPC and error out.
-
-
-func _peer_address(id: int) -> String:
-	if not (multiplayer.multiplayer_peer is ENetMultiplayerPeer):
-		return ""
-	var pc := (multiplayer.multiplayer_peer as ENetMultiplayerPeer).get_peer(id)
-	return pc.get_remote_address() if pc != null else ""
-
-
-var _peer_tokens: Dictionary = {}   # host: peer id -> the client's session token
-
-
-func _stale_peer_for(sender: int, want: String, token: String) -> int:
-	var addr := _peer_address(sender)
-	if addr == "" or token == "":
-		return 0
-	for pid in _peer_names.keys():
-		if int(pid) != sender and str(_peer_names[pid]) == want and _peer_address(int(pid)) == addr \
-				and str(_peer_tokens.get(pid, "")) == token:
-			return int(pid)
-	return 0
-
-
-func _unique_display_name(want: String, for_peer: int) -> String:
-	var taken := {}
-	if not Net.is_dedicated:
-		taken[Settings.display_name()] = true
-	for pid in _peer_names.keys():
-		if int(pid) != for_peer:
-			taken[str(_peer_names[pid])] = true
-	for s in get_tree().get_nodes_in_group("soldier"):
-		if is_instance_valid(s):
-			taken[str(s.get("display_name"))] = true
-	var nm := want
-	var n := 2
-	while taken.has(nm):
-		nm = "%s (%d)" % [want, n]
-		n += 1
-	return nm
+	_net._handle_client_ready(sender_id, joiner_name, client_version, token)
 
 
 @rpc("authority", "call_remote", "reliable")
 func net_reject(reason: String) -> void:
-	_leave_to_menu(reason)
+	_net.net_reject(reason)
 
 
 func _on_lost_host() -> void:
-	# A drop (not a kick / reject): the menu offers to rejoin the same game.
-	var ip := Net.last_server_ip
-	var port := Net.last_server_port
-	_leave_to_menu("Lost connection to the host")
-	Net.last_server_ip = ip
-	Net.last_server_port = port
-	Net.rejoin_offer = ip != ""
-
-
-func _leave_to_menu(reason: String) -> void:
-	# Client lost its host (quit / kicked / rejected): back to the menu with a
-	# message instead of silently running single-player logic in a dead match.
-	if Net.disconnected.is_connected(_on_lost_host):
-		Net.disconnected.disconnect(_on_lost_host)
-	Net.leave()
-	Net.status = reason
-	Net.last_disconnect_reason = reason
-	get_tree().paused = false
-	get_tree().call_deferred("change_scene_to_file", "res://scenes/menu.tscn")
+	_net._on_lost_host()
 
 
 @rpc("any_peer", "reliable")
 func net_spawn_ack() -> void:
-	if not Net.is_host():
-		return
-	var sender := multiplayer.get_remote_sender_id()
-	_ready_peers[sender] = true
-	_push_ready_list()
-	# Push the current MatchConfig snapshot (#74) so the joining peer applies
-	# the host's mods / friendly-fire / bot roster immediately instead of
-	# running under its own local Settings until the next admin-menu change.
-	rpc_id(sender, "net_match_config_apply", MatchConfig.to_dict())
-	# Send an immediate pickup snapshot + M2 mount ownership so a late-joiner
-	# sees currently-thrown weapons on the ground and knows which turrets are
-	# already occupied, instead of waiting for the next 10Hz broadcast tick.
-	var arr: Array = []
-	for wp in get_tree().get_nodes_in_group("weapon_pickup"):
-		if not is_instance_valid(wp):
-			continue
-		if int(wp.get("pickup_id")) <= 0:
-			continue
-		# #254 review nit: skip regenerating map slots — a joiner shouldn't
-		# see a ghost the next broadcast tick would immediately despawn.
-		var wp_active = wp.get("active")
-		if wp_active != null and not bool(wp_active):
-			continue
-		arr.append(_bonuses._pickup_entry(wp))
-	# ...and seed the per-peer signature (same builder = same bytes as the
-	# next 10 Hz tick, so it isn't resent, #247 review nit).
-	_pickup_peer_sig[sender] = str(arr)
-	if not arr.is_empty():
-		rpc_id(sender, "net_pickup_state", arr)
-	for m2 in get_tree().get_nodes_in_group("m2_gun"):
-		if not is_instance_valid(m2):
-			continue
-		var op = m2.get("operator")
-		if is_instance_valid(op):
-			rpc_id(sender, "net_m2_mount", int(m2.get("m2_id")), int(op.get_multiplayer_authority()))
-	# #108: hydrate scoreboard / flag / mode state immediately so a joiner
-	# landing during e.g. the winner-display window or with a flag being
-	# carried doesn't render 0-0-0 / flag-at-home for up to a broadcast tick.
-	rpc_id(sender, "net_match_state", scores, time_left, round_active, winner_team, winner_end_t, winner_note, _gg_levels, _gg_kills)
-	if flags.size() > 0:
-		var flag_arr: Array = []
-		for f in flags:
-			if not is_instance_valid(f):
-				flag_arr.append({"pos": Vector2.ZERO, "carrier": 0})
-				continue
-			var cid := 0
-			var carrier: Variant = f.get_meta("carrier") if f.has_meta("carrier") else null
-			if is_instance_valid(carrier):
-				var nm := String(carrier.name)
-				if nm.begins_with("Player_"):
-					cid = int(nm.substr(7))
-			flag_arr.append({"pos": f.position, "carrier": cid})
-		rpc_id(sender, "net_flag_state", flag_arr)
-	var mode: int = Settings.game_mode
-	if mode == Settings.MODE_DOM or mode == Settings.MODE_PM or mode == Settings.MODE_BR:
-		var mp: Dictionary = {}
-		if mode == Settings.MODE_DOM:
-			var dom: Array = []
-			for a in _dom_points:
-				if not is_instance_valid(a):
-					dom.append([0, 0.0, 0])
-					continue
-				dom.append([int(a.get_meta("owner_team", 0)), float(a.get_meta("progress", 0.0)), int(a.get_meta("cap_team", 0))])
-			mp["dom"] = dom
-		elif mode == Settings.MODE_PM:
-			var pm: Array = []
-			for p in get_tree().get_nodes_in_group("point_pickup"):
-				if is_instance_valid(p):
-					pm.append(p.get_meta("spawn_pos", p.global_position))
-			mp["pm"] = pm
-		elif mode == Settings.MODE_BR:
-			mp["br"] = {"c": _br_zone_center, "r": _br_zone_radius}
-		if not mp.is_empty():
-			rpc_id(sender, "net_mode_state", mp)
+	_net.net_spawn_ack()
 
 
 @rpc("authority", "reliable")
 func net_match_config_apply(cfg: Dictionary) -> void:
-	# Thin trampoline to MatchConfig.apply_dict — kept on Main so the RPC target
-	# lives on a scene-node the multiplayer stack always resolves (autoloads
-	# resolve too, but co-locating the match state RPCs here matches the pattern
-	# used by net_match_state / net_flag_state / net_pickup_state).
-	MatchConfig.apply_dict(cfg)
+	_net.net_match_config_apply(cfg)
 
 
 @rpc("authority", "call_local", "reliable")
 func net_match_restart(map_idx: int, mode_idx: int) -> void:
-	# Host-driven full-match restart (#74). Everyone lands on the same map+mode
-	# by updating the shared knobs BEFORE reloading main.tscn — main._ready()
-	# then reads them and rebuilds terrain / spawns cleanly.
-	Net.chosen_map_index = clampi(map_idx, 0, MAPS.size() - 1)
-	Settings.map_index = Net.chosen_map_index
-	Settings.custom_map_path = ""  # networked matches always use built-in maps
-	Net.custom_map_json = ""       # ...and must not rebuild the previous custom map
-	Settings.game_mode = clampi(mode_idx, 0, Net.MODE_NAMES.size() - 1)
-	Settings.save()
-	call_deferred("_do_reload_main")
+	_net.net_match_restart(map_idx, mode_idx)
 
 
 func _exit_tree() -> void:
@@ -2654,138 +1926,32 @@ func _exit_tree() -> void:
 
 
 func _do_reload_main() -> void:
-	get_tree().paused = false
-	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	_net._do_reload_main()
 
 
 @rpc("authority", "call_local", "reliable")
 func net_spawn_player(peer_id: int, spawn_pos: Vector2, display_name: String, assigned_team: int = -1) -> void:
-	if assigned_team >= 0:
-		_peer_team_by_id[peer_id] = assigned_team
-	# Free stale record if this peer had a prior body (e.g., on respawn).
-	if _players_by_id.has(peer_id):
-		var old = _players_by_id[peer_id]
-		if is_instance_valid(old):
-			old.queue_free()
-		_players_by_id.erase(peer_id)
-	# The new body MUST get the exact name "Player_<peer>": every RPC to it is
-	# addressed by that path. A queue_free()d old body is still in the tree
-	# this frame, so add_child silently renamed the newcomer ("@CharacterBody2D@N")
-	# and every later state / shot RPC for it failed ("Node not found") on that
-	# peer. Rename the outgoing body first.
-	var clash := get_node_or_null("Player_%d" % peer_id)
-	if clash != null:
-		clash.name = "Player_%d_gone_%d" % [peer_id, clash.get_instance_id()]
-		if not clash.is_queued_for_deletion():
-			clash.queue_free()
-	var p := player_scene.instantiate()
-	p.name = "Player_%d" % peer_id
-	p.position = spawn_pos
-	p.display_name = display_name
-	# Backward-compat: pre-#22 callers may send no team. In FFA the peer_id acts
-	# as a distinct hostile team; in team modes we resolve via the balancer so a
-	# raw peer id (millions-range) never leaks into team/colour checks (#85).
-	var t: int
-	if assigned_team >= 0:
-		t = assigned_team
-	elif Settings.is_team_mode():
-		t = _assign_team_for_peer(peer_id)
-	else:
-		t = peer_id
-	p.team = t
-	if t == TEAM_BLUE:
-		p.color = Color(0.35, 0.55, 1.0)
-	elif t == TEAM_RED:
-		p.color = preload("res://scripts/team_colors.gd").red()
-	p.set_multiplayer_authority(peer_id)
-	# Gun Game: restore persisted rung on respawn so death doesn't reset progress.
-	if Settings.game_mode == Settings.MODE_GG:
-		p.gg_level = _modes._gg_get(display_name)
-	if peer_id == Net.local_id():
-		_apply_spawn_loadout(p)
-	add_child(p)
-	# Re-apply after add_child so children created in _ready (cam, jet_particles) inherit authority.
-	p.set_multiplayer_authority(peer_id, true)
-	_players_by_id[peer_id] = p
-	if peer_id == Net.local_id():
-		player = p
-		_bind_local_camera(p)
-		if hud:
-			hud.player = p
-		# Wire death signal so MP local respawn goes through _on_player_died — that's
-		# where the spectator kicks in (#75) and the death UI is shown consistently.
-		if not p.died.is_connected(_on_player_died):
-			p.died.connect(_on_player_died)
-		# Respawn happened — cut the spectator cam and hide the "you died" overlay
-		# so the freshly-spawned body's own camera takes over cleanly.
-		_end_spectator()
-		if hud and hud.has_method("_hide_death"):
-			hud._hide_death()
-		# Tell the host our body is spawned locally so it can start sending state.
-		if Net.is_client():
-			rpc_id(1, "net_spawn_ack")
+	_net.net_spawn_player(peer_id, spawn_pos, display_name, assigned_team)
 
 
 @rpc("authority", "call_local", "reliable")
 func net_despawn_player(peer_id: int) -> void:
-	if _players_by_id.has(peer_id):
-		var p = _players_by_id[peer_id]
-		if is_instance_valid(p):
-			# Same inert husk as a death: packets the leaver sent just before
-			# going still address this node on the other peers.
-			if Net.is_networked() and p.has_method("_become_husk"):
-				p.dead = true
-				p._become_husk()
-				p.display_name = ""   # free the name for a rejoin right away
-				get_tree().create_timer(1.5).timeout.connect(p.queue_free)
-			else:
-				p.queue_free()
-		_players_by_id.erase(peer_id)
-	if peer_id == Net.local_id():
-		player = null
+	_net.net_despawn_player(peer_id)
 
 
 @rpc("authority", "call_local", "reliable")
 func net_objective_event(kind: String, team: int, who: String) -> void:
-	objective.emit(kind, team, who)
-	if kind == "capture" or kind == "point":
-		_modes._stat_add(who, "c", 1)
-	if kind == "capture" and is_instance_valid(player) and who == str(player.display_name):
-		Stats.record_event("capture")
-	if hud != null and hud.has_method("announce_objective"):
-		hud.announce_objective(kind, team, who)
-	Sfx.objective(kind)
+	_net.net_objective_event(kind, team, who)
 
 
 @rpc("authority", "call_local", "reliable")
 func net_kill_feed(killer_name: String, victim_name: String, weapon_name: String, killer_team: int, victim_team: int) -> void:
-	kill.emit(killer_name, victim_name, weapon_name, killer_team, victim_team)
+	_net.net_kill_feed(killer_name, victim_name, weapon_name, killer_team, victim_team)
 
 
-# Team radio (v1.18). Same sender validation as net_chat; only the sender's
-# team hears the voice line and sees the chat line.
 @rpc("any_peer", "call_local", "reliable")
 func net_radio(author: String, code: String, sender_team: int) -> void:
-	var text: String = RadioMenu.label_for(code)
-	if text == "":
-		return
-	if Net.is_networked():
-		var sender: int = multiplayer.get_remote_sender_id()
-		if sender > 0 and sender != multiplayer.get_unique_id():
-			if _players_by_id.has(sender) and is_instance_valid(_players_by_id[sender]):
-				author = str(_players_by_id[sender].display_name)
-				sender_team = int(_players_by_id[sender].team)
-			elif _peer_team_by_id.has(sender):
-				author = str(_peer_names.get(sender, "Player %d" % sender))
-				sender_team = int(_peer_team_by_id[sender])
-			else:
-				return
-	radio_count += 1
-	if not is_instance_valid(player) or int(player.team) != sender_team:
-		return
-	Sfx.radio(code)
-	if hud != null and hud.has_method("post_radio"):
-		hud.post_radio(author, text)
+	_net.net_radio(author, code, sender_team)
 
 
 # Up / mid / down relative to the two flag bases (Soldat's convention).
@@ -2808,53 +1974,9 @@ func radio_dir(pos: Vector2) -> String:
 	return "mid"
 
 
-# A bot on the robbed team calls out the enemy flag carrier (host / SP only).
-func _bot_radio_efc(robbed_team: int, carrier: Node) -> void:
-	var callers: Array = []
-	for b in get_tree().get_nodes_in_group("soldier"):
-		if is_instance_valid(b) and b.get("bot_id") != null and b.get("dead") != true and int(b.get("team")) == robbed_team:
-			callers.append(b)
-	if callers.is_empty():
-		return
-	var bot_id: int = callers[randi() % callers.size()].get_instance_id()
-	var carrier_id: int = carrier.get_instance_id()
-	# Ids, not node captures: a lambda holding a node that's freed before the
-	# timer fires logs "Lambda capture ... was freed".
-	get_tree().create_timer(0.7).timeout.connect(func() -> void:
-		var bot: Object = instance_from_id(bot_id)
-		var carrier_n: Object = instance_from_id(carrier_id)
-		if bot == null or carrier_n == null or not is_instance_valid(bot) or not is_instance_valid(carrier_n) or bot.get("dead") == true:
-			return
-		var code := "efc_" + radio_dir((carrier_n as Node2D).global_position)
-		bcast("net_radio", [str(bot.get("display_name")), code, robbed_team], true))
-
-
 @rpc("any_peer", "call_local", "reliable")
 func net_chat(author: String, msg: String, scope: String, sender_team: int) -> void:
-	# #105: never trust client-supplied author / sender_team. In a networked
-	# match, resolve both from the sender's peer_id so a client can't
-	# impersonate other players or leak team chat across teams. Host-local
-	# announcer messages (see hud.post_chat calls elsewhere) bypass this RPC.
-	msg = msg.left(200)
-	if Net.is_networked():
-		var sender: int = multiplayer.get_remote_sender_id()
-		if sender > 0 and sender != multiplayer.get_unique_id():
-			# Resolve from the sender's registered identity even while dead —
-			# otherwise a dead client could post as anyone / read-leak team chat.
-			if _players_by_id.has(sender) and is_instance_valid(_players_by_id[sender]):
-				author = str(_players_by_id[sender].display_name)
-				sender_team = int(_players_by_id[sender].team)
-			elif _peer_team_by_id.has(sender):
-				author = str(_peer_names.get(sender, "Player %d" % sender))
-				sender_team = int(_peer_team_by_id[sender])
-			else:
-				return
-	# Team chat is filtered locally so opponents don't see it. Global chat is
-	# visible to everyone. Route through the HUD's chat feed.
-	if scope == "team" and is_instance_valid(player) and int(player.team) != sender_team:
-		return
-	if hud != null and hud.has_method("post_chat"):
-		hud.post_chat(author, msg, scope == "team")
+	_net.net_chat(author, msg, scope, sender_team)
 
 
 # ── Match / score / round ─────────────────────────────
@@ -2899,31 +2021,6 @@ var peer_pings: Dictionary = {}   # display name -> ms
 var _ping_t := 0.0
 
 
-var _recent_t := 5.0
-
-
-# Friends list: remember the people you play with online (newest first, 40
-# kept, favourites never dropped). Saved at most once a minute.
-func _tick_recent_players(delta: float) -> void:
-	if not Net.is_networked():
-		return
-	_recent_t -= delta
-	if _recent_t > 0.0:
-		return
-	_recent_t = 20.0
-	var me := Settings.display_name()
-	var now := int(Time.get_unix_time_from_system())
-	var seen: Array = []
-	for pid in _players_by_id.keys():
-		var p = _players_by_id[pid]
-		if is_instance_valid(p) and str(p.display_name) != me:
-			seen.append(str(p.display_name))
-	if seen.is_empty():
-		return
-	remember_players(seen, now)
-	Settings.save()
-
-
 static func remember_players(names: Array, now: int) -> void:
 	var list: Array = Settings.recent_players
 	for nm in names:
@@ -2948,37 +2045,17 @@ static func remember_players(names: Array, now: int) -> void:
 	Settings.recent_players = keep
 
 
-func _tick_pings(delta: float) -> void:
-	if not Net.is_networked() or not Net.is_host():
-		return
-	_ping_t -= delta
-	if _ping_t > 0.0:
-		return
-	_ping_t = 2.0
-	var enet := multiplayer.multiplayer_peer as ENetMultiplayerPeer
-	if enet == null:
-		return
-	var out := {}
-	if is_instance_valid(player):
-		out[str(player.display_name)] = 0
-	for pid in _peer_names.keys():
-		var pc := enet.get_peer(int(pid))
-		if pc != null:
-			out[str(_peer_names[pid])] = int(pc.get_statistic(ENetPacketPeer.PEER_ROUND_TRIP_TIME))
-	bcast("net_pings", [out], true)
-
-
 @rpc("authority", "call_remote", "unreliable")
 func net_pings(table: Dictionary) -> void:
-	peer_pings = table
+	_net.net_pings(table)
 
 
 func _process(delta: float) -> void:
 	_tick_ambient_fx()
 	if replay_mode:
 		return
-	_tick_pings(delta)
-	_tick_recent_players(delta)
+	_net._tick_pings(delta)
+	_net._tick_recent_players(delta)
 	# Vote timer + cooldown ticks — before the client early-return so the vote
 	# countdown reads smoothly on every peer between host state broadcasts (#77).
 	_votes._tick_vote(delta)
@@ -3036,7 +2113,7 @@ func _process(delta: float) -> void:
 		_match_sync_cd -= delta
 		if _match_sync_cd <= 0.0:
 			_match_sync_cd = 1.0 / MATCH_SYNC_HZ
-			_broadcast_match_state()
+			_net._broadcast_match_state()
 			if vote_active:
 				_votes._broadcast_vote_state()
 		# Flag positions + carriers stream faster so grabs/drops feel snappy.
@@ -3044,7 +2121,7 @@ func _process(delta: float) -> void:
 			_flag_sync_cd -= delta
 			if _flag_sync_cd <= 0.0:
 				_flag_sync_cd = 1.0 / FLAG_SYNC_HZ
-				_broadcast_flag_state()
+				_net._broadcast_flag_state()
 		# Pickup physics stream at 10 Hz so thrown weapons + rambo bow stay in sync.
 		_pickup_sync_cd -= delta
 		if _pickup_sync_cd <= 0.0:
@@ -3057,7 +2134,7 @@ func _process(delta: float) -> void:
 		_mode_sync_cd -= delta
 		if _mode_sync_cd <= 0.0:
 			_mode_sync_cd = 1.0 / MODE_SYNC_HZ
-			_broadcast_mode_state()
+			_net._broadcast_mode_state()
 		# Bot state (pos/vel/facing/health/loadout/dead) streams at 20 Hz — matches
 		# the player net_state cadence so bot bodies read smoothly on clients (#55).
 		if not _bots_by_id.is_empty():
@@ -3126,99 +2203,14 @@ func net_round_reset() -> void:
 	_modes.net_round_reset()
 
 
-func _broadcast_match_state() -> void:
-	if not Net.is_host():
-		return
-	for pid in _ready_peers.keys():
-		rpc_id(int(pid), "net_match_state", scores, time_left, round_active, winner_team, winner_end_t, winner_note, _gg_levels, _gg_kills)
-
-
 @rpc("authority", "reliable")
 func net_match_state(new_scores: Dictionary, tl: float, active: bool, winner: int, we: float, note: String = "", gg_ranks: Dictionary = {}, gg_kills: Dictionary = {}) -> void:
-	scores = new_scores.duplicate(true)
-	time_left = tl
-	round_active = active
-	winner_team = winner
-	winner_end_t = we
-	winner_note = note
-	# #91 / #97: mirror GG ladder + kills so the scoreboard reads live on the
-	# client and joining peers see the correct rung without waiting for the
-	# next kill event. Empty dicts (non-GG modes) are a no-op.
-	if not gg_ranks.is_empty():
-		_gg_levels = gg_ranks.duplicate(true)
-	_gg_kills = gg_kills.duplicate(true)
-
-
-func _broadcast_mode_state() -> void:
-	if not Net.is_host():
-		return
-	if _ready_peers.is_empty():
-		return
-	var mode: int = Settings.game_mode
-	# Only bundle state that's relevant to the current mode — reduces payload
-	# for DM/TDM/CTF etc. where none of this applies.
-	var payload: Dictionary = {}
-	if mode == Settings.MODE_DOM:
-		var dom: Array = []
-		for a in _dom_points:
-			if not is_instance_valid(a):
-				dom.append([0, 0.0, 0])
-				continue
-			dom.append([int(a.get_meta("owner_team", 0)), float(a.get_meta("progress", 0.0)), int(a.get_meta("cap_team", 0))])
-		payload["dom"] = dom
-	elif mode == Settings.MODE_PM:
-		var pm: Array = []
-		for p in get_tree().get_nodes_in_group("point_pickup"):
-			if is_instance_valid(p):
-				pm.append(p.get_meta("spawn_pos", p.global_position))
-		payload["pm"] = pm
-	elif mode == Settings.MODE_BR:
-		payload["br"] = {"c": _br_zone_center, "r": _br_zone_radius}
-	if payload.is_empty():
-		return
-	for pid in _ready_peers.keys():
-		rpc_id(int(pid), "net_mode_state", payload)
+	_net.net_match_state(new_scores, tl, active, winner, we, note, gg_ranks, gg_kills)
 
 
 @rpc("authority", "unreliable_ordered")
 func net_mode_state(payload: Dictionary) -> void:
-	# Client-side apply of host-authoritative mode state. Runs on client only —
-	# host mutates these directly in its own ticks and short-circuits its net_
-	# broadcast for itself.
-	if not Net.is_networked() or Net.is_host():
-		return
-	if payload.has("dom"):
-		var dom: Array = payload["dom"]
-		for i in mini(dom.size(), _dom_points.size()):
-			var a = _dom_points[i]
-			if not is_instance_valid(a):
-				continue
-			var entry: Array = dom[i]
-			a.set_meta("owner_team", int(entry[0]))
-			a.set_meta("progress", float(entry[1]))
-			a.set_meta("cap_team", int(entry[2]))
-	if payload.has("pm"):
-		var alive: Array = payload["pm"]
-		var alive_set: Dictionary = {}
-		for pos in alive:
-			alive_set[str(pos)] = true
-		var have_set: Dictionary = {}
-		for p in get_tree().get_nodes_in_group("point_pickup"):
-			if not is_instance_valid(p):
-				continue
-			var key: String = str(p.get_meta("spawn_pos", p.global_position))
-			if not alive_set.has(key):
-				p.queue_free()
-			else:
-				have_set[key] = true
-		# Spawn any pickup we don't have locally (host respawned it after cooldown).
-		for pos in alive:
-			if not have_set.has(str(pos)):
-				_modes._spawn_point_pickup(pos)
-	if payload.has("br"):
-		var br: Dictionary = payload["br"]
-		_br_zone_center = br.get("c", _br_zone_center)
-		_br_zone_radius = float(br.get("r", _br_zone_radius))
+	_net.net_mode_state(payload)
 
 
 # ── Vote system (#77) ─────────────────────────────────
@@ -3309,28 +2301,6 @@ func net_bonus_despawn(bid: int) -> void:
 	_bonuses.net_bonus_despawn(bid)
 
 
-func _broadcast_flag_state() -> void:
-	# Each flag: {pos, carrier peer_id (0 = none)}. Only sent to acked peers.
-	var arr: Array = []
-	for f in flags:
-		if not is_instance_valid(f):
-			arr.append({"pos": Vector2.ZERO, "carrier": 0})
-			continue
-		var cid := 0
-		var carrier: Variant = f.get_meta("carrier") if f.has_meta("carrier") else null
-		if is_instance_valid(carrier):
-			var nm := String(carrier.name)
-			if nm.begins_with("Player_"):
-				cid = int(nm.substr(7))
-			elif int(carrier.get("bot_id")) > 0:
-				# Bots ride as negative ids so clients can attach the flag to the
-				# bot replica (smooth carried visual) instead of an 8 Hz dot.
-				cid = -int(carrier.get("bot_id"))
-		arr.append({"pos": f.position, "carrier": cid})
-	for pid in _ready_peers.keys():
-		rpc_id(int(pid), "net_flag_state", arr)
-
-
 func next_pickup_id() -> int:
 	return _bonuses.next_pickup_id()
 
@@ -3342,25 +2312,7 @@ func net_pickup_state(arr: Array) -> void:
 
 @rpc("authority", "reliable")
 func net_flag_state(arr: Array) -> void:
-	for i in arr.size():
-		if i >= flags.size():
-			break
-		var f = flags[i]
-		if not is_instance_valid(f):
-			continue
-		var entry: Dictionary = arr[i]
-		f.position = entry.get("pos", f.position)
-		var cid := int(entry.get("carrier", 0))
-		if cid > 0 and _players_by_id.has(cid):
-			var p = _players_by_id[cid]
-			if is_instance_valid(p):
-				f.set_meta("carrier", p)
-			else:
-				f.set_meta("carrier", null)
-		elif cid < 0 and _bots_by_id.has(-cid) and is_instance_valid(_bots_by_id[-cid]):
-			f.set_meta("carrier", _bots_by_id[-cid])
-		else:
-			f.set_meta("carrier", null)
+	_net.net_flag_state(arr)
 
 
 # ── Bot replication (issue #55) ───────────────────────
@@ -3369,160 +2321,27 @@ func net_flag_state(arr: Array) -> void:
 # to mirror the player net_state cadence.
 
 func _broadcast_bot_state() -> void:
-	if _ready_peers.is_empty():
-		return
-	# #102: positional Array-of-Arrays instead of Dictionary-of-strings. Dropping
-	# the 14 key strings per entry shrinks each bot from ~365 B → ~140 B, keeping
-	# the unreliable_ordered packet under the ENet MTU (1392) for the common 4-8
-	# bot case. Field order MUST match net_bot_state below.
-	# Layout: [id, pos, vel, facing, jet, health, dead, loadout, ammo,
-	#         reloading, muzzle_t, ceasefire, using_secondary, secondary_ammo]
-	var arr: Array = []
-	for bid in _bots_by_id.keys():
-		var b = _bots_by_id[bid]
-		if not is_instance_valid(b):
-			continue
-		arr.append([
-			int(bid),
-			b.position,
-			b.velocity,
-			float(b.facing),
-			bool(b.jet_on),
-			float(b.health),
-			bool(b.dead),
-			str(b.loadout),
-			int(b.ammo),
-			bool(b.reloading),
-			float(b.muzzle_t),
-			float(b.ceasefire_t),
-			bool(b.using_secondary),
-			int(b.secondary_ammo),
-		])
-	if arr.is_empty():
-		return
-	# Split across ticks if bot_count -1 (use every map spawn) yields more than
-	# BOT_STATE_CHUNK_MAX bots — safeguards against a giant map pushing us back
-	# over the MTU. 8/chunk × ~140 B ≈ 1120 B < 1392 B.
-	for pid in _ready_peers.keys():
-		var i: int = 0
-		while i < arr.size():
-			var end: int = min(i + BOT_STATE_CHUNK_MAX, arr.size())
-			rpc_id(int(pid), "net_bot_state", arr.slice(i, end))
-			i = end
+	_bots._broadcast_bot_state()
 
 
 @rpc("authority", "reliable")
 func net_spawn_bot(bot_id: int, spawn_pos: Vector2, team: int, display_name: String, loadout: String, cosmetics: Dictionary) -> void:
-	# Free any stale replica with the same id (bot respawn re-uses ids? no — we mint
-	# a fresh id per spawn — but a peer that missed the despawn should still recover).
-	if _bots_by_id.has(bot_id):
-		var old = _bots_by_id[bot_id]
-		if is_instance_valid(old):
-			old.queue_free()
-		_bots_by_id.erase(bot_id)
-	# Same exact-name rule as players (see net_spawn_player): a duplicate spawn
-	# (mirror + broadcast) must not leave the live replica auto-renamed.
-	var clash := get_node_or_null("Bot_%d" % bot_id)
-	if clash != null:
-		clash.name = "Bot_%d_gone_%d" % [bot_id, clash.get_instance_id()]
-		if not clash.is_queued_for_deletion():
-			clash.queue_free()
-	var b := bot_scene.instantiate()
-	b.name = "Bot_%d" % bot_id
-	b.position = spawn_pos
-	b.team = team
-	b.display_name = display_name
-	b.loadout = loadout
-	b.bot_id = bot_id
-	# Copy cosmetics so the client bot reads the same outfit as the host's — bot.gd's
-	# _ready only randomises when cosmetics is empty (see bot.gd:89).
-	if cosmetics != null and not cosmetics.is_empty():
-		b.cosmetics = cosmetics.duplicate(true)
-	b.color = bot_color_for_team(team)
-	# Host (peer 1) owns the bot's AI + damage authority. Non-authority replicas
-	# skip _physics_process and are driven by net_bot_state (see bot.gd guards).
-	b.set_multiplayer_authority(1)
-	# Gun Game: mirror the client's cached rung so the newly-spawned replica
-	# reads the right weapon in-hand even before the first net_bot_state tick.
-	if Settings.game_mode == Settings.MODE_GG:
-		b.gg_level = _modes._gg_get(display_name)
-	add_child(b)
-	b.set_multiplayer_authority(1, true)
-	_bots_by_id[bot_id] = b
+	_bots.net_spawn_bot(bot_id, spawn_pos, team, display_name, loadout, cosmetics)
 
 
 @rpc("authority", "reliable")
 func net_bot_despawn(bot_id: int) -> void:
-	if not _bots_by_id.has(bot_id):
-		return
-	var b = _bots_by_id[bot_id]
-	_bots_by_id.erase(bot_id)
-	if is_instance_valid(b):
-		b.queue_free()
+	_bots.net_bot_despawn(bot_id)
 
 
 @rpc("authority", "reliable")
 func net_bot_die(bot_id: int) -> void:
-	if not _bots_by_id.has(bot_id):
-		return
-	var b = _bots_by_id[bot_id]
-	_bots_by_id.erase(bot_id)
-	if is_instance_valid(b) and b.has_method("die_replica"):
-		b.die_replica()
-	elif is_instance_valid(b):
-		b.queue_free()
+	_bots.net_bot_die(bot_id)
 
 
 @rpc("authority", "call_remote", "unreliable_ordered")
 func net_bot_state(arr: Array) -> void:
-	# #102: entries are now positional Arrays (see _broadcast_bot_state).
-	# Defend against malformed payloads — a corrupt / crafted packet used to
-	# crash the client on the raw assignments (#86.1). Skip entries that aren't
-	# 14-element arrays; guard each field so an incorrect type keeps the previous
-	# value instead of forcing an invalid assignment.
-	for entry in arr:
-		if typeof(entry) != TYPE_ARRAY or entry.size() < 14:
-			continue
-		var id: int = int(entry[0])
-		if not _bots_by_id.has(id):
-			continue
-		var b = _bots_by_id[id]
-		if not is_instance_valid(b):
-			continue
-		var pos_v: Variant = entry[1]
-		var vel_v: Variant = entry[2]
-		if typeof(vel_v) == TYPE_VECTOR2:
-			b.velocity = vel_v
-		if typeof(pos_v) == TYPE_VECTOR2:
-			b.net_apply_pos(pos_v, b.velocity)
-		var facing_v: Variant = entry[3]
-		if typeof(facing_v) == TYPE_FLOAT or typeof(facing_v) == TYPE_INT:
-			b.facing = float(facing_v)
-		b.jet_on = bool(entry[4])
-		var health_v: Variant = entry[5]
-		if typeof(health_v) == TYPE_FLOAT or typeof(health_v) == TYPE_INT:
-			b.health = float(health_v)
-		b.dead = bool(entry[6])
-		var loadout_v: Variant = entry[7]
-		if typeof(loadout_v) == TYPE_STRING or typeof(loadout_v) == TYPE_STRING_NAME:
-			b.loadout = String(loadout_v)
-		var ammo_v: Variant = entry[8]
-		if typeof(ammo_v) == TYPE_INT or typeof(ammo_v) == TYPE_FLOAT:
-			b.ammo = int(ammo_v)
-		b.reloading = bool(entry[9])
-		var mz_v: Variant = entry[10]
-		if typeof(mz_v) == TYPE_FLOAT or typeof(mz_v) == TYPE_INT:
-			b.muzzle_t = float(mz_v)
-		var cf_v: Variant = entry[11]
-		if typeof(cf_v) == TYPE_FLOAT or typeof(cf_v) == TYPE_INT:
-			b.ceasefire_t = float(cf_v)
-		# #79: apply secondary state so the client-side replica draws the same
-		# in-hand weapon as the host (physics-side ammo tracking is irrelevant
-		# on the replica because _physics_process is authority-gated).
-		b.using_secondary = bool(entry[12])
-		var sa_v: Variant = entry[13]
-		if typeof(sa_v) == TYPE_INT or typeof(sa_v) == TYPE_FLOAT:
-			b.secondary_ammo = int(sa_v)
+	_bots.net_bot_state(arr)
 
 
 # ── Vehicles (v1.19) ──────────────────────────────────
