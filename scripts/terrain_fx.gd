@@ -28,19 +28,26 @@ func build() -> void:
 	var depth := 26.0 if hi else 18.0
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 1234567
-	for e in _edges():
+	var edges := _edges()
+	var joined := _joined_normals(edges)
+	for ei in edges.size():
+		var e: Array = edges[ei]
 		var a: Vector2 = e[0]
 		var b: Vector2 = e[1]
 		var nrm: Vector2 = e[2]
 		var L := a.distance_to(b)
 		var mid := (a + b) * 0.5
 		var inw := -nrm
+		var ia: Vector2 = -(joined[ei][0] as Vector2)
+		var ib: Vector2 = -(joined[ei][1] as Vector2)
+		var ra: float = joined[ei][2]
+		var rb: float = joined[ei][3]
 		edges_built += 1
 		var up := clampf(-nrm.y, 0.0, 1.0)
 		var down := clampf(nrm.y, 0.0, 1.0)
 		# Ambient-occlusion band.
 		var ao := 0.30 + down * 0.18
-		_quad(verts, cols, a, b, b + inw * depth, a + inw * depth,
+		_quad(verts, cols, a, b, b + ib * minf(depth, rb), a + ia * minf(depth, ra),
 			Color(0, 0, 0, ao), Color(0, 0, 0, ao), Color(0, 0, 0, 0), Color(0, 0, 0, 0))
 		if up > 0.35:
 			var ground := _sample(mid + inw * 6.0)
@@ -48,9 +55,9 @@ func build() -> void:
 			rim.a = 0.55 * up
 			var rim0 := rim
 			rim0.a = 0.0
-			_quad(verts, cols, a, b, b + inw * 6.0, a + inw * 6.0, rim, rim, rim0, rim0)
+			_quad(verts, cols, a, b, b + ib * minf(6.0, rb), a + ia * minf(6.0, ra), rim, rim, rim0, rim0)
 			var hl := Color(1, 1, 0.92, 0.35 * up)
-			_quad(verts, cols, a, b, b + inw * 1.6, a + inw * 1.6, hl, hl, hl, hl)
+			_quad(verts, cols, a, b, b + ib * minf(1.6, rb), a + ia * minf(1.6, ra), hl, hl, hl, hl)
 			if hi and grass and up > 0.55 and _is_green(ground):
 				_grass(verts, cols, a, b, nrm, ground, L, up, rng)
 	if verts.is_empty():
@@ -109,6 +116,43 @@ func _edges() -> Array:
 			if _inside_other((a + b) * 0.5 + nrm * 3.0, pc):
 				continue
 			out.append([a, b, nrm])
+	return out
+
+
+## #273: band normals per edge END. Where exactly two outline edges meet, both
+## use their averaged normal at the shared vertex, so the AO / rim bands join
+## instead of leaving a light wedge (concave corner) or a dark overlap (convex
+## corner) — rounded map corners then read as one smooth band, not spikes.
+## Very sharp corners (> ~100 deg turn) keep the edge's own normal.
+func _joined_normals(edges: Array) -> Array:
+	var at: Dictionary = {}
+	for i in edges.size():
+		for end in 2:
+			var k := Vector2i(((edges[i][end] as Vector2) * 2.0).round())
+			if not at.has(k):
+				at[k] = []
+			at[k].append(i)
+	var out: Array = []
+	for i in edges.size():
+		var n: Vector2 = edges[i][2]
+		var ends: Array = [n, n, INF, INF]
+		for end in 2:
+			var v: Vector2 = edges[i][end]
+			var lst: Array = at[Vector2i((v * 2.0).round())]
+			if lst.size() == 2:
+				var j: int = lst[0] if lst[1] == i else lst[1]
+				var nj: Vector2 = edges[j][2]
+				if n.dot(nj) > -0.2:
+					ends[end] = (n + nj).normalized()
+					# Outside (convex) bend: the inward bands of a tight round
+					# cap converge on its centre — cap the depth at ~the local
+					# radius so they don't cross over into a dark star.
+					var far: Vector2 = edges[j][1] if (edges[j][0] as Vector2).distance_to(v) < 1.0 else edges[j][0]
+					var turn := n.angle_to(nj)
+					if absf(turn) > 0.01 and (far - v).dot(n) < 0.0:
+						var seg := minf((edges[i][0] as Vector2).distance_to(edges[i][1]), far.distance_to(v))
+						ends[2 + end] = maxf(1.5, 0.9 * seg / absf(turn))
+		out.append(ends)
 	return out
 
 
@@ -178,10 +222,16 @@ func _is_green(col: Color) -> bool:
 
 # ── colour of the ground at a point (texture × vertex colour) ─────────────
 
+var _sub: Dictionary = {}   # tri index -> triangulation of an n-gon (smoothed map pieces, #273)
+
+
 func _index_tris() -> void:
 	_grid.clear()
+	_sub.clear()
 	for i in tris.size():
 		var pts: PackedVector2Array = tris[i].pts
+		if pts.size() > 3:
+			_sub[i] = Geometry2D.triangulate_polygon(pts)
 		var r := Rect2(pts[0], Vector2.ZERO)
 		for p in pts:
 			r = r.expand(p)
@@ -202,14 +252,26 @@ func _sample(p: Vector2) -> Color:
 			continue
 		var col: Color = t.col
 		var vc: PackedColorArray = t.vc
-		if pts.size() == 3:
-			var w := _bary(p, pts[0], pts[1], pts[2])
-			if vc.size() == 3:
-				col = col * (vc[0] * w.x + vc[1] * w.y + vc[2] * w.z)
+		var uvs: PackedVector2Array = t.uvs
+		# Corner indices of the (sub-)triangle holding p: the triangle itself,
+		# or for an n-gon carrying per-vertex data, the piece of its triangulation.
+		var k := PackedInt32Array([0, 1, 2])
+		if pts.size() > 3 and (vc.size() == pts.size() or uvs.size() == pts.size()):
+			var tri_idx: PackedInt32Array = _sub.get(i, PackedInt32Array())
+			k = PackedInt32Array()
+			for j in range(0, tri_idx.size() - 2, 3):
+				if Geometry2D.point_is_inside_triangle(p, pts[tri_idx[j]], pts[tri_idx[j + 1]], pts[tri_idx[j + 2]]):
+					k = PackedInt32Array([tri_idx[j], tri_idx[j + 1], tri_idx[j + 2]])
+					break
+			if k.is_empty():
+				k = PackedInt32Array([0, 1, 2])
+		if pts.size() == 3 or vc.size() == pts.size() or uvs.size() == pts.size():
+			var w := _bary(p, pts[k[0]], pts[k[1]], pts[k[2]])
+			if vc.size() == pts.size():
+				col = col * (vc[k[0]] * w.x + vc[k[1]] * w.y + vc[k[2]] * w.z)
 			var img: Image = _img(str(t.tex))
-			var uvs: PackedVector2Array = t.uvs
-			if img != null and uvs.size() == 3:
-				var uv: Vector2 = uvs[0] * w.x + uvs[1] * w.y + uvs[2] * w.z
+			if img != null and uvs.size() == pts.size():
+				var uv: Vector2 = uvs[k[0]] * w.x + uvs[k[1]] * w.y + uvs[k[2]] * w.z
 				col = col * img.get_pixel(posmod(int(uv.x * img.get_width()), img.get_width()), posmod(int(uv.y * img.get_height()), img.get_height()))
 			elif img != null:
 				col = col * _world_px(img, str(t.tex), p)

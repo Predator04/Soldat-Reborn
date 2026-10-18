@@ -592,7 +592,8 @@ if has F; then
 fi
 
 # ── E sweep ─────────────────────────────────────────────────────────────────
-total=$((NMAPS + 3))
+# movement_course.json is a Training-only micro-map, not in the rotation (#262)
+total=$(( $(ls assets/maps/*.json | grep -vc '/movement_course\.json$') + 3 ))
 if [ $QUICK = 0 ] && has E && [ -n "$SWEEP" ]; then
   # Piecewise: append one map range; the verdict comes from a later "--only E" run.
   timeout 170 "$G" --headless --fixed-fps 60 -s tools/stuck_test.gd -- --secs=30 --from=${SWEEP%%:*} --to=${SWEEP##*:} --mode=2 >> "$OUT/sweep.log" 2>&1

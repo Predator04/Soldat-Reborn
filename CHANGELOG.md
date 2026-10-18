@@ -24,6 +24,12 @@ All notable changes to Soldat Reborn.
 ### Changed — new name: **Tracerfall**
 - The game is now called **Tracerfall** (#269): menu title, window title, credits, share/join text, the Windows exe description, the Android app label and the store copy. "Soldat" is the original game's name; the credits keep the Soldat attribution. Nothing moves on your machine: settings, stats, replays and updates carry over (the data folder and update files keep their old names).
 
+### Changed — smoother, rounder classic maps
+- **Rounded terrain** on all 99 classic maps (#273): sharp outline corners get small fillets (the outline moves at most ~4–5 px), in the collision shape soldiers run on as well as in the drawn terrain, so ledges, lips and slope changes are less jagged and soldiers roll over corners instead of catching on them. Topology is kept: no platform, bridge, gap, tunnel or hole appears or disappears (checked against every stance of the free-space graph and the bot nav graph per map), corners where solid, players-only and bullets-only terrain meet stay sharp, and every spawn, flag, DOM / point spot, pickup and vehicle spot audits exactly as before. Movement on the classic maps changes slightly; the Movement Course keeps its calibrated geometry.
+- Smoother terrain shading: coincident triangle corners now share their vertex colour (area-weighted average) instead of showing faceted per-triangle seams; deliberate hard colour edges are kept (#273).
+- The terrain edge shading (dark depth band, sunlit rim) joins smoothly around corners instead of leaving light wedges at inside corners and dark overlaps at outside corners (#273).
+- `tools/smooth_maps.py`: the offline smoothing pass (originals kept in `tools/map_src/`, `--restore` puts them back); `tools/pms_to_map.py --regen` runs it on every re-ported map (#273). 2D MSAA was tried for anti-aliased edges but the GL Compatibility renderer doesn't support it in Godot 4.7 ("2D MSAA is not yet supported for GLES3"), so it stays off.
+
 ### Added — the movement course
 - **Training phase 2: "Now the moves that make a Soldat"** (#262). After the shooting steps, Training loads a purpose-built Movement Course micro-map: a short gap under a spike ceiling (tap to hop — a held full jump hits the spikes), a wider gap (tap), a long gap (hold for the full jump), a prone-cancel drop from a high ledge into a target ring, and a timed bunny-hop lane that plain running and roll spam can't make. Falling into a pit or touching the spikes puts you straight back at the section start — no death screen. Each section ends with a toast, finishing shows your total time, and the best time is saved in your stats; press RELOAD to run it again. Gap widths, spike height, ring and lane time are calibrated from measured jump / drop / hop physics (numbers in `scripts/movement_course.gd`).
 - **MOVEMENT COURSE button** next to TRAINING on the main menu, so returning players can run the course on its own.
@@ -32,6 +38,7 @@ All notable changes to Soldat Reborn.
 
 ### Testing
 - New release-gate test (F stage, COURSE-TEST): drives every course gate with the right technique (passes) and the wrong one (full jump into the spikes, tap on the long gap, non-prone drop, running / rolling the lane all fail), checks the best time, RELOAD replay, the Training settings restore, the committed map JSON against its generator and the translations.
+- The all-map CTF sweep (E stage) no longer expects a sweep entry for the Training-only `movement_course.json` (it isn't in the map rotation), which made the full sweep report 102/103 maps and fail.
 
 ### Added
 - **News line on the main menu** (#261). One short message from the master server (`GET /news`) under the version button, at most one fetch every 10 minutes. Click it to open its link; × hides that message for good (a new one shows again). It fails silently and never holds up the menu; on phones it has a touch-sized hit area.
