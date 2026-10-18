@@ -18,6 +18,7 @@ const Gfx = preload("res://scripts/gfx.gd")
 const SKY_SHADER = preload("res://scripts/gfx/sky_cinematic.gdshader")
 const POST_SHADER = preload("res://scripts/gfx/post_cinematic.gdshader")
 const RIM_SHADER = preload("res://scripts/gfx/rim_light.gdshader")
+const FLASH_SHADER = preload("res://scripts/gfx/soldier_flash.gdshader")
 const ParallaxCinematic = preload("res://scripts/gfx/parallax_cinematic.gd")
 const SkyClassic = preload("res://scripts/sky.gd")
 const ParallaxClassic = preload("res://scripts/parallax.gd")
@@ -44,6 +45,7 @@ var _next_light := 0
 var _time := 0.0
 var _style := ""
 var _rim_mat: ShaderMaterial = null
+var _flash_mat: ShaderMaterial = null   # classic look: damage flash only (#271)
 var _rim_t := 0.0
 
 
@@ -82,6 +84,15 @@ static func kick_impact(at: Vector2, strength := 1.0) -> void:
 ## created during play. Ignored unless cinematic + High.
 static func light(at: Vector2, col: Color, radius: float, life: float, energy := 1.2) -> void:
 	if _current == null or not is_instance_valid(_current) or not _current._lights_on():
+		return
+	_current._fire_light(at, col, radius, life, energy)
+
+
+## A pooled real light in either look (High only): the Phase B route for
+## explosion lights, which used to create a PointLight2D node per blast in the
+## classic look.
+static func light_any(at: Vector2, col: Color, radius: float, life: float, energy := 1.2) -> void:
+	if _current == null or not is_instance_valid(_current) or not Gfx.on(Gfx.HIGH):
 		return
 	_current._fire_light(at, col, radius, life, energy)
 
@@ -300,15 +311,27 @@ func _apply_rim() -> void:
 		_rim_mat.shader = RIM_SHADER
 	if want:
 		_rim_mat.set_shader_parameter("rim_strength", 0.6 if _night() > 0.5 else 0.4)
+	# Classic + Medium/High: soldiers still get a (shared) material carrying the
+	# Phase B damage-flash instance uniform; Low gets none.
+	var flash_ok := not want and Gfx.on(Gfx.MEDIUM)
+	if flash_ok and _flash_mat == null:
+		_flash_mat = ShaderMaterial.new()
+		_flash_mat.shader = FLASH_SHADER
 	for grp in ["soldier", "vehicle"]:
 		for n in get_tree().get_nodes_in_group(grp):
 			var ci := n as CanvasItem
 			if ci == null:
 				continue
-			if want and ci.material == null:
-				ci.material = _rim_mat
-			elif not want and ci.material == _rim_mat:
-				ci.material = null
+			var ours: bool = ci.material == null or ci.material == _rim_mat or (_flash_mat != null and ci.material == _flash_mat)
+			if not ours:
+				continue
+			var target: Material = null
+			if want:
+				target = _rim_mat
+			elif flash_ok and grp == "soldier":
+				target = _flash_mat
+			if ci.material != target:
+				ci.material = target
 
 
 func _post_rect() -> ColorRect:

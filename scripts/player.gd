@@ -216,7 +216,6 @@ var coyote_t := 0.0
 var jump_buffer_t := 0.0
 var _jump_hold_t := 1.0   # >= JUMP_SUSTAIN when not in a fresh jump (#262)
 var _jump_cut_done := true
-var shake := 0.0
 var cam: Camera2D
 var jet_particles: CPUParticles2D
 
@@ -900,12 +899,9 @@ func _live_fx(delta: float) -> void:
 	jet_particles.color = jet_particle_color(cosmetics)
 	jet_particles.position = Vector2(-facing * 3.3, 1.7)
 
-	# camera shake decay
-	if shake > 0.0:
-		cam.offset = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * shake
-		shake = maxf(0.0, shake - delta * 26.0)
-	else:
-		cam.offset = Vector2.ZERO
+	# Camera shake lives in scripts/gfx/screen_feel.gd now (#271): trauma-based,
+	# applied to this camera in _process from its own noise — never the global
+	# random stream from inside the physics tick.
 
 
 func _send_state(delta: float) -> void:
@@ -1736,7 +1732,11 @@ func _shake(amount: float) -> void:
 	var mag: float = float(Settings.screen_shake_intensity)
 	if mag <= 0.001:
 		return
-	shake = maxf(shake, amount * mag)
+	# Only the soldier whose camera you are looking through shakes your screen
+	# (net_shoot also runs on remote replicas of other players).
+	if cam == null or not cam.is_current():
+		return
+	ScreenFeel.shake(amount * mag)
 
 
 # Where this soldier's sounds come from: the local player's own sounds play
@@ -1812,7 +1812,6 @@ func _die() -> void:
 	# Lo-fi (#25): skip the CPUParticles2D burst + physics gib pieces on low-end PCs.
 	if not Settings.lofi:
 		_spawn_gibs.call_deferred()
-		_spawn_ragdoll.call_deferred()
 	died.emit()
 	if Net.is_networked() and Net.is_host():
 		# Main owns the timer: a lambda on this (about to be freed) body could
@@ -1969,7 +1968,7 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_
 	_shake(6.0 if is_explosive else 3.5)
 	if kind != "melee" and kind != "melee_cont" and get_parent() != null:
 		var GfxS = preload("res://scripts/gfx.gd")
-		GfxS.muzzle(get_parent(), shot_pos, is_explosive)
+		GfxS.muzzle(get_parent(), shot_pos, is_explosive, dirs[0] if dirs.size() > 0 else aim_dir)
 		if kind == "bullet":
 			GfxS.casing(get_parent(), global_position + Vector2(facing * 2.0, -10.0), facing, str(w["name"]) == "Spas-12")
 	Sfx.shoot(str(w["name"]), _sfx_at())
@@ -2125,69 +2124,17 @@ func _spawn_gibs() -> void:
 	# Deferred from _die: the scene may be changing (round/map switch) by now.
 	if not is_inside_tree() or get_parent() == null:
 		return
-	# Blood/gore visual density is user-tunable (#73). 0 = skip entirely
-	# (lo-fi already gates this, but tie the slider to a hard skip too).
-	var density: float = clampf(float(Settings.blood_intensity), 0.0, 1.5)
-	if density <= 0.01:
+	# Phase B (#271): pooled limb gibs + blood (scripts/gfx/fx_world.gd) — no
+	# CPUParticles2D / RigidBody2D per death. Blood slider 0 = none (#73).
+	if float(Settings.blood_intensity) <= 0.01:
 		return
-	var p := CPUParticles2D.new()
-	p.amount = maxi(1, int(60.0 * density))
-	p.lifetime = 0.8
-	p.explosiveness = 1.0
-	p.one_shot = true
-	p.emitting = true
-	p.global_position = global_position
-	p.direction = Vector2(0, -1)
-	p.spread = 180.0
-	p.gravity = Vector2(0, 620)
-	p.initial_velocity_min = 140.0
-	p.initial_velocity_max = 480.0
-	p.scale_amount_min = 2.0
-	p.scale_amount_max = 6.0
-	p.color = Color(0.9, 0.15, 0.15)
-	get_parent().add_child(p)
-	get_tree().create_timer(1.3).timeout.connect(p.queue_free)
+	var w := FxWorld.ensure(get_parent())
+	if w != null:
+		w.gib(global_position, velocity, color, cosmetics, _gib_explosive(last_weapon), facing)
 
 
-func _spawn_ragdoll() -> void:
-	# Deferred from _die: the scene may be changing (round/map switch) by now.
-	if not is_inside_tree() or get_parent() == null:
-		return
-	# Scale ragdoll piece count with blood_intensity (#73) so lo-gore players
-	# get a cleaner corpse. Rounds up to at least 1 piece so the death still reads.
-	var density: float = clampf(float(Settings.blood_intensity), 0.0, 1.5)
-	var count := maxi(1, int(round(8.0 * density)))
-	if density <= 0.01:
-		return
-	for _i in count:
-		var body := RigidBody2D.new()
-		# Gibs are purely cosmetic — zero collision so a settled chunk can never
-		# snag the player/bots (everything lives on layer 1, so a default
-		# RigidBody2D would collide with soldiers and trap them in the gore).
-		body.collision_layer = 0
-		body.collision_mask = 0
-		body.position = global_position + Vector2(randf_range(-8.0, 8.0), randf_range(-20.0, 0.0))
-		var shape := CollisionShape2D.new()
-		var rect := RectangleShape2D.new()
-		rect.size = Vector2(randf_range(5.0, 12.0), randf_range(5.0, 12.0))
-		shape.shape = rect
-		body.add_child(shape)
-		var vis := Polygon2D.new()
-		var s := rect.size
-		vis.polygon = PackedVector2Array([
-			Vector2(-s.x / 2.0, -s.y / 2.0),
-			Vector2(s.x / 2.0, -s.y / 2.0),
-			Vector2(s.x / 2.0, s.y / 2.0),
-			Vector2(-s.x / 2.0, s.y / 2.0),
-		])
-		vis.color = color.darkened(randf_range(0.0, 0.35))
-		body.add_child(vis)
-		body.linear_damp = 0.4
-		body.angular_damp = 1.5
-		get_parent().add_child(body)
-		body.linear_velocity = Vector2(randf_range(-280.0, 280.0), randf_range(-560.0, -140.0))
-		body.angular_velocity = randf_range(-15.0, 15.0)
-		get_tree().create_timer(2.5).timeout.connect(body.queue_free)
+static func _gib_explosive(weapon: String) -> bool:
+	return weapon in ["LAW", "M79", "Grenade", "Cluster", "Buggy", "Tank", "M2"] or weapon.begins_with("Grenade")
 
 
 ## Compact snapshot for match replays (replay_recorder.gd).
@@ -2203,6 +2150,7 @@ func replay_state() -> Array:
 
 ## Reused every frame by _draw() (SoldierArt.draw_soldier input).
 var _draw_state := SoldierDrawState.new()
+var _feel := SoldierFeel.new()   # squash / recoil / damage flash (#271), visual only
 
 
 func _draw() -> void:
@@ -2249,6 +2197,7 @@ func _draw() -> void:
 	ds.grenade_count = grenades
 	ds.use_cluster = use_cluster
 	ds.is_local = is_multiplayer_authority()
+	_feel.update(self, ds)
 	SoldierArt.draw_soldier(self, ds)
 	if _cook_t >= 0.0:
 		# Grenade in hand + a fuse ring that empties (and flashes red) as it cooks.

@@ -25,7 +25,7 @@ func _ready() -> void:
 	var p := get_parent()
 	if p != null and p.has_meta("team"):
 		team = int(p.get_meta("team"))
-	_t = randf() * 10.0
+	_t = preload("res://scripts/gfx.gd").rng.randf() * 10.0
 	_last_pos = global_position
 
 

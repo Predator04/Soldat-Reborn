@@ -339,6 +339,10 @@ func _build_game(box: VBoxContainer) -> void:
 			Settings.screen_shake = v > 0.01
 			Settings.save(),
 		"%.2fx"))
+	box.add_child(_check_button("Hit-stop + slow-mo on your kills (cosmetic; off with Screen Shake 0)", Settings.hit_stop,
+		func(on: bool) -> void:
+			Settings.hit_stop = on
+			Settings.save()))
 	box.add_child(_labelled_slider("Blood / Gore intensity", 0.0, 1.5, 0.05,
 		Settings.blood_intensity,
 		func(v: float) -> void:
