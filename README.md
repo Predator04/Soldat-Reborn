@@ -8,15 +8,34 @@ the classic had and more, with most of Soldat 2's feature list folded in.
 [**Download the latest release**](https://github.com/Predator04/Soldat-Reborn/releases/latest) (Windows `.exe`, Android `.apk`) ·
 [Changelog](CHANGELOG.md) · [Roadmap](ROADMAP.md) · [Open issues](https://github.com/Predator04/Soldat-Reborn/issues)
 
-![Teammatch on Scorpion](docs/screenshots/teammatch-scorpion.jpg)
+![Capture the Flag on Vortex](docs/screenshots/ctf-vortex.jpg)
 
 | | |
 |---|---|
-| ![Domination on Jungle](docs/screenshots/domination-jungle.jpg) | ![Capture the Flag on Vortex](docs/screenshots/ctf-vortex.jpg) |
-| ![Deathmatch on Industrial](docs/screenshots/deathmatch-industrial.jpg) | ![Main menu](docs/screenshots/menu.jpg) |
+| ![Helicopter on its pad, Industrial](docs/screenshots/helicopter-industrial.jpg) | ![Helicopter rocket salvo](docs/screenshots/helicopter-rockets.jpg) |
+| ![Teammatch on Scorpion](docs/screenshots/teammatch-scorpion.jpg) | ![Domination on Jungle](docs/screenshots/domination-jungle.jpg) |
+| ![Main menu](docs/screenshots/menu.jpg) | ![Settings with live preview](docs/screenshots/settings-live-preview.jpg) |
 
-<sub>Real frames from the current build (bot matches, 1280×720). A graphics overhaul is in progress
-([#270](https://github.com/Predator04/Soldat-Reborn/issues/270), [#271](https://github.com/Predator04/Soldat-Reborn/issues/271), [#272](https://github.com/Predator04/Soldat-Reborn/issues/272)), so these get replaced as it lands.</sub>
+<sub>Real frames from the current build (v1.35, bot matches, 1280×720, rendered in software GL — on a GPU it looks the same, only smoother).</sub>
+
+### What's new in 1.35 — Tracerfall
+
+The game has a new name and a full visual overhaul (all cosmetic: physics, netcode and gameplay are unchanged and tested bit-for-bit):
+
+- **Cinematic look** — animated moonlit sky, fogged parallax hills with distant ruins, a filmic grade, real light from muzzle flashes and explosions, rim-lit soldiers. *Classic* look still in Settings → Video.
+- **Gore & effects** — soldiers break into their own body parts, blood sprays, arcs and stays on walls and floors; sparks, brass, debris, smoke and heat haze — all from fixed pools, so heavy fights never create nodes.
+- **Feel** — squash & stretch, weapon kick, hit flash, smooth screen shake, a freeze-frame on your kills (the match keeps running underneath).
+- **New menus & HUD** — one design language, animated screens, a live preview in Settings, UI scale and Reduce motion options.
+- **Vehicles** — detailed animated buggies and tanks with damage stages and burning wrecks, and a new **helicopter** (pilot rockets + door gunner) on the 15 biggest maps.
+- **Smoother maps** — rounded terrain corners on all 99 classic maps, in the drawing and in the ground you run on.
+- **Movement course**, **menu news line**, **weekly featured mode on the official server**, and **server-side cheat checks**.
+
+**Before → after** (left half is v1.34, right half is v1.35):
+
+![Gore before/after](docs/screenshots/gore-before-after.jpg)
+![Menu before/after](docs/screenshots/menu-before-after.jpg)
+![Vehicles before/after](docs/screenshots/vehicles-before-after.jpg)
+![Rounded map corners before/after](docs/screenshots/smooth-maps-before-after.jpg)
 
 ## Play online
 
@@ -36,6 +55,8 @@ credit are caught on the server (forced death, then a kick).
 - **Map editor** — in-game editor: place platforms, spawns, flags, control points; save/load custom maps; play-test live
 - **Procedural maps** — seeded generator with re-roll, produces playable layouts for every mode
 - **Classic maps** — 99 original Soldat levels ported from `.pms` with scenery, textured terrain, weather and baked bot navigation (bots play every objective mode on every map)
+- **Graphics** — cinematic or classic look, dynamic 2D lights, filmic post-processing, pooled particles and persistent blood, hit-stop and screen shake, three quality presets (Low runs on old PCs and phones)
+- **Menus & accessibility** — animated menus, live settings preview, UI scale 85–130 %, Reduce motion, colour-blind team colours, 5 languages
 - **Polish** — gestures/taunts, chat, weapon throw/pickup, ceasefire, bink, game modifiers, character customization with unlockables, lo-fi mode, local stats, GIF recording, improved grenade physics
 - **Multiplayer** — host-authoritative ENet (host / join), replicated bots that shoot and damage clients, dedicated headless server mode, server browser with live ping and player counts, Quick Join with **skill matchmaking**, automatic rejoin after a dropped connection, **relay hosting with join codes (no port forwarding, ever)**, LAN-scale sync, authority-owned grenade/rocket transforms so shooter + victim see the same trajectory and impact spot
 - **Online services** — a free public master server over HTTPS: live server list, a news line on the main menu, friends with one-click join and clan tags, a career **leaderboard** with ranks and achievements, a shared **map library** (upload, browse, download in-game), and signed auto-updates
