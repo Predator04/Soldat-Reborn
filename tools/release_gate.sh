@@ -61,7 +61,7 @@ echo "== Release gate $(date -Is)  godot=$G" | tee -a "$SUM"
 # Hermetic runs: every Godot launch starts from default settings / controls
 # (tests toggle mods, bot counts, loadouts and some of them save), and this
 # machine's own files are restored when the gate exits.
-UD="${GODOT_USER_DIR:-$HOME/.local/share/godot/app_userdata/Soldat Reborn}"
+UD="${GODOT_USER_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/godot/app_userdata/Soldat Reborn}"
 BAK="$OUT/.userbak"; mkdir -p "$BAK"
 for f in settings.cfg controls.cfg; do [ -f "$UD/$f" ] && cp "$UD/$f" "$BAK/$f"; done
 restore_user() { for f in settings.cfg controls.cfg; do rm -f "$UD/$f"; [ -f "$BAK/$f" ] && cp "$BAK/$f" "$UD/$f"; done; rm -rf "$BAK"; }
