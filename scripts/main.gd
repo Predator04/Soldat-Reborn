@@ -25,22 +25,17 @@ signal objective(kind: String, team: int, who: String)   # grab/drop/return/capt
 # and the public API are unchanged.
 const MatchVehicles = preload("res://scripts/match_vehicles.gd")
 const MatchBonuses = preload("res://scripts/match_bonuses.gd")
+const MatchVotes = preload("res://scripts/match_votes.gd")
+const MatchModes = preload("res://scripts/match_modes.gd")
 var _vehicles_sys: MatchVehicles = null   # match_vehicles.gd
 var _bonuses: MatchBonuses = null   # match_bonuses.gd
+var _votes: MatchVotes = null   # match_votes.gd
+var _modes: MatchModes = null   # match_modes.gd
 
 var player: Node2D = null            # LOCAL player (whichever peer owns us)
 var hud: CanvasLayer = null
 var killcam: Node2D = null           # killcam_rewind.gd — replays the last seconds before your death
 var spectator: Node2D = null         # (#75) follow/free-cam while dead — owns its own Camera2D
-# (#76) Kill-streak + multi-kill announcer state. Keyed by killer's display_name.
-# {"streak": int (kills-per-life), "multi": int (kills within 2s), "multi_t": float,
-#  "team": int (last-known team for banner tint)}. Runs on every peer so banners
-# render locally; the kill-feed replication path (kill.emit → net_kill_feed) drives it.
-var _streaks: Dictionary = {}
-const STREAK_TITLES := {2: "Double Kill", 3: "Multi Kill", 4: "Killing Spree", 5: "Rampage", 6: "Godlike"}
-const STREAK_ULTRA := "Ultra Godlike"    # 7+ collapses into a single top rung
-const MULTI_KILL_WINDOW := 2.0            # seconds since previous kill still counts as multi
-const STREAK_ANNOUNCE_END_MIN := 3        # streak length that earns an "ended X's N-kill streak" line
 var _map: Dictionary = {}
 var _players_by_id: Dictionary = {}  # peer_id -> player node (host only, but also mirrored on clients)
 var _peer_names: Dictionary = {}    # peer_id -> chosen display name (host only; client sends it in net_client_ready)
@@ -89,44 +84,22 @@ const CTF_SCORE_TO_WIN := 3
 const INF_SCORE_TO_WIN := 3
 const HTF_SCORE_TO_WIN := 60      # 1 pt/sec while carrying → 60s hold = a win
 const PM_SCORE_TO_WIN := 20
-# HTF: while a team's carrier is alive with the flag, ticks accumulate. This
-# fractional accumulator flushes to `scores` in whole points.
-var _htf_accum: Dictionary = {}
 # Rambo bow — the current carrier's id (or 0 for none). Only they can score.
 var _rambo_carrier_id: int = 0
-# Rambo bow — cooldown between carrier-death and the bow re-spawning at map center.
-var _rambo_respawn_cd: float = 0.0
-const RAMBO_RESPAWN_DELAY := 4.0
-# Pointmatch — bookkeeping for respawning pickups (spawn_pos -> _next_respawn_t).
-var _pm_pickups: Dictionary = {}
 
 # Domination — control point nodes + per-team hold accumulator.
 var _dom_points: Array = []
-const DOM_CAPTURE_TIME := 4.0    # seconds standing on a neutral/enemy point to flip it
 const DOM_SCORE_TO_WIN := 90     # (owned_points × 1 pt/sec) → ~90s of full control wins
-var _dom_accum: Dictionary = {}  # team_id -> fractional accumulator (float)
 
 # Battle Royale — shrinking safe zone.
 var _br_zone_radius: float = 2200.0
 var _br_zone_center: Vector2 = Vector2(2400.0, 1200.0)
-const BR_SHRINK_RATE := 42.0   # px/sec — full ring closes in ~52s
-const BR_ZONE_MIN := 180.0
 const BR_ZONE_DPS := 22.0      # damage/sec applied outside the ring
 
 # Gun Game (MODE_GG) — per-soldier rung on the 16-weapon ladder, keyed by
 # display_name so the level survives death/respawn (a fresh body reads its
 # rung from here in _spawn_*). Host-authoritative in MP; the RPC below fans
 # each update out to every peer so client-owned players re-apply the weapon.
-const GG_KNIFE_LEVEL := 15
-const GG_GOLD_KNIFE_LEVEL := 16
-# Ladder weapon names in rung order — mirrors Player.GG_LADDER. Used to
-# validate that a kill was made with the killer's current rung weapon (so
-# grenade / dropped-weapon / bonus-forced kills don't accidentally advance).
-const GG_LADDER_NAMES := [
-	"USSOCOM", "Deagles", "MP5", "Steyr AUG", "AK-74", "Spas-12",
-	"Ruger 77", "Minimi", "M79", "Minigun", "Flamethrower", "Rambo Bow",
-	"LAW", "Barrett", "Chainsaw", "Knife",
-]
 var _gg_levels: Dictionary = {}
 # Per-soldier kill tally for Gun Game (#91). Keyed by display_name so it
 # survives death/respawn. Host-authoritative; mirrored to clients via the
@@ -136,8 +109,6 @@ var _gg_kills: Dictionary = {}
 # ── Match state (host-authoritative in MP) ─────────────
 const SCORE_TO_WIN := 20
 const ROUND_TIME := 300.0
-const WINNER_DISPLAY := 4.0
-const WINNER_VOTE_DISPLAY := 10.0    # winner screen with a next-map vote
 const MATCH_SYNC_HZ := 5.0           # host → clients broadcast rate for scoreboard
 
 var scores: Dictionary = {}          # team_id -> int
@@ -153,7 +124,6 @@ var winner_end_t := 0.0
 # except a dedicated server rotates to the first choice.
 var next_map_choices: Array = []     # map indices
 var next_map_tally: Array = [0, 0, 0]
-var _nm_votes: Dictionary = {}       # voter peer id (1 = host / SP) -> choice
 var my_next_map_vote := -1
 var cur_map_index := -1              # built-in map playing now (-1 = custom)
 var _match_sync_cd := 0.0
@@ -163,8 +133,6 @@ const FLAG_SYNC_HZ := 8.0
 # ── Vote system (#77) ─────────────────────────────────
 # Host-authoritative: any player calls /votemap or /votekick, F1/F2 to cast,
 # majority passes. Broadcast alongside match state at MATCH_SYNC_HZ.
-const VOTE_DURATION := 30.0
-const VOTE_COOLDOWN := 30.0
 var vote_active := false
 var vote_kind := ""              # "votemap" | "votekick"
 var vote_target_str := ""        # human label ("Nuubia" / "Red Bot 3")
@@ -173,9 +141,11 @@ var vote_yes := 0
 var vote_no := 0
 var vote_time_left := 0.0
 var vote_starter := ""           # display_name of who called it
-var _vote_voters: Dictionary = {}  # host-only: peer_id → true (already voted)
-var _vote_cooldown := 0.0          # host-only: gate between votes
 
+# ── Bonus pickups (#78) ───────────────────────────────
+# Host-authoritative: host places boxes, detects collection, applies effect
+# to the toucher and schedules the box slot's respawn. Clients mirror boxes
+# via net_bonus_spawn / net_bonus_despawn.
 var _bonus_boxes: Dictionary = {}    # bonus_id → node (host + client)
 # Weapon-pickup sync — host broadcasts (id, pos, vel, ang) so client-frozen
 # pickup bodies mirror the host's physics timeline (#34).
@@ -419,6 +389,8 @@ var _vehicles: Dictionary = {}   # vehicle_id -> buggy node (every peer)
 func _init() -> void:
 	_vehicles_sys = _attach(MatchVehicles.new(), "MatchVehicles")
 	_bonuses = _attach(MatchBonuses.new(), "MatchBonuses")
+	_votes = _attach(MatchVotes.new(), "MatchVotes")
+	_modes = _attach(MatchModes.new(), "MatchModes")
 
 
 ## A system helper is an internal child: freed with Main, invisible to
@@ -503,7 +475,7 @@ func _ready() -> void:
 		tr.set("main", self)
 		hud.add_child(tr)
 	_maybe_build_touch_controls()
-	_spawn_mode_entities()
+	_modes._spawn_mode_entities()
 	_bonuses._spawn_bonus_boxes_init()
 	_vehicles_sys._spawn_vehicles()
 	kill.connect(_on_kill_scored)
@@ -542,18 +514,6 @@ func _ready() -> void:
 	else:
 		_spawn_player()
 		_spawn_bots()
-
-
-func _spawn_mode_entities() -> void:
-	# Called on both host and client so flags/pickups appear on all peers.
-	match Settings.game_mode:
-		Settings.MODE_CTF: _spawn_flags()
-		Settings.MODE_INF: _spawn_flag_inf()
-		Settings.MODE_HTF: _spawn_flag_htf()
-		Settings.MODE_RM:  _spawn_rambo_bow()
-		Settings.MODE_PM:  _spawn_point_pickups()
-		Settings.MODE_DOM: _spawn_dom_points()
-		Settings.MODE_BR:  _reset_br_zone()
 
 
 func _apply_world() -> void:
@@ -1139,26 +1099,6 @@ func _settle_on_ground(pos: Vector2) -> Vector2:
 	return Vector2(p.x, gy)
 
 
-func _drop_flag(f: Node2D, at: Vector2) -> void:
-	# Carrier died: the flag falls to the ground under them. If there is no
-	# ground (carrier fell off the map), the flag goes straight home instead
-	# of hanging in the void where nobody can ever reach it.
-	f.set_meta("carrier", null)
-	var ft: int = int(f.get_meta("team")) if f.has_meta("team") else 0
-	var gy := _geom_ground_y(at.x, at.y - 4.0)
-	if gy == INF or gy > KILL_Y or at.y > KILL_Y:
-		f.position = f.get_meta("home")
-		_objective_event("return", ft, "")
-		return
-	var p := Vector2(at.x, gy)
-	if not _spot_is_clear(p + Vector2(0, -1)):
-		f.position = f.get_meta("home")
-		_objective_event("return", ft, "")
-		return
-	f.position = p
-	_objective_event("drop", ft, "")
-
-
 func _find_free_spot_near(feet: Vector2, max_r: float = 240.0) -> Vector2:
 	# Nearest spot (upward first, then outward rings) where a standing soldier fits.
 	if _spot_is_clear(feet):
@@ -1483,7 +1423,7 @@ func _spawn_player() -> void:
 		p.set("secondary_index", 1)  # Knife
 	# Gun Game: restore the persisted rung so death keeps you on the same weapon.
 	if Settings.game_mode == Settings.MODE_GG:
-		p.gg_level = _gg_get(str(p.display_name))
+		p.gg_level = _modes._gg_get(str(p.display_name))
 	_apply_spawn_loadout(p)
 	p.died.connect(_on_player_died)
 	add_child(p)
@@ -1642,70 +1582,6 @@ func request_respawn_ready() -> void:
 func net_respawn_ready() -> void:
 	if Net.is_host():
 		_rs_ready(multiplayer.get_remote_sender_id())
-
-
-# ── Kill streaks + multi-kills (#76) ──────────────────
-# Reads killer/victim from the shared kill signal. Runs on every peer so the
-# banner lookup is identical everywhere without an extra RPC. Synthetic entries
-# (FLAG capture, POINT capture, etc.) carry a killer_team but the "victim" is
-# a scoreboard label, not a soldier — those still increment the killer's streak
-# so a flag-capture-during-spree escalates the announcement naturally.
-func _track_kill_streaks(killer_name: String, victim_name: String, killer_team: int) -> void:
-	if killer_name == "":
-		return
-	# Suicide or team-kill: reset the killer's own streak. No banner.
-	var is_self: bool = killer_name == victim_name
-	if is_self:
-		_reset_streak(killer_name)
-		return
-	# Before incrementing, capture the victim's pre-death streak for the
-	# "ended <name>'s N-kill streak" announcement.
-	var ended: int = 0
-	if _streaks.has(victim_name):
-		ended = int((_streaks[victim_name] as Dictionary).get("streak", 0))
-	# Increment killer's own counters.
-	var now := Time.get_ticks_msec() / 1000.0
-	var s: Dictionary = _streaks.get(killer_name, {"streak": 0, "multi": 0, "multi_t": 0.0, "team": killer_team})
-	s["team"] = killer_team
-	s["streak"] = int(s.get("streak", 0)) + 1
-	if float(s.get("multi_t", 0.0)) > now:
-		s["multi"] = int(s.get("multi", 0)) + 1
-	else:
-		s["multi"] = 1
-	s["multi_t"] = now + MULTI_KILL_WINDOW
-	_streaks[killer_name] = s
-	# Announce banner: whichever count is louder (streak or multi).
-	var count: int = maxi(int(s["streak"]), int(s["multi"]))
-	# Banner only for the local player's streaks (or big ones) — bot-vs-bot
-	# FFA would otherwise spam it constantly.
-	var is_me: bool = is_instance_valid(player) and str(player.display_name) == killer_name
-	if count >= (2 if is_me else 5) and hud != null and hud.has_method("show_streak_banner"):
-		hud.show_streak_banner(killer_name, _streak_title(count), int(s["team"]), count)
-	# Streak-ended feed line — reuse the existing kill-feed styling for consistency.
-	if ended >= STREAK_ANNOUNCE_END_MIN and hud != null and hud.has_method("post_streak_ended"):
-		hud.post_streak_ended(killer_name, victim_name, ended, killer_team)
-	# Victim loses their life-scoped streak. Multi window also clears — they're dead.
-	_reset_streak(victim_name)
-
-
-func _reset_streak(name: String) -> void:
-	if name == "":
-		return
-	if not _streaks.has(name):
-		return
-	var s: Dictionary = _streaks[name]
-	s["streak"] = 0
-	s["multi"] = 0
-	s["multi_t"] = 0.0
-	_streaks[name] = s
-
-
-func _streak_title(count: int) -> String:
-	if STREAK_TITLES.has(count):
-		return String(STREAK_TITLES[count])
-	if count >= 7:
-		return STREAK_ULTRA
-	return "Multi Kill"
 
 
 func _respawn_delay_for_team(t: int) -> float:
@@ -2156,7 +2032,7 @@ func _spawn_bot(pos: Vector2, team: int, bname: String, loadout: String = "AK-74
 	# Gun Game: bots share the players' ladder — restore the persisted rung so
 	# a bot that climbed pre-death re-spawns holding the same rung's weapon.
 	if Settings.game_mode == Settings.MODE_GG:
-		b.gg_level = _gg_get(bname)
+		b.gg_level = _modes._gg_get(bname)
 	# Bots respawn on the same slot so the match can accumulate score.
 	# Survival gates this — the next spawn only happens on _reset_round.
 	b.died.connect(func() -> void:
@@ -2261,110 +2137,6 @@ func _maybe_build_touch_controls() -> void:
 	layer.add_child(tc)
 
 
-func _spawn_flags() -> void:
-	# CTF bases: BLUE on the far left, RED on the far right of the map's ground row.
-	# Custom maps (editor) can override the pair via `ctf_flags: [blue, red]`.
-	var ground_y: float = float(_map.get("ctf_ground_y", GROUND_Y))
-	var blue_base := Vector2(300, ground_y)
-	var red_base := Vector2(MAP_W - 300, ground_y)
-	var custom: Array = _map.get("ctf_flags", [])
-	if custom.size() >= 2:
-		blue_base = custom[0]
-		red_base = custom[1]
-	# Flags stand on their pole — settle each base onto the ground beneath it
-	# so none float in mid-air or sit buried in a floor.
-	blue_base = _settle_on_ground(blue_base)
-	red_base = _settle_on_ground(red_base)
-	flags = [
-		_make_flag(TEAM_BLUE, blue_base),
-		_make_flag(TEAM_RED, red_base),
-	]
-
-
-func _spawn_flag_inf() -> void:
-	# INF: single neutral flag near the center. Attackers (RED) deliver to the
-	# defenders' base (BLUE) to score. Defenders return the flag by touching it.
-	# Custom maps override the flag + defender base via `inf_flag` / `ctf_flags[0]`.
-	var ground_y: float = float(_map.get("ctf_ground_y", GROUND_Y))
-	var center: Vector2 = _settle_on_ground(_map.get("inf_flag", Vector2(MAP_W * 0.5, ground_y)))
-	var defender_base := Vector2(300, ground_y)
-	var custom_flags: Array = _map.get("ctf_flags", [])
-	if custom_flags.size() >= 1:
-		defender_base = custom_flags[0]
-	defender_base = _settle_on_ground(defender_base)
-	var f := _make_flag(0, center)
-	f.set_meta("capture_point", defender_base)
-	flags = [f]
-
-
-func _spawn_flag_htf() -> void:
-	# HTF: single neutral flag mid-map. The carrying team ticks score per second.
-	var ground_y: float = float(_map.get("ctf_ground_y", GROUND_Y))
-	var center: Vector2 = _settle_on_ground(_map.get("htf_flag", Vector2(MAP_W * 0.5, ground_y)))
-	flags = [_make_flag(0, center)]
-
-
-func _spawn_rambo_bow() -> void:
-	# RM: single Rambo Bow pickup at map center — carrier gets HP regen +
-	# is the only one who scores kills.
-	# In MP only the host spawns it — the pickup state stream (#34) mirrors
-	# it to clients so both peers agree on where the bow is.
-	if Net.is_networked() and not Net.is_host():
-		return
-	var ground_y: float = float(_map.get("ctf_ground_y", GROUND_Y))
-	var wp := WeaponPickup.new()
-	wp.weapon_name = "Rambo Bow"
-	wp.team = -1
-	wp.thrower_name = ""
-	wp.damage_on_hit = 0.0
-	wp.global_position = _map.get("rambo_pos", Vector2(MAP_W * 0.5, ground_y - 40.0))
-	wp.set_meta("rambo_spawn", true)
-	if Net.is_networked() and Net.is_host():
-		wp.pickup_id = next_pickup_id()
-	add_child(wp)
-
-
-func _spawn_point_pickups() -> void:
-	# PM: scatter respawning point pickups. Each grants +1 to the toucher's team.
-	# #113: honor an explicit "point_spawns" list from the map editor; fall back
-	# to the built-in scan-line pattern so procedural maps still play PM.
-	var explicit: Array = _map.get("point_spawns", [])
-	if not explicit.is_empty():
-		for pos in explicit:
-			if pos is Vector2:
-				_spawn_point_pickup(pos)
-		return
-	# Default pattern scales with the map width and sits 30 px above the
-	# actual ground (the old fixed 4800-arena row floated or sank into hills).
-	var ground_y: float = float(_map.get("ctf_ground_y", GROUND_Y))
-	var fracs: PackedFloat32Array = [0.15, 0.29, 0.44, 0.5, 0.56, 0.71, 0.85]
-	for f in fracs:
-		_spawn_point_pickup(_settle_on_ground(Vector2(MAP_W * f, ground_y - 2.0)) + Vector2(0, -30.0))
-
-
-func _make_flag(team: int, base: Vector2) -> Area2D:
-	var a := Area2D.new()
-	a.add_to_group("ctf_flag")
-	a.set_meta("team", team)
-	a.set_meta("home", base)
-	a.set_meta("carrier", null)
-	a.position = base
-	var col := CollisionShape2D.new()
-	var cs := CircleShape2D.new()
-	cs.radius = 18.0
-	col.shape = cs
-	a.add_child(col)
-	# Animated flag (scripts/flag_visual.gd): waving shaded cloth on a pole with
-	# a stone base + team glow at home, strapped to the carrier's back while
-	# carried, and planted with a blinking beacon when dropped.
-	var vis := Node2D.new()
-	vis.name = "FlagVisual"
-	vis.set_script(preload("res://scripts/flag_visual.gd"))
-	a.add_child(vis)
-	add_child(a)
-	return a
-
-
 func _bind_local_camera(p: Node) -> void:
 	if p == null or p.get("cam") == null:
 		return
@@ -2395,7 +2167,7 @@ func _spawn_networked_player(peer_id: int) -> void:
 		var bs: Array = _map.get("bot_spawns", [])
 		if not bs.is_empty():
 			base = _pick_spawn_away(bs, t)
-	var spawn_pos := _jitter_spawn(base)
+	var spawn_pos := _modes._jitter_spawn(base)
 	var display_name: String = Settings.display_name() if peer_id == 1 else str(_peer_names.get(peer_id, "Player %d" % peer_id))
 	bcast("net_spawn_player", [peer_id, spawn_pos, display_name, t], true)
 
@@ -2482,7 +2254,7 @@ func _on_net_peer_disconnected(id: int) -> void:
 		# If the disconnecting peer was the votekick target, resolve the vote
 		# immediately — no one benefits from a countdown against a phantom.
 		if vote_active and vote_kind == "votekick" and vote_target_arg == id:
-			_resolve_vote(false, "Target left the server")
+			_votes._resolve_vote(false, "Target left the server")
 		if _bot_fill_active():
 			call_deferred("_reconcile_bots")
 
@@ -2539,14 +2311,6 @@ func _maybe_bot_chatter(killer: String, victim: String) -> void:
 func net_bot_chat(author: String, msg: String) -> void:
 	if hud != null and hud.has_method("post_chat"):
 		hud.post_chat(author, msg.left(80), false)
-
-
-func _stat_add(who: String, key: String, n: int) -> void:
-	if who == "":
-		return
-	if not player_stats.has(who):
-		player_stats[who] = {"k": 0, "d": 0, "c": 0}
-	player_stats[who][key] = int(player_stats[who][key]) + n
 
 
 @rpc("authority", "call_remote", "reliable")
@@ -2936,7 +2700,7 @@ func net_spawn_player(peer_id: int, spawn_pos: Vector2, display_name: String, as
 	p.set_multiplayer_authority(peer_id)
 	# Gun Game: restore persisted rung on respawn so death doesn't reset progress.
 	if Settings.game_mode == Settings.MODE_GG:
-		p.gg_level = _gg_get(display_name)
+		p.gg_level = _modes._gg_get(display_name)
 	if peer_id == Net.local_id():
 		_apply_spawn_loadout(p)
 	add_child(p)
@@ -2981,23 +2745,11 @@ func net_despawn_player(peer_id: int) -> void:
 		player = null
 
 
-# ── Objective events (grab / drop / return / capture / dom / point) ───────
-# Host-side game logic calls _objective_event; every peer gets the banner,
-# feed line and sound via net_objective_event (they used to be host-only
-# kill-feed hacks that also double-scored).
-func _objective_event(kind: String, team: int, who: String) -> void:
-	if Net.is_networked():
-		if Net.is_host() and multiplayer.has_multiplayer_peer():
-			bcast("net_objective_event", [kind, team, who], true)
-	else:
-		net_objective_event(kind, team, who)
-
-
 @rpc("authority", "call_local", "reliable")
 func net_objective_event(kind: String, team: int, who: String) -> void:
 	objective.emit(kind, team, who)
 	if kind == "capture" or kind == "point":
-		_stat_add(who, "c", 1)
+		_modes._stat_add(who, "c", 1)
 	if kind == "capture" and is_instance_valid(player) and who == str(player.display_name):
 		Stats.record_event("capture")
 	if hud != null and hud.has_method("announce_objective"):
@@ -3229,7 +2981,7 @@ func _process(delta: float) -> void:
 	_tick_recent_players(delta)
 	# Vote timer + cooldown ticks — before the client early-return so the vote
 	# countdown reads smoothly on every peer between host state broadcasts (#77).
-	_tick_vote(delta)
+	_votes._tick_vote(delta)
 	# Kill line + anti-stuck watchdog — per peer, for locally-owned soldiers.
 	_tick_soldier_safety(delta)
 	_tick_perf_watch(delta)
@@ -3258,27 +3010,27 @@ func _process(delta: float) -> void:
 	if not round_active:
 		pass
 	elif Settings.game_mode == Settings.MODE_CTF and flags.size() == 2:
-		_tick_ctf()
+		_modes._tick_ctf()
 	elif Settings.game_mode == Settings.MODE_INF and flags.size() == 1:
-		_tick_inf()
+		_modes._tick_inf()
 	elif Settings.game_mode == Settings.MODE_HTF and flags.size() == 1:
-		_tick_htf(delta)
+		_modes._tick_htf(delta)
 	elif Settings.game_mode == Settings.MODE_RM:
-		_tick_rambo()
+		_modes._tick_rambo()
 	elif Settings.game_mode == Settings.MODE_PM:
-		_tick_pointmatch(delta)
+		_modes._tick_pointmatch(delta)
 	elif Settings.game_mode == Settings.MODE_DOM:
-		_tick_domination(delta)
+		_modes._tick_domination(delta)
 	elif Settings.game_mode == Settings.MODE_BR:
-		_tick_battle_royale(delta)
+		_modes._tick_battle_royale(delta)
 	if round_active:
 		time_left = maxf(0.0, time_left - delta)
 		if time_left <= 0.0:
-			_end_round_by_time()
+			_modes._end_round_by_time()
 	else:
 		winner_end_t = maxf(0.0, winner_end_t - delta)
 		if winner_end_t <= 0.0:
-			if not _apply_next_map_vote():
+			if not _votes._apply_next_map_vote():
 				_reset_round()
 	if Net.is_networked() and Net.is_host():
 		_match_sync_cd -= delta
@@ -3286,7 +3038,7 @@ func _process(delta: float) -> void:
 			_match_sync_cd = 1.0 / MATCH_SYNC_HZ
 			_broadcast_match_state()
 			if vote_active:
-				_broadcast_vote_state()
+				_votes._broadcast_vote_state()
 		# Flag positions + carriers stream faster so grabs/drops feel snappy.
 		if flags.size() > 0:
 			_flag_sync_cd -= delta
@@ -3315,889 +3067,63 @@ func _process(delta: float) -> void:
 				_broadcast_bot_state()
 
 
-func _tick_ctf() -> void:
-	# Two-flag CTF: touch enemy flag to carry, deliver to own home to score.
-	# Carried flags snap to the carrier; dropped flags stay in place until touched.
-	var soldiers := get_tree().get_nodes_in_group("soldier")
-	for f in flags:
-		if not is_instance_valid(f):
-			continue
-		var flag_team: int = int(f.get_meta("team"))
-		var home: Vector2 = f.get_meta("home")
-		var carrier: Variant = f.get_meta("carrier") if f.has_meta("carrier") else null
-		if typeof(carrier) == TYPE_OBJECT and not is_instance_valid(carrier):
-			# Carrier body was freed (killed bot / disconnect) before we saw it
-			# die — drop the flag where it was instead of leaving it hovering.
-			_drop_flag(f, f.position + Vector2(0, 30))
-			continue
-		if is_instance_valid(carrier):
-			if bool(carrier.get("dead")):
-				# Carrier died — drop flag where they fell (settled onto the ground).
-				_drop_flag(f, carrier.global_position)
-				continue
-			f.position = carrier.global_position + Vector2(0, -30)
-			# Did the carrier reach their own base (their home flag)? Score + reset both.
-			for other in flags:
-				if other == f:
-					continue
-				var other_team: int = int(other.get_meta("team"))
-				var other_home: Vector2 = other.get_meta("home")
-				var other_carrier: Variant = other.get_meta("carrier") if other.has_meta("carrier") else null
-				if int(carrier.get("team")) == other_team and other_carrier == null:
-					if f.global_position.distance_to(other_home) < 40.0:
-						_ctf_score(int(carrier.get("team")), str(carrier.get("display_name")))
-						# Return both flags to base.
-						for ff in flags:
-							ff.position = ff.get_meta("home")
-							ff.set_meta("carrier", null)
-			continue
-		# Not carried — check for a grab (enemy touches) or return-to-base (own team touches).
-		for s in soldiers:
-			if not is_instance_valid(s) or bool(s.get("dead")):
-				continue
-			if s.global_position.distance_to(f.global_position) < 22.0:
-				var s_team: int = int(s.get("team"))
-				if s_team == flag_team:
-					# Own team touches: if the flag is away from home, return it.
-					if f.position.distance_to(home) > 12.0:
-						f.position = home
-						_objective_event("return", flag_team, str(s.get("display_name")))
-						break
-					# A defender standing on its home flag must not block an
-					# enemy grab — keep scanning.
-					continue
-				else:
-					# Enemy pickup.
-					f.set_meta("carrier", s)
-					_objective_event("grab", flag_team, str(s.get("display_name")))
-					_bot_radio_efc(flag_team, s)
-				break
-
-
-func _tick_inf() -> void:
-	# Single-flag INF: RED = attackers, BLUE = defenders. RED delivers to
-	# the defenders' base to score; BLUE returns the flag by touching it.
-	var f: Area2D = flags[0] as Area2D
-	if not is_instance_valid(f):
-		return
-	var home: Vector2 = f.get_meta("home")
-	var capture: Vector2 = f.get_meta("capture_point")
-	var carrier: Variant = f.get_meta("carrier") if f.has_meta("carrier") else null
-	if typeof(carrier) == TYPE_OBJECT and not is_instance_valid(carrier):
-		_drop_flag(f, f.position + Vector2(0, 30))
-		return
-	if is_instance_valid(carrier):
-		if bool(carrier.get("dead")):
-			_drop_flag(f, carrier.global_position)
-			return
-		f.position = carrier.global_position + Vector2(0, -30)
-		if int(carrier.get("team")) == TEAM_RED \
-				and f.global_position.distance_to(capture) < 40.0:
-			_inf_score(TEAM_RED, str(carrier.get("display_name")))
-			f.position = home
-			f.set_meta("carrier", null)
-		return
-	# Not carried — pickup / return.
-	for s in get_tree().get_nodes_in_group("soldier"):
-		if not is_instance_valid(s) or bool(s.get("dead")):
-			continue
-		if s.global_position.distance_to(f.global_position) < 22.0:
-			var s_team: int = int(s.get("team"))
-			if s_team == TEAM_RED:
-				f.set_meta("carrier", s)
-				_objective_event("grab", 0, str(s.get("display_name")))
-				break
-			elif s_team == TEAM_BLUE:
-				if f.position.distance_to(home) > 12.0:
-					f.position = home
-					_objective_event("return", 0, str(s.get("display_name")))
-					break
-
-
-func _inf_score(team: int, capturer: String) -> void:
-	scores[team] = int(scores.get(team, 0)) + 1
-	_objective_event("capture", team, capturer)
-	if int(scores[team]) >= INF_SCORE_TO_WIN:
-		_end_round(team)
-
-
-func _tick_htf(delta: float) -> void:
-	# Single-flag HTF: whichever team's soldier is carrying accumulates points
-	# per second. Enemy soldier picks it up → carrier switches. If dropped and
-	# no one grabs, it just waits.
-	var f: Area2D = flags[0] as Area2D
-	if not is_instance_valid(f):
-		return
-	var home: Vector2 = f.get_meta("home")
-	var carrier: Variant = f.get_meta("carrier") if f.has_meta("carrier") else null
-	if typeof(carrier) == TYPE_OBJECT and not is_instance_valid(carrier):
-		_drop_flag(f, f.position + Vector2(0, 30))
-		return
-	if is_instance_valid(carrier):
-		if bool(carrier.get("dead")):
-			_drop_flag(f, carrier.global_position)
-			return
-		f.position = carrier.global_position + Vector2(0, -30)
-		var ct: int = int(carrier.get("team"))
-		_htf_accum[ct] = float(_htf_accum.get(ct, 0.0)) + delta
-		# Flush whole seconds into scores so the scoreboard ticks visibly.
-		while float(_htf_accum.get(ct, 0.0)) >= 1.0:
-			_htf_accum[ct] = float(_htf_accum[ct]) - 1.0
-			scores[ct] = int(scores.get(ct, 0)) + 1
-			if int(scores[ct]) >= HTF_SCORE_TO_WIN:
-				_end_round(ct)
-				return
-		return
-	# Not carried — first soldier to touch grabs it.
-	for s in get_tree().get_nodes_in_group("soldier"):
-		if not is_instance_valid(s) or bool(s.get("dead")):
-			continue
-		if s.global_position.distance_to(f.global_position) < 22.0:
-			f.set_meta("carrier", s)
-			_objective_event("grab", 0, str(s.get("display_name")))
-			break
-	# If dropped far from home and untouched for a while, reset (mercy behavior).
-	if f.position.distance_to(home) > 1400.0:
-		f.position = home
-
-
-func _tick_rambo() -> void:
-	# Rambo Match: single bow pickup. Whoever holds it regenerates HP fast and
-	# is the only player whose kills score. Kill feed handled by _on_kill_scored.
-	# Determine current carrier by scanning weapon_pickups + soldiers holding "Rambo Bow".
-	var carrier_id := 0
-	for s in get_tree().get_nodes_in_group("soldier"):
-		if not is_instance_valid(s) or bool(s.get("dead")):
-			continue
-		# player.weapons + secondary lookup: if their active weapon is "Rambo Bow".
-		var wname := ""
-		if s.get("weapons") != null:
-			var idx: int = int(s.get("weapon_index"))
-			var arr: Array = s.get("weapons")
-			if idx >= 0 and idx < arr.size():
-				wname = str(arr[idx]["name"])
-		elif s.get("loadout") != null:
-			wname = str(s.get("loadout"))
-		if wname == "Rambo Bow":
-			carrier_id = s.get_instance_id()
-			# Regenerate carrier's HP fast.
-			# Health belongs to the body's authority — a client-owned carrier
-			# regenerates itself (see the client branch of _process).
-			if multiplayer.multiplayer_peer == null or s.is_multiplayer_authority():
-				var hp: float = float(s.get("health"))
-				s.set("health", minf(100.0, hp + 40.0 * get_process_delta_time()))
-			break
-	# Cooldown gate (#38): if the previous frame had a carrier and we now have none,
-	# they died — hold off the bow's map-center respawn for a few seconds so an
-	# instant re-pickup doesn't happen the same tick.
-	if _rambo_carrier_id != 0 and carrier_id == 0:
-		_rambo_respawn_cd = RAMBO_RESPAWN_DELAY
-	_rambo_carrier_id = carrier_id
-	_rambo_respawn_cd = maxf(0.0, _rambo_respawn_cd - get_process_delta_time())
-	# Respawn the bow at map center if it doesn't exist and nobody is holding it.
-	if carrier_id == 0 and _rambo_respawn_cd <= 0.0:
-		var exists := false
-		for wp in get_tree().get_nodes_in_group("weapon_pickup"):
-			if is_instance_valid(wp) and str(wp.get("weapon_name")) == "Rambo Bow":
-				exists = true
-				break
-		if not exists:
-			_spawn_rambo_bow()
-
-
 # ── Domination ─────────────────────────────────────────
-
-func _spawn_dom_points() -> void:
-	# Three capture points along the map — left, center, right — on the ground row.
-	# Custom maps override the trio via `dom_points: [Vector2, Vector2, Vector2]`.
-	var ground_y: float = float(_map.get("ctf_ground_y", GROUND_Y))
-	var default_slots := [
-		{"pos": _settle_on_ground(Vector2(MAP_W * 0.20, ground_y - 30.0)) + Vector2(0, -30.0), "name": "A"},
-		{"pos": _settle_on_ground(Vector2(MAP_W * 0.50, ground_y - 30.0)) + Vector2(0, -30.0), "name": "B"},
-		{"pos": _settle_on_ground(Vector2(MAP_W * 0.80, ground_y - 30.0)) + Vector2(0, -30.0), "name": "C"},
-	]
-	var slots: Array = default_slots
-	var custom: Array = _map.get("dom_points", [])
-	if custom.size() >= 1:
-		slots = []
-		var labels := ["A", "B", "C", "D", "E"]
-		for i in custom.size():
-			slots.append({"pos": custom[i], "name": labels[mini(i, labels.size() - 1)]})
-	var visual := preload("res://scripts/dom_point_visual.gd")
-	for slot in slots:
-		var a := Area2D.new()
-		a.add_to_group("dom_point")
-		a.set_meta("owner_team", 0)   # 0 = neutral, 1 = BLUE, 2 = RED
-		a.set_meta("progress", 0.0)   # 0..1 while being captured; polarity is signed by team
-		a.set_meta("cap_team", 0)     # which team is actively capturing (0 = none)
-		a.set_meta("label", str(slot["name"]))
-		a.position = slot["pos"]
-		var col := CollisionShape2D.new()
-		var cs := CircleShape2D.new()
-		cs.radius = 40.0
-		col.shape = cs
-		a.add_child(col)
-		var vis := Node2D.new()
-		vis.set_script(visual)
-		a.add_child(vis)
-		add_child(a)
-		_dom_points.append(a)
-
-
-func _tick_domination(delta: float) -> void:
-	var soldiers := get_tree().get_nodes_in_group("soldier")
-	for a in _dom_points:
-		if not is_instance_valid(a):
-			continue
-		# Which teams have soldiers standing on this point?
-		var blue_on := 0
-		var red_on := 0
-		var radius: float = 44.0
-		for s in soldiers:
-			if not is_instance_valid(s) or bool(s.get("dead")):
-				continue
-			var t: int = int(s.get("team"))
-			if s.global_position.distance_to(a.global_position) > radius:
-				continue
-			if t == TEAM_BLUE:
-				blue_on += 1
-			elif t == TEAM_RED:
-				red_on += 1
-		var contested: bool = blue_on > 0 and red_on > 0
-		var owner_team: int = int(a.get_meta("owner_team"))
-		var progress: float = float(a.get_meta("progress"))
-		var cap_team: int = int(a.get_meta("cap_team"))
-		if not contested and (blue_on > 0 or red_on > 0):
-			var t_cap: int = TEAM_BLUE if blue_on > 0 else TEAM_RED
-			if owner_team == t_cap:
-				progress = 0.0
-				cap_team = 0
-			else:
-				# Same capturing team as last tick → keep ramping. Fresh team resets progress.
-				if cap_team != t_cap:
-					cap_team = t_cap
-					progress = 0.0
-				progress = clampf(progress + delta / DOM_CAPTURE_TIME, 0.0, 1.0)
-				if progress >= 1.0:
-					owner_team = t_cap
-					progress = 0.0
-					cap_team = 0
-					_objective_event("dom", t_cap, str(a.get_meta("label")))
-		elif not contested and blue_on == 0 and red_on == 0:
-			# Empty point drains progress over time so long-held drops reset naturally.
-			progress = maxf(0.0, progress - delta / (DOM_CAPTURE_TIME * 2.0))
-			if progress <= 0.0:
-				cap_team = 0
-		a.set_meta("owner_team", owner_team)
-		a.set_meta("progress", progress)
-		a.set_meta("cap_team", cap_team)
-	# Tick score: each owned point = 1 pt/sec into that team's accumulator.
-	for a in _dom_points:
-		if not is_instance_valid(a):
-			continue
-		var owner_team: int = int(a.get_meta("owner_team"))
-		if owner_team == 0:
-			continue
-		_dom_accum[owner_team] = float(_dom_accum.get(owner_team, 0.0)) + delta
-		while float(_dom_accum.get(owner_team, 0.0)) >= 1.0:
-			_dom_accum[owner_team] = float(_dom_accum[owner_team]) - 1.0
-			scores[owner_team] = int(scores.get(owner_team, 0)) + 1
-			if int(scores[owner_team]) >= DOM_SCORE_TO_WIN:
-				_end_round(owner_team)
-				return
 
 
 func dom_points() -> Array:
-	return _dom_points
+	return _modes.dom_points()
 
 
 # ── Battle Royale ──────────────────────────────────────
 
-func _reset_br_zone() -> void:
-	_br_zone_radius = 2200.0
-	_br_zone_center = Vector2(MAP_W * 0.5, MAP_H * 0.6)
-	# Big ported maps: start the ring wide enough to cover the whole world.
-	_br_zone_radius = maxf(2200.0, Vector2(MAP_W, MAP_H).length() * 0.5)
-	# Attach the zone visual once — it reads center/radius from us on each redraw.
-	if not has_node("BrZoneVisual"):
-		var vis := Node2D.new()
-		vis.name = "BrZoneVisual"
-		vis.set_script(preload("res://scripts/br_zone_visual.gd"))
-		add_child(vis)
-
-
-func _tick_battle_royale(delta: float) -> void:
-	_br_zone_radius = maxf(BR_ZONE_MIN, _br_zone_radius - BR_SHRINK_RATE * delta)
-	# Damage anyone outside the safe zone; last soldier alive wins.
-	var alive: Array = []
-	for s in get_tree().get_nodes_in_group("soldier"):
-		if not is_instance_valid(s) or bool(s.get("dead")):
-			continue
-		alive.append(s)
-		var d: float = s.global_position.distance_to(_br_zone_center)
-		if d > _br_zone_radius and s.has_method("take_damage"):
-			# Non-authority replicas will refuse — matches CFG for other damage paths.
-			if multiplayer.multiplayer_peer == null or s.is_multiplayer_authority():
-				s.take_damage(BR_ZONE_DPS * delta, "", "Zone", -1)
-	# Winner: only one soldier alive.
-	if alive.size() == 1:
-		var lone: Node = alive[0]
-		scores[int(lone.get("team"))] = int(scores.get(int(lone.get("team")), 0)) + 1
-		_end_round(int(lone.get("team")))
-	elif alive.is_empty():
-		_end_round(-1)
-
 
 func br_zone() -> Dictionary:
-	return {"center": _br_zone_center, "radius": _br_zone_radius}
-
-
-func _spawn_point_pickup(pos: Vector2) -> void:
-	var a := Area2D.new()
-	a.add_to_group("point_pickup")
-	a.position = pos
-	a.set_meta("spawn_pos", pos)
-	var col := CollisionShape2D.new()
-	var cs := CircleShape2D.new()
-	cs.radius = 12.0
-	col.shape = cs
-	a.add_child(col)
-	# Draw as a small golden diamond so it reads on the terrain.
-	var poly := Polygon2D.new()
-	poly.polygon = PackedVector2Array([Vector2(0, -10), Vector2(10, 0), Vector2(0, 10), Vector2(-10, 0)])
-	poly.color = Color(1.0, 0.85, 0.25)
-	a.add_child(poly)
-	preload("res://scripts/item_label.gd").attach(a, "+1 POINT", Color(1.0, 0.85, 0.25), 16.0)
-	add_child(a)
-
-
-func _tick_pointmatch(delta: float) -> void:
-	# PM: pickups grant +1 to the toucher's team, then respawn after 6s.
-	var soldiers := get_tree().get_nodes_in_group("soldier")
-	var live_pickups := get_tree().get_nodes_in_group("point_pickup")
-	for p in live_pickups:
-		if not is_instance_valid(p):
-			continue
-		for s in soldiers:
-			if not is_instance_valid(s) or bool(s.get("dead")):
-				continue
-			if p.global_position.distance_to(s.global_position) < 22.0:
-				var s_team: int = int(s.get("team"))
-				scores[s_team] = int(scores.get(s_team, 0)) + 1
-				_objective_event("point", s_team, str(s.get("display_name")))
-				var spawn_pos: Vector2 = p.get_meta("spawn_pos")
-				_pm_pickups[spawn_pos] = 6.0
-				p.queue_free()
-				if int(scores[s_team]) >= PM_SCORE_TO_WIN:
-					_end_round(s_team)
-					return
-				break
-	# Respawn pickups after their cooldown.
-	for pos in _pm_pickups.keys():
-		var t: float = float(_pm_pickups[pos])
-		t -= delta
-		if t <= 0.0:
-			_pm_pickups.erase(pos)
-			_spawn_point_pickup(pos)
-		else:
-			_pm_pickups[pos] = t
-
-
-func _ctf_score(team: int, capturer: String) -> void:
-	scores[team] = int(scores.get(team, 0)) + 1
-	_objective_event("capture", team, capturer)
-	if scores[team] >= CTF_SCORE_TO_WIN:
-		_end_round(team)
+	return _modes.br_zone()
 
 
 func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: String, killer_team: int, victim_team: int) -> void:
-	# Objective feed lines (victim_team < 0: FLAG/POINT) were double-scoring
-	# (+1 here on top of the mode's own point) and counting as kills in Stats.
-	if victim_team < 0:
-		return
-	if round_active:
-		_stat_add(victim_name, "d", 1)
-		if killer_name != "" and killer_name != victim_name:
-			_stat_add(killer_name, "k", 1)
-		elif killer_name == victim_name:
-			_stat_add(victim_name, "k", -1)   # Soldat: a suicide costs a point
-	# Local stats — track the local player's kills / deaths / suicides.
-	# Skips scoreboard synthetic entries (FLAG/POINT etc.) which have killer_team but no soldier.
-	if is_instance_valid(player):
-		var me: String = str(player.display_name)
-		if killer_name == me and victim_name != me:
-			Stats.record_kill(_weapon_name)
-		if victim_name == me and killer_name == me:
-			Stats.record_suicide()
-		elif victim_name == me:
-			Stats.record_death()
-	# (#76) Streak + multi-kill announcer — runs on every peer (banner is local
-	# per-viewer) so it must live above the host-only early-return below.
-	_track_kill_streaks(killer_name, victim_name, killer_team)
-	if Net.is_networked() and not Net.is_host():
-		return
-	if not round_active or killer_team < 0:
-		return
-	_maybe_bot_chatter(killer_name, victim_name)
-	# Gun Game runs its own ladder BEFORE the generic team/suicide gate.
-	# Suicides are still filtered here so a self-kill can't earn a rung-up.
-	if Settings.game_mode == Settings.MODE_GG:
-		if killer_name == victim_name:
-			if Settings.survival:
-				_check_survival_end()
-			return
-		# #91: track per-killer kill count so the GG scoreboard reads live.
-		# Advances on every non-suicide kill (rung/grenade/off-rung alike) so
-		# players see kill throughput even when the ladder hasn't moved yet.
-		_gg_kills[killer_name] = int(_gg_kills.get(killer_name, 0)) + 1
-		var k_lvl: int = _gg_get(killer_name)
-		var weapon_key: String = str(_weapon_name).replace(" (headshot)", "")
-		# Ladder advances only on kills with the killer's CURRENT rung weapon.
-		# Grenade / off-rung / dropped-weapon kills stay on-kill-feed but grant
-		# no progress — otherwise every rung could be skipped with a nade.
-		var rung_weapon: String = ""
-		if k_lvl >= 0:
-			# Golden-knife rung (16) is still a knife kill.
-			rung_weapon = str(GG_LADDER_NAMES[mini(k_lvl, GG_LADDER_NAMES.size() - 1)])
-		var on_rung: bool = weapon_key == rung_weapon
-		# Demote only when the killer is actually on the knife rung.
-		var is_knife_kill: bool = weapon_key == "Knife" and k_lvl >= GG_KNIFE_LEVEL
-		if on_rung and k_lvl >= GG_GOLD_KNIFE_LEVEL:
-			winner_note = "%s reached the golden knife" % killer_name
-			_end_round(killer_team)
-			if Net.is_networked() and Net.is_host():
-				_broadcast_match_state()
-			return
-		# Broadcast the new killer level; every peer applies it to the body
-		# they own (host owns bots + host player; each client owns their player).
-		if on_rung:
-			if Net.is_networked():
-				bcast("net_gg_set_level", [killer_name, k_lvl + 1], true)
-			else:
-				_gg_set(killer_name, k_lvl + 1)
-		if is_knife_kill:
-			if Net.is_networked():
-				bcast("net_gg_set_level", [victim_name, _gg_get(victim_name) - 1], true)
-			else:
-				_gg_set(victim_name, _gg_get(victim_name) - 1)
-		if Settings.survival:
-			_check_survival_end()
-		if Net.is_networked() and Net.is_host():
-			_broadcast_match_state()
-		return
-	# Suicide or team-kill: no score change, but still check survival end so
-	# the round can end on the last soldier down even from friendly fire.
-	if killer_name == victim_name or killer_team == victim_team:
-		if Settings.survival:
-			_check_survival_end()
-		return
-	# Rambo mode: only the current bow carrier's kills count.
-	if Settings.game_mode == Settings.MODE_RM:
-		var carrier_is_killer := false
-		for s in get_tree().get_nodes_in_group("soldier"):
-			if is_instance_valid(s) and str(s.get("display_name")) == killer_name:
-				if s.get_instance_id() == _rambo_carrier_id:
-					carrier_is_killer = true
-				break
-		if not carrier_is_killer:
-			return
-	# Objective modes score only objectives (Soldat rules). Kills used to add
-	# to the same team score, so a CTF team with two kills won on its first
-	# capture (the limit is 3).
-	var kill_scores: bool = not (Settings.game_mode in [Settings.MODE_CTF, Settings.MODE_INF,
-			Settings.MODE_HTF, Settings.MODE_DOM, Settings.MODE_PM])
-	if kill_scores:
-		scores[killer_team] = int(scores.get(killer_team, 0)) + 1
-	# Advance: bump the local player's kill counter and auto-equip any new tier.
-	if Settings.advance and is_instance_valid(player) and str(player.display_name) == killer_name:
-		var unlocked: PackedStringArray = player.advance_receive_kill()
-		for name in unlocked:
-			if hud != null and hud.has_method("post_chat"):
-				hud.post_chat("ADVANCE", "Unlocked: %s" % name, false)
-	if kill_scores and scores[killer_team] >= SCORE_TO_WIN:
-		_end_round(killer_team)
-	elif Settings.survival:
-		# Survival: last team standing ends the round early.
-		_check_survival_end()
-	if Net.is_networked() and Net.is_host():
-		_broadcast_match_state()
-
-
-func _check_survival_end() -> void:
-	# Round ends when only one team has any live soldier remaining.
-	var alive_teams: Dictionary = {}
-	for s in get_tree().get_nodes_in_group("soldier"):
-		if not is_instance_valid(s) or bool(s.get("dead")):
-			continue
-		alive_teams[int(s.get("team"))] = true
-	if alive_teams.size() <= 1:
-		var winner_t := -1
-		for k in alive_teams.keys():
-			winner_t = int(k)
-			break
-		_end_round(winner_t)
-
-
-func _gg_get(display_name: String) -> int:
-	return int(_gg_levels.get(display_name, 0))
-
-
-func _gg_set(display_name: String, level: int) -> void:
-	# Store the clamped level, then push it into whichever live body carries the
-	# name. Only the peer that owns the body mutates it — non-authority replicas
-	# will pick up the swap through the usual net_state / net_bot_state stream.
-	var clamped: int = clampi(level, 0, GG_GOLD_KNIFE_LEVEL)
-	_gg_levels[display_name] = clamped
-	for s in get_tree().get_nodes_in_group("soldier"):
-		if not is_instance_valid(s):
-			continue
-		if str(s.get("display_name")) != display_name:
-			continue
-		if not s.has_method("_apply_gg_weapon"):
-			continue
-		if multiplayer.multiplayer_peer != null and not s.is_multiplayer_authority():
-			continue
-		s.gg_level = clamped
-		s._apply_gg_weapon()
-		break
+	_modes._on_kill_scored(killer_name, victim_name, _weapon_name, killer_team, victim_team)
 
 
 @rpc("authority", "call_local", "reliable")
 func net_gg_set_level(display_name: String, level: int) -> void:
-	_gg_set(display_name, level)
+	_modes.net_gg_set_level(display_name, level)
 
 
 @rpc("authority", "reliable")
 func net_gg_state_sync(levels: Dictionary) -> void:
-	# Replace the entire cache — used both for a joining peer's initial snapshot
-	# (so mid-match spawns read the correct rung locally) and for a round reset
-	# so stale entries don't leak into the next round's first spawn wave.
-	_gg_levels = levels.duplicate(true)
+	_modes.net_gg_state_sync(levels)
 
 
 func _end_round(team: int) -> void:
-	if not round_active:
-		return  # already over — don't restart the winner countdown / re-save stats
-	winner_team = team
-	round_active = false
-	winner_end_t = WINNER_DISPLAY
-	if not Net.is_networked() or Net.is_host():
-		_pick_next_map_choices()
-		if not next_map_choices.is_empty():
-			winner_end_t = WINNER_VOTE_DISPLAY
-	# Record local W/L for the human player. In FFA modes the winner is the local
-	# player's own team id; in team modes it's TEAM_BLUE / TEAM_RED.
-	if is_instance_valid(player):
-		var won: bool = team >= 0 and int(player.team) == team
-		Stats.record_match_end(won)
-	if recorder != null:
-		recorder.save()
-		recorder.queue_free()   # next round records into a new file
-		recorder = preload("res://scripts/replay_recorder.gd").new()
-		recorder.main = self
-		add_child(recorder)
-	if ranked != null:
-		ranked.round_end(team)
-	if Net.is_networked() and Net.is_host():
-		_broadcast_match_state()
-
-
-func _pick_next_map_choices() -> void:
-	next_map_choices = []
-	next_map_tally = [0, 0, 0]
-	_nm_votes.clear()
-	my_next_map_vote = -1
-	# Custom / editor maps (and Survival BR-style resets) keep playing the same map.
-	if cur_map_index < 0 or Settings.custom_map_path != "" or Net.custom_map_json != "" or MAPS.size() < 4:
-		return
-	var cur: int = cur_map_index
-	var pool: Array = []
-	for i in MAPS.size():
-		if i != cur:
-			pool.append(i)
-	pool.shuffle()
-	next_map_choices = pool.slice(0, 3)
-	_push_next_maps()
-
-
-func _push_next_maps() -> void:
-	if Net.is_networked() and Net.is_host():
-		bcast("net_next_maps", [next_map_choices, next_map_tally], true)
+	_modes._end_round(team)
 
 
 @rpc("authority", "call_remote", "reliable")
 func net_next_maps(choices: Array, tally: Array) -> void:
-	if choices != next_map_choices:
-		my_next_map_vote = -1
-	next_map_choices = choices
-	next_map_tally = tally
+	_votes.net_next_maps(choices, tally)
 
 
 func next_map_name(i: int) -> String:
-	if i < 0 or i >= next_map_choices.size():
-		return ""
-	var mi: int = int(next_map_choices[i])
-	return str(MAPS[mi].get("name", "?")) if mi >= 0 and mi < MAPS.size() else "?"
+	return _votes.next_map_name(i)
 
 
-# Local player's vote (HUD: keys 1-3, D-pad, tap).
 func vote_next_map(i: int) -> void:
-	if round_active or i < 0 or i >= next_map_choices.size():
-		return
-	my_next_map_vote = i
-	if Net.is_networked() and not Net.is_host():
-		rpc_id(1, "net_next_map_vote", i)
-	else:
-		_record_next_map_vote(1, i)
+	_votes.vote_next_map(i)
 
 
 @rpc("any_peer", "reliable")
 func net_next_map_vote(i: int) -> void:
-	if Net.is_host():
-		_record_next_map_vote(multiplayer.get_remote_sender_id(), i)
-
-
-func _record_next_map_vote(voter: int, i: int) -> void:
-	if round_active or i < 0 or i >= next_map_choices.size():
-		return
-	_nm_votes[voter] = i
-	next_map_tally = [0, 0, 0]
-	for v in _nm_votes.values():
-		next_map_tally[int(v)] += 1
-	_push_next_maps()
-
-
-# Host / SP at the end of the winner screen: switch maps if anyone voted (or a
-# dedicated server rotates). Returns true when a map change was started.
-func _apply_next_map_vote() -> bool:
-	if Net.is_networked() and not Net.is_host():
-		return false
-	if next_map_choices.is_empty():
-		return false
-	var best := -1
-	var best_ct := 0
-	for i in next_map_choices.size():
-		if int(next_map_tally[i]) > best_ct:
-			best_ct = int(next_map_tally[i])
-			best = i
-	if best < 0:
-		if Net.is_dedicated:
-			best = 0
-		else:
-			next_map_choices = []
-			return false
-	var target: int = int(next_map_choices[best])
-	print("NEXT-MAP %s (%d votes)" % [next_map_name(best), best_ct])
-	next_map_choices = []
-	if Net.is_networked():
-		bcast("net_match_restart", [target, Settings.game_mode], true)
-	else:
-		Settings.map_index = target
-		Settings.custom_map_path = ""
-		Settings.save()
-		call_deferred("_do_reload_main")
-	return true
-
-
-func _end_round_by_time() -> void:
-	# Fixes #37: on time-out with an empty or tied scoreboard, describe *why*
-	# the round ended as a draw instead of just showing "DRAW".
-	# Gun Game (#91): use the ladder itself — highest rung wins, kills break ties.
-	if Settings.game_mode == Settings.MODE_GG:
-		var top_name: String = ""
-		var top_lvl: int = -1
-		var top_kills: int = -1
-		var top_team: int = -1
-		for s in get_tree().get_nodes_in_group("soldier"):
-			if not is_instance_valid(s):
-				continue
-			var nm: String = str(s.get("display_name"))
-			var lvl: int = _gg_get(nm)
-			var kills: int = int(_gg_kills.get(nm, 0))
-			if lvl > top_lvl or (lvl == top_lvl and kills > top_kills):
-				top_lvl = lvl
-				top_kills = kills
-				top_name = nm
-				top_team = int(s.get("team"))
-		if top_name == "":
-			winner_note = "Time up — no rung climbed"
-			_end_round(-1)
-		else:
-			winner_note = "Time up — top rung: %s on rung %d/%d" % [top_name, top_lvl + 1, GG_GOLD_KNIFE_LEVEL]
-			_end_round(top_team)
-		return
-	if scores.is_empty():
-		winner_note = "Time up — no team scored"
-		_end_round(-1)
-		return
-	var top_team := -1
-	var top_score := -1
-	var tied := false
-	for t in scores.keys():
-		var s := int(scores[t])
-		if s > top_score:
-			top_score = s
-			top_team = int(t)
-			tied = false
-		elif s == top_score:
-			tied = true
-	if tied:
-		var pieces: PackedStringArray = PackedStringArray()
-		for t in scores.keys():
-			pieces.append("%d" % int(scores[t]))
-		winner_note = "Tied at %s — time up" % " – ".join(pieces)
-		_end_round(-1)
-	else:
-		winner_note = "Time up — top score %d" % top_score
-		_end_round(top_team)
+	_votes.net_next_map_vote(i)
 
 
 func _reset_round() -> void:
-	scores.clear()
-	_stuck_time.clear()
-	# #263: even the teams between rounds (bots only — never touch a human's
-	# chosen side). Snowballed lobbies were the classic complaint.
-	if Settings.is_team_mode() and Settings.game_mode != Settings.MODE_INF:
-		_balance_teams()
-	# Flags home, nobody carrying — a carrier teleported to spawn used to start
-	# the next round holding the enemy flag next to their own base.
-	for f in flags:
-		if is_instance_valid(f):
-			f.position = f.get_meta("home")
-			f.set_meta("carrier", null)
-	_htf_accum.clear()
-	_dom_accum.clear()
-	_gg_levels.clear()
-	_gg_kills.clear()
-	# Reset control points to neutral so the next round has fresh objectives.
-	for a in _dom_points:
-		if not is_instance_valid(a):
-			continue
-		a.set_meta("owner_team", 0)
-		a.set_meta("progress", 0.0)
-		a.set_meta("cap_team", 0)
-	_reset_br_zone()
-	# Wipe stale weapon pickups so a knife lying on the ground from last round
-	# doesn't linger into the fresh round. `restore_for_round` already clears
-	# per-player `_thrown` sets on host; the physics bodies need parity.
-	if not Net.is_networked() or Net.is_host():
-		for wp in get_tree().get_nodes_in_group("weapon_pickup"):
-			if is_instance_valid(wp):
-				wp.queue_free()
-	time_left = ROUND_TIME
-	winner_team = -1
-	winner_note = ""
-	winner_end_t = 0.0
-	round_active = true
-	next_map_choices = []
-	my_next_map_vote = -1
-	# Survival: nobody respawns during the round, so at reset we wipe surviving
-	# bodies and start everyone fresh.
-	if Settings.survival:
-		if Net.is_networked():
-			# Only the host owns spawn authority; clients receive net_spawn_player.
-			# Wipe living peer bodies + re-spawn every connected peer.
-			if Net.is_host():
-				for pid in _players_by_id.keys():
-					var p = _players_by_id[pid]
-					if is_instance_valid(p):
-						p.queue_free()
-				_players_by_id.clear()
-				# Peer 1 (host, unless dedicated) + every fully-connected peer.
-				if not Net.is_dedicated:
-					_spawn_networked_player(1)
-				for pid in _connected_peers.keys():
-					_spawn_networked_player(int(pid))
-				# #92: surviving bots kept last round's HP/ammo/pos while players
-				# started fresh — wipe them too and re-spawn via net_spawn_bot so
-				# clients mirror the reset.
-				for bid in _bots_by_id.keys():
-					var b = _bots_by_id[bid]
-					if is_instance_valid(b):
-						bcast("net_bot_despawn", [bid], false)
-						b.queue_free()
-				_bots_by_id.clear()
-				call_deferred("_spawn_bots")
-		else:
-			for s in get_tree().get_nodes_in_group("soldier"):
-				if is_instance_valid(s):
-					s.queue_free()
-			_bots_by_id.clear()
-			call_deferred("_spawn_player")
-			call_deferred("_spawn_bots")
-	else:
-		# Non-survival (#58): the round ended but soldiers keep running around
-		# with mid-fight HP/ammo/pos. Give every LIVING soldier a clean slate —
-		# full HP, refilled ammo, teleport to a spawn slot. Dead-and-respawning
-		# soldiers keep their own scheduled timer (no double-spawn) and come back
-		# fresh the normal way.
-		if Net.is_networked():
-			if Net.is_host():
-				bcast("net_round_reset", [], false)
-				_restore_living_soldiers_local()
-		else:
-			_restore_living_soldiers_local()
-	if Net.is_networked() and Net.is_host():
-		_broadcast_match_state()
-
-
-func _restore_living_soldiers_local() -> void:
-	# Each peer restores only bodies it has authority over (host owns its own
-	# player + bots; clients own their own player). Non-authority replicas will
-	# receive the fresh state via the usual net_state / net_bot_state broadcasts.
-	for s in get_tree().get_nodes_in_group("soldier"):
-		if not is_instance_valid(s) or bool(s.get("dead")):
-			continue
-		if multiplayer.multiplayer_peer != null and not s.is_multiplayer_authority():
-			# A client's own body jumps to its spawn at full health next: let it.
-			if s.has_method("trust_amnesty"):
-				s.trust_amnesty()
-			continue
-		if not s.has_method("restore_for_round"):
-			continue
-		s.position = _safe_spawn_near(_round_spawn_pos_for_team(int(s.get("team"))), int(s.get("team")))
-		s.restore_for_round()
-
-
-func _round_spawn_pos_for_team(t: int) -> Vector2:
-	# Mirrors _spawn_networked_player's slot picker: team modes use the shared
-	# player_spawn; FFA picks a random bot_spawns entry so respawning peers land
-	# in the action instead of a corner. Small jitter avoids stacking on top.
-	var base: Vector2 = _map["player_spawn"]
-	if Settings.is_team_mode():
-		base = _team_spawn_pick(t)
-	if not Settings.is_team_mode():
-		var bs: Array = _map.get("bot_spawns", [])
-		if not bs.is_empty():
-			base = _pick_spawn_away(bs, t)
-	return _jitter_spawn(base)
-
-
-func _jitter_spawn(base: Vector2) -> Vector2:
-	# Small random sideways offset so respawns don't stack — but only onto open
-	# air with real ground below (a blind ±140 px shift used to drop players
-	# inside walls or over pits on the tighter ported maps).
-	var safe_base := _find_free_spot_near(base)
-	for _i in 6:
-		var c := safe_base + Vector2(randf_range(-140.0, 140.0), 0.0)
-		if c.x < 60.0 or c.x > MAP_W - 60.0 or not _spot_is_clear(c):
-			continue
-		var gy := _geom_ground_y(c.x, c.y - 2.0)
-		if gy == INF or gy > minf(KILL_Y, GROUND_Y + 1.0) or gy - c.y > 600.0:
-			continue
-		return c
-	return safe_base
+	_modes._reset_round()
 
 
 @rpc("authority", "call_remote", "reliable")
 func net_round_reset() -> void:
-	# Host-triggered non-survival round reset (#58). Runs on every client so
-	# each peer restores the state of the soldier it owns.
-	# Gun Game: also drop the client's cached rungs so a stale entry from the
-	# previous round can't seed a fresh net_spawn_player / net_spawn_bot with
-	# the wrong weapon before the next net_gg_set_level fires.
-	_gg_levels.clear()
-	_restore_living_soldiers_local()
+	_modes.net_round_reset()
 
 
 func _broadcast_match_state() -> void:
@@ -4288,7 +3214,7 @@ func net_mode_state(payload: Dictionary) -> void:
 		# Spawn any pickup we don't have locally (host respawned it after cooldown).
 		for pos in alive:
 			if not have_set.has(str(pos)):
-				_spawn_point_pickup(pos)
+				_modes._spawn_point_pickup(pos)
 	if payload.has("br"):
 		var br: Dictionary = payload["br"]
 		_br_zone_center = br.get("c", _br_zone_center)
@@ -4299,380 +3225,63 @@ func net_mode_state(payload: Dictionary) -> void:
 # Host-authoritative. Public entry points are request_vote/cast_vote/cancel_vote.
 # Chat commands (/votemap /votekick /votecancel) route in via HUD.
 
-func _tick_vote(delta: float) -> void:
-	if vote_active:
-		vote_time_left = maxf(0.0, vote_time_left - delta)
-	# Only host owns cooldown + resolution.
-	if Net.is_networked() and not Net.is_host():
-		return
-	if vote_active and vote_time_left <= 0.0:
-		_resolve_vote(vote_yes * 2 > _eligible_voters())
-	if not vote_active:
-		_vote_cooldown = maxf(0.0, _vote_cooldown - delta)
-
 
 # ── Host chat commands (#257) — the classic Soldat server set, driven from
 # the chat line. Host / single-player only; the HUD rejects clients.
 
-## /addbot [skill 1-5] [name] — one more bot, optionally skilled and named.
 func host_addbot(skill: int, bot_name: String) -> void:
-	if Net.is_networked() and not Net.is_host():
-		return
-	if skill > 0:
-		Settings.bot_skill = clampi(skill, 1, 5)
-	# Remember who exists so the new arrival can be picked out afterwards —
-	# _bots_by_id is only populated in MP, and _live_bots() order is spawn order.
-	var before: Dictionary = {}
-	for b in _live_bots():
-		before[b.get_instance_id()] = true
-	Settings.bot_count = clampi(Settings.bot_count + 1, 0, 32)
-	_reconcile_bots()
-	if bot_name != "":
-		for b in _live_bots():
-			if not before.has(b.get_instance_id()):
-				b.set("display_name", bot_name.left(24))
-				break
-	Settings.save()
-	MatchConfig.host_broadcast()
+	_votes.host_addbot(skill, bot_name)
 
-## /bots <n> — set the bot count live.
 func host_set_bots(n: int) -> void:
-	if Net.is_networked() and not Net.is_host():
-		return
-	Settings.bot_count = clampi(n, 0, 32)
-	_reconcile_bots()
-	Settings.save()
-	MatchConfig.host_broadcast()
+	_votes.host_set_bots(n)
 
-## /kick <name> — disconnect a peer or remove a bot (case-insensitive,
-## unique-prefix match). Returns false when nobody matched.
 func host_kick(name: String) -> bool:
-	if name == "":
-		return false
-	var want := name.to_lower()
-	if Net.is_networked() and Net.is_host():
-		for pid in _peer_names.keys():
-			if str(_peer_names[pid]).to_lower().begins_with(want):
-				if multiplayer.multiplayer_peer != null:
-					multiplayer.multiplayer_peer.disconnect_peer(int(pid))
-				return true
-	for b in _live_bots():
-		if str(b.get("display_name")).to_lower().begins_with(want):
-			# Keep the configured count in step so reconcile doesn't respawn it.
-			Settings.bot_count = maxi(0, Settings.bot_count - 1)
-			_despawn_bot(b)
-			Settings.save()
-			MatchConfig.host_broadcast()
-			return true
-	return false
+	return _votes.host_kick(name)
 
-## /restart, /map <name|index>, /gamemode <n|name> — full match restart onto
-## the given map + mode, on every peer.
 func host_restart_to(map_idx: int, mode_idx: int) -> void:
-	if Net.is_networked():
-		if not Net.is_host():
-			return
-		bcast("net_match_restart", [clampi(map_idx, 0, MAPS.size() - 1), clampi(mode_idx, 0, Net.MODE_NAMES.size() - 1)], true)
-	else:
-		net_match_restart(map_idx, mode_idx)
+	_votes.host_restart_to(map_idx, mode_idx)
 
-## /say <text> — host announcement in everyone's chat feed.
-## Remove a client whose reported state kept failing the host's checks
-## (trust_guard.gd). Announced in chat so the room knows what happened.
 func trust_kick(peer_id: int, who: String) -> void:
-	if not (Net.is_networked() and Net.is_host()) or multiplayer.multiplayer_peer == null:
-		return
-	if not multiplayer.get_peers().has(peer_id):
-		return
-	print("TRUST kick: %s (peer %d)" % [who, peer_id])
-	host_say("%s was removed: their game kept reporting impossible state." % who)
-	multiplayer.multiplayer_peer.disconnect_peer(peer_id)
+	_votes.trust_kick(peer_id, who)
 
 
 func host_say(text: String) -> void:
-	if text == "":
-		return
-	if Net.is_networked() and Net.is_host():
-		bcast("net_chat", ["HOST", text.left(200), "global", -1], true)
-	else:
-		var hud := get_node_or_null("HUD")
-		if hud != null and hud.has_method("post_chat"):
-			hud.post_chat("HOST", text.left(200), false)
+	_votes.host_say(text)
 
-## /ff — flip friendly fire and tell everyone.
 func host_toggle_ff() -> void:
-	if Net.is_networked() and not Net.is_host():
-		return
-	MatchConfig.host_friendly_fire = not MatchConfig.host_friendly_fire
-	MatchConfig.host_broadcast()
-	var hud := get_node_or_null("HUD")
-	if hud != null and hud.has_method("post_chat"):
-		hud.post_chat("HOST", "Friendly fire is now %s." % ("ON" if MatchConfig.host_friendly_fire else "OFF"), false)
+	_votes.host_toggle_ff()
 
 
 func request_vote(kind: String, arg: String) -> void:
-	# Called from HUD when a player submits /votemap or /votekick.
-	if Net.is_networked() and not Net.is_host():
-		rpc_id(1, "net_vote_start", kind, arg)
-	else:
-		_host_start_vote(kind, arg, Net.local_id())
+	_votes.request_vote(kind, arg)
 
 
 func cast_vote(is_yes: bool) -> void:
-	if not vote_active:
-		return
-	if Net.is_networked() and not Net.is_host():
-		rpc_id(1, "net_vote_cast", is_yes)
-	else:
-		_host_apply_vote(Net.local_id(), is_yes)
+	_votes.cast_vote(is_yes)
 
 
 func cancel_vote() -> void:
-	# Host-only power (SP owner too). Silently no-op for clients.
-	if Net.is_networked() and not Net.is_host():
-		return
-	if not vote_active:
-		return
-	_resolve_vote(false, "Cancelled by host")
-
-
-func _peer_display_name(peer_id: int) -> String:
-	if _players_by_id.has(peer_id):
-		var p = _players_by_id[peer_id]
-		if is_instance_valid(p):
-			return str(p.display_name)
-	if peer_id == 1:
-		return "Host"
-	return "Peer %d" % peer_id
-
-
-func _vote_chat(msg: String) -> void:
-	if hud != null and hud.has_method("post_chat"):
-		hud.post_chat("VOTE", msg, false)
-
-
-func _resolve_map_name(idx: int) -> String:
-	# Prefer the actual runtime rotation (procedural + bundled classics), fall
-	# back to the shared game_lists.gd list (#251 — the host-admin copy is
-	# that same list now).
-	if idx >= 0 and idx < MAPS.size():
-		return str(MAPS[idx].get("name", "Map %d" % idx))
-	return "Map %d" % idx
-
-
-func _resolve_vote_map_arg(arg: String) -> int:
-	# Accepts an integer index OR a case-insensitive map name.
-	var s := arg.strip_edges()
-	if s == "":
-		return -1
-	if s.is_valid_int():
-		var n := int(s)
-		if n >= 0 and n < MAPS.size():
-			return n
-		return -1
-	var needle := s.to_lower()
-	for i in MAPS.size():
-		if str(MAPS[i].get("name", "")).to_lower() == needle:
-			return i
-	return -1
-
-
-func _resolve_vote_kick_arg(arg: String) -> int:
-	# Accepts integer peer id or a case-insensitive display_name match (partial ok).
-	var s := arg.strip_edges()
-	if s == "":
-		return 0
-	if s.is_valid_int():
-		var n := int(s)
-		if _players_by_id.has(n):
-			return n
-		return 0
-	var needle := s.to_lower()
-	for pid in _players_by_id.keys():
-		var p = _players_by_id[pid]
-		if not is_instance_valid(p):
-			continue
-		if str(p.display_name).to_lower() == needle:
-			return int(pid)
-	# Partial contains-match as a fallback (typing /votekick red matches "Red 3").
-	for pid in _players_by_id.keys():
-		var p = _players_by_id[pid]
-		if not is_instance_valid(p):
-			continue
-		if str(p.display_name).to_lower().find(needle) >= 0:
-			return int(pid)
-	return 0
-
-
-func _host_start_vote(kind: String, arg: String, starter_id: int) -> void:
-	if vote_active:
-		_vote_chat("A vote is already in progress.")
-		return
-	if _vote_cooldown > 0.0:
-		_vote_chat("Vote cooldown: %ds left." % int(ceil(_vote_cooldown)))
-		return
-	var starter := _peer_display_name(starter_id)
-	match kind:
-		"votemap":
-			var idx := _resolve_vote_map_arg(arg)
-			if idx < 0:
-				_vote_chat("%s: unknown map '%s'." % [starter, arg])
-				return
-			vote_kind = "votemap"
-			vote_target_arg = idx
-			vote_target_str = _resolve_map_name(idx)
-		"votekick":
-			if not Net.is_networked():
-				_vote_chat("votekick only works in multiplayer.")
-				return
-			var pid := _resolve_vote_kick_arg(arg)
-			if pid <= 0:
-				_vote_chat("%s: unknown player '%s'." % [starter, arg])
-				return
-			if pid == starter_id:
-				_vote_chat("You can't votekick yourself.")
-				return
-			vote_kind = "votekick"
-			vote_target_arg = pid
-			vote_target_str = _peer_display_name(pid)
-		_:
-			return
-	vote_active = true
-	vote_yes = 1  # starter's implicit yes vote
-	vote_no = 0
-	_vote_voters = {starter_id: true}
-	vote_time_left = VOTE_DURATION
-	vote_starter = starter
-	_vote_chat("%s called a %s: %s   ([F1]/[F2] to vote)" % [starter, vote_kind, vote_target_str])
-	if Net.is_networked() and Net.is_host():
-		_broadcast_vote_state()
-
-
-func _host_apply_vote(peer_id: int, is_yes: bool) -> void:
-	if not vote_active:
-		return
-	if _vote_voters.has(peer_id):
-		return  # already voted, no changing minds
-	_vote_voters[peer_id] = true
-	if is_yes:
-		vote_yes += 1
-	else:
-		vote_no += 1
-	# Resolve early once the outcome is certain.
-	var eligible := _eligible_voters()
-	if vote_yes * 2 > eligible:
-		_resolve_vote(true)
-		return
-	if vote_no * 2 >= eligible:
-		_resolve_vote(false)
-		return
-	if Net.is_networked() and Net.is_host():
-		_broadcast_vote_state()
-
-
-func _eligible_voters() -> int:
-	# Majority of the humans in the match (a lone starter's own yes no longer
-	# passes a kick/map vote by default). The kick target doesn't vote.
-	if not Net.is_networked():
-		return 1
-	var n := _ready_peers.size() + (0 if Net.is_dedicated else 1)
-	if vote_kind == "votekick" and n > 1:
-		n -= 1
-	return maxi(1, n)
-
-
-func _resolve_vote(passed: bool, reason: String = "") -> void:
-	if not vote_active:
-		return
-	# Snapshot pre-clear so the summary + apply steps see the right values even
-	# after the state reset below.
-	var kind := vote_kind
-	var target := vote_target_arg
-	var target_label := vote_target_str
-	var yes_ct := vote_yes
-	var no_ct := vote_no
-	var summary: String
-	if reason != "":
-		summary = reason
-	else:
-		summary = "PASSED (%d-%d)" % [yes_ct, no_ct] if passed else "FAILED (%d-%d)" % [yes_ct, no_ct]
-	_vote_chat("%s %s — %s" % [kind, target_label, summary])
-	# Broadcast end state so clients clear their prompt in sync.
-	if Net.is_networked() and Net.is_host():
-		bcast("net_vote_end", [kind, target_label, passed, yes_ct, no_ct, reason], false)
-	# Clear locally BEFORE triggering restart/kick — scene reload otherwise fires
-	# with stale vote_active still true on the next frame.
-	vote_active = false
-	vote_kind = ""
-	vote_target_str = ""
-	vote_target_arg = 0
-	vote_yes = 0
-	vote_no = 0
-	vote_time_left = 0.0
-	_vote_voters.clear()
-	_vote_cooldown = VOTE_COOLDOWN
-	if not passed:
-		return
-	match kind:
-		"votemap":
-			if Net.is_networked() and Net.is_host():
-				bcast("net_match_restart", [target, Settings.game_mode], true)
-			elif not Net.is_networked():
-				Settings.map_index = target
-				Settings.custom_map_path = ""
-				Settings.save()
-				call_deferred("_do_reload_main")
-		"votekick":
-			if Net.is_networked() and Net.is_host() and multiplayer.multiplayer_peer != null and target > 1:
-				multiplayer.multiplayer_peer.disconnect_peer(target)
-
-
-func _broadcast_vote_state() -> void:
-	if not Net.is_host():
-		return
-	for pid in _ready_peers.keys():
-		rpc_id(int(pid), "net_vote_state", vote_active, vote_kind, vote_target_str, vote_yes, vote_no, vote_time_left, vote_starter)
+	_votes.cancel_vote()
 
 
 @rpc("any_peer", "reliable")
 func net_vote_start(kind: String, arg: String) -> void:
-	if not Net.is_host():
-		return
-	_host_start_vote(kind, arg, multiplayer.get_remote_sender_id())
+	_votes.net_vote_start(kind, arg)
 
 
 @rpc("any_peer", "reliable")
 func net_vote_cast(is_yes: bool) -> void:
-	if not Net.is_host():
-		return
-	_host_apply_vote(multiplayer.get_remote_sender_id(), is_yes)
+	_votes.net_vote_cast(is_yes)
 
 
 @rpc("authority", "reliable")
 func net_vote_state(active: bool, kind: String, target: String, yes_ct: int, no_ct: int, tl: float, starter: String) -> void:
-	vote_active = active
-	vote_kind = kind
-	vote_target_str = target
-	vote_yes = yes_ct
-	vote_no = no_ct
-	vote_time_left = tl
-	vote_starter = starter
+	_votes.net_vote_state(active, kind, target, yes_ct, no_ct, tl, starter)
 
 
 @rpc("authority", "reliable")
 func net_vote_end(kind: String, target_label: String, passed: bool, yes_ct: int, no_ct: int, reason: String) -> void:
-	var summary: String
-	if reason != "":
-		summary = reason
-	else:
-		summary = "PASSED (%d-%d)" % [yes_ct, no_ct] if passed else "FAILED (%d-%d)" % [yes_ct, no_ct]
-	_vote_chat("%s %s — %s" % [kind, target_label, summary])
-	vote_active = false
-	vote_kind = ""
-	vote_target_str = ""
-	vote_yes = 0
-	vote_no = 0
-	vote_time_left = 0.0
+	_votes.net_vote_end(kind, target_label, passed, yes_ct, no_ct, reason)
 
 
 # ── Bonus pickups (#78) ───────────────────────────────
@@ -4836,7 +3445,7 @@ func net_spawn_bot(bot_id: int, spawn_pos: Vector2, team: int, display_name: Str
 	# Gun Game: mirror the client's cached rung so the newly-spawned replica
 	# reads the right weapon in-hand even before the first net_bot_state tick.
 	if Settings.game_mode == Settings.MODE_GG:
-		b.gg_level = _gg_get(display_name)
+		b.gg_level = _modes._gg_get(display_name)
 	add_child(b)
 	b.set_multiplayer_authority(1, true)
 	_bots_by_id[bot_id] = b
