@@ -449,7 +449,11 @@ fi
 # ANY online case (the per-netcase check covers only netcase()); the trust
 # cases themselves play modified clients and are excluded.
 if has C; then
-  tl=$(grep -l "^TRUST " "$OUT"/net_*server*.log 2>/dev/null | grep -v "/net_trust_" | tr '\n' ' ')
+  # (net_drive is excluded: its harness teleports the client next to the buggy,
+  # which the host rightly logs once — one move is not a strike.)
+  tl=$(grep -l "^TRUST " "$OUT"/net_*server*.log 2>/dev/null | grep -v -e "/net_trust_" -e "/net_drive_" | tr '\n' ' ')
+  dl=$(grep -c "^TRUST forced\|^TRUST kick" "$OUT"/net_drive_server.log 2>/dev/null || true)
+  [ "${dl:-0}" = "0" ] || tl="$tl net_drive(forced/kick)"
   if [ -z "$tl" ]; then pass "C trust checks quiet for honest clients (all online cases)"; else fail "C TRUST lines from honest clients in: $tl"; fi
 fi
 

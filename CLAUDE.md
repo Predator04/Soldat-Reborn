@@ -19,7 +19,7 @@ This directory (`game/`) is the git repo root — note the space in the parent p
   - `match_bots.gd` — bot roster (Bots setting, `--fill`, live count changes), spawn / respawn, team balance (#263), chatter + radio call-outs, bot replication (#55).
   - `match_vehicles.gd` — buggies / tanks (`vehicle_send`, seats, relay checks) and M2 turrets (`net_m2_*` bodies, `_m2_relay`).
   - `match_bonuses.gd` — bonus boxes (#78), medikits / grenade kits, the weapon-pickup stream (`_pickup_entry`, `net_pickup_state`).
-  - `match_world.gd` — world rect, sky / parallax / weather, terrain bodies + ladders + scenery, gfx layers, plain-geometry placement queries (`_geom_ground_y`, `_spot_is_clear`, …), kill line + anti-stuck watchdog.
+  - `match_world.gd` — world rect, weather, terrain bodies + ladders + scenery, gfx layers, plain-geometry placement queries (`_geom_ground_y`, `_spot_is_clear`, …), kill line + anti-stuck watchdog.
 - `net.gd` — high-level ENet wrapper (autoload). `Mode { SINGLEPLAYER, HOST, CLIENT }`, `DEFAULT_PORT 7777`, `MAX_PEERS 8`, `MAP_NAMES` / `MODE_NAMES` (single source: `scripts/game_lists.gd`, #251). Owns `custom_map_json` (custom-map sync, #99) and `is_dedicated`. Also hosts the `--smoke-*` self-test entry points.
 - `player.gd` (~71 KB) — player physics, weapons, F-throw, ladder climb. `_physics_process` dispatches by state (#258): `_physics_replica` (non-authority), `_physics_mounted` (M2 / vehicle seat), `_physics_input_locked` (chat line open), `_physics_live` → `_live_stance`, `_live_ladder` (climb engage / dismount), `_live_move`, `_live_aim`, `_live_weapon_keys`, `_live_grenade`, `_live_trigger`, `_live_timers`, `_live_fx`, `_send_state`. Shared physics constants live here (bot.gd reads them, #251).
 - `bot.gd` (~38 KB) — bot AI, has ladder awareness.
@@ -30,6 +30,7 @@ This directory (`game/`) is the git repo root — note the space in the parent p
   - `hud_commands.gd` — the typed line (`/` commands + gestures, T / Y chat): vote commands, host commands, mode / map argument resolvers.
   - Also `scoreboard.gd`, `hud_bars.gd`, `objective_hud.gd`, `radio_menu.gd`, `weapon_menu.gd`.
 - `menu.gd` — main menu screens (title, host / join / settings / stats / credits panels, rejoin, SP map picker). Split out (#258): `name_prompt.gd`, `menu_update.gd` (update + WHAT'S NEW), `menu_news.gd` (#261), `menu_browser.gd` — the server browser (internal child `_browser`: browse / LAN / recent / master lists, Quick Join / Quick Play, skill matchmaking #33); `_browse_root`, `_master_rows`, `my_skill`, `qp_score`, `skill_penalty` stay reachable on the menu for tests.
+- `scripts/gfx/atmosphere.gd` (#270) — sky, parallax, ambient light, post grade, pooled lights, rim light; `Settings.visual_style` cinematic / classic. Cosmetic only; headless + Low quality take the classic path (`Atmosphere.force_cinematic_for_tests` for gate ATMOS-TEST). `tools/capture.gd --ab` renders classic/cinematic pairs.
 - `weapon_pickup.gd`, `bonus_pickup.gd`, `bullet.gd`, `grenade.gd`, `rocket.gd`, `m2.gd` (stationary gun).
 - `map_editor.gd`, `map_io.gd`, `map_gen.gd` — custom-map tooling. `poa_loader.gd` + `references/poa-format.md` = classic `.pms` map import.
 - Game-mode constants (`MODE_DM`, `MODE_TDM`, `MODE_CTF`, `MODE_INF`, `MODE_HTF`, `MODE_RM`, `MODE_PM`, `MODE_DOM`, `MODE_BR`, `MODE_GG`) live in `Settings.gd`.
