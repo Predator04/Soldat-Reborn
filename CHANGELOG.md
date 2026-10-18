@@ -4,6 +4,14 @@ All notable changes to Soldat Reborn.
 
 ## [Unreleased]
 
+### Added
+- **News line on the main menu** (#261). One short message from the master server (`GET /news`) under the version button, at most one fetch every 10 minutes. Click it to open its link; × hides that message for good (a new one shows again). It fails silently and never holds up the menu; on phones it has a touch-sized hit area.
+- **Weekly featured mode/map on the official server** (#264). `featured.json` next to the server's game pack sets the week's mode, map and weapon bans; the hourly update restarts the server when the week changes, and an expired or missing file goes back to CTF. `deploy/featured-rotate.sh` cycles a preset plan by ISO week. With no other news, the menu news line advertises the featured week ("This week on the official server: Rambomatch on Voland").
+- Dedicated servers take host weapon bans on the command line: `--bans=Minigun,Steyr AUG` (names as in the ban grid, case-insensitive; `--bans=` clears them) (#264).
+
+### Fixed
+- A dedicated server given an unknown `--map` / `--mode` name now says so in its log (it used to fall back silently), and a later bad flag no longer overrides an earlier good one, so a bad featured entry falls back to CTF (#264).
+
 ### Security — the host now checks what clients say about themselves
 - Each player's own game decides the damage it takes, where it is, and who killed it — that's what keeps the game instant on every connection, but a modified client could ignore hits, teleport, or hand kills to a friend. The host now keeps its own account and steps in when a client's story can't be true (new `trust_guard.gd`):
   - **Ignored damage:** the host's own hit detection saw a player take two lives' worth of damage while their game reported almost none → host-side death.

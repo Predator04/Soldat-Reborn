@@ -27,7 +27,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 G="${GODOT_BIN:-$HOME/godot/Godot_v4.7.2-stable_linux.x86_64}"
 QUICK=0; OUT="build/gate"; ONLY="A B N C D R F E"; MODESEL="0 1 2 3 4 5 6 7 8 9"
-NETSEL="ctf dm two trust fill ranked friends respawn killcam drive rejoin relay host listen lan soak m3 m7 m9 m2"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
+NETSEL="ctf dm two trust fill ranked friends news featured respawn killcam drive rejoin relay host listen lan soak m3 m7 m9 m2"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --quick) QUICK=1;; --out) OUT="$2"; shift;; --only) ONLY="$2"; shift;;
@@ -259,6 +259,52 @@ case " $NETSEL " in *" friends "*)
     pass "C net clan tag + friends: listed $(echo "$list" | grep -o '"names":\[[^]]*\]') | $rec"
   else
     fail "C net clan tag + friends: list=$(echo "$list" | head -c 300) recent='$rec' errors=$e"
+  fi
+;; esac
+case " $NETSEL " in *" news "*)
+  # #261 menu news line (+ #264 featured fallback) against a real master
+  # serving news.json: shown under the version button, x hides it for good,
+  # a new message shows again, expired / missing / unreachable show nothing.
+  RB="../server/master-server/dist/soldat-master-linux-amd64"
+  nport=$((8300 + RANDOM % 400)); ndir=$(mktemp -d)
+  SOLDAT_DATA_DIR="$ndir" SOLDAT_FEATURED_FILE="$ndir/featured.json" timeout 100 "$RB" -port $nport > "$OUT/net_news_master.log" 2>&1 &
+  npid=$!; sleep 1
+  timeout 90 "$G" --headless -s tools/news_test.gd -- --menu-news --master=http://127.0.0.1:$nport --news-file="$ndir/news.json" --featured-file="$ndir/featured.json" > "$OUT/net_news.log" 2>&1
+  kill $npid 2>/dev/null; wait $npid 2>/dev/null; rm -rf "$ndir"
+  line=$(grep -m1 "NEWS-TEST" "$OUT/net_news.log")
+  if echo "$line" | grep -q "NEWS-TEST ok" && [ "$(errs "$OUT/net_news.log")" = "0" ]; then pass "C net menu news line (#261): $(echo "$line" | cut -c1-140)"; else fail "C net menu news line: '${line:-no result}' errors=$(errs "$OUT/net_news.log")"; fi
+;; esac
+case " $NETSEL " in *" featured "*)
+  # #264 weekly featured server: the deploy script turns featured.json into
+  # the unit's ExecStart; the dedicated server starts in that mode / map with
+  # the bans; a bad entry falls back to the defaults with a log line.
+  FT="../server/master-server/deploy/featured_test.sh"
+  line=$(bash "$FT" 2>&1 | tail -3 | tr '\n' ' ')
+  if echo "$line" | grep -q "FEATURED-SCRIPT-TEST ok"; then pass "C net featured: deploy ExecStart generator + weekly rotation"; else fail "C net featured script: $line"; fi
+  port=$((7700 + RANDOM % 200))
+  timeout 40 "$G" --headless -- --dedicated --port $port --mode ctf --mode rm --map Voland "--bans=Minigun,steyr aug,Nope" > "$OUT/net_featured_server.log" 2>&1 &
+  spid=$!
+  for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_featured_server.log" 2>/dev/null && break; sleep 0.5; done
+  sleep 3
+  timeout 20 "$G" --headless -- --smoke-query --port $port > "$OUT/net_featured_query.log" 2>&1
+  kill $spid 2>/dev/null; wait $spid 2>/dev/null
+  q=$(grep -m1 SMOKE-QUERY "$OUT/net_featured_query.log")
+  e=$(( $(errs "$OUT/net_featured_server.log") + $(errs "$OUT/net_featured_query.log") ))
+  if echo "$q" | grep -q "map=Voland mode=Rambomatch" && grep -q "weapon bans: Minigun, Steyr AUG" "$OUT/net_featured_server.log" && grep -q "unknown weapon 'Nope'" "$OUT/net_featured_server.log" && [ "$e" = "0" ]; then
+    pass "C net featured server: $q | $(grep -m1 'weapon bans' "$OUT/net_featured_server.log")"
+  else
+    fail "C net featured server: '${q:-no query}' $(grep -m1 'weapon bans' "$OUT/net_featured_server.log") errors=$e"
+  fi
+  port=$((7700 + RANDOM % 200))
+  timeout 30 "$G" --headless -- --dedicated --port $port --mode ctf --mode bogusmode --map Nowhere --bans= > "$OUT/net_featured_bad.log" 2>&1 &
+  spid=$!
+  for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_featured_bad.log" 2>/dev/null && break; sleep 0.5; done
+  sleep 2; kill $spid 2>/dev/null; wait $spid 2>/dev/null
+  if grep -q "unknown mode 'bogusmode', keeping Capture the Flag" "$OUT/net_featured_bad.log" && grep -q "unknown map 'Nowhere'" "$OUT/net_featured_bad.log" \
+      && grep -q "listening on port $port, map=.* mode=Capture the Flag" "$OUT/net_featured_bad.log" && [ "$(errs "$OUT/net_featured_bad.log")" = "0" ]; then
+    pass "C net featured bad entry falls back: $(grep -m1 'listening on port' "$OUT/net_featured_bad.log")"
+  else
+    fail "C net featured bad entry: $(grep -hE 'Dedicated|listening' "$OUT/net_featured_bad.log" | tr '\n' ' ') errors=$(errs "$OUT/net_featured_bad.log")"
   fi
 ;; esac
 case " $NETSEL " in *" relay "*)
