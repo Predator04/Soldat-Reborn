@@ -30,7 +30,7 @@ credit are caught on the server (forced death, then a kick).
 
 ## Features
 
-- **Movement** — run / bunny-hop / jet boots with fuel, crouch, prone, roll, backflip-friendly physics; tap for a short hop, hold jump for the full leap; prone mid-air drops you faster (prone-cancel)
+- **Movement** — run / bunny-hop / jet boots with fuel, crouch, prone, roll, backflip-friendly physics; tap for a short hop, hold jump for the full leap; prone mid-air drops you faster (prone-cancel). Training ends with a movement course that teaches all of it against the clock (also on the menu as MOVEMENT COURSE)
 - **Weapons** — 10 primaries (Deagles, MP5, AK-74, Steyr AUG, Spas-12, Ruger 77, M79, Barrett, Minimi, Minigun) + 4 secondaries (USSOCOM, Knife, Chainsaw, LAW) + Flamethrower, Rambo Bow, Frag/Cluster grenades, M2 stationary gun
 - **Game modes** — Deathmatch, Pointmatch, Teammatch, Capture the Flag, Rambomatch, Infiltration, Hold the Flag, **Domination**, **Battle Royale**, **Gun Game** + Realistic/Survival/Advance sub-modes; auto team balance between rounds
 - **Map editor** — in-game editor: place platforms, spawns, flags, control points; save/load custom maps; play-test live
@@ -54,7 +54,7 @@ credit are caught on the server (forced death, then a kick).
 | A / D | Move left / right |
 | W (or SPACE) | Jump (also stands up from prone) |
 | S | Crouch (hold) — rolls while moving |
-| X | Prone (toggle) |
+| X | Prone (toggle; LT on a gamepad) |
 | Right click | Jet boots (hold in air) |
 | Mouse / Left click | Aim / shoot |
 | 1–0 | Primary: 1 Deagles · 2 MP5 · 3 AK-74 · 4 Steyr AUG · 5 Spas-12 · 6 Ruger 77 · 7 M79 · 8 Barrett · 9 Minimi · 0 Minigun |

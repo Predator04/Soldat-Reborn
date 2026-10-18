@@ -391,7 +391,7 @@ func _build_menu() -> void:
 		Net.set_singleplayer()
 		_go_to_match())
 	_menu_first_focus = play
-	# PLAY vs BOTS | RANDOM MAP, then TRAINING | MAP EDITOR (two rows, so the
+	# PLAY vs BOTS | RANDOM MAP, then TRAINING | MOVEMENT COURSE | MAP EDITOR (two rows, so the
 	# whole column fits without scrolling).
 	var gen := _make_button("RANDOM MAP")
 	gen.tooltip_text = "Builds a brand-new random map and starts a bot match on it with your current mode. Saved as \"generated\" (the next press replaces it) — open it in the Map Editor to keep it."
@@ -413,9 +413,14 @@ func _build_menu() -> void:
 	var train := _make_button("TRAINING")
 	train.tooltip_text = "Guided first match: learn to move, jet, shoot, reload, switch and throw grenades."
 	train.pressed.connect(func() -> void: _with_name(start_training_match))
+	# #262: returning players run the movement course on its own.
+	var course := _make_button("MOVEMENT COURSE")
+	course.name = "MovementCourse"
+	course.tooltip_text = "Tap and hold jumps, prone drops and bunny hops against the clock. Beat your best time."
+	course.pressed.connect(func() -> void: _with_name(start_movement_course))
 	var deploy_row := HBoxContainer.new()
 	deploy_row.add_theme_constant_override("separation", 8)
-	for b in [train, editor]:
+	for b in [train, course, editor]:
 		b.custom_minimum_size = Vector2(0, b.custom_minimum_size.y)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		deploy_row.add_child(b)
@@ -690,6 +695,12 @@ func _go_to_match() -> void:
 
 func start_training_match() -> void:
 	preload("res://scripts/training.gd").start_training()
+	Net.set_singleplayer()
+	_go_to_match()
+
+
+func start_movement_course() -> void:
+	preload("res://scripts/training.gd").start_training(true)
 	Net.set_singleplayer()
 	_go_to_match()
 
