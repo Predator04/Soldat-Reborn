@@ -46,7 +46,8 @@ This directory (`game/`) is the git repo root — note the space in the parent p
 - `--smoke-join` — connect to a local host, confirm map + bot replication.
 - `--smoke-botfire` — join + wait 20s, confirm remote bot fire replicates (prints `bot_shots_seen`).
 - `--smoke-dedicated` — dedicated (headless) host smoke.
-- Dedicated server: `--dedicated --port N --map <name|index> --mode <name|index> [--register <master-url>]`.
+- Dedicated server: `--dedicated --port N --map <name|index> --mode <name|index> [--register <master-url>] [--bans=W1,W2]` (later flags win; unknown names log + keep the earlier value, #264).
+- Menu news line (#261): `scripts/menu_news.gd`, fetched from `<master>/news`; headless runs fetch only with `--menu-news` (gate C `news`).
 - `--smoke-auto` (with `--smoke-join` / `--smoke-botfire`) drives the client's soldier with random input; `--smoke-lan` listens 5 s for LAN beacons and prints them.
 - `tools/mp_soak.sh MODE [MAP] [OUT]` — dedicated server + two autopiloted clients (~50 s), prints error counts per log.
 

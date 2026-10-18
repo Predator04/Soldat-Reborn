@@ -2,6 +2,16 @@
 
 All notable changes to Soldat Reborn.
 
+## [Unreleased]
+
+### Added
+- **News line on the main menu** (#261). One short message from the master server (`GET /news`) under the version button, at most one fetch every 10 minutes. Click it to open its link; × hides that message for good (a new one shows again). It fails silently and never holds up the menu; on phones it has a touch-sized hit area.
+- **Weekly featured mode/map on the official server** (#264). `featured.json` next to the server's game pack sets the week's mode, map and weapon bans; the hourly update restarts the server when the week changes, and an expired or missing file goes back to CTF. `deploy/featured-rotate.sh` cycles a preset plan by ISO week. With no other news, the menu news line advertises the featured week ("This week on the official server: Rambomatch on Voland").
+- Dedicated servers take host weapon bans on the command line: `--bans=Minigun,Steyr AUG` (names as in the ban grid, case-insensitive; `--bans=` clears them) (#264).
+
+### Fixed
+- A dedicated server given an unknown `--map` / `--mode` name now says so in its log (it used to fall back silently), and a later bad flag no longer overrides an earlier good one, so a bad featured entry falls back to CTF (#264).
+
 ## [1.34.0] — 2026-10-15
 
 ### Added — movement tech from the original's tutorial

@@ -9,6 +9,7 @@ const SettingsPanel = preload("res://scripts/settings_panel.gd")
 const UITheme = preload("res://scripts/ui_theme.gd")
 const NamePromptUI = preload("res://scripts/name_prompt.gd")
 const MenuUpdate = preload("res://scripts/menu_update.gd")
+const MenuNews = preload("res://scripts/menu_news.gd")
 
 # Slots 0..2 are the three procedural remakes; slots 3..12 are the classic
 # Soldat maps bundled from res://assets/maps/*.json (see MapIO.BUNDLED_CLASSICS
@@ -259,6 +260,11 @@ func _build_title() -> void:
 	_title_nodes.append(_name_btn)
 	_refresh_name_btn()
 	_build_update_button()
+	# #261: the master server's news line, under the version button.
+	_news = MenuNews.new()
+	_news.name = "MenuNews"
+	_news.menu = self
+	add_child(_news)
 
 
 func _build_number() -> int:
@@ -606,6 +612,7 @@ func _build_name_prompt(then: Callable = Callable(), changing := false) -> void:
 # going into a match) ─────────────────────────────────────────────────────
 const Updater = preload("res://scripts/updater.gd")
 var _upd_btn: Button = null
+var _news: Node = null   # #261 news line (menu_news.gd)
 var _upd_panel: PanelContainer = null
 
 

@@ -171,6 +171,7 @@ var _slider_burst := false     # #245: set while a settings slider's on_change r
 const DEFAULT_MASTER_URL := "https://161-153-9-69.sslip.io"
 var master_url := DEFAULT_MASTER_URL
 var recent_servers: Array = []   # "ip:port", newest first (Browse -> Recent)
+var news_dismissed := ""          # #261: text of the menu news line the player hid
 
 # Convenience: DM / Rambo / Battle Royale / Gun Game are FFA (friendly-fire on), teams disable friendly damage.
 func friendly_fire_on() -> bool:
@@ -312,6 +313,7 @@ func load_settings() -> void:
 		master_url = DEFAULT_MASTER_URL
 	var rs = cf.get_value("net", "recent_servers", [])
 	recent_servers = (rs as Array).duplicate() if rs is Array else []
+	news_dismissed = str(cf.get_value("net", "news_dismissed", "")).left(200)
 
 
 func save() -> void:
@@ -427,6 +429,7 @@ func _write_file() -> void:
 	cf.set_value("net", "profile_id", profile_id)
 	cf.set_value("net", "master_url", master_url)
 	cf.set_value("net", "recent_servers", recent_servers)
+	cf.set_value("net", "news_dismissed", news_dismissed)
 	cf.save(PATH)
 
 
