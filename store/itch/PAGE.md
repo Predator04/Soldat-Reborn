@@ -1,10 +1,10 @@
-# itch.io page for Soldat Reborn
+# itch.io page for Tracerfall
 
 Everything to paste into itch.io when you create the project
 (itch.io > Dashboard > Create new project). Files are in this folder.
 
 ## Settings
-- **Title:** Soldat Reborn
+- **Title:** Tracerfall
 - **Project URL:** soldat-reborn (itch.io/…/soldat-reborn)
 - **Short description / tagline:** Fast 2D multiplayer shooter with jetpacks, CTF and online play. Free.
 - **Classification:** Games · **Kind of project:** Downloadable
@@ -25,7 +25,7 @@ Everything to paste into itch.io when you create the project
 
 ## Description (paste into the page body)
 
-**Soldat Reborn** is a fast, free 2D multiplayer shooter: jetpacks, bunny hops,
+**Tracerfall** is a fast, free 2D multiplayer shooter: jetpacks, bunny hops,
 ragdoll gibs and 16 weapons, rebuilt from the cult classic *Soldat* for today's
 PCs and phones.
 

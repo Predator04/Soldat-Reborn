@@ -4520,7 +4520,13 @@ func trust_kick(peer_id: int, who: String) -> void:
 		return
 	print("TRUST kick: %s (peer %d)" % [who, peer_id])
 	host_say("%s was removed: their game kept reporting impossible state." % who)
-	multiplayer.multiplayer_peer.disconnect_peer(peer_id)
+	# Stop addressing them now (projectile / pickup streams use the ready list),
+	# then drop the connection a moment later so the chat line goes out first.
+	_ready_peers.erase(peer_id)
+	_push_ready_list()
+	get_tree().create_timer(0.25).timeout.connect(func() -> void:
+		if multiplayer.multiplayer_peer != null and multiplayer.get_peers().has(peer_id):
+			multiplayer.multiplayer_peer.disconnect_peer(peer_id))
 
 
 func host_say(text: String) -> void:

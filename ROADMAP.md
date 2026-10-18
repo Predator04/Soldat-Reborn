@@ -1,4 +1,4 @@
-# Soldat Reborn — Roadmap
+# Tracerfall (formerly Soldat Reborn) — Roadmap
 
 > **Current status: v1.34.0** (see CHANGELOG.md for the full history).
 > Feature-complete against the original's core loop and well past it: 102 maps
@@ -32,7 +32,6 @@ Everything is tracked in [GitHub issues](https://github.com/Predator04/Soldat-Re
 ### In progress
 - [#262](https://github.com/Predator04/Soldat-Reborn/issues/262) Movement tutorial course (tap/hold jump, prone-cancel, bunny-hop)
 - [#258](https://github.com/Predator04/Soldat-Reborn/issues/258) Split the god-files (hud / main / player physics / draw_soldier; menu browser last)
-- [#269](https://github.com/Predator04/Soldat-Reborn/issues/269) Rename to **Tracerfall** (display name; install paths and package id stay so updates keep working)
 
 ### Graphics overhaul (cosmetic only, never touches the simulation or netcode)
 - [#270](https://github.com/Predator04/Soldat-Reborn/issues/270) Phase A: dynamic 2D lighting, post-processing, parallax backgrounds

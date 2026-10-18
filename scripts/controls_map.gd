@@ -37,7 +37,7 @@ const ACTION_SECTION := {
 # secondary events so a controller works out-of-the-box. Joy button indices
 # match Godot's JoyButton enum (0=A, 1=B, 2=X, 3=Y, 6=Start, 9=LB, 10=RB,
 # 11-14=D-pad U/D/L/R); axis 0/1 = left stick X/Y, 2/3 = right stick X/Y,
-# 5 = right trigger. axis_value ±1 picks the direction that triggers.
+# 4 = left trigger, 5 = right trigger. axis_value ±1 picks the direction that triggers.
 const ACTIONS := [
 	["move_left",       "Move Left",        [{"type": "key", "physical_keycode": 65},         # A
 											 {"type": "joy_motion", "axis": 0, "axis_value": -1.0}]],
@@ -51,7 +51,8 @@ const ACTIONS := [
 	["crouch",          "Crouch",           [{"type": "key", "physical_keycode": 83},         # S
 											 {"type": "joy_button", "button_index": 1},       # B
 											 {"type": "joy_motion", "axis": 1, "axis_value": 1.0}]],
-	["prone",           "Prone",            [{"type": "key", "physical_keycode": 88}]],       # X
+	["prone",           "Prone",            [{"type": "key", "physical_keycode": 88},         # X
+											 {"type": "joy_motion", "axis": 4, "axis_value": 1.0}]],  # LT (#262)
 	["fire",            "Fire",             [{"type": "mouse", "button_index": 1},            # LMB
 											 {"type": "joy_motion", "axis": 5, "axis_value": 1.0}]],  # RT
 	["aim_left",        "Aim Left",         [{"type": "joy_motion", "axis": 2, "axis_value": -1.0}]],
@@ -301,9 +302,11 @@ static func rebind(action_id: String, new_ev: InputEvent) -> void:
 # Load bindings from disk (if any) and apply them over the defaults already
 # baked in from project.godot. Called from Settings._ready.
 # Pad buttons added after a config may have been saved (v1.28: L3 radio,
-# R3 vote yes): configs saved before that keep these new defaults.
-const JOY_SAVE_VERSION := 2
+# R3 vote yes; #262: LT prone for the movement course): configs saved before
+# that keep these new defaults.
+const JOY_SAVE_VERSION := 3
 const JOY_ADDED_V2 := ["radio", "vote_yes"]
+const JOY_ADDED_V3 := ["prone"]
 
 
 static func load_and_apply() -> void:
@@ -328,7 +331,7 @@ static func load_and_apply() -> void:
 		# never saved joy events, so "none saved" doesn't mean "removed").
 		var keep_joy: Array = []
 		var jv := int(cf.get_value("meta", "joy_saved", 0))
-		if jv == 0 or (jv < JOY_SAVE_VERSION and aid in JOY_ADDED_V2):
+		if jv == 0 or (jv < 2 and aid in JOY_ADDED_V2) or (jv < 3 and aid in JOY_ADDED_V3):
 			for ev0 in InputMap.action_get_events(aid):
 				if ev0 is InputEventJoypadButton or ev0 is InputEventJoypadMotion:
 					keep_joy.append(ev0)

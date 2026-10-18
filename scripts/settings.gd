@@ -162,6 +162,7 @@ static func clean_tag(t: String) -> String:
 func profile_hash() -> String:
 	return profile_id.sha256_text()
 var training := false          # runtime only: the Training match is running
+var training_course := false   # runtime only: Training is on the movement course (#262)
 var training_saved: Dictionary = {}   # the match settings Training replaced          # first-launch name prompt answered
 var _save_scheduled := false   # #245: a debounced write is pending
 var _slider_burst := false     # #245: set while a settings slider's on_change runs
@@ -186,6 +187,9 @@ func is_team_mode() -> bool:
 
 
 func _ready() -> void:
+	# Window / taskbar title (#269); project config/name stays for the data path.
+	if DisplayServer.get_name() != "headless":
+		DisplayServer.window_set_title(preload("res://scripts/game_info.gd").TITLE)
 	load_settings()
 	# A first launch has no settings file, so load_settings() returns before
 	# it gets to the profile id: make one here (it used to stay empty, and

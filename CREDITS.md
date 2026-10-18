@@ -35,9 +35,9 @@ I used", so the instrument samples inside it have no recorded origin. The
 upstream repo licenses the files CC BY 4.0, but if the game is sold, replacing
 these three tracks with music of known provenance removes the question.
 
-## Soldat Reborn
+## Tracerfall (formerly Soldat Reborn)
 
-This port ("Soldat Reborn") is a Godot 4.7 rebuild of the Soldat
+This game ("Tracerfall", formerly "Soldat Reborn") is a Godot 4.7 rebuild of the Soldat
 gameplay feel using the assets above. The Godot code in `scripts/` and
 `scenes/` is original to this project.
 
