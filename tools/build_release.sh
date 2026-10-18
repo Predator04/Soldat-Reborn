@@ -66,15 +66,16 @@ if [ "$WHAT" = all ] || [ "$WHAT" = android ]; then
   # Git Bash: hand Godot Windows-style paths (cygpath -m), else the native ones.
   SDK_ES="$(cygpath -m "$SDK" 2>/dev/null || echo "$SDK")"
   JH_ES="$(cygpath -m "$JAVA_HOME_GUESS" 2>/dev/null || echo "$JAVA_HOME_GUESS")"
-  python3 - "$ES" "$SDK_ES" "$JH_ES" <<'PY'
-import re, sys
-f, sdk, jh = sys.argv[1:4]
-s = open(f).read()
-for k, v in (("export/android/android_sdk_path", sdk), ("export/android/java_sdk_path", jh)):
-    line = '%s = "%s"' % (k, v)
-    s = re.sub(re.escape(k) + r' = .*', line, s) if k + " =" in s else s.replace("[resource]\n", "[resource]\n" + line + "\n", 1)
-open(f, "w").write(s)
-PY
+  # Point Godot at the stub SDK + this machine's Java (plain sed: no Python
+  # needed — a broken Windows python3 alias stopped the 1.35 release here).
+  for kv in "export/android/android_sdk_path|$SDK_ES" "export/android/java_sdk_path|$JH_ES"; do
+    k="${kv%%|*}"; v="${kv#*|}"
+    if grep -q "^$k = " "$ES"; then
+      sed -i "s#^$k = .*#$k = \"$v\"#" "$ES"
+    else
+      sed -i "s#^\[resource\]\$#[resource]\n$k = \"$v\"#" "$ES"
+    fi
+  done
   cp export_presets.cfg /tmp/export_presets.bak
   trap 'cp /tmp/export_presets.bak export_presets.cfg' EXIT
   sed -i 's/^package\/signed=true/package\/signed=false/' export_presets.cfg
