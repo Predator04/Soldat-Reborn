@@ -78,9 +78,9 @@ void fragment() {
 		// Radial streaks toward the centre: the world reads as smeared in time.
 		vec3 acc = c;
 		for (int i = 1; i <= 6; i++) {
-			acc += texture(screen_tex, uv - fromc * smear * 0.028 * float(i)).rgb;
+			acc += texture(screen_tex, uv - fromc * smear * 0.0045 * float(i)).rgb;
 		}
-		c = mix(c, acc / 7.0, clamp(smear * 1.4, 0.0, 1.0) * smoothstep(0.05, 0.45, length(fromc)));
+		c = mix(c, acc / 7.0, clamp(smear, 0.0, 0.85) * smoothstep(0.08, 0.5, length(fromc)));
 	}
 	if (bloom > 0.0) {
 		vec2 px = SCREEN_PIXEL_SIZE * bloom_radius;

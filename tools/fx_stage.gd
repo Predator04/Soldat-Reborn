@@ -11,7 +11,7 @@ var _n := 0
 var _t := -1
 var _G = null
 var _cam: Camera2D = null
-const SHOTS := [4, 10, 24, 50, 100, 260]
+const SHOTS := [4, 10, 24, 33, 40, 50, 100, 260]
 
 
 func _initialize() -> void:
@@ -67,6 +67,15 @@ func _process(_d: float) -> bool:
 		FX.spawn(m, p + Vector2(250, -14) + dir * 30.0, -dir, "wall")
 		if _t % 9 == 0:
 			FX.spawn(m, p + Vector2(60, -14), -dir, "blood")
+	if _t == 30:
+		# Hit-stop + multi-kill slow-mo look (presentation only).
+		var SF = load("res://scripts/gfx/screen_feel.gd")
+		var f = m.get_node("ScreenFeel")
+		SF.local_kill("LAW")
+		SF.local_kill("AK-74")
+		print("FX-STAGE hit-stops=%d slow-mos=%d" % [f.hitstops, f.slowmos])
+	if _t == 32:
+		print("FX-STAGE held frames captured=%d" % m.get_node("ScreenFeel").captured)
 	if _t in SHOTS:
 		root.get_texture().get_image().save_png("%s/s%03d.png" % [_out, _t])
 		if _t == SHOTS[-1]:

@@ -51,6 +51,7 @@ var _hold_cd := 0.0
 var _slow_cd := 0.0
 var _kills: Array[float] = []
 var _offset_on := false
+var _want_capture := false
 var _post_on := false
 
 
@@ -154,8 +155,13 @@ func _begin_hold(length: float) -> void:
 	hold_t = length
 	_hold_cd = HITSTOP_COOLDOWN + length
 	hitstops += 1
-	if DisplayServer.get_name() == "headless":
-		return
+	# The read-back happens in _process: kills arrive from inside physics
+	# callbacks (bullet → take_damage → kill feed), no place for a GPU stall.
+	_want_capture = DisplayServer.get_name() != "headless"
+
+
+func _capture() -> void:
+	_want_capture = false
 	var vt := get_viewport().get_texture()
 	var img: Image = vt.get_image() if vt != null else null
 	if img == null or img.is_empty():
@@ -181,6 +187,8 @@ func _process(delta: float) -> void:
 	_hold_cd = maxf(0.0, _hold_cd - delta)
 	_slow_cd = maxf(0.0, _slow_cd - delta)
 	# Hit-stop: a held frame, a flash on its first frames, then let go.
+	if _want_capture and hold_t > 0.0:
+		_capture()
 	if hold_t > 0.0:
 		hold_t = maxf(0.0, hold_t - delta)
 		var k := 1.0 - hold_t / maxf(0.001, hold_len)

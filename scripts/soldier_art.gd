@@ -233,6 +233,9 @@ static func _draw_jet_flame(node: CanvasItem, facing: float, base: Color = Color
 	var w0 := 2.0 + wobble
 	var w1 := 1.4 + wobble * 0.7
 	var w2 := 0.8
+	# Phase B (#271): a faint neon bloom around the nozzle (embers + heat
+	# shimmer come from fx_world.gd).
+	node.draw_circle(origin + Vector2(0.0, 2.5), 3.6 + sin(t * 31.0) * 0.6, Color(base.r, base.g, base.b, 0.16))
 
 	node.draw_polygon(
 		PackedVector2Array([
