@@ -1,39 +1,40 @@
 # Retail readiness checklist
 
-Status as of v1.20.0 — items not re-audited since; the current shipped state is v1.34.x (see CHANGELOG). ✅ done · ⚠️ needs you (accounts, legal, real hardware) · ❌ not done yet.
+Re-audited 2026-10-17 against v1.34 + the unreleased trust checks (see CHANGELOG).
+✅ done · ⚠️ needs you (accounts, legal, real hardware, real players) · ❌ not done yet.
 
 ## Game
-- ✅ Every mode playable vs bots on all 99 classic maps + 3 built-ins; release gate (static checks, boots, MP smokes, every mode, every map) passes.
-- ✅ First-run flow: name prompt → optional Training (guided first match) → controls card for the first matches (H any time).
-- ✅ Settings: audio (SFX / music / mute), video (fullscreen, VSync, FPS cap, Lo-fi, FPS overlay, damage numbers), full rebinding (keyboard / mouse / gamepad), touch layout editor, game options, mods, cosmetics.
-- ✅ Pause menu; pauses by itself on alt-tab / app switch (toggle).
+- ✅ Every mode playable vs bots on all 99 classic maps + 3 built-ins; the release gate (static checks, boots, nav, MP smokes, every mode, every map) passes — last full quick gate 2026-10-17: 87/87.
+- ✅ First-run flow: name prompt → optional Training (guided first match) → controls card (H any time).
+- ✅ Settings: audio, video + Graphics quality (Low / Medium / High), full rebinding (keyboard / mouse / gamepad), touch layout editor, game options, mods, cosmetics.
+- ✅ Pause menu (auto-pauses on alt-tab in single player; online it only locks your input).
 - ✅ Gamepad and touch support; Android back button everywhere.
-- ✅ Low-FPS guard switches to Lo-fi once on weak devices.
-- ✅ Stats screen, scoreboard, kill feed, spectator, round-end MVP.
-- ✅ In-game Credits & licenses screen.
-- ❌ Localization (English only).
-- ❌ Accessibility extras (colour-blind team colours, text size) — teams are blue/red with name labels.
+- ✅ Low-FPS guard drops one quality step once on weak devices.
+- ✅ Stats, scoreboard, kill feed, spectator, MVP, replays, kill cam, achievements, leaderboard, friends.
+- ✅ In-game Credits & licenses screen — now including the music.
+- ✅ Localization: English, German, Spanish, French, Brazilian Portuguese (`assets/i18n/ui.csv`). Check new strings get translated before each release.
+- ⚠️ Accessibility: colour-blind team option exists (red → orange). Still missing: UI text size / scale, subtitles-style captions for radio calls.
 
 ## Multiplayer
-- ✅ Listen host and dedicated server, bots on both, 10 modes, two-client soak tests with zero errors.
-- ✅ LAN discovery; optional master-server listing (Go server in `../server/master-server`); live ping + player counts (UDP query on game port + 1), Quick Join, rejoin after a drop.
-- ✅ LAN needs no setup; join codes; UPnP opens the router port automatically on most home routers; Windows Firewall fix button.
-- ⚠️ **Internet play without UPnP** (router refuses, CGNAT, mobile hotspots) still needs a manual port forward or a VPN (Tailscale / ZeroTier). A relay server would remove this entirely. There is no NAT punch-through or relay service. For a retail online game you'd want a relay / hosted dedicated servers (e.g. run the dedicated server on a VPS) or Steam networking.
-- ⚠️ Not tested over real internet latency / packet loss — only on one machine and LAN-style loopback.
+- ✅ Listen host, dedicated server, bots on both, 10 modes; two-client soak tests with zero errors.
+- ✅ Master server (Oracle, HTTPS via Caddy) with server list, Quick Play, skill matchmaking, leaderboards, shared maps — and a **relay**, so hosting needs no port forwarding or UPnP.
+- ✅ Official always-on dedicated server, auto-updating from releases; uptime watchdog + daily backups.
+- ✅ Host trust checks: godmode, teleport / speed hacks, impossible health and fake kill credit are caught host-side (forced death → kick). Subtle cheats (partial damage reduction, infinite fuel, aim help) need host-decided hits — open issue, parked until real-internet playtests.
+- ⚠️ **Not tested over real internet latency / packet loss with real people.** Everything above is verified on loopback. Play several sessions with friends over the relay (PC + phones) before any paid launch, and file what feels off.
 
 ## Legal — check before selling
-- ⚠️ **Name.** "Soldat" is the original game's name. Selling as "Soldat Reborn" may need permission from the Soldat authors or a different name. The in-game text already says it's an unofficial fan rebuild.
-- ⚠️ **Assets.** Sounds, sprites, animations and maps come from the Soldat base content (CC BY 4.0, commercial use allowed with attribution — credited in-game and in CREDITS.md). Research notes that some original 1.x art isn't cleanly licensed; confirm every file came from the CC BY `base` repo.
-- ⚠️ **Music.** `assets/music/*.ogg` (bloody, gore, necro) — confirm their source and license; they're not covered by the credits text yet. Replace them if unsure.
-- ⚠️ Privacy policy (required by Google Play; the game stores nothing online and talks only to game hosts / an optional master server).
+- ⚠️ **Name.** "Soldat" is the original game's name. Decision: rename to **Tracerfall** (no existing game found by web search on 2026-10-17). Still do a real check before spending money on it: USPTO trademark search, Steam + itch search, domain + itch handle.
+- ⚠️ **Assets.** Sounds, sprites, animations and maps come from the Soldat base content (CC BY 4.0, commercial use allowed with attribution — credited in-game and in CREDITS.md). The upstream credits list is self-described as very incomplete; confirm every shipped file exists in `github.com/Soldat/base`.
+- ⚠️ **Music.** Traced 2026-10-17: the three tracks are renders of the tracker modules in Soldat base (`shared/sfx/modules/`, CC BY 4.0) — "Gore" and "Necromancide" by Marshall Anderson, "Bloody Soil" author unrecorded. Credited now. Residual risk: the Gore module thanks "anyone whose samples I used", so its instrument samples have no recorded origin. For a paid release, replacing the three tracks is the clean option.
+- ❌ Privacy policy (Google Play requires one). The game stores settings, replays and stats locally; online it sends your name, stats and match results to the master server. One short page covers it.
 
 ## Store packaging
-- ✅ Windows .exe (icon + version info) and signed Android .apk, built by `tools/build_release.sh`; GitHub releases carry both.
-- ⚠️ **Google Play needs an .aab** built with the real Android SDK (Godot gradle build, target SDK 34+). This build machine can't reach Google's SDK downloads; install Android Studio on your PC, set the SDK path in Godot → Editor Settings → Export → Android, turn on "Use Gradle Build" and export AAB. Play also needs a developer account, content rating (violence / blood), data-safety form, screenshots and a feature graphic.
-- ✅ Store copy, trailer shot list and placeholder screenshots in `store/`.
-- ⚠️ **Steam**: Steamworks account and app fee, store page art (capsules; reshoot screenshots on a real GPU; cut the trailer from the shot list). Steam overlay / achievements are not integrated.
+- ✅ Windows .exe (icon + version info, signed self-updater) and signed Android .apk, built by `tools/build_release.sh`; GitHub releases carry both + the server pack.
+- ⚠️ **Google Play needs an .aab** — `export_presets.cfg` still has `use_gradle_build=false` (the build box has no Android SDK). Install Android Studio on your PC, set the SDK path in Godot → Editor Settings → Export → Android, turn on "Use Gradle Build", target SDK 34+, export AAB. Play also needs a developer account, content rating (violence / blood), data-safety form, screenshots, feature graphic.
+- ✅ Store copy, trailer shot list, screenshots and an itch.io kit in `store/` (itch publish is issue #224 — needs your account).
+- ⚠️ **Steam**: Steamworks account + app fee, capsule art, real-GPU screenshots, trailer. Steam overlay / achievements / networking not integrated.
 - ⚠️ Windows code signing (otherwise SmartScreen warns on first run).
 
 ## QA still needed from people
-- ⚠️ Play on real phones (small and large screens, low-end GPU) and real PCs (different GPUs, monitors).
-- ⚠️ A few play sessions with friends online (LAN + over the internet with port forwarding).
+- ⚠️ Real phones (small + large screens, low-end GPU) and real PCs (different GPUs, monitors, 60 / 144 Hz).
+- ⚠️ Online sessions with friends over the relay, including someone on a phone hotspot.
