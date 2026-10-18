@@ -1601,7 +1601,9 @@ func allow_through_firewall() -> bool:
 func _smoke_cheat(kind: String) -> void:
 	print("SMOKE-CHEAT start kind=%s" % kind)
 	var t := Timer.new()
-	t.wait_time = 1.0
+	# Teleport every 0.4 s so two violations land well inside one life even
+	# when bots kill the cheater quickly on a loaded machine.
+	t.wait_time = 0.4 if kind == "teleport" else 1.0
 	t.autostart = true
 	add_child(t)
 	var state := {"credited": false}   # lambdas capture locals by value

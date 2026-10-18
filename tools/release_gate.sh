@@ -128,7 +128,10 @@ trustcase() {
   local spid=$!
   for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_trust_${K}_server.log" 2>/dev/null && break; sleep 0.5; done
   sleep 3
-  timeout $(( $4 + 40 )) "$G" --headless -- --smoke-botfire --port $port --smoke-auto --smoke-secs=$4 --smoke-cheat=$K > "$OUT/net_trust_${K}_client.log" 2>&1
+  # Godmode stands still where the bots are (no autopilot) so the host's hit
+  # detection keeps landing shots on it; the others run the autopilot.
+  local auto="--smoke-auto"; [ "$K" = "godmode" ] && auto=""
+  timeout $(( $4 + 40 )) "$G" --headless -- --smoke-botfire --port $port $auto --smoke-secs=$4 --smoke-cheat=$K > "$OUT/net_trust_${K}_client.log" 2>&1
   kill $spid 2>/dev/null; wait $spid 2>/dev/null
   local e; e=$(( $(errs "$OUT/net_trust_${K}_server.log") + $(errs "$OUT/net_trust_${K}_client.log") ))
   local hit; hit=$(grep -m1 -E "$5" "$OUT/net_trust_${K}_server.log")

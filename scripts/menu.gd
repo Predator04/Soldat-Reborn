@@ -677,8 +677,16 @@ func _go_to_match() -> void:
 		add_child(_loading_lbl)
 	_loading_lbl.text = "LOADING MATCH..."
 	_loading_lbl.visible = true
+	# A second map_received (fast rejoin after a kick / drop) can arrive after
+	# the first call already switched scenes and this menu left the tree.
+	if not is_inside_tree():
+		return
 	await get_tree().process_frame
+	if not is_inside_tree():
+		return
 	await get_tree().process_frame
+	if not is_inside_tree():
+		return
 	var err := get_tree().change_scene_to_file("res://scenes/main.tscn")
 	if err != OK:
 		_loading_lbl.visible = false
