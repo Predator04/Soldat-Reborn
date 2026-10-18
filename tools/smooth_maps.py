@@ -11,12 +11,14 @@ Post-process for the ported maps (tools/pms_to_map.py output). Per map:
      collision class, fillets that would cross another edge, and fillets with
      less than CLEAR px of free space to a non-neighbouring surface (narrow
      gaps, tunnels, doorways, thin plates). The result is re-split into convex
-     pieces (same splitter the porter uses) for CollisionPolygon2D.
+     pieces (same splitter the porter uses) for CollisionPolygon2D — only the
+     pieces a fillet touches; the rest stay byte-identical.
   2. Validation (per map, iterated): polygon / hole counts per class must not
      change, the soldier free-space graph (tools/map_audit.py raster, every
      stance) must keep the same connected regions — no region split (a gap
-     closed) or merged (a gap opened) — and every spawn / flag / pickup /
-     vehicle spot must audit exactly as before. Corners near a failure are
+     closed) or merged (a gap opened) — the bot nav graph (tools/build_nav.py)
+     must keep its main region strongly connected, and every spawn / flag /
+     pickup / vehicle spot must audit exactly as before. Corners near a failure are
      put back to sharp and the map is redone.
   3. Visuals follow the new outline: triangles of a collision class lose the
      material outside the rounded convex corners, and the new fillet material
@@ -63,6 +65,7 @@ MAPS_DIR = os.path.join(GAME, "assets", "maps")
 SRC_DIR = os.path.join(HERE, "map_src")
 sys.path.insert(0, HERE)
 import map_audit as MA  # noqa: E402
+import build_nav as BN  # noqa: E402
 import pms_to_map as PM  # noqa: E402
 
 VERSION = 1
@@ -81,7 +84,8 @@ MIN_SEG = 2.5        # ... and segments at least this long (terrain_fx skips edg
 TOUCH = 1.5          # a corner this close to another collision class stays sharp
 CLEAR = 34.0         # free space a fillet needs to any non-neighbouring surface
 LOCAL_PATH = 48.0    # edges this far along the same outline count as "the same surface"
-ENTITY_R = 64.0      # corners near an entity whose audit changed go back to sharp
+ENTITY_R = 64.0
+NAV_R = 128.0        # ... and corners near a bot link the smoothing broke      # corners near an entity whose audit changed go back to sharp
 AREA_LIMIT = 2.0     # % — larger class area change gets a smaller D_MAX
 # Free-space comparison (map_audit raster cells, 2 px).
 BIG_COMP = 150       # free regions smaller than this (cells, all stances) are ignored
@@ -340,19 +344,39 @@ def smooth_classes(unions, blocked, d_max_by_cls):
     return smoothed, corners, skips
 
 
-def to_collision(smoothed):
+def to_collision(coll0, corners):
+    """New collision list. Original convex pieces no fillet touches are kept
+    byte-for-byte (re-splitting everything shifted whole walls by a raster
+    cell and broke tight bot links); only the touched pieces are merged with
+    their fillets and re-split into convex pieces (same splitter as the porter)."""
     out = []
     for c in (0, 1, 2):
-        g = smoothed.get(c)
-        for p in _polys_of(g):
-            if p.area < 4.0:
+        cs = [k for k in corners if k["cls"] == c]
+        entries = [e for e in coll0 if int(e.get("col", 0)) == c]
+        if not cs:
+            out.extend(entries)
+            continue
+        polys = [Polygon(_pts(e["points"])).buffer(0) for e in entries]
+        tree = shapely.STRtree(polys)
+        touched = set()
+        for k in cs:
+            for i in tree.query(k["sliver"].buffer(0.05), predicate="intersects"):
+                touched.add(int(i))
+        region = unary_union([polys[i] for i in touched] + [k["sliver"] for k in cs if not k["convex"]])
+        cut = unary_union([k["sliver"] for k in cs if k["convex"]])
+        region = shapely.set_precision(region.difference(cut).buffer(0), 0.01)
+        for i, e in enumerate(entries):
+            if i not in touched:
+                out.append(e)
+        for p in _polys_of(region):
+            if p.area < 1.0:
                 continue
             for piece in PM._convex_pieces(p):
                 for flat in PM._strict_convex(piece):
-                    e = {"points": flat}
+                    ent = {"points": flat}
                     if c:
-                        e["col"] = c
-                    out.append(e)
+                        ent["col"] = c
+                    out.append(ent)
     return out
 
 
@@ -746,6 +770,69 @@ def _nudge(m, name, dy):
         m[name] = [m[name][0], round(m[name][1] - dy, 2)]
 
 
+def _nav_scc(m):
+    """Bot nav graph (tools/build_nav.py) as (node xy array, edges, SCC labels)."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    g = BN.build(m)
+    if g is None:
+        return None
+    nodes = np.array(g["nodes"], dtype=float).reshape(-1, 2)
+    e = np.array(g["edges"], dtype=int).reshape(-1, 2)
+    n = len(nodes)
+    if n == 0 or len(e) == 0:
+        return nodes, e, np.zeros(n, dtype=int)
+    A = coo_matrix((np.ones(len(e)), (e[:, 0], e[:, 1])), shape=(n, n))
+    _, lab = connected_components(A, directed=True, connection="strong")
+    return nodes, e, lab
+
+
+def nav_diff(nav0, nav1):
+    """Does every node of the original graph's main strongly connected region
+    still reach every other one? If not, returns the original links to blame
+    (links whose move can no longer be made, plus links through nodes that
+    vanished — ledge-detour / bridge waypoints) for localisation."""
+    from scipy.spatial import cKDTree
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import breadth_first_order
+    if nav0 is None or nav1 is None:
+        return ([] if nav0 is None else ["nav graph lost"]), []
+    n0, e0, l0 = nav0
+    n1, e1, l1 = nav1
+    if len(n1) == 0:
+        return ["nav graph empty"], []
+    main0 = int(np.argmax(np.bincount(l0)))
+    d, idx = cKDTree(n1).query(n0)
+    mapped = [int(idx[i]) for i in range(len(n0)) if l0[i] == main0 and d[i] <= 60]
+    cnt = {}
+    for j in mapped:
+        cnt[int(l1[j])] = cnt.get(int(l1[j]), 0) + 1
+    parts = [c for c, k in cnt.items() if k >= 3]
+    if len(parts) <= 1:
+        return [], []
+    A1 = coo_matrix((np.ones(len(e1)), (e1[:, 0], e1[:, 1])), shape=(len(n1), len(n1))).tocsr()
+    reach = {}
+    lost = []
+    for a, b in e0:
+        if l0[a] != main0 or l0[b] != main0:
+            continue
+        if d[a] > 60 or d[b] > 60:
+            lost.append((n0[a], n0[b]))
+            continue
+        ia, ib = int(idx[a]), int(idx[b])
+        if l1[ia] == l1[ib]:
+            continue
+        if ia not in reach:
+            reach[ia] = set(breadth_first_order(A1, ia, directed=True, return_predecessors=False).tolist())
+        if ib not in reach[ia]:
+            lost.append((n0[a], n0[b]))
+    sizes = sorted(cnt.values(), reverse=True)
+    msg = "nav: main region split %s" % sizes[:4]
+    if lost:
+        msg += ", e.g. (%d,%d)->(%d,%d)" % (lost[0][0][0], lost[0][0][1], lost[0][1][0], lost[0][1][1])
+    return [msg], lost
+
+
 def smooth_map(m, log=print):
     """Smooth map dict m (unsmoothed geometry) in place. Returns stats dict."""
     coll0 = m.get("collision") or []
@@ -753,6 +840,7 @@ def smooth_map(m, log=print):
         return None
     unions = class_unions(coll0)
     sp0 = MA.Space(m)
+    nav0 = _nav_scc(m)
     ent0 = {name: (_verdict(sp0.check(name, p)[0]), p) for name, p in entity_list(m)}
     # Topology reference: the same outlines run through the cleaner with no
     # fillets (vertex clean-up alone may legitimately merge touching specks).
@@ -762,6 +850,7 @@ def smooth_map(m, log=print):
     d_max = {c: D_MAX for c in unions}
     notes = []
     nudged = []
+    nav_r = NAV_R
     for it in range(10):
         smoothed, corners, skips = smooth_classes(unions, blocked, d_max)
         problems, spots, ent_fail = [], [], []
@@ -787,13 +876,17 @@ def smooth_map(m, log=print):
             if abs(area[c]) > AREA_LIMIT:
                 problems.append("class %d area %+.2f%%" % (c, area[c]))
                 d_max[c] *= 0.6
-        coll1 = to_collision(smoothed)
+        coll1 = to_collision(coll0, corners)
         m1 = dict(m)
         m1["collision"] = coll1
         sp1 = MA.Space(m1)
         fp, fs = free_space_diff(sp0, sp1)
         problems += fp
         spots += fs
+        nav_spots = []
+        if not fp:
+            npb, nav_spots = nav_diff(nav0, _nav_scc(m1))
+            problems += npb
         for name, (prob0, p) in ent0.items():
             if not _entity_ok(sp1, name, p, prob0):
                 ent_fail.append(name)
@@ -803,6 +896,20 @@ def smooth_map(m, log=print):
             for k in corners:
                 if abs(k["b"][0] - x) <= ENTITY_R and abs(k["b"][1] - y) <= ENTITY_R:
                     blocked.add(k["key"])
+        # Bot links hinge on single raster cells (a re-split piece nearby is
+        # enough): wider net there.
+        # A link also needs floor somewhere below its path (build_nav
+        # void_span), so the whole band under it down to the kill line counts.
+        for _grow in range(4):
+            for (p, q) in nav_spots:
+                x0, x1 = min(p[0], q[0]) - nav_r, max(p[0], q[0]) + nav_r
+                y0 = min(p[1], q[1]) - nav_r
+                for k in corners:
+                    if x0 <= k["b"][0] <= x1 and k["b"][1] >= y0:
+                        blocked.add(k["key"])
+            if not nav_spots or len(blocked) > n_before:
+                break
+            nav_r *= 2.0   # nothing new nearby (ledge detours reach 240 px): widen
         if not problems:
             break
         notes.append("pass %d: %s" % (it + 1, "; ".join(problems[:6])))
