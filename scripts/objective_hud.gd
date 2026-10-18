@@ -31,16 +31,19 @@ func _ready() -> void:
 	_status.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	_status.offset_top = 112
 	_status.offset_bottom = 136
+	_status.add_theme_font_override("normal_font", UITheme.font("semi"))
+	_status.add_theme_font_override("bold_font", UITheme.font("head"))
 	_status.add_theme_font_size_override("normal_font_size", 14)
-	_status.add_theme_font_size_override("bold_font_size", 14)
+	_status.add_theme_font_size_override("bold_font_size", 15)
 	add_child(_status)
 	_banner = Label.new()
 	_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_banner.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	_banner.offset_top = 196
 	_banner.offset_bottom = 236
-	_banner.add_theme_font_size_override("font_size", 28)
-	_banner.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	_banner.add_theme_font_override("font", UITheme.font("title"))
+	_banner.add_theme_font_size_override("font_size", 30)
+	_banner.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
 	_banner.add_theme_constant_override("outline_size", 7)
 	_banner.visible = false
 	_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -56,7 +59,7 @@ func _player() -> Node2D:
 
 
 func _team_info(team: int) -> Dictionary:
-	var hud := get_parent()
+	var hud := UITheme.hud_of(self)
 	if hud != null and hud.has_method("_team_display_info"):
 		return hud._team_display_info(team)
 	return {"name": "TEAM %d" % team, "color": Color.WHITE}
@@ -83,7 +86,7 @@ func announce(kind: String, team: int, who: String) -> void:
 	# middle; drop the banner below them instead of printing over them.
 	var dead_view: bool = main != null and is_instance_valid(main) and main.get("hud") != null \
 			and bool(main.hud.get("_dead"))
-	_banner.offset_top = 380.0 if dead_view else 196.0
+	_banner.offset_top = 330.0 if dead_view else 156.0
 	_banner.offset_bottom = _banner.offset_top + 40.0
 	var text := ""
 	var col := Color(1, 1, 1)
@@ -111,6 +114,7 @@ func announce(kind: String, team: int, who: String) -> void:
 	_banner.add_theme_color_override("font_color", col)
 	_banner.visible = true
 	_banner.modulate.a = 1.0
+	UITheme.UIFx.pop(_banner, 0.2)
 	if _banner_tween != null and _banner_tween.is_valid():
 		_banner_tween.kill()
 	_banner_tween = create_tween()
@@ -218,8 +222,9 @@ func _draw() -> void:
 			targets.append([z.get("center"), Color(1, 0.35, 0.3), "ZONE"])
 	if targets.is_empty():
 		return
-	var xf := get_viewport().get_canvas_transform()
-	var vr := get_viewport_rect()
+	# World → this control's space (the HUD may be drawn at the UI scale).
+	var xf := get_global_transform_with_canvas().affine_inverse() * get_viewport().get_canvas_transform()
+	var vr := Rect2(Vector2.ZERO, size)
 	# Keep arrows below the top HUD row (vitals box, score strip, kill feed).
 	var inner := Rect2(vr.position + Vector2(EDGE_PAD, TOP_PAD), vr.size - Vector2(EDGE_PAD * 2.0, TOP_PAD + EDGE_PAD))
 	var center := vr.size * 0.5

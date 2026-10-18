@@ -20,7 +20,10 @@ static func updater(tree: SceneTree) -> Node:
 
 static func build_button(m: Node) -> void:
 	m._upd_btn = Button.new()
-	UITheme.style_button(m._upd_btn, 16, true)
+	# #272: a quiet chip (the primary ember fill is for the screen's main
+	# action); refresh_ui lights the text when an update is waiting.
+	UITheme.style_button(m._upd_btn, 15, false)
+	m._upd_btn.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)
 	m._upd_btn.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	m._upd_btn.offset_top = 16
 	m._upd_btn.offset_left = 16
@@ -46,6 +49,7 @@ static func refresh_ui(m: Node) -> void:
 	var ver := Updater.current_version()
 	btn.disabled = false
 	btn.tooltip_text = "Checks GitHub for a newer version of the game."
+	btn.add_theme_color_override("font_color", UITheme.COL_ACCENT_HI if st == "available" or st == "ready" else UITheme.COL_TEXT_DIM)
 	match st:
 		"available":
 			btn.text = "  %s v%s  " % [TranslationServer.translate("UPDATE AVAILABLE:"), str(u.get("latest"))]

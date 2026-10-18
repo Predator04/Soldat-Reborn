@@ -26,21 +26,21 @@ const GAP := 8.0
 const PANEL_W := 250.0
 const PANEL_PAD := 8.0
 
-# Selection colors stay green (Soldat-classic muscle memory for the equipped
-# row); everything else pulls from the shared UITheme palette so hover/hdr/tip
-# match the rest of the menus.
-const COL_CURRENT := Color(55.0 / 255.0, 175.0 / 255.0, 55.0 / 255.0)
-const COL_HOVER := Color(95.0 / 255.0, 115.0 / 255.0, 60.0 / 255.0)
+# Design language (#272): the equipped row is the warm accent, the row under
+# the cursor / D-pad gets the cool neon; the rest is the shared palette.
+const COL_CURRENT := UITheme.COL_ACCENT
+const COL_HOVER := UITheme.COL_NEON
 const COL_HEADER := UITheme.COL_ACCENT
 const COL_ROW := UITheme.COL_TEXT
 const COL_ROW_KEY := UITheme.COL_TEXT_DIM
 const COL_OUTLINE := UITheme.COL_SHADOW
 const COL_TIP_BG := Color(0.05, 0.06, 0.09, 0.94)
 const COL_TIP_BORDER := UITheme.COL_ACCENT_DIM
-const COL_PANEL_BG := Color(0.03, 0.04, 0.06, 0.60)
-const COL_PANEL_BORDER := Color(0.30, 0.34, 0.40, 0.55)
+const COL_PANEL_BG := Color(0.02, 0.028, 0.04, 0.72)
+const COL_PANEL_BORDER := Color(0.62, 0.72, 0.88, 0.14)
 
 var _font: Font
+var _caps: Font
 var _font_size := 12
 var _hdr_font_size := 13
 var _hover_slot := -1  # 0..9 = primary index, 100..103 = secondary index+100, -1 = none
@@ -59,7 +59,8 @@ func _ready() -> void:
 	position = Vector2(10, 168)
 	size = Vector2(PANEL_W, 10)
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	_font = ThemeDB.fallback_font
+	_font = UITheme.font("semi")
+	_caps = UITheme.font("caps")
 	visible = false
 	set_process(true)
 	# Weapon tables straight from the soldier script (an unparented instance
@@ -82,7 +83,7 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	# Pull the local player pointer off the parent HUD (may swap on respawn).
-	var parent := get_parent()
+	var parent := UITheme.hud_of(self)
 	if parent != null and "player" in parent:
 		var pp = parent.get("player")
 		player = pp if is_instance_valid(pp) else null
@@ -213,10 +214,10 @@ func _draw() -> void:
 	# a discrete UI element instead of raw text over gameplay.
 	var total_h: float = HDR_H + PRIMARY_KEYS.size() * ROW_H + GAP + HDR_H + secondary.size() * ROW_H + PANEL_PAD
 	var bg_rect := Rect2(-PANEL_PAD, -PANEL_PAD, PANEL_W + PANEL_PAD * 2, total_h + PANEL_PAD)
-	draw_rect(bg_rect, COL_PANEL_BG, true)
-	draw_rect(bg_rect, COL_PANEL_BORDER, false, 1.0)
-	# Amber left rule so it visually anchors with the HUD's accent color.
-	draw_rect(Rect2(-PANEL_PAD, -PANEL_PAD, 2.0, total_h + PANEL_PAD), UITheme.COL_ACCENT, true)
+	var sb := UITheme.hud_strip_style()
+	sb.bg_color = COL_PANEL_BG
+	sb.border_color = COL_PANEL_BORDER
+	draw_style_box(sb, bg_rect)
 
 	var y: float = 0.0
 	_draw_header("Primary Weapon", y)
@@ -257,15 +258,16 @@ func _draw() -> void:
 func _draw_header(text: String, y: float) -> void:
 	# Uppercase amber header + a thin underline rule so section boundaries read
 	# cleanly and match the section headers used in every menu.
-	_draw_outlined_text(text.to_upper(), Vector2(4, y + _hdr_font_size), _hdr_font_size, COL_HEADER)
-	draw_rect(Rect2(2, y + _hdr_font_size + 3, PANEL_W - 4, 1), UITheme.COL_ACCENT_DIM, true)
+	draw_string(_caps, Vector2(4, y + _hdr_font_size), text.to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, _hdr_font_size, COL_HEADER)
+	draw_rect(Rect2(2, y + _hdr_font_size + 4, 18, 2), UITheme.COL_ACCENT, true)
+	draw_rect(Rect2(20, y + _hdr_font_size + 5, PANEL_W - 22, 1), UITheme.COL_BORDER, true)
 
 
 func _draw_row(key: String, name: String, y: float, is_current: bool, is_hover: bool, banned: bool = false) -> void:
 	# Background chip for current / hovered rows. Slight bleed left so the panel edge reads.
 	if is_current or is_hover:
 		var bg := COL_CURRENT if is_current else COL_HOVER
-		bg.a = 0.30
+		bg.a = 0.16
 		draw_rect(Rect2(0, y + 1, PANEL_W, ROW_H - 1), bg, true)
 		# Left accent bar in the solid color so the eye locks onto the picked row.
 		var bar := COL_CURRENT if is_current else COL_HOVER
@@ -324,7 +326,7 @@ func _draw_tooltip(w: Dictionary, near: Vector2) -> void:
 	var box_h: float = float(lines.size()) * line_h + pad
 	# Prefer showing the box to the right of the panel; if it would run off a
 	# 720p viewport (viewport ~1280 wide, panel starts at x=10), fall back left.
-	var vp_w: float = float(get_viewport_rect().size.x)
+	var vp_w: float = float(UITheme.ui_view_size(self).x)
 	var origin_x: float = PANEL_W + 8.0
 	if position.x + origin_x + box_w > vp_w - 8.0:
 		origin_x = -box_w - 8.0

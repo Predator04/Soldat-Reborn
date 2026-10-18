@@ -26,6 +26,13 @@ func push_line(line: Control) -> void:
 			var old := get_child(0)
 			remove_child(old)
 			old.queue_free()
+	# #272: lines fade in, and fade out over their last 0.4 s.
+	if not preload("res://scripts/ui_fx.gd").reduce_motion() and line.is_inside_tree():
+		line.modulate.a = 0.0
+		var tw := line.create_tween()
+		tw.tween_property(line, "modulate:a", 1.0, 0.15)
+		tw.tween_interval(maxf(0.0, line_ttl - 0.55))
+		tw.tween_property(line, "modulate:a", 0.0, 0.4)
 	var t := Timer.new()
 	t.wait_time = line_ttl
 	t.one_shot = true

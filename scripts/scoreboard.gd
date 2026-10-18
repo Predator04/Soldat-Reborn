@@ -21,8 +21,8 @@ func _ready() -> void:
 # Touch screens have no Tab key: tapping the score strip at the top peeks.
 func _input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch and event.pressed:
-		var vp := get_viewport_rect().size
-		var p: Vector2 = event.position
+		var vp := size
+		var p: Vector2 = get_global_transform_with_canvas().affine_inverse() * (event.position as Vector2)
 		if absf(p.x - vp.x * 0.5) < 260.0 and p.y < 140.0:
 			peek(4.0)
 
@@ -68,8 +68,15 @@ func _rows() -> Array:
 	return out
 
 
+const UITheme = preload("res://scripts/ui_theme.gd")
+
+
 func _draw() -> void:
-	var font := ThemeDB.fallback_font
+	# #272 look: glass card, letter-spaced caps header, team bars, your row
+	# marked with an ember edge. Drawn in this control's (UI-scaled) space.
+	var font := UITheme.font("semi")
+	var head_font := UITheme.font("caps")
+	var num_font := UITheme.font("hud")
 	var rows := _rows()
 	var team_mode: bool = Settings.is_team_mode()
 	var show_caps: bool = Settings.game_mode in [Settings.MODE_CTF, Settings.MODE_INF, Settings.MODE_PM]
@@ -84,63 +91,77 @@ func _draw() -> void:
 	for g in groups:
 		n_lines += (g[1] as Array).size() + 1
 	n_lines += groups.size() - 1
-	var h := 52.0 + n_lines * ROW_H + 12.0
-	var vp := get_viewport_rect().size
-	var x0 := (vp.x - W) * 0.5
+	var h := 58.0 + n_lines * ROW_H + 14.0
+	var vp := size
+	var x0 := roundf((vp.x - W) * 0.5)
 	var y0 := maxf(150.0, (vp.y - h) * 0.45)
 	if main.get("round_active") == false:
 		y0 = maxf(y0, vp.y * 0.5 + 70.0)   # below the winner banner
-	draw_rect(Rect2(x0, y0, W, h), Color(0.04, 0.05, 0.08, 0.86))
-	draw_rect(Rect2(x0, y0, W, h), Color(0.98, 0.66, 0.18, 0.7), false, 2.0)
-	_text(font, Vector2(x0 + 18, y0 + 30), tr("SCOREBOARD"), 20, Color(0.98, 0.66, 0.18))
+	var card := UITheme.panel_style(Color(0.03, 0.04, 0.06, 0.9), UITheme.COL_BORDER_HI, UITheme.RADIUS_PANEL)
+	draw_style_box(card, Rect2(x0, y0, W, h))
+	_text(head_font, Vector2(x0 + 20, y0 + 32), tr("SCOREBOARD"), 18, UITheme.COL_TEXT)
+	draw_rect(Rect2(x0 + 20, y0 + 40, 26, 2), UITheme.COL_ACCENT)
 	var me := ""
 	var p = main.get("player")
 	if p != null and is_instance_valid(p):
 		me = str(p.get("display_name"))
-	var y := y0 + 58.0
+	var y := y0 + 66.0
 	var cols := [W - 200.0, W - 140.0, W - 80.0]
 	var online: bool = Net.is_networked()
 	var pings: Dictionary = main.get("peer_pings") if main.get("peer_pings") != null else {}
+	var dim := UITheme.COL_TEXT_MUTED
 	for g in groups:
 		var t: int = g[0]
 		var list: Array = g[1]
-		var head_col := Color(0.8, 0.82, 0.88)
+		var head_col := UITheme.COL_TEXT_DIM
 		var title := tr("PLAYERS")
+		var sc_txt := ""
 		if t > 0 and hud != null and hud.has_method("_team_display_info"):
 			var info: Dictionary = hud._team_display_info(t)
 			head_col = info["color"]
 			var sc: Variant = (main.get("scores") as Dictionary).get(t, 0) if main.get("scores") != null else 0
-			title = "%s   %s" % [str(info["name"]), str(sc)]
-		_text(font, Vector2(x0 + 18, y), title, 16, head_col)
-		_text(font, Vector2(x0 + cols[0], y), "K", 14, Color(0.7, 0.72, 0.8))
-		_text(font, Vector2(x0 + cols[1], y), "D", 14, Color(0.7, 0.72, 0.8))
+			title = str(info["name"])
+			sc_txt = str(sc)
+		# Team header: colour bar, name, score.
+		draw_rect(Rect2(x0 + 14, y - 15, 4, 19), head_col)
+		_text(head_font, Vector2(x0 + 26, y), title, 15, head_col)
+		if sc_txt != "":
+			var tw: float = head_font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
+			_text(num_font, Vector2(x0 + 36 + tw, y + 1), sc_txt, 20, UITheme.COL_TEXT)
+		_text(head_font, Vector2(x0 + cols[0], y), "K", 13, dim)
+		_text(head_font, Vector2(x0 + cols[1], y), "D", 13, dim)
 		if show_caps:
-			_text(font, Vector2(x0 + cols[2], y), "CAPS", 14, Color(0.7, 0.72, 0.8))
+			_text(head_font, Vector2(x0 + cols[2], y), "CAPS", 13, dim)
 		if online:
-			_text(font, Vector2(x0 + cols[0] - 80.0, y), "PING", 14, Color(0.7, 0.72, 0.8))
-		draw_line(Vector2(x0 + 14, y + 6), Vector2(x0 + W - 14, y + 6), Color(head_col, 0.5), 1.0)
+			_text(head_font, Vector2(x0 + cols[0] - 80.0, y), "PING", 13, dim)
+		draw_line(Vector2(x0 + 14, y + 7), Vector2(x0 + W - 14, y + 7), Color(head_col, 0.35), 1.0)
 		y += ROW_H
+		var odd := false
 		for r in list:
-			var col := Color(0.92, 0.93, 0.96)
+			var col := UITheme.COL_TEXT
 			if not team_mode and hud != null and hud.has_method("_team_display_info"):
 				col = (hud._team_display_info(int(r["team"]))["color"] as Color).lerp(Color.WHITE, 0.3)
+			if odd:
+				draw_rect(Rect2(x0 + 12, y - ROW_H + 8, W - 24, ROW_H), UITheme.COL_PANEL_ROW)
+			odd = not odd
 			if str(r["name"]) == me:
-				draw_rect(Rect2(x0 + 10, y - ROW_H + 7, W - 20, ROW_H), Color(1, 1, 1, 0.08))
-				col = Color(1.0, 0.9, 0.5)
-			_text(font, Vector2(x0 + 24, y), str(r["name"]).left(20 if online else 26), 15, col)
+				draw_rect(Rect2(x0 + 12, y - ROW_H + 8, W - 24, ROW_H), Color(UITheme.COL_ACCENT, 0.12))
+				draw_rect(Rect2(x0 + 12, y - ROW_H + 8, 3, ROW_H), UITheme.COL_ACCENT)
+				col = UITheme.COL_ACCENT_HI
+			_text(font, Vector2(x0 + 26, y), str(r["name"]).left(20 if online else 26), 15, col)
 			if online:
 				var pg = pings.get(str(r["name"]), null)
 				var ptxt := "BOT" if pg == null else ("HOST" if int(pg) == 0 else "%d" % int(pg))
 				var pcol := Color(0.6, 0.62, 0.7) if pg == null or int(pg) == 0 else (Color(0.55, 0.95, 0.5) if int(pg) < 80 else (Color(0.95, 0.85, 0.4) if int(pg) < 160 else Color(0.95, 0.45, 0.35)))
-				_text(font, Vector2(x0 + cols[0] - 80.0, y), ptxt, 14, pcol)
-			_text(font, Vector2(x0 + cols[0], y), str(r["k"]), 15, col)
-			_text(font, Vector2(x0 + cols[1], y), str(r["d"]), 15, col)
+				_text(num_font, Vector2(x0 + cols[0] - 80.0, y), ptxt, 15, pcol)
+			_text(num_font, Vector2(x0 + cols[0], y), str(r["k"]), 17, col)
+			_text(num_font, Vector2(x0 + cols[1], y), str(r["d"]), 17, col)
 			if show_caps:
-				_text(font, Vector2(x0 + cols[2], y), str(r["c"]), 15, col)
+				_text(num_font, Vector2(x0 + cols[2], y), str(r["c"]), 17, col)
 			y += ROW_H
 		y += ROW_H
 
 
 func _text(font: Font, at: Vector2, s: String, fs: int, col: Color) -> void:
-	draw_string_outline(font, at, s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 3, Color(0, 0, 0, 0.8))
+	draw_string_outline(font, at, s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 3, Color(0, 0, 0, 0.6))
 	draw_string(font, at, s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)

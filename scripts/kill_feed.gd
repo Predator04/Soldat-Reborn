@@ -11,6 +11,7 @@ const KILL_ICONS := {
 	"Flamethrower": "flamer", "Rambo Bow": "bow", "M2": "m2", "Fist": "fist",
 }
 var _kill_icon_cache: Dictionary = {}
+const _UITheme = preload("res://scripts/ui_theme.gd")
 
 
 func _init() -> void:
@@ -50,14 +51,22 @@ func kill_icon(weapon: String) -> Texture2D:
 	return tex
 
 
-## Soldat-style row: killer · weapon icon · victim (text fallback for weapons
-## without an icon, e.g. the BR zone). kcol = the killer's team colour.
-func add_kill(killer_name: String, victim_name: String, weapon_name: String, kcol: Color) -> void:
+## Soldat-style row on a dark pill: killer · weapon icon · victim, with a
+## crosshair marker for headshots (text fallback for weapons without an icon,
+## e.g. the BR zone). kcol = the killer's team colour; `mine` (you killed or
+## died) gets an ember edge (#272).
+func add_kill(killer_name: String, victim_name: String, weapon_name: String, kcol: Color, mine := false, vcol := Color(0.9, 0.9, 0.92)) -> void:
+	var row := PanelContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.size_flags_horizontal = Control.SIZE_SHRINK_END
+	row.add_theme_stylebox_override("panel", _UITheme.hud_pill_style(_UITheme.COL_ACCENT if mine else Color(0, 0, 0, 0), 0.62 if mine else 0.5))
 	var lbl := HBoxContainer.new()
 	lbl.alignment = BoxContainer.ALIGNMENT_END
-	lbl.add_theme_constant_override("separation", 6)
+	lbl.add_theme_constant_override("separation", 7)
 	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(lbl)
 	var tex := kill_icon(weapon_name)
+	var headshot := weapon_name.ends_with("(headshot)")
 	var parts: Array = [killer_name, "", victim_name]
 	for i in 3:
 		if i == 1 and tex != null:
@@ -65,19 +74,26 @@ func add_kill(killer_name: String, victim_name: String, weapon_name: String, kco
 			ic.texture = tex
 			ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 			ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-			ic.custom_minimum_size = Vector2(maxf(18.0, 20.0 * float(tex.get_width()) / maxf(1.0, float(tex.get_height()))), 20)
-			if weapon_name.ends_with("(headshot)"):
-				ic.modulate = Color(1.0, 0.6, 0.5)
+			ic.custom_minimum_size = Vector2(maxf(18.0, 18.0 * float(tex.get_width()) / maxf(1.0, float(tex.get_height()))), 18)
+			ic.modulate = Color(0.95, 0.96, 0.98, 0.95)
 			lbl.add_child(ic)
+			if headshot:
+				var hs := TextureRect.new()
+				hs.texture = _UITheme.icon_texture("headshot", 16, _UITheme.COL_ALERT)
+				hs.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
+				hs.custom_minimum_size = Vector2(16, 18)
+				hs.tooltip_text = "headshot"
+				lbl.add_child(hs)
 			continue
 		var t := Label.new()
 		t.text = parts[i] if i != 1 else "[%s]" % weapon_name
+		t.add_theme_font_override("font", _UITheme.font("semi"))
 		t.add_theme_font_size_override("font_size", 15)
-		t.add_theme_color_override("font_color", kcol if i == 0 else (Color(0.9, 0.9, 0.92) if i == 2 else Color(0.8, 0.8, 0.85)))
-		t.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
-		t.add_theme_constant_override("outline_size", 3)
+		t.add_theme_color_override("font_color", kcol if i == 0 else (vcol if i == 2 else _UITheme.COL_TEXT_DIM))
+		t.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.6))
+		t.add_theme_constant_override("outline_size", 2)
 		lbl.add_child(t)
-	push_line(lbl)
+	push_line(row)
 
 
 ## A plain text line (objective events, streak enders) in the same lane.
@@ -85,8 +101,11 @@ func add_text(txt: String, col: Color) -> void:
 	var lbl := Label.new()
 	lbl.text = txt
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	lbl.add_theme_font_override("font", _UITheme.font("semi"))
 	lbl.add_theme_font_size_override("font_size", 14)
 	lbl.add_theme_color_override("font_color", col)
-	lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
-	lbl.add_theme_constant_override("outline_size", 3)
+	lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.6))
+	lbl.add_theme_constant_override("outline_size", 2)
+	lbl.add_theme_stylebox_override("normal", _UITheme.hud_pill_style(Color(col, 0.8), 0.42))
+	lbl.size_flags_horizontal = Control.SIZE_SHRINK_END
 	push_line(lbl)

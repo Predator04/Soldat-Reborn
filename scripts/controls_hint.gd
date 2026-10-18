@@ -134,7 +134,7 @@ func _place() -> void:
 	# Bottom-centre, sized to the content (no anchors: the HUD root isn't a
 	# full-rect container on every path).
 	reset_size()
-	var vp := get_viewport_rect().size
+	var vp := UITheme.ui_view_size(self)
 	position = Vector2(roundf((vp.x - size.x) * 0.5), vp.y - size.y - 18.0)
 
 
