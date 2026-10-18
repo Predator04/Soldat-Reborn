@@ -97,7 +97,7 @@ func _maybe_print_version() -> bool:
 	var ver: String = String(ProjectSettings.get_setting("application/config/version", ""))
 	if ver.is_empty():
 		ver = "unknown"
-	print("Soldat Reborn ", ver)
+	print(preload("res://scripts/game_info.gd").TITLE, " ", ver)
 	get_tree().quit()
 	return true
 
@@ -1489,13 +1489,13 @@ func internet_code() -> String:
 func share_text() -> String:
 	var t := ""
 	if via_relay and relay_code != "":
-		return "Soldat Reborn: Join Game > code %s (works from anywhere)" % relay_code
+		return "Tracerfall: Join Game > code %s (works from anywhere)" % relay_code
 	if internet_code() != "":
-		t = "Soldat Reborn: Join Game > code %s" % internet_code()
+		t = "Tracerfall: Join Game > code %s" % internet_code()
 		if lan_code() != "":
 			t += " (same Wi-Fi: %s)" % lan_code()
 	elif lan_code() != "":
-		t = "Soldat Reborn: Join Game > code %s (same network)" % lan_code()
+		t = "Tracerfall: Join Game > code %s (same network)" % lan_code()
 	return t
 
 
@@ -1544,9 +1544,9 @@ func _upnp_work(port: int) -> void:
 	var ip := ""
 	if u.discover(2000, 2, "InternetGatewayDevice") == UPNP.UPNP_RESULT_SUCCESS \
 			and u.get_gateway() != null and u.get_gateway().is_valid_gateway():
-		ok = u.add_port_mapping(port, port, "Soldat Reborn", "UDP", 0) == UPNP.UPNP_RESULT_SUCCESS
+		ok = u.add_port_mapping(port, port, "Tracerfall", "UDP", 0) == UPNP.UPNP_RESULT_SUCCESS
 		if ok:
-			u.add_port_mapping(port + 1, port + 1, "Soldat Reborn query", "UDP", 0)
+			u.add_port_mapping(port + 1, port + 1, "Tracerfall query", "UDP", 0)
 			ip = u.query_external_address()
 	call_deferred("_upnp_done", u, ok, ip, port)
 
@@ -1589,7 +1589,7 @@ func allow_through_firewall() -> bool:
 	if OS.get_name() != "Windows":
 		return false
 	var exe := OS.get_executable_path().replace("/", "\\")
-	var cmd := "/c netsh advfirewall firewall delete rule name=\"Soldat Reborn\" & netsh advfirewall firewall add rule name=\"Soldat Reborn\" dir=in action=allow program=\"%s\" enable=yes profile=any" % exe
+	var cmd := "/c netsh advfirewall firewall delete rule name=\"Soldat Reborn\" & netsh advfirewall firewall delete rule name=\"Tracerfall\" & netsh advfirewall firewall add rule name=\"Tracerfall\" dir=in action=allow program=\"%s\" enable=yes profile=any" % exe
 	var ps := "Start-Process cmd -Verb RunAs -WindowStyle Hidden -ArgumentList '%s'" % cmd.replace("'", "''")
 	return OS.create_process("powershell.exe", ["-NoProfile", "-WindowStyle", "Hidden", "-Command", ps]) > 0
 

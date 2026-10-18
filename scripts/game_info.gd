@@ -6,6 +6,13 @@ extends Object
 ## the win targets against main.gd's constants).
 
 # [title, one line on how to win, a little more detail]
+## Display name of the game (#269). Internal identifiers keep the old name on
+## purpose: project config/name (it decides where settings, stats and replays
+## live — changing it would orphan every player's data), the Android package
+## id, the update asset names (SoldatReborn.exe/.apk/.pck) and the repo URL.
+const TITLE := "Tracerfall"
+const TITLE_UPPER := "TRACERFALL"
+
 const MODES := [
 	["DEATHMATCH", "Everyone for themselves. First to 20 kills wins.",
 		"Every kill is a point. Round ends at 20 kills or when the 5-minute timer runs out."],

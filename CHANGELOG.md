@@ -4,6 +4,9 @@ All notable changes to Soldat Reborn.
 
 ## [Unreleased]
 
+### Changed — new name: **Tracerfall**
+- The game is now called **Tracerfall** (#269): menu title, window title, credits, share/join text, the Windows exe description, the Android app label and the store copy. "Soldat" is the original game's name; the credits keep the Soldat attribution. Nothing moves on your machine: settings, stats, replays and updates carry over (the data folder and update files keep their old names).
+
 ### Added — the movement course
 - **Training phase 2: "Now the moves that make a Soldat"** (#262). After the shooting steps, Training loads a purpose-built Movement Course micro-map: a short gap under a spike ceiling (tap to hop — a held full jump hits the spikes), a wider gap (tap), a long gap (hold for the full jump), a prone-cancel drop from a high ledge into a target ring, and a timed bunny-hop lane that plain running and roll spam can't make. Falling into a pit or touching the spikes puts you straight back at the section start — no death screen. Each section ends with a toast, finishing shows your total time, and the best time is saved in your stats; press RELOAD to run it again. Gap widths, spike height, ring and lane time are calibrated from measured jump / drop / hop physics (numbers in `scripts/movement_course.gd`).
 - **MOVEMENT COURSE button** next to TRAINING on the main menu, so returning players can run the course on its own.

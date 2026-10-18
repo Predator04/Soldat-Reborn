@@ -7,7 +7,7 @@ extends PanelContainer
 ## The match settings it overrides are restored when the scene exits.
 ## Key names come from the live bindings (touch devices get button names).
 ##
-## Phase 2 (#262): the movement course — "Now the moves that make a Soldat".
+## Phase 2 (#262): the movement course — "Now the moves that make a pro".
 ## After the shooting steps Training loads the Movement Course micro-map
 ## (scripts/movement_course.gd) and runs its gates with the same step system:
 ## tap hop under spikes, a wider hop, a held full jump, a prone-cancel drop
@@ -341,7 +341,7 @@ func _finish() -> void:
 	# Phase 1 done: on to the movement course (#262).
 	Stats.record_event("trained")
 	_prog.text = tr("TRAINING  ·  PHASE 2")
-	_title.text = tr("NOW THE MOVES THAT MAKE A SOLDAT")
+	_title.text = tr("NOW THE MOVES THAT MAKE A PRO")
 	_body.text = tr("That's the basics. Next, a short course against the clock: hops, full jumps, prone drops and bunny hops. Loading…")
 	_place.call_deferred()
 	_phase2_t = _t

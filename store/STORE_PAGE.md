@@ -1,4 +1,4 @@
-# Store page copy — Soldat Reborn
+# Store page copy — Tracerfall
 
 > The CURRENT, complete itch.io kit (copy, checklist, cover, 8 screenshots,
 > gameplay GIF) lives in **store/itch/PAGE.md** — that is the file to edit and

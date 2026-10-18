@@ -185,6 +185,9 @@ func is_team_mode() -> bool:
 
 
 func _ready() -> void:
+	# Window / taskbar title (#269); project config/name stays for the data path.
+	if DisplayServer.get_name() != "headless":
+		DisplayServer.window_set_title(preload("res://scripts/game_info.gd").TITLE)
 	load_settings()
 	# A first launch has no settings file, so load_settings() returns before
 	# it gets to the profile id: make one here (it used to stay empty, and

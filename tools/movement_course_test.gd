@@ -65,7 +65,7 @@ func _static_checks() -> void:
 	if not FileAccess.file_exists("res://assets/nav/movement_course.json"):
 		_bad.append("no nav graph for the course")
 	var TR = load("res://scripts/training.gd")
-	var keys: Array = ["MOVEMENT COURSE", "NOW THE MOVES THAT MAKE A SOLDAT", "SPIKES!", "TOO SLOW"]
+	var keys: Array = ["MOVEMENT COURSE", "NOW THE MOVES THAT MAKE A PRO", "SPIKES!", "TOO SLOW"]
 	for st in TR.COURSE_STEPS:
 		keys.append_array(st)
 	for loc in ["de", "es", "fr", "pt_BR"]:

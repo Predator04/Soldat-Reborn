@@ -1,6 +1,6 @@
-# Soldat Reborn  *(being renamed **Tracerfall**)*
+# Tracerfall  *(formerly Soldat Reborn)*
 
-A fast 2D jetpack run-and-gun shooter built in Godot 4.7: a spiritual successor to the classic
+**Tracerfall** is a fast 2D jetpack run-and-gun shooter built in Godot 4.7: a spiritual successor to the classic
 **Soldat**. Jet boots, bunny-hop momentum, ragdoll gibs, grenades, vehicles and online multiplayer,
 made with Soldat's own art and sound (CC BY 4.0) and an animated skeletal soldier. It covers everything
 the classic had and more, with most of Soldat 2's feature list folded in.
