@@ -550,6 +550,7 @@ if has F; then
   ft mapvote mapvote_test.gd 60 MAPVOTE-TEST "end-of-round map vote"
   ft pad pad_test.gd 60 PAD-TEST "gamepad: radio (L3 + D-pad), limbo loadout (D-pad)"
   ft gfx gfx_test.gd 60 GFX-TEST "graphics presets: terrain depth / grass / post FX / bloom / lights / shadows / caps, live switch"
+  ft atmos atmosphere_test.gd 60 ATMOS-TEST "graphics Phase A (#270): cinematic sky / parallax / ambient / post, pooled lights, rim light, live classic switch"
   ft killcam killcam_test.gd 60 KILLCAM-TEST "kill cam: rewind w/ slow-mo, respawn waits, skip, live follow"
   ft lagcomp lagcomp_test.gd 60 LAGCOMP-TEST "lag compensation: hits where the shooter saw you, capped"
   ft quickplay quickplay_test.gd 60 QUICKPLAY-TEST "quick play: no game online -> bot match"

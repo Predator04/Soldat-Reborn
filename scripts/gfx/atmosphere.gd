@@ -112,12 +112,32 @@ func _exit_tree() -> void:
 		_current = null
 
 
+## Release-gate only: run the cinematic paths in a headless test (shaders don't
+## draw there, but every node, pool and material assignment does).
+static var force_cinematic_for_tests := false
+
+
 func cinematic() -> bool:
+	if force_cinematic_for_tests:
+		return Settings.visual_style == "cinematic"
 	return Settings.visual_style == "cinematic" and Gfx.on(Gfx.MEDIUM) and DisplayServer.get_name() != "headless"
 
 
+## For tests / diagnostics.
+func lights_lit() -> int:
+	var n := 0
+	for l in _lights:
+		if is_instance_valid(l) and l.enabled:
+			n += 1
+	return n
+
+
+func style() -> String:
+	return _style
+
+
 func _lights_on() -> bool:
-	return cinematic() and Gfx.on(Gfx.HIGH)
+	return cinematic() and (Gfx.on(Gfx.HIGH) or force_cinematic_for_tests)
 
 
 func _night() -> float:
@@ -130,6 +150,9 @@ func _build() -> void:
 	_style = "cinematic" if cinematic() else "classic"
 	for n in [_sky_layer, _par_layer, _ambient]:
 		if n != null and is_instance_valid(n):
+			# Detach first so the rebuilt layers get the same node names.
+			if n.get_parent() != null:
+				n.get_parent().remove_child(n)
 			n.queue_free()
 	_sky_layer = null
 	_par_layer = null
