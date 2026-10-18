@@ -40,6 +40,12 @@ var EXPLOSIVE_MUL := 1.6      # rockets / grenades hurt it more than bullets
 var SOLO_FIRE_SPEED := 0.5    # top speed while the solo driver holds the trigger
 var SOLO_FIRE_SPREAD := 2.2   # spread multiplier for a solo driver
 var BOT_GUN_RANGE := 900.0
+var WRECK_WEAPON := "Buggy"   # kill-feed weapon for the wreck blast
+var EJECT_DMG := 30.0         # a crew member thrown clear of a gentle wreck (helicopter)
+# #277: host relay sanity cap on a client-simulated vehicle (px/s over >= 250 ms,
+# falls included — generous on purpose; honest driving never comes close).
+var RELAY_MAX_SPEED := 2000.0
+var respawns := 0             # apply_respawn count (host relay check resets on it)
 
 # Seat offsets (local, facing right, before tilt). The soldier's origin sits
 # here; the body is drawn over their legs so they look seated.
@@ -90,9 +96,47 @@ var _bd_last_x := 0.0
 var _bd_stuck_t := 0.0
 var _bd_hop := false
 
-const EXPLOSIVE_WEAPONS := ["LAW", "M79", "Grenade", "Cluster", "Tank", "Buggy"]
+const EXPLOSIVE_WEAPONS := ["LAW", "M79", "Grenade", "Cluster", "Tank", "Buggy", "Heli"]
 const _BARREL_TEX := preload("res://assets/weapons-gfx/m2.png")
 const TouchControls = preload("res://scripts/touch_controls.gd")
+const VArt = preload("res://scripts/gfx/vehicle_art.gd")
+const Gfx = preload("res://scripts/gfx.gd")
+const _RIM_SHADER = preload("res://scripts/gfx/rim_light.gdshader")
+
+# ── Look (#276), per kind (subclasses override in _init). Local points are
+# facing right, origin on the ground under the middle of the body.
+var PAINT_BASE := Color(0.46, 0.43, 0.32)    # desert drab
+var EXHAUST_PT := Vector2(-50, -34)
+var ENGINE_PT := Vector2(-38, -26)
+var HEADLIGHT_PT := Vector2(40, -22)
+var HEADLIGHT_LEN := 150.0
+var DUST_X: Array = [-22.0, 22.0]
+var GUN_POST := Vector2(-18, -28)
+var SUSP_MAX := 5.0
+var SHADOW_W := 34.0          # soldier_shadows.gd: contact-shadow half width
+var SHADOW_REACH := 150.0     # ...and how high above the ground it still shows
+# Cosmetic state (never read by the simulation).
+var draws := 0                # _draw calls (gate draw-path test)
+var _susp := 0.0
+var _susp_v := 0.0
+var _pitch := 0.0
+var _fx_prev_v := Vector2.ZERO
+var _gun_kick := 0.0
+var _fx_time := 0.0
+var _wreck_t := 0.0
+var _fx_hp := -1.0
+var _hit_flash := 0.0
+var _flash_on := false
+var _fx_exhaust_t := 0.0
+var _fx_dust_t := 0.0
+var _fx_spark_t := 0.0
+var _fx_smoke_t := 0.0
+var _fx_fire_t := 0.0
+var _xf_w := Transform2D.IDENTITY
+var _xf_b := Transform2D.IDENTITY
+var _spots: Array = []
+var _col_cache: Dictionary = {}
+static var _BS: Dictionary = {}
 
 
 func _ready() -> void:
@@ -114,6 +158,8 @@ func _ready() -> void:
 	floor_constant_speed = false
 	z_index = 5
 	spawn_pos = global_position
+	_spots = VArt.bake_spots(vehicle_id + 1, Rect2(-SHAPE_LEN * 0.5, -SHAPE_R * 2.0 - 12.0, SHAPE_LEN, 14.0), 9)
+	_fx_hp = hp
 	preload("res://scripts/item_label.gd").attach(self, LABEL, Color(0.95, 0.85, 0.5), LABEL_LIFT)
 	_engine = AudioStreamPlayer2D.new()
 	_engine.max_distance = 1400.0
@@ -194,8 +240,14 @@ func set_seat(seat: int, s: Node2D) -> void:
 	if is_instance_valid(s) and s.has_method("mount_m2"):
 		s.mount_m2(self)
 		if s.has_method("_pickup_toast"):
-			s._pickup_toast("BUGGY", "A/D drive · aim + fire the gun · F to get out" if seat == 0 else "Gunner: aim + fire · F to get out", Color(0.95, 0.85, 0.5))
+			var tt: Array = _seat_toast(seat)
+			s._pickup_toast(str(tt[0]), str(tt[1]), Color(0.95, 0.85, 0.5))
 	_update_team()
+
+
+## Toast on getting in: [title, how to use this seat].
+func _seat_toast(seat: int) -> Array:
+	return [LABEL, "A/D drive · aim + fire the gun · F to get out" if seat == 0 else "Gunner: aim + fire · F to get out"]
 
 
 func clear_seat_of(s: Node2D) -> void:
@@ -465,6 +517,11 @@ func _local_occupant_input() -> void:
 		request_exit(me)
 		return
 	_f_prev = f_now
+	_occupant_controls(me, my_seat)
+
+
+## Aim / fire for the local human in `my_seat` (exit is handled above).
+func _occupant_controls(me: Node2D, my_seat: int) -> void:
 	# The gunner owns the gun; a driver alone gets it too.
 	var gun_owner := 1 if gunner() != null else 0
 	if my_seat != gun_owner:
@@ -527,6 +584,10 @@ func apply_fire(muzzle: Vector2, dir: Vector2) -> void:
 	b.weapon_name = "Buggy MG"
 	b.ignore_bodies = [self] + seats.filter(func(o): return is_instance_valid(o))
 	get_parent().add_child(b)
+	# Cosmetic: muzzle flash (pooled light + star), brass, the barrel kicks.
+	Gfx.muzzle(get_parent(), muzzle, false, dir)
+	Gfx.casing(get_parent(), _gun_pivot(), 1.0 if dir.x >= 0.0 else -1.0)
+	_gun_kick = 3.0
 	if not Sfx._throttle("buggy_mg_%d" % vehicle_id, 60):
 		pass
 	else:
@@ -618,7 +679,7 @@ func _bot_gunner(delta: float) -> void:
 	if t is CharacterBody2D:
 		to += (t as CharacterBody2D).velocity * (to.length() / GUN_SPEED)
 	var want := _aim_solution(to)
-	if want == Vector2.ZERO or want.y > 0.55:
+	if want == Vector2.ZERO or not _aim_ok(want):
 		return   # out of reach / can't depress that far
 	aim_dir = aim_dir.slerp(want, clampf(delta * 7.0, 0.0, 1.0)).normalized()
 	if heat > 0.85:
@@ -627,6 +688,12 @@ func _bot_gunner(delta: float) -> void:
 		_bot_hold = false
 	if not overheated and not _bot_hold and fire_cd <= 0.0 and absf(aim_dir.angle_to(want)) < 0.12:
 		_fire(g)
+
+
+## Whether the gun can point that way (the buggy can't shoot down through its
+## own chassis; the helicopter's door gun can't shoot up through the rotor).
+func _aim_ok(want: Vector2) -> bool:
+	return want.y <= 0.55
 
 
 # Direction to fire to hit something at `to` (relative to the gun). Straight
@@ -692,18 +759,20 @@ func apply_hp(v: float) -> void:
 	hp = v
 
 
-func _host_destroy(killer: String, killer_team: int) -> void:
+## `violent`: the crew dies with it (always, for buggies and tanks); a
+## helicopter that comes down gently ejects them instead (#277).
+func _host_destroy(killer: String, killer_team: int, violent := true) -> void:
 	if not alive:
 		return
 	var main := get_parent()
 	if main != null and main.has_method("vehicle_send"):
-		main.vehicle_send("net_vehicle_destroy", [vehicle_id, global_position, killer, killer_team], true)
+		main.vehicle_send("net_vehicle_destroy", [vehicle_id, global_position, killer, killer_team, violent], true)
 	else:
-		apply_destroy(global_position, killer, killer_team)
+		apply_destroy(global_position, killer, killer_team, false, violent)
 
 
 # Every peer: blast, eject/kill occupants, hide, start the respawn timer.
-func apply_destroy(at: Vector2, killer: String, killer_team: int, quiet := false) -> void:
+func apply_destroy(at: Vector2, killer: String, killer_team: int, quiet := false, violent := true) -> void:
 	if not alive:
 		return
 	alive = false
@@ -726,44 +795,41 @@ func apply_destroy(at: Vector2, killer: String, killer_team: int, quiet := false
 	Sfx._play_key("m2explode", -2.0, 0.9, at)
 	if get_parent() != null:
 		preload("res://scripts/gfx.gd").explosion(get_parent(), at, 140.0)
-	var kname: String = killer if killer != "" else "Buggy"
+	var kname: String = killer if killer != "" else WRECK_WEAPON
 	for s in get_tree().get_nodes_in_group("soldier"):
 		if not is_instance_valid(s) or s.get("dead") == true:
 			continue
 		var dist: float = (s as Node2D).global_position.distance_to(at)
 		var dmg := 0.0
 		if s in occupants:
-			dmg = 999.0
+			dmg = 999.0 if violent else EJECT_DMG
+			if not violent:
+				_eject(s, occupants.find(s))
 		elif dist < EXPLODE_RADIUS:
 			dmg = EXPLODE_DAMAGE * (1.0 - dist / EXPLODE_RADIUS)
 		if dmg <= 0.0:
 			continue
 		if multiplayer.multiplayer_peer == null or s.is_multiplayer_authority():
-			s.take_damage(dmg, kname, "Buggy", killer_team)
+			s.take_damage(dmg, kname, WRECK_WEAPON, killer_team)
 		elif s.has_method("observe_damage"):
-			s.observe_damage(dmg, kname, "Buggy", killer_team)
+			s.observe_damage(dmg, kname, WRECK_WEAPON, killer_team)
 	_respawn_t = RESPAWN_TIME
 	_smoke_t = 0.0
 	velocity = Vector2.ZERO
 	collision_layer = 0
-	if not Settings.lofi:
-		var p := CPUParticles2D.new()
-		p.amount = 90
-		p.lifetime = 0.8
-		p.explosiveness = 1.0
-		p.one_shot = true
-		p.emitting = true
-		p.global_position = at
-		p.direction = Vector2(0, -1)
-		p.spread = 180.0
-		p.gravity = Vector2(0, 300)
-		p.initial_velocity_min = 120.0
-		p.initial_velocity_max = 480.0
-		p.scale_amount_min = 2.5
-		p.scale_amount_max = 5.5
-		p.color = Color(1.0, 0.6, 0.2)
-		get_parent().add_child(p)
-		get_tree().create_timer(1.5).timeout.connect(p.queue_free)
+	# Cosmetic: hull panels + burning bits + a smoke column (pooled, #276).
+	_wreck_t = 0.0
+	var w = _fxw()
+	if w != null and VArt.level() >= 1:
+		w.vehicle_wreck(at + Vector2(0, -SHAPE_R), EXPLODE_RADIUS * 0.8, _team_color())
+
+
+## A survivor thrown clear of a gentle wreck (every peer; the owner's copy is
+## the one that counts — replicas get corrected by the owner's stream).
+func _eject(s: Node2D, i: int) -> void:
+	var side := -1.0 if i % 2 == 0 else 1.0
+	s.global_position = global_position + Vector2(side * 36.0, -22.0)
+	s.set("velocity", Vector2(side * 170.0, -260.0))
 
 
 func _tick_dead(delta: float) -> void:
@@ -803,6 +869,7 @@ func unstick() -> void:
 
 
 func apply_respawn() -> void:
+	respawns += 1
 	alive = true
 	hp = MAX_HP
 	_last_sent_hp = MAX_HP
@@ -831,7 +898,11 @@ static func splash(tree: SceneTree, at: Vector2, radius: float, dmg: float, kill
 			v.take_damage(dmg * float(v.get("EXPLOSIVE_MUL")) * (1.0 - clampf(d - 20.0, 0.0, radius) / radius), killer, weapon, killer_team)
 
 
-# ── Presentation ──────────────────────────────────────
+# ── Presentation (#276) ───────────────────────────────
+# Everything below is COSMETIC: it reads the replicated state (position,
+# velocity, tilt, face, hp, alive, seats, heat, fire_cd) and only draws or
+# spawns pooled effects (FxWorld / Atmosphere light pool, Gfx.rng). Nothing
+# here touches physics, net state, timers or the gameplay random stream.
 
 func _engine_sound() -> void:
 	if _engine.stream == null or Settings.sfx_volume <= 0.0:
@@ -848,66 +919,367 @@ func _engine_sound() -> void:
 	_engine.volume_db = -20.0 + sp * 6.0 + linear_to_db(clampf(Settings.sfx_volume, 0.0001, 1.0))
 
 
-func _team_color() -> Color:
-	var main := get_parent()
-	if team >= 0 and main != null and Settings.is_team_mode():
-		return (main.get_script() as GDScript).bot_color_for_team(team).lerp(Color(0.5, 0.48, 0.36), 0.35)
-	return Color(0.52, 0.5, 0.36)
+func _team_mode() -> bool:
+	return team >= 0 and Settings.is_team_mode()
 
+
+# Hull paint: the kind's drab base nudged toward the team (VehicleArt.paint).
+func _team_color() -> Color:
+	return VArt.paint(PAINT_BASE, team, _team_mode())
+
+
+func _process(delta: float) -> void:
+	_fx_tick(delta)
+
+
+func _fxw() -> Object:
+	var w = FxWorld.current
+	return w if w != null and is_instance_valid(w) and w.is_inside_tree() else null
+
+
+func _dmg() -> float:
+	return clampf(1.0 - hp / maxf(1.0, MAX_HP), 0.0, 1.0)
+
+
+## Wheel frame (ground contact, follows the ground tilt) and body frame (rides
+## the suspension: bob + pitch) for this frame's draw.
+func _frames() -> void:
+	_xf_w = Transform2D(_tilt, Vector2(face, 1.0), 0.0, Vector2.ZERO)
+	_xf_b = _xf_w * Transform2D(_pitch, Vector2(0.0, _susp))
+
+
+func _world_pt(local: Vector2, body := true) -> Vector2:
+	return global_position + (_xf_b if body else _xf_w) * local
+
+
+func _fx_tick(delta: float) -> void:
+	var dt := minf(delta, 0.05)
+	if dt <= 0.0:
+		return
+	# Suspension: landings compress the springs, throttle / brakes pitch the
+	# body, rough ground jiggles it with speed.
+	var drop := _fx_prev_v.y - velocity.y
+	if alive and drop > 140.0:
+		_susp_v += minf(drop, 900.0) * 0.03
+	_susp_v += (-_susp * 170.0 - _susp_v * 11.0) * dt
+	_susp = clampf(_susp + _susp_v * dt, -3.0, SUSP_MAX)
+	var ax := (velocity.x - _fx_prev_v.x) / dt
+	var want_pitch := clampf(-ax * face * 0.00008, -0.06, 0.06) if alive else 0.0
+	_pitch = lerpf(_pitch, want_pitch, clampf(dt * 6.0, 0.0, 1.0))
+	_fx_prev_v = velocity
+	_gun_kick = maxf(0.0, _gun_kick - dt * 40.0)
+	_fx_time += dt
+	if not alive:
+		_wreck_t += dt
+	else:
+		_wreck_t = 0.0
+	_frames()
+	var lv := VArt.level()
+	# A hit: sparks off the hull (and the cinematic flash uniform).
+	var took := hp < _fx_hp - 0.5 and alive
+	_fx_hp = hp
+	_hit_flash = maxf(0.0, _hit_flash - dt)
+	if took:
+		_hit_flash = 0.05
+	_set_hit_flash(_hit_flash > 0.0)
+	if lv == 0 or get_parent() == null:
+		return
+	var w = _fxw()
+	if w == null:
+		return
+	var r := Gfx.rng
+	if took:
+		var hp_pt := _world_pt(Vector2(r.randf_range(-SHAPE_LEN * 0.4, SHAPE_LEN * 0.4), -SHAPE_R * 2.0 + r.randf_range(-6, 4)))
+		w.vehicle_sparks(hp_pt, Vector2(0, -1).rotated(r.randf_range(-1.0, 1.0)), 4 if lv >= 2 else 2)
+	if not alive:
+		_fx_wreck(w, dt, lv)
+		return
+	_fx_running(w, dt, lv)
+	_fx_damage(w, dt, lv)
+
+
+## Exhaust, wheel dust, headlights while someone's in it.
+func _fx_running(w: Object, dt: float, lv: int) -> void:
+	var r := Gfx.rng
+	var spd := absf(velocity.x)
+	var running := driver() != null
+	_fx_exhaust_t -= dt
+	if running and _fx_exhaust_t <= 0.0:
+		_fx_exhaust_t = (0.07 if lv >= 2 else 0.13) * r.randf_range(0.8, 1.2)
+		var ex := _world_pt(EXHAUST_PT)
+		var heavy := clampf(absf((velocity.x - _fx_prev_v.x)) * 0.02 + spd / MAX_SPEED * 0.5, 0.0, 1.0)
+		w.smoke(ex, Vector2(-face * r.randf_range(20, 50) - velocity.x * 0.2, r.randf_range(-40, -18)), r.randf_range(5.0, 8.0) * (1.0 + heavy * 0.6),
+			r.randf_range(0.5, 0.9), Color(0.42, 0.42, 0.42, 0.22 + heavy * 0.1))
+	_fx_dust_t -= dt
+	if spd > 110.0 and absf(velocity.y) < 80.0 and _fx_dust_t <= 0.0:
+		_fx_dust_t = (0.05 if lv >= 2 else 0.1)
+		var k := clampf(spd / MAX_SPEED, 0.0, 1.0)
+		for wx in DUST_X:
+			w.wheel_dust(_world_pt(Vector2(wx, -1.0), false), velocity.x, k)
+	if running:
+		var lamp := _world_pt(HEADLIGHT_PT)
+		var dir := (_xf_b.basis_xform(Vector2(1.0, 0.1))).normalized()
+		Atmosphere.light_keep(get_instance_id() * 8 + 1, lamp + dir * HEADLIGHT_LEN * 0.6, Color(1.0, 0.9, 0.7), HEADLIGHT_LEN * 0.7, 0.55)
+
+
+## Damage states: sparks (< 70 %), engine smoke (< 45 %), fire (< 25 %).
+func _fx_damage(w: Object, dt: float, lv: int) -> void:
+	var d := _dmg()
+	if d < 0.3:
+		return
+	var r := Gfx.rng
+	var eng := _world_pt(ENGINE_PT)
+	_fx_spark_t -= dt
+	if _fx_spark_t <= 0.0:
+		_fx_spark_t = r.randf_range(0.5, 1.6) * (1.2 - d)
+		w.vehicle_sparks(eng + Vector2(r.randf_range(-8, 8), r.randf_range(-4, 4)), Vector2(0, -1), 3 if lv >= 2 else 2)
+	if d >= 0.55:
+		_fx_smoke_t -= dt
+		if _fx_smoke_t <= 0.0:
+			_fx_smoke_t = (0.09 if lv >= 2 else 0.16)
+			var dark := clampf((d - 0.55) / 0.35, 0.0, 1.0)
+			w.smoke(eng, Vector2(r.randf_range(-15, 15) - velocity.x * 0.3, r.randf_range(-60, -30)), r.randf_range(9.0, 14.0),
+				r.randf_range(0.9, 1.5), Color(0.4, 0.4, 0.4, 0.3).lerp(Color(0.06, 0.06, 0.06, 0.5), dark))
+	if d >= 0.75:
+		_fx_fire_t -= dt
+		if _fx_fire_t <= 0.0:
+			_fx_fire_t = (0.1 if lv >= 2 else 0.18)
+			w.vehicle_burn(eng, clampf((d - 0.75) * 4.0, 0.3, 1.0))
+		Atmosphere.light_keep(get_instance_id() * 8 + 2, eng + Vector2(0, -8), Color(1.0, 0.5, 0.2), 90.0, 0.55 + 0.25 * sin(_fx_time * 23.0))
+
+
+## Burnt husk: burns hard for a few seconds, then smoulders until respawn.
+func _fx_wreck(w: Object, dt: float, lv: int) -> void:
+	var r := Gfx.rng
+	var core := _world_pt(ENGINE_PT * 0.5 + Vector2(0, 4))
+	_fx_fire_t -= dt
+	if _fx_fire_t <= 0.0:
+		if _wreck_t < 7.0:
+			_fx_fire_t = (0.1 if lv >= 2 else 0.2)
+			w.vehicle_burn(core + Vector2(r.randf_range(-SHAPE_LEN * 0.3, SHAPE_LEN * 0.3), 0), clampf(1.0 - _wreck_t / 7.0, 0.3, 1.0))
+		else:
+			_fx_fire_t = r.randf_range(0.35, 0.6)
+			w.smoke(core + Vector2(r.randf_range(-10, 10), -6), Vector2(r.randf_range(-10, 10), r.randf_range(-45, -25)), r.randf_range(12.0, 18.0),
+				r.randf_range(1.6, 2.4), Color(0.12, 0.12, 0.12, 0.35))
+	if _wreck_t < 8.0:
+		Atmosphere.light_keep(get_instance_id() * 8 + 2, core + Vector2(0, -10), Color(1.0, 0.48, 0.18),
+			140.0 * clampf(1.0 - _wreck_t / 8.0, 0.2, 1.0), 0.7 + 0.3 * sin(_fx_time * 19.0))
+
+
+func _set_hit_flash(on: bool) -> void:
+	if on == _flash_on:
+		return
+	var sm := material as ShaderMaterial
+	if sm == null or sm.shader != _RIM_SHADER:
+		_flash_on = false
+		return
+	set_instance_shader_parameter("flash", 0.35 if on else 0.0)
+	_flash_on = on
+
+
+# ── drawing ───────────────────────────────────────────
 
 func _draw() -> void:
-	draw_set_transform(Vector2.ZERO, _tilt, Vector2(face, 1.0))
+	draws += 1
+	_frames()
+	var lv := VArt.level()
 	if not alive:
-		# Burnt-out frame, smoking, until it respawns.
-		draw_rect(Rect2(-34, -22, 68, 12), Color(0.12, 0.11, 0.1))
-		draw_circle(Vector2(-22, -9), 9.0, Color(0.08, 0.08, 0.08))
-		draw_circle(Vector2(22, -9), 9.0, Color(0.08, 0.08, 0.08))
+		_draw_wreck(lv)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-		for i in 5:
-			var t := fmod(_smoke_t * 0.6 + i * 0.2, 1.0)
-			draw_circle(Vector2(sin(i * 1.7 + _smoke_t) * 8.0, -20.0 - t * 70.0), 6.0 + t * 10.0, Color(0.2, 0.2, 0.2, 0.35 * (1.0 - t)))
+		if lv == 0:
+			_draw_lofi_smoke(5)
 		return
-	var body := _team_color()
-	var dark := body.darkened(0.45)
-	# Chassis.
-	var hull := PackedVector2Array([Vector2(-36, -8), Vector2(-34, -22), Vector2(-10, -24), Vector2(4, -30), Vector2(20, -30), Vector2(36, -18), Vector2(36, -8)])
-	draw_colored_polygon(hull, body)
-	draw_polyline(hull + PackedVector2Array([hull[0]]), dark, 1.5)
-	# Roll cage.
-	draw_line(Vector2(-12, -24), Vector2(-6, -44), dark, 2.5)
-	draw_line(Vector2(-6, -44), Vector2(14, -44), dark, 2.5)
-	draw_line(Vector2(14, -44), Vector2(20, -30), dark, 2.5)
-	# Headlight + bumper.
-	draw_circle(Vector2(34, -20), 2.5, Color(1.0, 0.95, 0.7))
-	draw_rect(Rect2(34, -12, 5, 5), dark)
-	# Wheels with spokes that spin.
-	for wx in [-22.0, 22.0]:
-		var c := Vector2(wx, -9)
-		draw_circle(c, 9.5, Color(0.1, 0.1, 0.1))
-		draw_circle(c, 5.0, Color(0.45, 0.45, 0.45))
-		for k in 3:
-			var a: float = _wheel_rot * face + k * TAU / 3.0
-			draw_line(c, c + Vector2(cos(a), sin(a)) * 8.0, Color(0.2, 0.2, 0.2), 2.0)
-	# Damage smoke from the engine when badly hurt.
+	_draw_hull(lv)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	if hp < MAX_HP * 0.35:
-		var t := fmod(Time.get_ticks_msec() / 1000.0, 1.0)
-		draw_circle(Vector2(20 * face, -34 - t * 30.0), 5.0 + t * 7.0, Color(0.15, 0.15, 0.15, 0.4 * (1.0 - t)))
-	# Gun on its post (world-space so aim isn't mirrored twice).
+	_draw_gun(lv)
+	_draw_overlay()
+
+
+## Low quality has no particle pools: a couple of drawn puffs keep a damaged
+## or burnt-out vehicle readable.
+func _draw_lofi_smoke(n: int) -> void:
+	for i in n:
+		var t := fmod(_fx_time * 0.6 + i * 0.2, 1.0)
+		draw_circle(Vector2(sin(i * 1.7 + _fx_time) * 8.0, -20.0 - t * 70.0), 6.0 + t * 10.0, Color(0.2, 0.2, 0.2, 0.35 * (1.0 - t)))
+
+
+static func _buggy_shapes() -> Dictionary:
+	if not _BS.is_empty():
+		return _BS
+	_BS["tub"] = VArt.pv([Vector2(-30, -12), Vector2(-33, -20), Vector2(-20, -23), Vector2(18, -23), Vector2(30, -19), Vector2(32, -12), Vector2(18, -10), Vector2(-18, -10)])
+	_BS["shell"] = VArt.pv([Vector2(-37, -18), Vector2(-35, -27), Vector2(-14, -28), Vector2(-4, -33), Vector2(16, -34), Vector2(30, -27),
+		Vector2(40, -21), Vector2(39, -16), Vector2(22, -18), Vector2(-28, -17)])
+	_BS["engine"] = VArt.pv([Vector2(-45, -19), Vector2(-45, -30), Vector2(-33, -31), Vector2(-31, -19)])
+	_BS["stripe"] = VArt.pv([Vector2(-35, -23), Vector2(37, -21.5), Vector2(38.5, -19), Vector2(-36, -20.5)])
+	_BS["top"] = VArt.pv([Vector2(-35, -27), Vector2(-14, -28), Vector2(-4, -33), Vector2(16, -34), Vector2(30, -27), Vector2(40, -21)])
+	_BS["seat"] = VArt.pv([Vector2(-6, -42), Vector2(-2, -42), Vector2(0, -29), Vector2(-5, -29)])
+	for k in ["tub", "shell", "engine"]:
+		_BS[k + "_n"] = VArt.normals(_BS[k])
+	return _BS
+
+
+func _cols(key: String, pts: PackedVector2Array, top: Color, bottom: Color, y0: float, y1: float) -> PackedColorArray:
+	# Gradient colours per hull piece, rebuilt only when the paint changes.
+	var ck := "%s|%s|%s" % [key, top.to_html(), bottom.to_html()]
+	var c = _col_cache.get(key)
+	if c == null or _col_cache.get(key + "#") != ck:
+		c = VArt.vgrad(pts, top, bottom, y0, y1)
+		_col_cache[key] = c
+		_col_cache[key + "#"] = ck
+	return c
+
+
+func _draw_hull(lv: int) -> void:
+	var S := _buggy_shapes()
+	var paint := _team_color()
+	var trim := VArt.trim(team, _team_mode())
+	var cine := VArt.cinematic()
+	var steel := VArt.STEEL if cine else VArt.STEEL.lightened(0.12)
+	var line := Color(0.02, 0.02, 0.025, 0.9)
+	var spd := velocity.x
+	var running := driver() != null
+	# Wheel frame: tyres, suspension arms + springs (body pivots ride the bob).
+	draw_set_transform_matrix(_xf_w)
+	var bt := Transform2D(_pitch, Vector2(0.0, _susp))
+	for wx in [-22.0, 22.0]:
+		var hub := Vector2(wx, -9.0)
+		var piv: Vector2 = bt * Vector2(wx * 0.45, -15.0)
+		VArt.tube(self, piv, hub, steel.lightened(0.1), 2.2)
+		if lv >= 1:
+			VArt.spring(self, bt * Vector2(wx * 0.7, -21.0), hub + Vector2(-signf(wx) * 2.0, -3.0), Color(0.75, 0.55, 0.2) if cine else Color(0.8, 0.7, 0.3))
+	# Body frame.
+	draw_set_transform_matrix(_xf_b)
+	VArt.part(self, S["tub"], _cols("tub", S["tub"], steel.lightened(0.15), steel.darkened(0.3), -23.0, -10.0), steel, line)
+	# Engine block: exposed fins, exhaust pipe curling up and back.
+	VArt.part(self, S["engine"], _cols("engine", S["engine"], VArt.STEEL_HI, steel.darkened(0.2), -31.0, -19.0), steel.lightened(0.1), line)
+	if lv >= 1:
+		for fx in [-43.0, -40.0, -37.0, -34.0]:
+			draw_line(Vector2(fx, -29.0), Vector2(fx, -21.0), Color(0.05, 0.05, 0.05, 0.8), 1.0)
+	VArt.tube(self, Vector2(-38, -22), Vector2(-47, -26), Color(0.45, 0.42, 0.38), 2.4)
+	VArt.tube(self, Vector2(-47, -26), Vector2(-50, -33), Color(0.45, 0.42, 0.38), 2.4)
+	# Spare tyre strapped over the engine.
+	if lv >= 1:
+		VArt.wheel(self, Vector2(-39, -36), 6.5, 0.4, 0.0, Color(0.32, 0.32, 0.3))
+	# Wheels (outside the body).
+	draw_set_transform_matrix(_xf_w)
+	var rim_col := Color(0.42, 0.42, 0.4) if cine else Color(0.55, 0.55, 0.52)
+	for wx in [-22.0, 22.0]:
+		VArt.wheel(self, Vector2(wx, -9.0), 9.5, _wheel_rot, spd, rim_col)
+	draw_set_transform_matrix(_xf_b)
+	# Fenders over the wheels.
+	for wx in [-22.0, 22.0]:
+		draw_arc(Vector2(wx, -9.0), 12.5, PI * 1.08, PI * 1.92, 8, line, 3.4)
+		draw_arc(Vector2(wx, -9.0), 12.5, PI * 1.12, PI * 1.88, 8, paint.darkened(0.25), 2.0)
+	# Main shell.
+	VArt.part(self, S["shell"], _cols("shell", S["shell"], paint.lightened(0.3), paint.darkened(0.45), -34.0, -16.0), paint, line, 1.4)
+	if lv >= 1:
+		VArt.grime(self, -36.0, 38.0, -22.0, -16.5, 0.55 if cine else 0.35)
+	# Team trim stripe + mark (shape per team, readable without colour).
+	draw_colored_polygon(S["stripe"], trim.darkened(0.15) if cine else trim)
+	VArt.mark(self, Vector2(8.0, -27.0), team, _team_mode(), 3.6)
+	# Panel lines, rivets.
+	if lv >= 1:
+		var pl := Color(0.02, 0.02, 0.02, 0.55)
+		draw_line(Vector2(-4, -33), Vector2(-6, -18), pl, 1.0)
+		draw_line(Vector2(17, -33), Vector2(25, -19), pl, 1.0)
+		draw_line(Vector2(-28, -26), Vector2(-28, -18), pl, 1.0)
+		for rx in range(-24, 28, 8):
+			draw_circle(Vector2(rx, -14.5), 0.8, VArt.STEEL_HI)
+		VArt.scorch(self, _spots, _dmg())
+	# Lit top edge (classic) / rim (cinematic).
+	if cine:
+		VArt.rim(self, S["shell"], S["shell_n"], face, _tilt + _pitch * face, 1.0)
+		VArt.rim(self, S["engine"], S["engine_n"], face, _tilt + _pitch * face, 0.7)
+	elif lv >= 1:
+		draw_polyline(S["top"], paint.lightened(0.4), 1.0)
+	# Seat back + roll cage + bull bar.
+	draw_colored_polygon(S["seat"], Color(0.08, 0.075, 0.07))
+	var cage := Color(0.3, 0.31, 0.32) if cine else Color(0.38, 0.38, 0.36)
+	VArt.tube(self, Vector2(-14, -28), Vector2(-8, -47), cage, 2.4)
+	VArt.tube(self, Vector2(-8, -47), Vector2(13, -47), cage, 2.4)
+	VArt.tube(self, Vector2(13, -47), Vector2(22, -32), cage, 2.4)
+	if lv >= 1:
+		VArt.tube(self, Vector2(-8, -47), Vector2(4, -33), cage, 1.6)
+	VArt.tube(self, Vector2(39, -27), Vector2(45, -16), cage, 2.2)
+	VArt.tube(self, Vector2(45, -16), Vector2(40, -10), cage, 2.2)
+	VArt.tube(self, Vector2(-20, -10.5), Vector2(20, -10.5), steel.lightened(0.2), 1.6)
+	# Lights: headlamp + its cone, roof bar, tail light; a faint neon dash glow.
+	if running:
+		VArt.cone(self, HEADLIGHT_PT, Vector2(1.0, 0.1).normalized(), HEADLIGHT_LEN, 0.2, Color(1.0, 0.93, 0.75, 0.16 if cine else 0.1))
+	VArt.lamp(self, HEADLIGHT_PT, Color(1.0, 0.92, 0.7), 2.2, running)
+	VArt.lamp(self, Vector2(3, -48.5), Color(1.0, 0.8, 0.45), 1.3, running and lv >= 1)
+	VArt.lamp(self, Vector2(10, -48.5), Color(1.0, 0.8, 0.45), 1.3, running and lv >= 1)
+	VArt.lamp(self, Vector2(-45.5, -25), Color(1.0, 0.18, 0.12), 1.5, running)
+	if cine and running:
+		draw_line(Vector2(9, -33.5), Vector2(15, -33.5), Color(VArt.NEON.r, VArt.NEON.g, VArt.NEON.b, 0.65), 1.0)
+		var ug := trim
+		ug.a = 0.22
+		draw_line(Vector2(-24, -8.5), Vector2(24, -8.5), ug, 2.0)
+	# Damage fire licking out of the engine (the pooled embers / glow come from _fx_tick).
+	var d := _dmg()
+	if d >= 0.75 and lv >= 1:
+		VArt.flame(self, ENGINE_PT + Vector2(0, 6), 7.0 + (d - 0.75) * 16.0, _fx_time, float(vehicle_id))
+	elif d >= 0.55 and lv == 0:
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		var t := fmod(_fx_time, 1.0)
+		draw_circle(_world_pt(ENGINE_PT) - global_position + Vector2(0, -t * 30.0), 5.0 + t * 7.0, Color(0.15, 0.15, 0.15, 0.4 * (1.0 - t)))
+
+
+func _draw_wreck(lv: int) -> void:
+	var S := _buggy_shapes()
+	draw_set_transform_matrix(_xf_w * Transform2D(0.06, Vector2(0, 2)))
+	VArt.part(self, S["tub"], PackedColorArray(), VArt.CHAR, Color(0, 0, 0, 0.8))
+	var husk := _cols("husk", S["shell"], VArt.CHAR_HI, VArt.CHAR, -34.0, -16.0)
+	VArt.part(self, S["shell"], husk, VArt.CHAR, Color(0, 0, 0, 0.8))
+	VArt.part(self, S["engine"], PackedColorArray(), VArt.CHAR.lightened(0.04), Color(0, 0, 0, 0.8))
+	# Bent cage, bare rims.
+	VArt.tube(self, Vector2(-14, -28), Vector2(-4, -44), VArt.CHAR_HI, 2.2)
+	VArt.tube(self, Vector2(-4, -44), Vector2(16, -38), VArt.CHAR_HI, 2.2)
+	VArt.tube(self, Vector2(16, -38), Vector2(22, -30), VArt.CHAR_HI, 2.2)
+	if lv >= 1:
+		VArt.scorch(self, _spots, 1.0)
+		var glow := Color(1.0, 0.42, 0.12, 0.35 * clampf(1.0 - _wreck_t / 9.0, 0.0, 1.0))
+		if glow.a > 0.01:
+			draw_line(Vector2(-30, -19), Vector2(30, -20), glow, 2.0)
+	draw_set_transform_matrix(_xf_w)
+	for wx in [-22.0, 22.0]:
+		VArt.wheel(self, Vector2(wx, -7.0), 9.5, wx * 0.1, 0.0, VArt.CHAR_HI, true)
+	if lv >= 1 and _wreck_t < 7.0:
+		draw_set_transform_matrix(_xf_w)
+		VArt.flame(self, Vector2(-10, -22), 9.0 * clampf(1.0 - _wreck_t / 7.0, 0.35, 1.0), _fx_time, 3.0)
+		VArt.flame(self, Vector2(14, -20), 7.0 * clampf(1.0 - _wreck_t / 7.0, 0.3, 1.0), _fx_time, 7.0)
+
+
+## Gun on its post (world-space so the aim isn't mirrored twice), recoiling
+## along the aim when it fires, glowing as it heats up.
+func _draw_gun(lv: int) -> void:
 	var piv := _gun_pivot() - global_position
-	draw_line(piv + Vector2(0, 10), piv, Color(0.2, 0.2, 0.2), 3.0)
+	var post_base: Vector2 = _xf_b * Vector2(GUN_POST.x, GUN_POST.y + 10.0)
+	draw_line(post_base, piv, Color(0.12, 0.12, 0.12), 3.5)
+	draw_line(post_base, piv, Color(0.32, 0.32, 0.33), 1.5)
+	if lv >= 1:
+		draw_rect(Rect2(post_base + Vector2(-4, -4), Vector2(7, 5)), Color(0.22, 0.24, 0.16))
 	if _BARREL_TEX != null:
 		var bs := _BARREL_TEX.get_size() / 3.0
-		draw_set_transform(piv, aim_dir.angle(), Vector2(1.0, -1.0 if aim_dir.x < 0.0 else 1.0))
-		draw_texture_rect(_BARREL_TEX, Rect2(Vector2(-bs.x * 0.15, -bs.y * 0.5), bs), false, Color(1, 0.6, 0.6) if overheated else Color.WHITE)
+		var kick := aim_dir * -_gun_kick
+		draw_set_transform(piv + kick, aim_dir.angle(), Vector2(1.0, -1.0 if aim_dir.x < 0.0 else 1.0))
+		var tint := Color.WHITE.lerp(Color(1.0, 0.55, 0.45), clampf(heat * 1.2 - 0.2, 0.0, 1.0)) if not overheated else Color(1, 0.5, 0.45)
+		draw_texture_rect(_BARREL_TEX, Rect2(Vector2(-bs.x * 0.15, -bs.y * 0.5), bs), false, tint)
+		if lv >= 1 and heat > 0.4:
+			draw_line(Vector2(bs.x * 0.35, 0), Vector2(bs.x * 0.82, 0), Color(1.0, 0.4, 0.15, (heat - 0.4) * 0.9), 2.0)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	# HP bar when damaged.
+
+
+## HP bar, enter hint (world space, never mirrored).
+func _draw_overlay() -> void:
 	if hp < MAX_HP:
-		draw_rect(Rect2(-24, -58, 48, 4), Color(0, 0, 0, 0.6))
-		draw_rect(Rect2(-24, -58, 48.0 * hp / MAX_HP, 4), Color(0.9, 0.3, 0.2).lerp(Color(0.4, 0.9, 0.3), hp / MAX_HP))
-	# Enter hint.
+		VArt.hp_bar(self, Vector2(0, -LABEL_LIFT - 14.0), 48.0 if kind == "buggy" else 60.0, hp / MAX_HP)
 	if free_seat() >= 0:
 		var main := get_parent()
 		var p = main.get("player") if main != null else null
 		if p != null and is_instance_valid(p) and seat_of(p) < 0 and (p as Node2D).global_position.distance_to(global_position) < ENTER_RADIUS:
-			draw_string(ThemeDB.fallback_font, Vector2(-40, -64), "F: DRIVE" if driver() == null else "F: GUNNER", HORIZONTAL_ALIGNMENT_CENTER, 80, 12, Color(0.95, 0.9, 0.5))
+			draw_string(ThemeDB.fallback_font, Vector2(-40, -LABEL_LIFT - 20.0), _enter_hint(), HORIZONTAL_ALIGNMENT_CENTER, 80, 12, Color(0.95, 0.9, 0.5))
+
+
+func _enter_hint() -> String:
+	return "F: DRIVE" if driver() == null else "F: GUNNER"

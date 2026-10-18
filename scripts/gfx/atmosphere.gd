@@ -42,6 +42,8 @@ var _light_t: Array[float] = []
 var _light_life: Array[float] = []
 var _light_e: Array[float] = []
 var _next_light := 0
+var _light_owner: Array[int] = []   # light_keep key holding each slot (0 = a one-shot)
+var _keep: Dictionary = {}          # light_keep key -> slot
 var _time := 0.0
 var _style := ""
 var _rim_mat: ShaderMaterial = null
@@ -95,6 +97,16 @@ static func light_any(at: Vector2, col: Color, radius: float, life: float, energ
 	if _current == null or not is_instance_valid(_current) or not Gfx.on(Gfx.HIGH):
 		return
 	_current._fire_light(at, col, radius, life, energy)
+
+
+## A light a vehicle keeps on (head / search / nav / fire lights, #276): `key`
+## names the owner's lamp, and while the owner keeps refreshing it every frame
+## it holds on to the same pool slot instead of claiming a new one. Stop
+## calling and it fades out after `hold` seconds. High only (either look).
+static func light_keep(key: int, at: Vector2, col: Color, radius: float, energy := 1.0, hold := 0.12) -> void:
+	if _current == null or not is_instance_valid(_current) or not Gfx.on(Gfx.HIGH):
+		return
+	_current._keep_light(key, at, col, radius, energy, hold)
 
 
 ## True when the cinematic look with real lights is running (gfx.gd routes
@@ -269,6 +281,7 @@ func _ensure_lights(main: Node) -> void:
 		_light_t.append(0.0)
 		_light_life.append(0.0)
 		_light_e.append(0.0)
+		_light_owner.append(0)
 
 
 func _fire_light(at: Vector2, col: Color, radius: float, life: float, energy: float) -> void:
@@ -276,6 +289,23 @@ func _fire_light(at: Vector2, col: Color, radius: float, life: float, energy: fl
 		return
 	var i := _next_light
 	_next_light = (_next_light + 1) % _lights.size()
+	_light_owner[i] = 0
+	_set_light(i, at, col, radius, life, energy)
+
+
+func _keep_light(key: int, at: Vector2, col: Color, radius: float, energy: float, hold: float) -> void:
+	if _lights.is_empty():
+		return
+	var i: int = int(_keep.get(key, -1))
+	if i < 0 or i >= _lights.size() or _light_owner[i] != key or _light_t[i] <= 0.0:
+		i = _next_light
+		_next_light = (_next_light + 1) % _lights.size()
+		_keep[key] = i
+	_light_owner[i] = key
+	_set_light(i, at, col, radius, hold, energy)
+
+
+func _set_light(i: int, at: Vector2, col: Color, radius: float, life: float, energy: float) -> void:
 	var l := _lights[i]
 	if not is_instance_valid(l):
 		return

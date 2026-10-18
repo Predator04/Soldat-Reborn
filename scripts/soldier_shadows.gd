@@ -29,15 +29,18 @@ func _process(_d: float) -> void:
 			if absf(p.x - center.x) > half.x + 60.0 or absf(p.y - center.y) > half.y + 200.0:
 				continue
 			var veh: bool = grp == "vehicle"
-			var q := PhysicsRayQueryParameters2D.create(p + Vector2(0, -4), p + Vector2(0, REACH + (30.0 if veh else 0.0)), 1)
+			# Vehicles say how wide their shadow is and how high it still shows
+			# (a helicopter's reaches the ground from well up, #277).
+			var reach: float = float(s.get("SHADOW_REACH")) if veh and s.get("SHADOW_REACH") != null else REACH
+			var q := PhysicsRayQueryParameters2D.create(p + Vector2(0, -4), p + Vector2(0, reach + (30.0 if veh else 0.0)), 1)
 			if s is CollisionObject2D:
 				q.exclude = [(s as CollisionObject2D).get_rid()]
 			var hit := space.intersect_ray(q)
 			if hit.is_empty():
 				continue
 			var gp: Vector2 = hit.position
-			var h := clampf((gp.y - p.y) / REACH, 0.0, 1.0)
-			var w := (34.0 if veh else 11.0) * (1.0 - h * 0.55)
+			var h := clampf((gp.y - p.y) / reach, 0.0, 1.0)
+			var w := (float(s.get("SHADOW_W")) if veh and s.get("SHADOW_W") != null else (34.0 if veh else 11.0)) * (1.0 - h * 0.55)
 			var a := (0.42 if veh else 0.38) * (1.0 - h)
 			if s.get("dead") == true:
 				a *= 0.6

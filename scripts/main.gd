@@ -1593,8 +1593,8 @@ func net_vehicle_hp(vid: int, hp_v: float) -> void:
 
 
 @rpc("any_peer", "call_remote", "reliable")
-func net_vehicle_destroy(vid: int, at: Vector2, killer: String, killer_team: int) -> void:
-	_vehicles_sys.net_vehicle_destroy(vid, at, killer, killer_team)
+func net_vehicle_destroy(vid: int, at: Vector2, killer: String, killer_team: int, violent: bool) -> void:
+	_vehicles_sys.net_vehicle_destroy(vid, at, killer, killer_team, violent)
 
 
 @rpc("any_peer", "call_remote", "reliable")

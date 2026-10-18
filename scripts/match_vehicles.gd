@@ -350,12 +350,12 @@ func net_vehicle_hp(vid: int, hp_v: float) -> void:
 		v.apply_hp(hp_v)
 
 
-func net_vehicle_destroy(vid: int, at: Vector2, killer: String, killer_team: int) -> void:
+func net_vehicle_destroy(vid: int, at: Vector2, killer: String, killer_team: int, violent := true) -> void:
 	if not _from_host():
 		return
 	var v := find_vehicle(vid)
 	if v != null:
-		v.apply_destroy(at, killer, killer_team)
+		v.apply_destroy(at, killer, killer_team, false, violent)
 
 
 func net_vehicle_respawn(vid: int) -> void:

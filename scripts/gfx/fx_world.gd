@@ -19,6 +19,8 @@ extends Node2D
 ## Pools (Low / Medium / High):  particles 0/420/1000 (with per-kind caps),
 ## gibs 0/28/72, casings 0/24/64, decals 0/96/256, heat rings 0/0/6,
 ## wound spurts 0/6/16, terrain-testing blood drops 0/16/48.
+## Vehicles (#276 / #277) use the same particle kinds: wheel_dust, vehicle_sparks,
+## vehicle_burn, vehicle_wreck, rotor_wash (no pools of their own).
 
 const Gfx = preload("res://scripts/gfx.gd")
 const Gostek = preload("res://scripts/gostek.gd")
@@ -455,6 +457,88 @@ func scorch(at: Vector2, radius: float) -> void:
 	var r := Gfx.rng
 	_decal((hit.position as Vector2) - nrm * 5.0, nrm, Vector2(radius / 32.0 * 1.2, radius / 32.0 * 0.42), 255,
 		Color(0.05, 0.04, 0.03, 0.62), SCORCH_LIFE + r.randf_range(-4.0, 4.0))
+
+
+# ── vehicles (#276 / #277) ─────────────────────────────────────────────
+
+## Dust kicked back by a wheel / track / skid at speed `vx` (strength 0..1).
+func wheel_dust(at: Vector2, vx: float, strength: float, col := Color(0.62, 0.56, 0.46, 0.3)) -> void:
+	if not _near(at, 80.0):
+		return
+	var r := Gfx.rng
+	_spawn(K_DUST, at + Vector2(r.randf_range(-4, 4), -2), Vector2(-vx * r.randf_range(0.12, 0.3) + r.randf_range(-20, 20), r.randf_range(-55, -15) * (0.5 + strength)),
+		r.randf_range(0.5, 0.95), r.randf_range(7.0, 13.0) * (0.6 + strength * 0.6), col)
+	if quality >= 2 and r.randf() < 0.4 * strength:
+		var j := _spawn(K_DEBRIS, at + Vector2(0, -2), Vector2(-vx * r.randf_range(0.2, 0.45), r.randf_range(-150, -60)), 0.55,
+			r.randf_range(0.6, 1.0), Color(0.28, 0.25, 0.2, 0.9))
+		if j >= 0:
+			_aux[j] = at.y
+
+
+## Hot sparks off damaged / scraping metal.
+func vehicle_sparks(at: Vector2, dir: Vector2, n: int) -> void:
+	if not _near(at, 60.0):
+		return
+	var r := Gfx.rng
+	var d0 := dir.normalized() if dir.length() > 0.01 else Vector2.UP
+	for s in n:
+		var d := d0.rotated(r.randf_range(-0.9, 0.9))
+		_spawn(K_SPARK, at, d * r.randf_range(120.0, 340.0), r.randf_range(0.12, 0.32), r.randf_range(0.9, 1.5), Color(1.0, 0.8, 0.42, 1.0))
+	_spawn(K_GLOW, at, Vector2.ZERO, 0.06, 10.0, Color(1.0, 0.7, 0.35, 0.7))
+
+
+## A burning hull, called a few times a second: rising embers, a flickering
+## glow, a gout of dark smoke. `strength` 0..1.
+func vehicle_burn(at: Vector2, strength: float) -> void:
+	if not _near(at, 120.0):
+		return
+	var r := Gfx.rng
+	for i in (3 if quality >= 2 else 1):
+		var j := _spawn(K_EMBER, at + Vector2(r.randf_range(-6, 6), r.randf_range(-3, 3)), Vector2(r.randf_range(-30, 30), r.randf_range(-120, -50)),
+			r.randf_range(0.5, 1.1), r.randf_range(1.0, 1.8), Color(1.0, 0.5, 0.15, 0.9).lerp(Color(1.0, 0.8, 0.4, 0.9), r.randf()))
+		if j >= 0:
+			_aux[j] = 0.0   # rises
+	_spawn(K_GLOW, at + Vector2(0, -6), Vector2.ZERO, r.randf_range(0.12, 0.22), r.randf_range(26.0, 40.0) * (0.6 + strength * 0.5), Color(1.0, 0.5, 0.18, 0.55))
+	smoke(at + Vector2(r.randf_range(-4, 4), -10), Vector2(r.randf_range(-12, 12), r.randf_range(-70, -40)), r.randf_range(14.0, 22.0) * (0.7 + strength * 0.5),
+		r.randf_range(1.2, 2.0), Color(0.07, 0.065, 0.06, 0.5))
+
+
+## A vehicle blowing apart (on top of Gfx.explosion): heavy hull panels
+## tumbling out and bouncing, burning bits, a tall smoke column.
+func vehicle_wreck(at: Vector2, radius: float, paint: Color) -> void:
+	if not _near(at, radius * 2.0):
+		return
+	var r := Gfx.rng
+	var hi := quality >= 2
+	var floor_y := _floor_below(at + Vector2(0, -10), radius)
+	for i in (12 if hi else 6):
+		var d := Vector2.UP.rotated(r.randf_range(-1.3, 1.3))
+		var col := paint.darkened(r.randf_range(0.2, 0.6)) if r.randf() < 0.6 else Color(0.1, 0.09, 0.08, 1.0)
+		col.a = 1.0
+		var j := _spawn(K_DEBRIS, at + d * 6.0 + Vector2(0, -10), d * r.randf_range(220.0, 560.0), r.randf_range(1.6, 2.6), r.randf_range(2.2, 4.6), col)
+		if j >= 0:
+			_aux[j] = floor_y
+			_spin[j] = r.randf_range(-12.0, 12.0)
+	for i in (8 if hi else 3):
+		var d2 := Vector2.UP.rotated(r.randf_range(-1.2, 1.2))
+		var k := _spawn(K_EMBER, at + Vector2(0, -8), d2 * r.randf_range(160.0, 380.0), r.randf_range(0.9, 1.6), r.randf_range(1.4, 2.2), Color(1.0, 0.55, 0.18, 0.95))
+		if k >= 0:
+			_aux[k] = 1.0
+	for i in (6 if hi else 3):
+		smoke(at + Vector2(r.randf_range(-radius * 0.25, radius * 0.25), r.randf_range(-30, -6)), Vector2(r.randf_range(-20, 20), r.randf_range(-90, -45)),
+			r.randf_range(30.0, 48.0), r.randf_range(2.4, 3.6), Color(0.06, 0.055, 0.05, 0.6))
+
+
+## Rotor wash: dust blown out along the ground both ways from `at` (the spot
+## under the rotor). `strength` 0..1 grows as the helicopter gets lower.
+func rotor_wash(at: Vector2, strength: float, spread: float, col := Color(0.66, 0.6, 0.5, 0.3)) -> void:
+	if not _near(at, spread):
+		return
+	var r := Gfx.rng
+	for side: float in [-1.0, 1.0]:
+		var x := at.x + side * r.randf_range(spread * 0.15, spread * 0.6)
+		_spawn(K_DUST, Vector2(x, at.y - 3), Vector2(side * r.randf_range(160.0, 330.0) * (0.5 + strength * 0.6), r.randf_range(-40, -6)),
+			r.randf_range(0.45, 0.85), r.randf_range(9.0, 16.0) * (0.6 + strength * 0.6), Color(col.r, col.g, col.b, col.a * (0.5 + strength * 0.6)))
 
 
 ## Death: the body comes apart — pooled limb gibs (the soldier's own gostek
