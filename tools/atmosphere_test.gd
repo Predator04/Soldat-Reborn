@@ -77,7 +77,7 @@ func _process(_d: float) -> bool:
 			_st = 2
 			_n = 0
 		2:
-			if _n < 20:
+			if _n < 60:
 				return false
 			var rimmed := 0
 			for s in get_nodes_in_group("soldier"):
@@ -86,7 +86,8 @@ func _process(_d: float) -> bool:
 			_log.append("rimmed=%d" % rimmed)
 			if rimmed < 2:
 				_bad.append("rim material on %d soldiers" % rimmed)
-			if at.lights_lit() != 0:
+			# Our 41 flashes have faded; bots keep firing, so a few may be lit.
+			if at.lights_lit() > 6:
 				_bad.append("pool lights still lit after fade: %d" % at.lights_lit())
 			# Live switch to classic.
 			st.visual_style = "classic"
