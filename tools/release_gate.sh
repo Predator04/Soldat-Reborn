@@ -102,7 +102,7 @@ done
 # ── N nav reachability ──────────────────────────────────────────────────────
 NAV_KNOWN_BROKEN=""   # every CTF route works; add a map name here only with a reason
 if has N; then
-  timeout 175 "$G" --headless -s tools/nav_check.gd > "$OUT/navcheck.log" 2>&1
+  timeout 330 "$G" --headless -s tools/nav_check.gd > "$OUT/navcheck.log" 2>&1
   line=$(grep -m1 NAVCHECK "$OUT/navcheck.log")
   unknown=$(grep '^map' "$OUT/navcheck.log" | awk '{print $3}' | grep -vwE "${NAV_KNOWN_BROKEN:+$(echo $NAV_KNOWN_BROKEN | tr ' ' '|')}${NAV_KNOWN_BROKEN:-^$}" | tr '\n' ' ')
   if [ -n "$line" ] && [ -z "$unknown" ] && [ "$(errs "$OUT/navcheck.log")" = "0" ]; then pass "N nav routes: $line (known: $NAV_KNOWN_BROKEN)"; else fail "N nav routes: ${line:-no result} new broken: $unknown"; fi

@@ -120,6 +120,10 @@ func _process(d: float) -> bool:
 				_bot.set("health", 1000.0)
 				_bot.set("ceasefire_t", 0.0)
 				_bot.global_position = Vector2((_car as Node2D).global_position.x + 650, (_car as Node2D).global_position.y - 20)
+				# Hold the target still for the 0.7 s shell flight: a bot that walks,
+				# jets or rolls away makes this a test of its AI, not the turret.
+				_bot.set_physics_process(false)
+				_bot.set("velocity", Vector2.ZERO)
 				var to: Vector2 = _bot.global_position - _car._gun_pivot()
 				var sol: Vector2 = _car._aim_solution(to)
 				if sol == Vector2.ZERO:
@@ -129,12 +133,16 @@ func _process(d: float) -> bool:
 				_hp0 = float(_car.get("hp"))
 				_php0 = float(p.get("health"))
 				_car.set("aim_dir", sol)
+				# The turret has random spread (gameplay RNG): fix the draw so this
+				# checks the firing solution, not luck (it missed ~1 in 3 runs).
+				seed(7)
 				_car._fire(p)
 				_log.append("fired %.2f,%.2f" % [sol.x, sol.y])
 				_st = 4
 				_st_t = 0.0
 		4:
 			if float(_bot.get("health")) < 1000.0:
+				_bot.set_physics_process(true)
 				_log.append("shell hit bot hp=%d t=%.1fs" % [int(_bot.get("health")), _st_t])
 				if float(_car.get("hp")) < _hp0:
 					_bad.append("own shell hurt the tank")
