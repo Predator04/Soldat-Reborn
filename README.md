@@ -1,9 +1,32 @@
-# Soldat Reborn
+# Soldat Reborn  *(being renamed **Tracerfall**)*
 
-A Godot 4.7 rebuild of the classic 2D run-and-gun shooter **Soldat** — jet boots,
-bunny-hop momentum, ragdoll gibs, grenades, and online multiplayer — rebuilt with
-Soldat's own art and sound (CC BY 4.0) and an animated skeletal soldier. Feature-complete
-past the classic, with most of Soldat 2's feature list folded in.
+A fast 2D jetpack run-and-gun shooter built in Godot 4.7: a spiritual successor to the classic
+**Soldat**. Jet boots, bunny-hop momentum, ragdoll gibs, grenades, vehicles and online multiplayer,
+made with Soldat's own art and sound (CC BY 4.0) and an animated skeletal soldier. It covers everything
+the classic had and more, with most of Soldat 2's feature list folded in.
+
+[**Download the latest release**](https://github.com/Predator04/Soldat-Reborn/releases/latest) (Windows `.exe`, Android `.apk`) ·
+[Changelog](CHANGELOG.md) · [Roadmap](ROADMAP.md) · [Open issues](https://github.com/Predator04/Soldat-Reborn/issues)
+
+![Teammatch on Scorpion](docs/screenshots/teammatch-scorpion.jpg)
+
+| | |
+|---|---|
+| ![Domination on Jungle](docs/screenshots/domination-jungle.jpg) | ![Capture the Flag on Vortex](docs/screenshots/ctf-vortex.jpg) |
+| ![Deathmatch on Industrial](docs/screenshots/deathmatch-industrial.jpg) | ![Main menu](docs/screenshots/menu.jpg) |
+
+<sub>Real frames from the current build (bot matches, 1280×720). A graphics overhaul is in progress
+([#270](https://github.com/Predator04/Soldat-Reborn/issues/270), [#271](https://github.com/Predator04/Soldat-Reborn/issues/271), [#272](https://github.com/Predator04/Soldat-Reborn/issues/272)), so these get replaced as it lands.</sub>
+
+## Play online
+
+QUICK PLAY drops you into the best game for your ping and skill level. The **official server** runs
+around the clock, and its mode/map rotates weekly. To host your own game, press HOST GAME:
+friends join with a short code over the relay, so **no port forwarding** is needed. Anyone can also run
+a dedicated server (`--dedicated`; see [CLAUDE.md](CLAUDE.md)).
+
+The host also checks every client: godmode, teleport/speed hacks, impossible health and fake kill
+credit are caught on the server (forced death, then a kick).
 
 ## Features
 
@@ -15,7 +38,7 @@ past the classic, with most of Soldat 2's feature list folded in.
 - **Classic maps** — 99 original Soldat levels ported from `.pms` with scenery, textured terrain, weather and baked bot navigation (bots play every objective mode on every map)
 - **Polish** — gestures/taunts, chat, weapon throw/pickup, ceasefire, bink, game modifiers, character customization with unlockables, lo-fi mode, local stats, GIF recording, improved grenade physics
 - **Multiplayer** — host-authoritative ENet (host / join), replicated bots that shoot and damage clients, dedicated headless server mode, server browser with live ping and player counts, Quick Join with **skill matchmaking**, automatic rejoin after a dropped connection, **relay hosting with join codes (no port forwarding, ever)**, LAN-scale sync, authority-owned grenade/rocket transforms so shooter + victim see the same trajectory and impact spot
-- **Online services** — a free public master server over HTTPS: live server list, friends with one-click join and clan tags, a career **leaderboard** with ranks and achievements, a shared **map library** (upload, browse, download in-game), and signed auto-updates
+- **Online services** — a free public master server over HTTPS: live server list, a news line on the main menu, friends with one-click join and clan tags, a career **leaderboard** with ranks and achievements, a shared **map library** (upload, browse, download in-game), and signed auto-updates
 - **Host tools** — the classic chat command set (/addbot, /kick, /map, /restart, /say, /ff, /bots), per-weapon bans for custom nights ("pistol only", "no sniper"), and a live admin panel
 - **Replays & kill cam** — every match is recorded and playable from any seat at any speed; death gets a slow-mo kill-cam rewind
 - **Vehicles** — two-seat buggies (driver + gunner on a mounted machine gun) on 87 of the classic maps and the built-in arenas, and armored tanks with a lobbed-shell turret on the 13 widest maps: run people over, get wrecked by rockets and grenades, respawn at their spot. Bots drive and crew both. Toggle in Settings → Game
