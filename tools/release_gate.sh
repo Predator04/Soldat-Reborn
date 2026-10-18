@@ -53,6 +53,10 @@ info() { echo "INFO  $1" | tee -a "$SUM"; }
 errs() { grep -cE "$ERR_RE" "$1" 2>/dev/null || true; }
 
 echo "== Release gate $(date -Is)  godot=$G" | tee -a "$SUM"
+# Refresh Godot's global class cache first: a checkout pulled after a commit
+# that adds a `class_name` script fails to parse every user of that class
+# until it is re-imported (the cache lives in .godot/, which isn't in git).
+"$G" --headless --import > "$OUT/import.log" 2>&1 || true
 
 # Hermetic runs: every Godot launch starts from default settings / controls
 # (tests toggle mods, bot counts, loadouts and some of them save), and this
