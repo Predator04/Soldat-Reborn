@@ -28,6 +28,7 @@ All notable changes to Soldat Reborn.
 
 ### Testing
 - New release-gate test (F stage, COURSE-TEST): drives every course gate with the right technique (passes) and the wrong one (full jump into the spikes, tap on the long gap, non-prone drop, running / rolling the lane all fail), checks the best time, RELOAD replay, the Training settings restore, the committed map JSON against its generator and the translations.
+- The all-map CTF sweep (E stage) no longer expects a sweep entry for the Training-only `movement_course.json` (it isn't in the map rotation), which made the full sweep report 102/103 maps and fail.
 
 ### Added
 - **News line on the main menu** (#261). One short message from the master server (`GET /news`) under the version button, at most one fetch every 10 minutes. Click it to open its link; × hides that message for good (a new one shows again). It fails silently and never holds up the menu; on phones it has a touch-sized hit area.
