@@ -34,12 +34,32 @@ var _broadcast_cd: float = 0.20
 var _target_pos: Vector2 = Vector2.ZERO
 var _target_dir: Vector2 = Vector2.RIGHT
 var _has_target := false
+# #266 (host_hits.gd): a shot held for an aim re-check (see bullet.gd `hold`).
+var hold: Dictionary = {}
+# Host copy of a client's rocket: the host flies its own "ghost" of the same
+# straight / ballistic flight (stopping at the first wall) and only lets the
+# explosion the shooter reports hurt anyone if it happened on that path.
+const GHOST_TOL := 48.0
+const GHOST_AHEAD := 0.15     # s: the report may beat the ghost by this much
+var _ghost := false
+var _g_pos := Vector2.ZERO
+var _g_vel := Vector2.ZERO
+var _g_blocked := false
+var _g_path: Array = []       # recent ghost positions (~0.6 s)
+var _harmless := false        # explosion refused: effects only
+var rewind_ms := -1           # host: the shot's rewind (its view stamp); -1 = by shooter
 
 
 func _ready() -> void:
 	_snapshot_net_peers()
 	# Kill credit is checked against who was attacking (trust_guard.gd).
 	TrustGuard.note_activity(killer_name, team)
+	# (The shooter's peer becomes the authority right after add_child, so the
+	# ghost starts on the first physics frame, still at the spawn point.)
+	if not local_only and Net.is_networked() and Net.is_host() and multiplayer.has_multiplayer_peer():
+		_g_pos = global_position
+		_g_vel = direction * speed
+		_g_path = [global_position]
 	# Terrain layer 2 = ported "only bullets collide" polys (see main.gd).
 	collision_mask = 1 | 2 | 8  # terrain, bullets-only terrain, soldiers
 	add_to_group("bullet")
@@ -90,6 +110,9 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	if not local_only and multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
+		if not _g_path.is_empty() and Net.is_host():
+			_ghost = true
+			_ghost_step(delta)
 		# Non-authority: lerp toward the shooter's broadcast transform so shooter
 		# and victim see the rocket + explosion at the same spot (#61). We used to
 		# self-destruct via _life so client-side cleanup fires if RPCs stop arriving,
@@ -141,8 +164,58 @@ func net_projectile_state(pos: Vector2, dir: Vector2) -> void:
 func net_explode(pos: Vector2) -> void:
 	# Snap to the authority's impact position before the local explosion so the
 	# blast damage falloff matches what the shooter saw.
+	if _ghost and not _ghost_allows(pos):
+		_harmless = true
+		HostHits.count("refused_explosive")
+		_flag_shooter("explosive", "%s exploded %.0f px off its flight path" % [weapon_name, _ghost_dist(pos)])
 	global_position = pos
 	_explode()
+
+
+# ── host ghost of a client's rocket (#266) ──
+
+func _ghost_step(delta: float) -> void:
+	if _g_blocked:
+		return
+	# Same integration as the shooter's copy (straight LAW / ballistic M79).
+	var nv := _g_vel
+	if grav > 0.0:
+		nv.y += grav * MatchConfig.mod_gravity() * delta
+	var np := _g_pos + nv * delta
+	var hit := HostHits.solid_ray(get_world_2d(), _g_pos, np)
+	if not hit.is_empty():
+		np = hit["position"]
+		_g_blocked = true
+	_g_vel = nv
+	_g_pos = np
+	_g_path.append(np)
+	if _g_path.size() > 40:
+		_g_path.pop_front()
+
+
+func _ghost_dist(p: Vector2) -> float:
+	var best := INF
+	var pts: Array = _g_path.duplicate()
+	if not _g_blocked:
+		pts.append(_g_pos + _g_vel * GHOST_AHEAD)
+	for i in pts.size():
+		if i == 0:
+			best = minf(best, p.distance_to(pts[0]))
+		else:
+			best = minf(best, p.distance_to(Geometry2D.get_closest_point_to_segment(p, pts[i - 1], pts[i])))
+	return best
+
+
+func _ghost_allows(p: Vector2) -> bool:
+	return _ghost_dist(p) <= GHOST_TOL
+
+
+## Host: count a refused shot against the soldier who fired it.
+func _flag_shooter(kind: String, msg: String) -> void:
+	var m := get_parent()
+	var p = m.get_node_or_null("Player_%d" % get_multiplayer_authority()) if m != null else null
+	if p != null and p.get("_trust") != null and p._trust.flag(kind, msg):
+		p._trust_force_death("shots (%s)" % kind)
 
 
 func _on_body_entered(body: Node) -> void:
@@ -187,10 +260,20 @@ func _explode() -> void:
 		Sfx.explode(global_position)
 	if get_parent() != null:
 		preload("res://scripts/gfx.gd").explosion(get_parent(), global_position, blast_radius)
+	# #266: a refused explosion (off the host's ghost path, or a shot whose
+	# aim was refused) only shows; a client's rocket blasts remote humans as
+	# the shooter saw them (rewound), self-damage where the shooter is now.
+	if not hold.is_empty() and bool(hold["done"]) and not bool(hold["ok"]):
+		_harmless = true
+	var rw := 0
+	if _ghost:
+		rw = rewind_ms if rewind_ms >= 0 else HostHits.rewind_for(get_tree(), killer_name)
 	for s in get_tree().get_nodes_in_group("soldier"):
+		if _harmless:
+			break
 		if not is_instance_valid(s) or ignore_bodies.has(s):
 			continue
-		var d: float = global_position.distance_to(s.global_position)
+		var d: float = global_position.distance_to(HostHits.pos_at(s, 0 if str(s.get("display_name")) == killer_name else rw))
 		if d >= blast_radius:
 			continue
 		# In DM: rockets damage everyone (rocket-jump lives). In team modes: friendly-fire off,
@@ -201,13 +284,12 @@ func _explode() -> void:
 			continue
 		var scaled: float = damage * (1.0 - d / blast_radius)
 		var was_alive: bool = not bool(s.get("dead"))
-		if s.has_method("take_damage") and (multiplayer.multiplayer_peer == null or s.is_multiplayer_authority()):
-			s.take_damage(scaled, killer_name, weapon_name, team)
-		elif s.has_method("observe_damage"):
-			s.observe_damage(scaled, killer_name, weapon_name, team)
+		if s.has_method("take_damage"):
+			HostHits.damage(s, scaled, killer_name, weapon_name, team)
 		if not is_self and was_alive:
 			preload("res://scripts/bullet.gd").local_hit_feedback(get_tree(), killer_name, s.global_position, scaled)
-	preload("res://scripts/buggy.gd").splash(get_tree(), global_position, blast_radius, damage, killer_name, weapon_name, team)
+	if not _harmless:
+		preload("res://scripts/buggy.gd").splash(get_tree(), global_position, blast_radius, damage, killer_name, weapon_name, team)
 	if not Settings.lofi:
 		var p := CPUParticles2D.new()
 		p.amount = 70

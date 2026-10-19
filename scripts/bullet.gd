@@ -27,6 +27,21 @@ var ignore_bodies: Array = []
 var _velocity := Vector2.ZERO
 var _sprite: Texture2D = null
 var _sprite_size := Vector2.ZERO
+# #266 (host_hits.gd): on the host, remote humans are tested against their
+# hitboxes as the shooter saw them, `_rewind_ms` back (the shooter's round
+# trip; 0 for the host's own player, bots, turrets the host runs).
+var _host_side := false
+var _rewind_ms := 0
+var rewind_override := -1   # set by the shot (its own view stamp); else by shooter
+var shot_id := 0            # the shot's projectile id (same on every peer; tests)
+# A shot whose aim waits for a re-check (player._host_shot_check): its hits
+# on humans are parked in hold["hits"] until then.
+var hold: Dictionary = {}
+# Shooter-side hit predictions (the local player's rounds hitting someone),
+# for tests comparing them with what the host decided.
+static var predicted_hits := 0
+static var predicted_damage := 0.0
+static var _hh_log := OS.get_cmdline_user_args().has("--hosthits-log")
 
 
 func _ready() -> void:
@@ -35,6 +50,9 @@ func _ready() -> void:
 	add_to_group("bullet")
 	# Kill credit is checked against who was attacking (trust_guard.gd).
 	TrustGuard.note_activity(killer_name, team)
+	if Net.is_networked() and Net.is_host() and multiplayer.has_multiplayer_peer():
+		_host_side = true
+		_rewind_ms = rewind_override if rewind_override >= 0 else HostHits.rewind_for(get_tree(), killer_name)
 	_load_sprite()
 	body_entered.connect(_on_body_entered)
 	var shape := CollisionShape2D.new()
@@ -58,24 +76,36 @@ func _physics_process(delta: float) -> void:
 	# Swept hit test (v1.18): a Barrett round moves 40 px a frame and a soldier
 	# is ~14 px wide, so overlap checks alone let fast rounds pass straight
 	# through people (bots with the Barrett couldn't hit a standing target).
-	if not _hit and step.length() > 4.0 and is_inside_tree():
-		if _ray_exclude.is_empty() and not ignore_bodies.is_empty():
-			for ib in ignore_bodies:
-				if is_instance_valid(ib) and ib is CollisionObject2D:
-					_ray_exclude.append((ib as CollisionObject2D).get_rid())
-		var q := PhysicsRayQueryParameters2D.create(global_position, global_position + step, collision_mask, _ray_exclude)
-		var hit := get_world_2d().direct_space_state.intersect_ray(q)
-		if lag_ms > 0 and _lag_comp_hit(step, hit):
+	var long_step := step.length() > 4.0
+	if not _hit and is_inside_tree() and (long_step or _host_side):
+		var hit := {}
+		if long_step:
+			if _ray_exclude.is_empty() and not ignore_bodies.is_empty():
+				for ib in ignore_bodies:
+					if is_instance_valid(ib) and ib is CollisionObject2D:
+						_ray_exclude.append((ib as CollisionObject2D).get_rid())
+			var excl: Array[RID] = _ray_exclude
+			if _host_side and not HostHits.remote_humans().is_empty():
+				# Remote humans are tested rewound below, not where they are now.
+				excl = _ray_exclude.duplicate()
+				excl.append_array(HostHits.remote_rids())
+			var q := PhysicsRayQueryParameters2D.create(global_position, global_position + step, collision_mask, excl)
+			hit = get_world_2d().direct_space_state.intersect_ray(q)
+		if _host_side and _rewound_hit(step, hit):
 			queue_redraw()
 			return
-		if not hit.is_empty():
-			global_position = hit["position"]
-			_on_body_entered(hit["collider"])
-			if _hit:
+		if long_step:
+			if lag_ms > 0 and _lag_comp_hit(step, hit):
 				queue_redraw()
 				return
-			# Passed through (a teammate): don't test that body again.
-			_ray_exclude.append(hit["rid"])
+			if not hit.is_empty():
+				global_position = hit["position"]
+				_on_body_entered(hit["collider"])
+				if _hit:
+					queue_redraw()
+					return
+				# Passed through (a teammate): don't test that body again.
+				_ray_exclude.append(hit["rid"])
 	position += step
 	_whizz_check()
 	queue_redraw()
@@ -106,6 +136,43 @@ func _lag_comp_hit(step: Vector2, hit: Dictionary) -> bool:
 	return _hit
 
 
+# Host (#266): the nearest remote human whose hitbox, as the shooter saw it,
+# this step enters — unless a wall (or someone the ray found) is closer.
+func _rewound_hit(step: Vector2, hit: Dictionary) -> bool:
+	var list: Array = HostHits.remote_humans()
+	if list.is_empty():
+		return false
+	var a := global_position
+	var b := a + step
+	var near := Rect2(a, Vector2.ZERO).expand(b).grow(float(_rewind_ms) * HostHits.BROAD_SPEED / 1000.0 + 40.0)
+	var ff: bool = MatchConfig.friendly_fire_on()
+	var best_t := 2.0
+	var best: Node = null
+	var best_rect := Rect2()
+	for s in list:
+		if not is_instance_valid(s) or bool(s.dead) or s in ignore_bodies:
+			continue
+		if str(s.display_name) == killer_name or (int(s.team) == team and not ff):
+			continue
+		if not near.intersects(s.hitbox_now()):
+			continue
+		var r := HostHits.rect_at(s, _rewind_ms)
+		var t := segment_rect_t(a, b, r.grow(3.0))
+		if t >= 0.0 and t < best_t:
+			best_t = t
+			best = s
+			best_rect = r
+	if best == null:
+		return false
+	if not hit.is_empty():
+		var ht: float = a.distance_to(hit["position"]) / maxf(step.length(), 0.001)
+		if ht < best_t:
+			return false
+	global_position = a + step * best_t
+	_on_body_entered(best, best_rect.end.y)
+	return _hit
+
+
 # First point (0..1 along a->b) where the segment enters rect, or -1.
 static func segment_rect_t(a: Vector2, b: Vector2, r: Rect2) -> float:
 	var d := b - a
@@ -133,7 +200,8 @@ static func segment_rect_t(a: Vector2, b: Vector2, r: Rect2) -> float:
 	return t0
 
 
-func _on_body_entered(body: Node) -> void:
+## `feet_y`: the victim's feet in the rewound hitbox (host tests, #266).
+func _on_body_entered(body: Node, feet_y: float = INF) -> void:
 	# queue_free() is deferred; a second body_entered in the same physics flush would
 	# otherwise apply damage to a second soldier stacked on the first.
 	if _hit:
@@ -141,6 +209,10 @@ func _on_body_entered(body: Node) -> void:
 	if body in ignore_bodies:
 		return
 	if body is CharacterBody2D:
+		# Host: a remote human counts only through the rewound test, never
+		# where its body happens to overlap now.
+		if _host_side and feet_y == INF and HostHits.is_remote_human(body):
+			return
 		if body.has_method("take_damage"):
 			var same_team: bool = int(body.get("team")) == team
 			var is_self: bool = str(body.get("display_name")) == killer_name
@@ -166,16 +238,26 @@ func _on_body_entered(body: Node) -> void:
 					head_top = -4.0
 				elif body.get("crouching") == true:
 					head_top = -10.0
-				var rel_y: float = global_position.y - body.global_position.y
+				var rel_y: float = global_position.y - (feet_y if feet_y != INF else body.global_position.y)
 				if rel_y < head_top:
 					dmg = 999.0
 					wname = weapon_name + " (headshot)"
-			if multiplayer.multiplayer_peer == null or body.is_multiplayer_authority():
-				body.take_damage(dmg, killer_name, wname, team)
-			elif body.has_method("observe_damage"):
-				body.observe_damage(dmg, killer_name, wname, team)
+			# Whoever decides this body's hits applies it (host_hits.gd); a
+			# shot held for an aim re-check parks its hits until then.
+			if _hh_log and _host_side and HostHits.is_remote_human(body):
+				print("HOSTSHOT shot=%d rewind=%d" % [shot_id, _rewind_ms])
+			if hold.is_empty():
+				HostHits.damage(body, dmg, killer_name, wname, team)
+			elif not bool(hold["done"]):
+				(hold["hits"] as Array).append([body, dmg, killer_name, wname, team])
+			elif bool(hold["ok"]):
+				HostHits.damage(body, dmg, killer_name, wname, team)
 			# Local stats: only when the local player fired this bullet.
 			if _maybe_record_hit() and not is_self:
+				predicted_hits += 1
+				predicted_damage += dmg
+				if _hh_log:
+					print("PREDHIT shot=%d %.1f" % [shot_id, dmg])
 				_spawn_popup(minf(dmg, 100.0), dmg >= 999.0 or wname.ends_with("(headshot)"))
 			queue_free()
 			return

@@ -13,6 +13,27 @@ extends Object
 const TITLE := "Tracerfall"
 const TITLE_UPPER := "TRACERFALL"
 
+## Online protocol. Builds with a different protocol (or game version) refuse
+## each other at the join handshake with a readable reason instead of
+## desyncing. 2 = host-decided hits (#266). Bump whenever RPCs change meaning.
+const NET_PROTOCOL := 2
+
+
+## What a client sends (and the host compares) in the join handshake.
+static func net_version() -> String:
+	return "%s+net%d" % [str(ProjectSettings.get_setting("application/config/version", "")), NET_PROTOCOL]
+
+
+## "1.37.0+net2" -> "1.37.0 (online protocol 2)"; a pre-#266 build sends the
+## bare version (protocol 1).
+static func pretty_net_version(v: String) -> String:
+	if v == "":
+		return "(old build)"
+	var at := v.find("+net")
+	if at < 0:
+		return "%s (online protocol 1)" % v
+	return "%s (online protocol %s)" % [v.left(at), v.substr(at + 4)]
+
 const MODES := [
 	["DEATHMATCH", "Everyone for themselves. First to 20 kills wins.",
 		"Every kill is a point. Round ends at 20 kills or when the 5-minute timer runs out."],

@@ -812,10 +812,7 @@ func apply_destroy(at: Vector2, killer: String, killer_team: int, quiet := false
 			dmg = EXPLODE_DAMAGE * (1.0 - dist / EXPLODE_RADIUS)
 		if dmg <= 0.0:
 			continue
-		if multiplayer.multiplayer_peer == null or s.is_multiplayer_authority():
-			s.take_damage(dmg, kname, WRECK_WEAPON, killer_team)
-		elif s.has_method("observe_damage"):
-			s.observe_damage(dmg, kname, WRECK_WEAPON, killer_team)
+		HostHits.damage(s, dmg, kname, WRECK_WEAPON, killer_team)
 	_respawn_t = RESPAWN_TIME
 	_smoke_t = 0.0
 	velocity = Vector2.ZERO

@@ -523,7 +523,11 @@ func _ready() -> void:
 			# Send to Net autoload (always present) — it forwards to Main or buffers
 			# if the host's main.tscn is still loading (#118).
 			Net.disconnected.connect(_on_lost_host)
-			Net.rpc_id(1, "net_client_ready", Settings.display_name(), str(ProjectSettings.get_setting("application/config/version", "")), Net.session_token)
+			# (--smoke-net-version=X: the gate plays an older build's handshake.)
+			var nv: String = preload("res://scripts/game_info.gd").net_version()
+			if Net._smoke_arg("--smoke-net-version") != "":
+				nv = Net._smoke_arg("--smoke-net-version")
+			Net.rpc_id(1, "net_client_ready", Settings.display_name(), nv, Net.session_token)
 			Net.rpc_id(1, "net_profile", Settings.profile_id)
 	else:
 		_spawn_player()
@@ -1342,6 +1346,17 @@ func net_pings(table: Dictionary) -> void:
 	_net.net_pings(table)
 
 
+# #266: round-trip probes (host -> client -> host) for the host's rewind.
+@rpc("authority", "call_remote", "unreliable")
+func net_rtt_probe(stamp: int) -> void:
+	_net.net_rtt_probe(stamp)
+
+
+@rpc("any_peer", "call_remote", "unreliable")
+func net_rtt_echo(stamp: int) -> void:
+	_net.net_rtt_echo(stamp)
+
+
 ## #287: build the bot graph in the background (pure data, no scene access).
 func _start_runtime_nav() -> void:
 	if _nav_task >= 0:
@@ -1373,6 +1388,7 @@ func _process(delta: float) -> void:
 	if replay_mode:
 		return
 	_net._tick_pings(delta)
+	_net._tick_rtt(delta)
 	_net._tick_recent_players(delta)
 	# Vote timer + cooldown ticks — before the client early-return so the vote
 	# countdown reads smoothly on every peer between host state broadcasts (#77).
@@ -1388,13 +1404,9 @@ func _process(delta: float) -> void:
 	_stats_round_active = round_active
 	# Client: state is driven entirely by host's net_match_state RPCs.
 	if Net.is_networked() and not Net.is_host():
-		# BR ring damage is applied by each soldier's authority; the host can't
-		# damage a client-owned body, so the client burns its own (zone state
-		# arrives via the host snapshot).
-		if Settings.game_mode == Settings.MODE_BR and round_active and player != null \
-				and is_instance_valid(player) and not bool(player.get("dead")) \
-				and player.global_position.distance_to(_br_zone_center) > _br_zone_radius:
-			player.take_damage(BR_ZONE_DPS * delta, "", "Zone", -1)
+		# BR ring damage on a client's own body is decided by the host (#266,
+		# host_hits.gd). The Rambo bow's regen shows here at once; the host's
+		# ledger regenerates too and corrects any drift.
 		if Settings.game_mode == Settings.MODE_RM and player != null and is_instance_valid(player) \
 				and not bool(player.get("dead")) and player.has_method("current_weapon_name") \
 				and str(player.current_weapon_name()) == "Rambo Bow":

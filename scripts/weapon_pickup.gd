@@ -85,14 +85,9 @@ func _on_body_entered(body: Node) -> void:
 	# Knife thrown → deal damage on the first hostile impact while still flying.
 	if damage_on_hit > 0.0 and body_team != team and linear_velocity.length() > 220.0:
 		_consumed = true
-		if multiplayer.multiplayer_peer == null or body.is_multiplayer_authority():
-			body.take_damage(damage_on_hit, thrower_name, weapon_name, team)
-		elif body.has_method("net_remote_damage"):
-			# Remote-owned victim: host detected the contact, but only the victim's
-			# authority peer may mutate its health. Route the damage over RPC (#83).
-			if body.has_method("observe_damage"):
-				body.observe_damage(damage_on_hit, thrower_name, weapon_name, team)
-			body.rpc_id(body.get_multiplayer_authority(), "net_remote_damage", damage_on_hit, thrower_name, weapon_name, team)
+		# The host detected the contact; it also decides a human victim's hit
+		# (#266, host_hits.gd) and tells the owner.
+		HostHits.damage(body, damage_on_hit, thrower_name, weapon_name, team)
 		queue_free()
 		return
 	# Pickup path — grant weapon + full magazine.
@@ -110,6 +105,9 @@ func _on_body_entered(body: Node) -> void:
 			if _body_has_weapon(body, weapon_name):
 				body.rpc_id(body.get_multiplayer_authority(), "net_remote_pickup", weapon_name, mag_on_drop)
 				picked = true
+				# #266: the host's magazine count for that weapon refills too.
+				if body.has_method("host_note_pickup"):
+					body.host_note_pickup(weapon_name)
 		if picked:
 			_consumed = true
 			Sfx.pickup(global_position)

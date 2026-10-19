@@ -145,7 +145,29 @@ func net_m2_fire(m2_id: int, muzzle: Vector2, aim_dir: Vector2, shooter_team: in
 			return
 		op_team = int(op.get("team"))
 		op_name = str(op.get("display_name"))
-	m2.net_apply_fire(muzzle, aim_dir, op_team, op_name)
+		# #266: a remote gunner's rounds leave this turret's barrel, no faster
+		# than it fires.
+		if sender != 0 and Net.is_host() and not _gun_ok(op, "M2", m2.RATE, muzzle, (m2 as Node2D).global_position, 60.0):
+			return
+	m2.net_apply_fire(muzzle, aim_dir.normalized(), op_team, op_name)
+
+
+## Host (#266): a remote shooter's vehicle / turret round: muzzle on the gun,
+## long-run rate no faster than the gun's (refusals counted on the shooter).
+func _gun_ok(shooter: Node, gun: String, rate: float, muzzle: Vector2, at: Vector2, reach: float) -> bool:
+	var g = shooter.get("_trust")
+	if g == null:
+		return true
+	if muzzle.distance_to(at) > reach:
+		if g.flag("origin", "%s fired %.0f px from the gun" % [gun, muzzle.distance_to(at)]):
+			shooter._trust_force_death("shots (%s)" % gun)
+		return false
+	var rc: int = g.rate_check(gun, rate)
+	if rc == TrustGuard.RATE_OK:
+		return true
+	if rc == TrustGuard.RATE_FAST and g.flag("rate", "%s fired faster than %.3f s a round" % [gun, rate]):
+		shooter._trust_force_death("shots (%s)" % gun)
+	return false
 
 
 func _spawn_vehicles() -> void:
@@ -338,6 +360,11 @@ func net_vehicle_fire(vid: int, muzzle: Vector2, dir: Vector2) -> void:
 	var shooter: Node = v.gunner() if v.gunner() != null else v.driver()
 	if shooter == null:
 		return
+	if Net.is_networked() and Net.is_host():
+		var snd := main.multiplayer.get_remote_sender_id()
+		if snd != 0 and snd != main.multiplayer.get_unique_id() and snd == _peer_of(shooter) \
+				and not _gun_ok(shooter, "%s gun" % str(v.get("kind")), float(v.get("GUN_RATE")), muzzle, (v as Node2D).global_position, 90.0):
+			return
 	if _vehicle_relay("net_vehicle_fire", [vid, muzzle, dir], _peer_of(shooter)):
 		return
 	if Net.is_networked() and not Net.is_host() and main.multiplayer.get_remote_sender_id() != 1:
@@ -460,7 +487,10 @@ func vehicle_hit_soldier(s: Node, dmg: float, killer: String, killer_team: int, 
 			s.set("velocity", Vector2(vel.x * 0.9, -260.0))
 		return
 	if s.has_method("net_vehicle_hurt"):
+		# #266: the host's ledger takes the hit (a run-over ignores spawn
+		# protection, like the owner's ceasefire_t = 0); the owner gets the
+		# knock-back.
 		TrustGuard.note_activity(killer, killer_team)
-		if s.has_method("observe_damage"):
-			s.observe_damage(dmg, killer, weapon, killer_team)
-		s.rpc_id(int(s.get_multiplayer_authority()), "net_vehicle_hurt", dmg, killer, killer_team, vel, weapon)
+		HostHits.damage(s, dmg, killer, weapon, killer_team, true)
+		if not bool(s.get("dead")) and main.multiplayer.get_peers().has(int(s.get_multiplayer_authority())):
+			s.rpc_id(int(s.get_multiplayer_authority()), "net_vehicle_hurt", dmg, killer, killer_team, vel, weapon)
