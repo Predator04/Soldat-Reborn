@@ -10,6 +10,7 @@ extends SceneTree
 ## row per shot as weapons_<tag>_r<N>.png / pickups_<tag>_r<N>.png.
 ## --classic-weapons: Operator soldiers holding the classic weapon sprites
 ## (before / after pairs of the weapon art alone). --skins: cycle the weapon skins.
+## --cols=N: weapon grid width (default 4; 2 suits --zoom=14).
 var _out := "."
 var _tag := "shot"
 var _zoom := 4.0
@@ -25,6 +26,7 @@ var _weapons := false # --weapons: weapon lineup (#284)
 var _shots: Array = []  # [camera pos, file name] for --weapons
 var _classic_weapons := false
 var _skins := false
+var _cols := 4          # --cols=N: weapon grid width (2 for --zoom=14 close-ups)
 var _t0 := 0
 
 const PUPPET_SRC := """
@@ -92,6 +94,7 @@ func _initialize() -> void:
 		elif a == "--weapons": _weapons = true
 		elif a == "--classic-weapons": _classic_weapons = true
 		elif a == "--skins": _skins = true
+		elif a.begins_with("--cols="): _cols = maxi(1, int(a.substr(7)))
 
 
 func _blue() -> Color:
@@ -307,13 +310,13 @@ func _build_weapons(stage: Node2D, scr: GDScript, art, dsc, rim) -> void:
 		p.ds = dsc.new()
 		p.art = art
 		p.pose = poses[i]
-		p.position = Vector2((i % 4 - 1.5) * WEAPON_GAP.x, int(i / 4) * WEAPON_GAP.y)
+		p.position = Vector2((i % _cols - (_cols - 1) * 0.5) * WEAPON_GAP.x, int(i / _cols) * WEAPON_GAP.y)
 		if rim != null:
 			p.material = rim
 		p.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 		stage.add_child(p)
 		_puppets.append(p)
-	var rows := int(ceil(poses.size() / 4.0))
+	var rows := int(ceil(poses.size() / float(_cols)))
 	for r in rows:
 		_shots.append([Vector2(0, r * WEAPON_GAP.y - 6), "weapons_%s_r%d.png" % [_tag, r]])
 	# dropped pickups: frozen props, same 4-wide grid further down
@@ -326,7 +329,7 @@ func _build_weapons(stage: Node2D, scr: GDScript, art, dsc, rim) -> void:
 		b.persistent = true
 		b.freeze = true
 		b.gravity_scale = 0.0
-		b.position = Vector2((i % 4 - 1.5) * WEAPON_GAP.x, y0 + int(i / 4) * 40.0)
+		b.position = Vector2((i % _cols - (_cols - 1) * 0.5) * WEAPON_GAP.x, y0 + int(i / _cols) * 40.0)
 		stage.add_child(b)
 		for c in b.get_children():
 			if c is CanvasItem:

@@ -1,6 +1,6 @@
 extends RefCounted
 ## HD weapon sprites (#284): assets/weapons-hd/<name>.png, painted by
-## tools/gen_weapons_gfx.py. Each is exactly 3x its classic
+## tools/gen_weapons_gfx.py. Each is exactly 6x its classic
 ## assets/weapons-gfx/<name>.png and is always drawn into the CLASSIC rect
 ## (classic size * Gostek.SPRITE_SCALE) with the classic pivot, so the grip,
 ## barrel length, muzzle and bullet spawn never move. Used only while

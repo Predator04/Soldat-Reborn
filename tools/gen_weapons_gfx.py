@@ -2,20 +2,23 @@
 """Paint the HD weapon sprites (#284) into assets/weapons-hd/.
 
 Every weapon (and the frag / cluster belt grenades) gets a new sprite at
-exactly 3x the pixel size of its classic assets/weapons-gfx/ sprite, laid out
+exactly 6x the pixel size of its classic assets/weapons-gfx/ sprite, laid out
 on the classic silhouette, so the game draws it into the classic rect
 (classic size * Gostek.SPRITE_SCALE) with the classic grip pivot: barrel
 length, muzzle position and bullet spawn do not move by a pixel.
 
-Same pipeline as the Operator soldier set (tools/gen_operator_gfx.py, whose
-Layer class this builds on): parts are vector shapes on a 12x supersampled
-canvas (one design unit = one classic sprite pixel), each with a material
-(gunmetal, polymer, wood, brass ...), extruded into a height field (bevels,
-cylinders, grooves, rails, vents), lit with one key light + specular +
-ambient occlusion, inked (a thin dark line inside every part and a dark
-silhouette outline), then downsampled to 3x. Next to each sprite goes
-<name>_n.png, the height field's normal map (OpenGL convention: +x right =
-red, +y UP = green, alpha = coverage) for a later dynamic-lighting pass.
+Same approach as the first Operator soldier generator (#280): parts are
+vector shapes on an 18x supersampled canvas (one design unit = one classic
+sprite pixel), each with a material (gunmetal, polymer, wood, brass ...) and
+its surface finish (cerakote mottle, machined edge wear with bright chips,
+fine scratches, wood grain + pores, moulded stippling, woven nylon, brass
+tarnish), extruded into a height field (bevels, cylinders, grooves, rails,
+vents, knurling, stamped markings, pins, rivets), lit with one key light +
+specular + ambient occlusion + a two-tone studio bounce, inked (a thin dark
+line inside every part and a dark silhouette outline), then downsampled to
+6x. Next to each sprite goes <name>_n.png, the height field's normal map
+(OpenGL convention: +x right = red, +y UP = green, alpha = coverage), which
+the dynamic lights (#282) use through weapon_gfx.gd's CanvasTexture.
 
 Albedo is mid-grey metal rather than near-black so the weapon skins
 (Custom.WEAPON_SKINS, multiplied in, some channels > 1) read; the grenades
@@ -33,70 +36,198 @@ import os
 import sys
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 from scipy import ndimage
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import gen_operator_gfx as op  # noqa: E402  (Layer, K, SS, HD)
-
-ROOT = op.ROOT
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "assets", "weapons-gfx")
 OUT = os.path.join(ROOT, "assets", "weapons-hd")
-K, SS, HD = op.K, op.SS, op.HD
-LIGHT = op.LIGHT
+HD = 6          # output pixels per classic sprite pixel ("ultra HD", #284 follow-up)
+SS = 3          # supersampling on top of that
+K = HD * SS     # canvas pixels per design unit
+LIGHT = np.array([0.5, -0.68, 0.55])
+LIGHT = LIGHT / np.linalg.norm(LIGHT)
+FONT = os.path.join(ROOT, "assets", "fonts", "BarlowCondensed-Bold.ttf")
 
-# Materials: albedo (0..1), specular strength, gloss exponent, surface texture.
-#   brush: anisotropic streaks along the long axis (machined / brushed metal)
-#   grit:  fine isotropic stipple in albedo + height (polymer, parkerizing)
-#   grain: wood grain stripes along the long axis
-#   metal: how much the specular takes the albedo colour (brass, gold)
+# Materials: albedo (0..1), specular strength, gloss exponent, surface finish.
+#   brush:   anisotropic streaks along the long axis (machined metal)
+#   grit:    fine isotropic stipple in albedo + height (polymer, parkerizing)
+#   cera:    cerakote-like orange-peel mottle on painted / coated metal
+#   grain:   wood grain (rings, fibres, pores) along the long axis
+#   wear:    bright chipped edges + scattered chips showing bare steel
+#   scuff:   lighter rubbed edges on polymer / rubber
+#   scratch: fine bright scratches
+#   stip:    moulded stippling (grips, pads)
+#   tarnish: dull mottled patches (brass, copper)
+#   metal:   how much the specular takes the albedo colour (brass, gold)
 MAT = {
-    "gun":    dict(col=(0.335, 0.345, 0.375), spec=0.85, gloss=22, brush=0.03, grit=0.01),
-    "dark":   dict(col=(0.23, 0.235, 0.25), spec=0.7, gloss=20, brush=0.025, grit=0.015),
-    "steel":  dict(col=(0.52, 0.53, 0.56), spec=1.0, gloss=26, brush=0.05),
-    "chrome": dict(col=(0.66, 0.67, 0.70), spec=1.1, gloss=30, brush=0.04),
-    "blade":  dict(col=(0.74, 0.76, 0.79), spec=1.2, gloss=40, brush=0.06),
-    "poly":   dict(col=(0.22, 0.22, 0.235), spec=0.35, gloss=10, grit=0.03),
-    "rubber": dict(col=(0.17, 0.17, 0.18), spec=0.14, gloss=6, grit=0.045),
-    "od":     dict(col=(0.37, 0.40, 0.27), spec=0.3, gloss=10, grit=0.025),
-    "od_d":   dict(col=(0.28, 0.31, 0.21), spec=0.28, gloss=10, grit=0.025),
-    "tan":    dict(col=(0.54, 0.46, 0.34), spec=0.2, gloss=8, grit=0.04),
-    "wood":   dict(col=(0.62, 0.34, 0.15), spec=0.45, gloss=14, grain=0.24),
-    "walnut": dict(col=(0.47, 0.26, 0.13), spec=0.5, gloss=16, grain=0.28),
-    "plum":   dict(col=(0.42, 0.21, 0.16), spec=0.4, gloss=14, grit=0.02),
-    "brass":  dict(col=(0.82, 0.62, 0.28), spec=1.1, gloss=26, metal=0.7),
-    "copper": dict(col=(0.74, 0.43, 0.25), spec=1.0, gloss=24, metal=0.6),
-    "red":    dict(col=(0.76, 0.17, 0.10), spec=0.65, gloss=18, grit=0.01),
-    "orange": dict(col=(0.88, 0.43, 0.10), spec=0.6, gloss=18, grit=0.01),
+    "gun":    dict(col=(0.335, 0.345, 0.375), spec=0.85, gloss=22, brush=0.03, cera=0.03, wear=0.9, scratch=0.32),
+    "dark":   dict(col=(0.23, 0.235, 0.25), spec=0.7, gloss=20, brush=0.02, cera=0.04, wear=0.75, scratch=0.28),
+    "steel":  dict(col=(0.52, 0.53, 0.56), spec=1.0, gloss=26, brush=0.06, wear=0.35, scratch=0.25),
+    "chrome": dict(col=(0.66, 0.67, 0.70), spec=1.1, gloss=30, brush=0.05, scratch=0.22, wear=0.25),
+    "blade":  dict(col=(0.74, 0.76, 0.79), spec=1.2, gloss=40, brush=0.08, scratch=0.25),
+    "poly":   dict(col=(0.22, 0.22, 0.235), spec=0.35, gloss=10, grit=0.035, scuff=0.5, scratch=0.12),
+    "grip":   dict(col=(0.21, 0.21, 0.225), spec=0.3, gloss=9, grit=0.03, scuff=0.45, stip=1.0),
+    "rubber": dict(col=(0.17, 0.17, 0.18), spec=0.14, gloss=6, grit=0.05, stip=0.7, scuff=0.3),
+    "od":     dict(col=(0.37, 0.40, 0.27), spec=0.3, gloss=10, grit=0.02, cera=0.06, wear=0.7, scratch=0.2),
+    "od_d":   dict(col=(0.28, 0.31, 0.21), spec=0.28, gloss=10, grit=0.02, cera=0.06, wear=0.6, scratch=0.2),
+    "od_g":   dict(col=(0.30, 0.33, 0.22), spec=0.26, gloss=9, grit=0.02, stip=1.0, scuff=0.4),
+    "tan":    dict(col=(0.54, 0.46, 0.34), spec=0.2, gloss=8, grit=0.05, weave=1.0),
+    "wood":   dict(col=(0.62, 0.34, 0.15), spec=0.45, gloss=14, grain=0.26, scratch=0.12),
+    "walnut": dict(col=(0.47, 0.26, 0.13), spec=0.5, gloss=16, grain=0.3, scratch=0.12),
+    "plum":   dict(col=(0.42, 0.21, 0.16), spec=0.4, gloss=14, grit=0.02, scuff=0.45, scratch=0.15),
+    "plum_g": dict(col=(0.40, 0.20, 0.15), spec=0.35, gloss=12, grit=0.02, stip=1.0, scuff=0.4),
+    "brass":  dict(col=(0.82, 0.62, 0.28), spec=1.1, gloss=26, metal=0.7, tarnish=0.55, brush=0.03),
+    "copper": dict(col=(0.74, 0.43, 0.25), spec=1.0, gloss=24, metal=0.6, tarnish=0.5),
+    "red":    dict(col=(0.76, 0.17, 0.10), spec=0.65, gloss=18, cera=0.035, wear=0.55, scratch=0.18),
+    "orange": dict(col=(0.88, 0.43, 0.10), spec=0.6, gloss=18, cera=0.03),
     "lens":   dict(col=(0.10, 0.17, 0.24), spec=1.4, gloss=50),
-    "string": dict(col=(0.80, 0.78, 0.72), spec=0.3, gloss=12),
-    "frag":   dict(col=(0.38, 0.54, 0.18), spec=0.55, gloss=16, grit=0.02),
-    "yellow": dict(col=(0.88, 0.68, 0.14), spec=0.6, gloss=18, grit=0.015),
+    "string": dict(col=(0.80, 0.78, 0.72), spec=0.3, gloss=12, grit=0.04),
+    "frag":   dict(col=(0.38, 0.54, 0.18), spec=0.55, gloss=16, cera=0.06, wear=0.6, scratch=0.2),
+    "yellow": dict(col=(0.88, 0.68, 0.14), spec=0.6, gloss=18, cera=0.05, wear=0.55, scratch=0.2),
 }
+BARE = np.array((0.60, 0.61, 0.635), np.float32)    # steel showing through worn edges (mid-tone: skins still tint)
 
 
-class W(op.Layer):
+class Base:
+    """Mask helpers in design space (W x H units, y down) on a K x canvas
+    (the approach of the first Operator generator, #280)."""
+
+    def __init__(self, W, H):
+        self.W, self.H = W, H
+        self.w, self.h = int(round(W * K)), int(round(H * K))
+        self.alb = np.zeros((self.h, self.w, 3), np.float32)
+        self.a = np.zeros((self.h, self.w), np.float32)
+        self.z = np.zeros((self.h, self.w), np.float32)
+        self.spec = np.zeros((self.h, self.w), np.float32)
+
+    # ── mask helpers (design units) ──
+    def _img(self):
+        return Image.new("L", (self.w, self.h), 0)
+
+    def _m(self, im):
+        return np.asarray(im, np.float32) / 255.0
+
+    def poly(self, pts):
+        im = self._img()
+        ImageDraw.Draw(im).polygon([(x * K, y * K) for x, y in pts], fill=255)
+        return self._m(im)
+
+    def ell(self, cx, cy, rx, ry):
+        im = self._img()
+        ImageDraw.Draw(im).ellipse([(cx - rx) * K, (cy - ry) * K, (cx + rx) * K, (cy + ry) * K], fill=255)
+        return self._m(im)
+
+    def rrect(self, x0, y0, x1, y1, r):
+        im = self._img()
+        ImageDraw.Draw(im).rounded_rectangle([x0 * K, y0 * K, x1 * K, y1 * K], radius=r * K, fill=255)
+        return self._m(im)
+
+    def line(self, pts, width):
+        im = self._img()
+        d = ImageDraw.Draw(im)
+        d.line([(x * K, y * K) for x, y in pts], fill=255, width=max(1, int(width * K)), joint="curve")
+        r = width * K * 0.5
+        for x, y in (pts[0], pts[-1]):
+            d.ellipse([x * K - r, y * K - r, x * K + r, y * K + r], fill=255)
+        return self._m(im)
+
+    def band(self, y0, y1):
+        m = np.zeros((self.h, self.w), np.float32)
+        m[int(max(0, y0 * K)):int(max(0, min(self.h, y1 * K))), :] = 1.0
+        return m
+
+    def vband(self, x0, x1):
+        m = np.zeros((self.h, self.w), np.float32)
+        m[:, int(max(0, x0 * K)):int(max(0, min(self.w, x1 * K)))] = 1.0
+        return m
+
+    def from_sprite(self, spr, smooth=0.9):
+        """Classic sprite (already in design orientation) -> (mask, luminance)."""
+        a = np.asarray(spr.resize((self.w, self.h), Image.BILINEAR), np.float32) / 255.0
+        mask = ndimage.gaussian_filter(a[..., 3], smooth * K)
+        mask = np.clip((mask - 0.5) * 6.0 + 0.5, 0, 1)
+        lum = a[..., :3].mean(axis=2)
+        lum = ndimage.gaussian_filter(lum, 0.8 * K)
+        return mask, lum
+
+    def erode(self, m, units):
+        return np.clip(ndimage.grey_erosion((m > 0.5).astype(np.float32), size=max(1, int(units * K * 2))), 0, 1) * m
+
+    def dilate(self, m, units):
+        return ndimage.grey_dilation(m, size=max(1, int(units * K * 2)))
+
+    def carve(self, m, depth=0.5, dark=0.75, soft=0.25):
+        m = ndimage.gaussian_filter(np.clip(m, 0, 1), soft * K) * (self.a > 0.01)
+        self.z -= m * depth
+        self.alb *= (1 - m * (1 - dark))[..., None]
+
+    def raise_(self, m, amount=0.5, soft=0.6):
+        m = ndimage.gaussian_filter(np.clip(m, 0, 1), soft * K) * (self.a > 0.01)
+        self.z += m * amount
+
+    def tone(self, m, mul):
+        m = np.clip(m, 0, 1)[..., None]
+        self.alb *= (1 - m) + m * mul
+
+    def folds(self, lum, amount=0.9):
+        """Soft fold relief from the classic sprite's shading."""
+        l = lum - ndimage.gaussian_filter(lum, 2.5 * K)
+        self.z += l * amount * 6.0 * (self.a > 0.01)
+
+
+
+class W(Base):
     """A weapon sprite in design space (one unit = one classic sprite pixel,
-    y down, muzzle toward +x). Adds per-material gloss, surface textures,
-    explicit height maps (cylinders) and part inking to the Operator Layer."""
+    y down, muzzle toward +x). Adds per-material gloss and surface finish
+    (wear, scratches, cerakote, grain, stippling, tarnish), explicit height
+    maps (cylinders), part inking and engraved markings to the Operator Layer."""
 
     def __init__(self, Wd, Hd, seed=1, axis="x"):
         super().__init__(Wd, Hd)
+        self.axis = axis
         self.gloss = np.full((self.h, self.w), 20.0, np.float32)
         self.metal = np.zeros((self.h, self.w), np.float32)
         self.X = ((np.arange(self.w) + 0.5) / K)[None, :].repeat(self.h, 0).astype(np.float32)
         self.Y = ((np.arange(self.h) + 0.5) / K)[:, None].repeat(self.w, 1).astype(np.float32)
         rng = np.random.default_rng(seed)
-        along = (0.12 * K, 3.0 * K) if axis == "x" else (3.0 * K, 0.12 * K)
-        g_al = (0.35 * K, 7.0 * K) if axis == "x" else (7.0 * K, 0.35 * K)
+        self.rng = rng
+
+        def al(a, b):   # (sigma along the short axis, sigma along the long axis)
+            return (a * K, b * K) if axis == "x" else (b * K, a * K)
 
         def field(sig):
             n = ndimage.gaussian_filter(rng.standard_normal((self.h, self.w)).astype(np.float32), sig)
             return n / max(1e-6, float(n.std()))
-        self.f_brush = field(along)
-        self.f_grit = field(0.1 * K)
-        g = field(g_al)
-        self.f_grain = np.sin(g * 2.6 + (self.Y if axis == "x" else self.X) * 1.7) * 0.6 + field(0.25 * K) * 0.25
+        self.f_brush = field(al(0.05, 2.0))
+        self.f_grit = field(0.06 * K)
+        self.f_fine = field(0.09 * K)
+        self.f_mottle = field(0.6 * K)
+        self.f_chip = field(0.1 * K)
+        self.f_tarnish = field(0.8 * K)
+        rings = np.sin(field(al(0.4, 7.0)) * 3.0 + (self.Y if axis == "x" else self.X) * 2.3)
+        fibres = field(al(0.035, 1.8))
+        self.f_pore = np.clip(field(al(0.05, 0.45)) - 1.7, 0, 1.5)
+        self.f_grain = rings * 0.5 + fibres * 0.32 + self.f_mottle * 0.12 - self.f_pore * 0.9
+        # fine scratches, mostly along the weapon's long axis
+        im = Image.new("L", (self.w, self.h), 0)
+        dr = ImageDraw.Draw(im)
+        for _ in range(int(Wd * Hd / 9)):
+            x, y = rng.uniform(0, self.w), rng.uniform(0, self.h)
+            a = rng.normal(0, 0.3) + (0 if axis == "x" else math.pi / 2) + (math.pi / 2 if rng.uniform() < 0.12 else 0)
+            ln = rng.uniform(0.3, 2.6) * K
+            dr.line([(x, y), (x + math.cos(a) * ln, y + math.sin(a) * ln)], fill=int(rng.uniform(70, 255)),
+                    width=1 if rng.uniform() < 0.6 else 2)
+        self.f_scratch = ndimage.gaussian_filter(np.asarray(im, np.float32) / 255.0, 0.35)
+        # moulded stipple: a hex field of little bumps, slightly jittered
+        p = 0.42
+        u = self.X / p
+        v = self.Y / (p * 0.866)
+        self.f_stip = np.clip(np.cos(u * 2 * np.pi + (np.floor(v) % 2) * np.pi) * np.cos(v * 2 * np.pi) * 0.5 + 0.5
+                              + self.f_grit * 0.12, 0, 1)
+        # woven nylon (pouches): two crossing fine ridges
+        self.f_weave = (np.sin((self.X + self.Y) * 2 * np.pi / 0.28) * np.sin((self.X - self.Y) * 2 * np.pi / 0.28)) * 0.5 + 0.5
+        self._font = {}
 
     # ── painting ──
     def put(self, m, mat, z=0.0, h=1.0, bevel=0.6, zmap=None, ink=0.55, ink_w=0.2, col=None, tex=1.0, dome=0.7, rnd=0.0):
@@ -104,7 +235,8 @@ class W(op.Layer):
         rounded edges `bevel` wide (or the explicit height map `zmap`). The
         slab's top is gently domed across its height (`dome`) so every part
         catches the key light on its upper half and falls off below. `rnd`
-        rounds the outline's corners (units) for organic shapes (stocks)."""
+        rounds the outline's corners (units) for organic shapes (stocks).
+        The material's finish (wear, scratches, grain ...) is applied here."""
         m = np.clip(m, 0, 1).astype(np.float32)
         if rnd > 0:
             sig = rnd * K * 0.5
@@ -122,20 +254,51 @@ class W(op.Layer):
                 hy = max(0.3, (rows[-1] - rows[0] + 1) * 0.5 / K)
                 zz = zz + dome * min(1.0, hy / 2.0) * np.clip(1 - ((self.Y - cy) / hy) ** 2, 0, 1) * prof
         else:
-            zz = zmap
+            zz = zmap.copy()
         c = np.array(col if col is not None else M["col"], np.float32).reshape(1, 1, 3)
+        g = lambda k: M.get(k, 0.0) * tex
         mul = np.ones((self.h, self.w), np.float32)
-        mul += self.f_brush * M.get("brush", 0.0) * tex
-        mul += self.f_grit * M.get("grit", 0.0) * tex
-        mul += self.f_grain * M.get("grain", 0.0) * tex
-        if ink > 0:
-            mul *= 1 - ink * np.clip(1 - d / ink_w, 0, 1)
+        mul += self.f_brush * g("brush") + self.f_grit * g("grit") + self.f_grain * g("grain")
+        mul += self.f_fine * g("cera") + self.f_mottle * g("cera") * 0.5
+        zz += self.f_grit * g("grit") * 0.1 + self.f_fine * g("cera") * 0.035 + self.f_brush * g("brush") * 0.01
+        zz -= self.f_pore * g("grain") * 0.12
+        inner = np.clip((d - 0.3) / 0.15, 0, 1)
+        if g("stip"):
+            zz += (self.f_stip - 0.5) * 0.09 * g("stip") * inner
+            mul *= 1 - (1 - self.f_stip) * 0.22 * g("stip") * inner
+        if g("weave"):
+            zz += (self.f_weave - 0.5) * 0.05 * inner
+            mul *= 1 - (1 - self.f_weave) * 0.16 * inner
         alb = c * mul[..., None]
-        zz = zz + self.f_grit * M.get("grit", 0.0) * 0.6 * tex
+        spec = np.full((self.h, self.w), M["spec"], np.float32)
+        if g("tarnish"):
+            t = np.clip(self.f_tarnish * 0.35 + 0.3 + self.f_fine * 0.08, 0, 1) * g("tarnish")
+            alb = alb * (1 - t[..., None]) + alb * np.array([0.6, 0.62, 0.48], np.float32) * t[..., None]
+            spec *= 1 - t * 0.6
+        if g("grain"):
+            alb *= (1 - 0.22 * np.clip(1 - d / 0.9, 0, 1) * (0.6 + 0.4 * self.f_mottle.clip(-1, 1)))[..., None]   # handled edges
+        if g("wear"):
+            band = np.clip(1 - np.abs(d - 0.3) / 0.22, 0, 1)
+            chip = np.clip((self.f_chip + 0.8 * self.f_mottle - 0.55) * 2.2, 0, 1)
+            spot = np.clip((self.f_chip - 2.2) * 3.0, 0, 1) * np.clip(self.f_mottle + 0.5, 0, 1)
+            wm = np.clip(band * chip * 1.2 + spot * 0.7, 0, 1) * g("wear")
+            alb = alb * (1 - wm[..., None]) + BARE * wm[..., None]
+            spec += wm * 0.5
+            zz -= wm * 0.05
+        if g("scuff"):
+            band = np.clip(1 - np.abs(d - 0.25) / 0.2, 0, 1)
+            sc = band * np.clip(self.f_chip * 0.5 + self.f_mottle * 0.6, 0, 1) * g("scuff")
+            alb *= (1 + sc * 0.5)[..., None]
+        if g("scratch"):
+            s = self.f_scratch * g("scratch") * inner
+            alb = alb + (s * 0.55)[..., None] * (BARE - alb * 0.5)
+            spec += s * 0.6
+        if ink > 0:
+            alb *= (1 - ink * np.clip(1 - d / ink_w, 0, 1))[..., None]
         mm = m[..., None]
         self.alb = self.alb * (1 - mm) + alb * mm
         self.z = self.z * (1 - m) + zz * m
-        self.spec = self.spec * (1 - m) + M["spec"] * m
+        self.spec = self.spec * (1 - m) + spec * m
         self.gloss = self.gloss * (1 - m) + M["gloss"] * m
         self.metal = self.metal * (1 - m) + M.get("metal", 0.0) * m
         self.a = np.maximum(self.a, m)
@@ -164,19 +327,73 @@ class W(op.Layer):
         return self.put(m, mat, zmap=zmap, **kw)
 
     def groove(self, pts, w=0.35, depth=0.5, dark=0.55):
-        self.carve(self.line(pts, w), depth, dark, 0.08)
+        self.carve(self.line(pts, w), depth, dark, 0.05)
 
     def slot(self, x0, y0, x1, y1, r=None, depth=0.7, dark=0.4):
         rr = min(x1 - x0, y1 - y0) * 0.5 if r is None else r
-        self.carve(self.rrect(x0, y0, x1, y1, rr), depth, dark, 0.08)
+        self.carve(self.rrect(x0, y0, x1, y1, rr), depth, dark, 0.05)
 
     def hole(self, cx, cy, r, depth=0.8, dark=0.25):
-        self.carve(self.ell(cx, cy, r, r), depth, dark, 0.06)
+        self.carve(self.ell(cx, cy, r, r), depth, dark, 0.04)
+
+    def _zat(self, x, y):
+        return float(self.z[min(self.h - 1, max(0, int(y * K))), min(self.w - 1, max(0, int(x * K)))])
 
     def screw(self, cx, cy, r=0.45, mat="steel", z=None):
-        zz = float(self.z[min(self.h - 1, int(cy * K)), min(self.w - 1, int(cx * K))]) if z is None else z
-        self.ball(cx, cy, r, r, mat, z=zz, h=r * 0.6, ink=0.5, ink_w=0.12)
-        self.carve(self.rrect(cx - r * 0.75, cy - 0.07, cx + r * 0.75, cy + 0.07, 0.05), 0.15, 0.5, 0.03)
+        zz = self._zat(cx, cy) if z is None else z
+        self.carve(self.ell(cx, cy, r * 1.25, r * 1.25), 0.08, 0.6, 0.03)           # counterbore shadow
+        self.ball(cx, cy, r, r, mat, z=zz, h=r * 0.6, ink=0.5, ink_w=0.1, tex=0.5)
+        self.carve(self.rrect(cx - r * 0.75, cy - 0.06, cx + r * 0.75, cy + 0.06, 0.04), 0.15, 0.45, 0.02)
+
+    def pin(self, cx, cy, r=0.36, mat="steel"):
+        """Flush cross pin (trigger / hammer pins)."""
+        zz = self._zat(cx, cy)
+        self.put(self.ell(cx, cy, r, r), mat, z=zz, h=0.05, bevel=0.08, ink=0.6, ink_w=0.08, dome=0.0, tex=0.4)
+
+    def rivets(self, pts, r=0.34):
+        for x, y in pts:
+            zz = self._zat(x, y)
+            self.ball(x, y, r, r, "steel", z=zz, h=0.12, ink=0.45, ink_w=0.08, tex=0.4)
+
+    def stamp(self, text, x, y, size=1.0, depth=0.14, dark=0.32):
+        """Engraved / stamped marking (model, calibre, serial). (x, y) = top-left."""
+        px = max(6, int(size * 1.2 * K))
+        if px not in self._font:
+            self._font[px] = ImageFont.truetype(FONT, px)
+        im = Image.new("L", (self.w, self.h), 0)
+        ImageDraw.Draw(im).text((x * K, y * K), text, font=self._font[px], fill=255)
+        m = np.asarray(im, np.float32) / 255.0
+        self.carve(m, depth, dark, 0.02)
+        # the stamp's lower lip catches a little light
+        self.alb += (np.clip(ndimage.shift(m, (0.07 * K, 0.05 * K), order=1) - m, 0, 1) * 0.08)[..., None] * (self.a > 0.01)[..., None]
+
+    def stencil(self, text, x, y, size, col, amount=0.85):
+        """Painted stencil marking, a little worn."""
+        px = max(6, int(size * 1.2 * K))
+        if px not in self._font:
+            self._font[px] = ImageFont.truetype(FONT, px)
+        im = Image.new("L", (self.w, self.h), 0)
+        ImageDraw.Draw(im).text((x * K, y * K), text, font=self._font[px], fill=255)
+        m = np.asarray(im, np.float32) / 255.0 * (self.a > 0.01)
+        m *= np.clip(1.4 - np.clip(self.f_chip - 0.8, 0, 9) * 0.8, 0, 1) * amount
+        lum = self.alb.mean(axis=2, keepdims=True) / 0.3
+        self.alb = self.alb * (1 - m[..., None]) + np.array(col, np.float32) * np.clip(lum, 0.6, 1.3) * m[..., None]
+
+    def plate(self, x0, y0, x1, y1, text="", size=0.8, mat="steel"):
+        """Small riveted serial / data plate."""
+        zz = self._zat((x0 + x1) * 0.5, (y0 + y1) * 0.5)
+        self.put(self.rrect(x0, y0, x1, y1, 0.25), mat, z=zz, h=0.12, bevel=0.1, ink_w=0.1, dome=0.0, tex=0.6)
+        if text:
+            self.stamp(text, x0 + 0.45, y0 + (y1 - y0 - size) * 0.42, size, 0.06, 0.55)
+
+    def knurl(self, m, pitch=0.42, amp=0.08):
+        """Diamond knurling (metal grips, knobs, rings)."""
+        u = (self.X + self.Y) * 2 * np.pi / pitch
+        v = (self.X - self.Y) * 2 * np.pi / pitch
+        k = (np.abs(np.sin(u * 0.5)) * np.abs(np.sin(v * 0.5)))
+        m = np.clip(m, 0, 1) * (self.a > 0.01)
+        self.z += (k - 0.5) * amp * m
+        self.alb *= (1 - (1 - k) * 0.25 * m)[..., None]
 
     def rail(self, x0, x1, y, mat="dark", z=1.0, h=1.0, pitch=1.05, tooth=0.55, height=1.0):
         """Picatinny rail along y (top at y - height)."""
@@ -190,19 +407,19 @@ class W(op.Layer):
     def ribs(self, x0, x1, y0, y1, pitch=1.0, w=0.35, depth=0.4, dark=0.6):
         x = x0
         while x < x1:
-            self.carve(self.rrect(x, y0, x + w, y1, w * 0.5), depth, dark, 0.06)
+            self.carve(self.rrect(x, y0, x + w, y1, w * 0.5), depth, dark, 0.04)
             x += pitch
 
     def hribs(self, y0, y1, x0, x1, pitch=1.0, w=0.35, depth=0.4, dark=0.6):
         y = y0
         while y < y1:
-            self.carve(self.rrect(x0, y, x1, y + w, w * 0.5), depth, dark, 0.06)
+            self.carve(self.rrect(x0, y, x1, y + w, w * 0.5), depth, dark, 0.04)
             y += pitch
 
     # ── output ──
     def render2(self, light=LIGHT, ambient=0.46, diffuse=0.66, outline=0.86, ao=0.6):
-        """-> (sprite RGBA, normal map RGBA) at 3x the design size."""
-        zs = ndimage.gaussian_filter(self.z, 0.22 * K)
+        """-> (sprite RGBA, normal map RGBA) at HD x the design size."""
+        zs = ndimage.gaussian_filter(self.z, 0.07 * K)
         gy, gx = np.gradient(zs)
         n = np.dstack([-gx * K * 0.85, -gy * K * 0.85, np.ones_like(zs)])
         n /= np.linalg.norm(n, axis=2, keepdims=True)
@@ -216,17 +433,23 @@ class W(op.Layer):
         # broad sheen (cheap env reflection) so metal reads as metal at 1x
         sheen = nh ** (self.gloss * 0.18) * self.spec * 0.12
         occ = np.clip((ndimage.gaussian_filter(self.z, 1.1 * K) - self.z) * 0.55, 0, 1) * ao
+        # tight contact occlusion in creases (seams, under parts)
+        occ = np.clip(occ + np.clip((ndimage.gaussian_filter(self.z, 0.25 * K) - self.z) * 0.9, 0, 1) * 0.5, 0, 1)
         shade = (ambient + diffuse * lam + fill) * (1 - occ)
         scol = 1 - self.metal[..., None] + self.metal[..., None] * self.alb / np.maximum(self.alb.max(axis=2, keepdims=True), 1e-3)
         rgb = self.alb * shade[..., None] + (sp + sheen)[..., None] * scol * (1 - occ[..., None] * 0.7)
+        # two-tone studio bounce: cool from above, warm from the ground
+        up = np.clip(-n[..., 1], 0, 1)[..., None]
+        dn = np.clip(n[..., 1], 0, 1)[..., None]
+        rgb += self.alb * (up * np.array([0.05, 0.07, 0.11]) + dn * np.array([0.08, 0.055, 0.03])) * (1 - occ[..., None])
         # studio rim: a bright line just inside the silhouette's lit (top)
-        # edges, then the dark outline all round
-        a1 = ndimage.shift(self.a, (0.45 * K, 0), order=1)
-        a2 = ndimage.shift(self.a, (1.1 * K, 0), order=1)
+        # edges, then the thin dark outline all round
+        a1 = ndimage.shift(self.a, (0.36 * K, 0), order=1)
+        a2 = ndimage.shift(self.a, (0.85 * K, 0), order=1)
         rim = np.clip(self.a * ((1 - a2) - (1 - a1)), 0, 1)
-        rim = ndimage.gaussian_filter(rim, 0.08 * K)
+        rim = ndimage.gaussian_filter(rim, 0.06 * K)
         rgb += (rim * (0.1 + 0.22 * np.clip(self.spec, 0, 1)))[..., None] * scol
-        inner = ndimage.grey_erosion(self.a, size=max(1, int(0.46 * K)))
+        inner = ndimage.grey_erosion(self.a, size=max(1, int(0.36 * K)))
         edge = np.clip(self.a - inner, 0, 1)
         rgb *= (1 - outline * edge)[..., None]
         a = self.a
@@ -314,7 +537,7 @@ def w_ak74(L):
     L.groove([(77.4, 5.5), (77.4, 8.5)], 0.2, 0.3, 0.6)
     # pistol grip, trigger guard, trigger
     L.put(L.poly([(24.6, 10.6), (31.2, 10.6), (29.6, 16.6), (28.6, 22.4), (27.6, 24.4), (24.6, 24.6),
-                  (21.4, 23.0), (20.8, 20.6), (22.4, 16.4)]), "plum", z=0.6, h=2.0, bevel=1.1)
+                  (21.4, 23.0), (20.8, 20.6), (22.4, 16.4)]), "plum_g", z=0.6, h=2.0, bevel=1.1)
     for y in (16.5, 18.8, 21.1):
         L.groove([(22.3, y), (28.8, y + 0.4)], 0.22, 0.25, 0.75)
     L.put(L.line([(31.6, 10.6), (32.0, 14.0), (38.6, 14.0), (39.6, 10.6)], 0.75), "gun", z=0.8, h=0.9, bevel=0.3, ink_w=0.14)
@@ -425,7 +648,7 @@ def w_mp5(L):
     L.hole(58.6, 4.9, 0.45)
     # grip, trigger guard, trigger
     L.put(L.poly([(18.6, 10.6), (24.6, 10.6), (23.6, 15.0), (22.8, 19.2), (22.0, 20.8), (19.6, 20.8), (18.4, 19.6),
-                  (18.0, 15.0)]), "poly", z=0.6, h=1.9, bevel=0.9)
+                  (18.0, 15.0)]), "grip", z=0.6, h=1.9, bevel=0.9)
     for y in (14.2, 16.2, 18.2):
         L.groove([(18.4, y), (23.4, y)], 0.2, 0.25, 0.75)
     L.put(L.line([(24.4, 11.0), (24.6, 13.6), (29.6, 13.6), (30.2, 11.0)], 0.7), "poly", z=0.6, h=0.8, bevel=0.3, ink_w=0.14)
@@ -458,13 +681,13 @@ def w_steyraug(L):
     L.carve(L.rrect(16.0, 17.6, 18.4, 23.0, 0.6), 0.5, 0.7, 0.08)
     L.put(L.rrect(16.4, 18.2, 18.0, 22.6, 0.5), "brass", z=1.0, h=0.4, bevel=0.3, ink=0.25)   # rounds in the window
     # full-hand trigger guard + grip
-    L.put(L.poly([(27.6, 14.6), (33.4, 14.6), (33.2, 19.0), (33.0, 26.4), (28.0, 26.4), (27.4, 20.0)]), "od", z=0.5, h=2.0, bevel=1.0,
+    L.put(L.poly([(27.6, 14.6), (33.4, 14.6), (33.2, 19.0), (33.0, 26.4), (28.0, 26.4), (27.4, 20.0)]), "od_g", z=0.5, h=2.0, bevel=1.0,
           rnd=0.9)
     L.hribs(18.0, 25.0, 28.0, 32.8, 1.2, 0.3, 0.25, 0.7)
     L.put(L.line([(32.8, 25.4), (38.8, 24.8), (42.8, 20.4), (45.6, 15.2)], 2.0), "od", z=0.5, h=1.6, bevel=0.7)
     L.put(L.line([(35.6, 15.6), (36.2, 17.6), (35.8, 18.6)], 0.6), "dark", z=0.5, h=0.5, bevel=0.2, ink_w=0.1)
     # folding fore-grip
-    L.put(L.poly([(51.6, 13.6), (57.6, 13.6), (57.0, 24.4), (55.8, 25.0), (53.0, 25.0), (52.2, 24.0)]), "od_d", z=0.4, h=1.8,
+    L.put(L.poly([(51.6, 13.6), (57.6, 13.6), (57.0, 24.4), (55.8, 25.0), (53.0, 25.0), (52.2, 24.0)]), "od_g", z=0.4, h=1.8,
           bevel=0.9)
     L.hribs(16.6, 23.6, 52.4, 56.6, 1.4, 0.3, 0.25, 0.7)
     # integrated optic / carry handle
@@ -489,7 +712,7 @@ def w_spas12(L):
           "poly", h=2.2, bevel=1.0)
     L.carve(L.rrect(2.6, 4.2, 10.4, 7.6, 1.4), 0.9, 0.45, 0.1)
     L.put(L.poly([(5.6, 10.4), (13.6, 10.4), (12.4, 14.6), (11.6, 18.6), (11.4, 23.4), (2.6, 23.4), (2.4, 19.0),
-                  (3.6, 15.0)]), "poly", z=0.4, h=2.0, bevel=1.0)
+                  (3.6, 15.0)]), "grip", z=0.4, h=2.0, bevel=1.0)
     for y in (15.6, 17.6, 19.6, 21.6):
         L.groove([(3.4, y), (11.2, y - 0.2)], 0.22, 0.25, 0.75)
     L.put(L.rrect(2.2, 22.0, 11.8, 23.8, 0.5), "rubber", z=0.8, h=1.2, bevel=0.4, ink_w=0.12)
@@ -525,12 +748,6 @@ def w_ruger77(L):
     L.groove([(1.6, 12.2), (14.0, 10.6), (19.6, 9.6)], 0.22, 0.25, 0.75)
     L.put(L.rrect(0.0, 5.2, 1.6, 18.4, 0.5), "rubber", z=0.3, h=2.0, bevel=0.5)            # recoil pad
     L.put(L.rrect(1.5, 5.4, 1.9, 18.2, 0.1), "string", z=0.3, h=1.8, bevel=0.2, ink=0.2)     # white spacer
-    for x in range(22, 28):                                                                 # wrist checkering
-        L.groove([(x, 6.4), (x + 2.2, 10.4)], 0.14, 0.15, 0.75)
-        L.groove([(x + 2.2, 6.4), (x, 10.4)], 0.14, 0.15, 0.75)
-    for x in range(36, 50, 1):
-        L.groove([(x, 6.0), (x + 1.6, 8.8)], 0.14, 0.15, 0.78)
-        L.groove([(x + 1.6, 6.0), (x, 8.8)], 0.14, 0.15, 0.78)
     L.put(L.ell(12.6, 17.2, 0.6, 0.6), "steel", z=2.0, h=0.4, bevel=0.2, ink_w=0.1)            # sling studs
     L.put(L.ell(50.6, 9.4, 0.55, 0.55), "steel", z=2.0, h=0.4, bevel=0.2, ink_w=0.1)
     # barrel (tapered, blued) + action
@@ -611,7 +828,7 @@ def w_barretm82(L):
     L.ribs(29.8, 33.0, 0.2, 1.4, 0.7, 0.25, 0.2, 0.6)
     # grip, guard, magazine, bipod
     L.put(L.poly([(19.6, 14.0), (27.4, 14.0), (26.4, 19.6), (25.4, 25.4), (24.4, 27.4), (21.4, 27.4), (19.4, 25.6),
-                  (19.0, 22.0), (20.4, 18.0)]), "poly", z=0.6, h=2.0, bevel=1.0)
+                  (19.0, 22.0), (20.4, 18.0)]), "grip", z=0.6, h=2.0, bevel=1.0)
     for y in (19.0, 21.2, 23.4, 25.6):
         L.groove([(19.6, y), (26.0, y - 0.3)], 0.22, 0.25, 0.75)
     L.put(L.line([(27.2, 14.6), (28.0, 18.8), (34.6, 18.8), (35.4, 14.6)], 0.8), "gun", z=0.6, h=0.9, bevel=0.3, ink_w=0.14)
@@ -658,13 +875,12 @@ def w_m249(L):
     L.put(L.line([(64.6, 12.0), (74.6, 12.2)], 0.9), "dark", z=0.8, h=0.8, bevel=0.3)
     # 100-round soft pouch (coyote canvas)
     L.put(L.rrect(31.6, 11.0, 45.2, 21.2, 1.6), "tan", z=0.6, h=2.6, bevel=1.6)
-    L.folds(L.f_brush * 0.02, 0.6)
     L.groove([(32.6, 13.0), (44.2, 13.0)], 0.2, 0.25, 0.7)
     L.carve(L.rrect(32.4, 12.0, 44.4, 20.4, 1.2) - L.rrect(32.9, 12.5, 43.9, 19.9, 1.0), 0.15, 0.75, 0.04)   # stitching
     L.put(L.rrect(36.0, 11.6, 40.6, 13.6, 0.5), "rubber", z=3.2, h=0.6, bevel=0.3, ink_w=0.12)               # buckle tab
     # grip, guard, trigger
     L.put(L.poly([(22.4, 12.4), (30.4, 12.4), (29.4, 17.0), (28.4, 21.2), (27.2, 22.6), (23.8, 22.6), (22.4, 21.2),
-                  (22.0, 17.4)]), "poly", z=0.6, h=2.0, bevel=1.0)
+                  (22.0, 17.4)]), "grip", z=0.6, h=2.0, bevel=1.0)
     for y in (16.6, 18.6, 20.6):
         L.groove([(22.4, y), (28.8, y - 0.2)], 0.22, 0.25, 0.75)
     L.put(L.line([(30.0, 12.8), (30.4, 15.0), (31.6, 15.0)], 0.75), "gun", z=0.6, h=0.8, bevel=0.3, ink_w=0.14)
@@ -839,7 +1055,7 @@ def w_flamer(L):
         L.screw(x, y, 0.4)
     # rear grip (slanted back) + trigger
     L.put(L.poly([(28.6, 12.0), (37.0, 12.0), (35.6, 17.0), (34.2, 22.0), (32.8, 25.6), (27.2, 25.6), (26.6, 23.0),
-                  (28.0, 17.0)]), "poly", z=0.6, h=2.0, bevel=1.0)
+                  (28.0, 17.0)]), "grip", z=0.6, h=2.0, bevel=1.0)
     for y in (17.4, 19.6, 21.8, 24.0):
         L.groove([(27.8, y), (34.6, y - 0.2)], 0.22, 0.25, 0.75)
     L.put(L.line([(37.0, 12.4), (37.6, 15.4), (42.6, 15.4), (43.4, 12.4)], 0.75), "gun", z=0.6, h=0.8, bevel=0.3, ink_w=0.14)
@@ -901,6 +1117,155 @@ def w_cluster_grenade(L):
     L.put(L.rrect(7.6, 9.0, 10.4, 10.0, 0.3), "orange", z=5.0, h=0.4, bevel=0.2, ink=0.3)     # cluster band
 
 
+# ─────────────────────────── close-up details (6x) ───────────────────────────
+# Painted after each design: markings, pins, rivets, plates, knurling. Text is
+# generic (model / calibre / lot numbers), never a maker's logo.
+
+YEL = (0.86, 0.72, 0.22)
+
+
+def x_ak74(L):
+    L.stamp("AK-74", 24.6, 6.7, 1.45)
+    L.stamp("No 04417", 24.6, 8.8, 0.92)
+    L.rivets([(23.7, 4.9), (23.7, 8.4), (33.0, 10.0), (35.2, 10.0), (37.4, 10.0)])
+    L.pin(42.0, 9.4)
+    L.stamp("A", 33.2, 3.0, 0.7)      # selector marks on the dust cover edge
+    L.stamp("O", 35.6, 3.0, 0.7)
+    L.knurl(L.rrect(76.6, 5.6, 77.6, 8.4, 0.2), 0.36, 0.06)
+
+
+def x_mp5(L):
+    L.stamp("MP5", 30.4, 7.7, 1.05)
+    L.stamp("9mm x19", 30.4, 9.05, 0.7)
+    L.stamp("S", 23.0, 6.95, 0.6)
+    L.stamp("F", 27.8, 6.95, 0.6)
+    L.pin(20.6, 10.0)
+    L.pin(28.6, 10.3)
+    L.knurl(L.rrect(17.9, 0.2, 25.3, 3.0, 0.8), 0.4, 0.07)        # drum sight wheel
+    L.rivets([(46.0, 3.9), (50.0, 3.9)])
+
+
+def x_steyraug(L):
+    L.stamp("AUG A1", 43.2, 9.5, 1.05)
+    L.stamp("5.56 NATO", 3.6, 10.6, 0.85)
+    L.stamp("Nr 22871", 3.6, 11.8, 0.65)
+    L.pin(24.0, 13.2)
+    L.pin(31.0, 13.4)
+    L.knurl(L.rrect(30.0, 0.5, 33.0, 3.0, 0.3), 0.38, 0.05)      # optic adjuster
+
+
+def x_spas12(L):
+    L.stamp("SPAS-12", 25.6, 0.55, 1.0)
+    L.stamp("12 GA", 23.4, 8.75, 0.8)
+    L.pin(28.4, 10.6)
+    L.pin(30.2, 10.6)
+    L.rivets([(63.4, 3.2), (66.4, 3.2), (4.0, 2.9), (21.6, 2.9), (21.6, 9.6)])
+    ring = np.clip(L.ell(1.6, 10.6, 1.1, 1.1) - L.ell(1.6, 10.6, 0.6, 0.6), 0, 1)         # sling loop
+    L.put(ring, "steel", z=2.4, h=0.4, bevel=0.2, ink_w=0.1)
+
+
+def x_ruger77(L):
+    L.knurl(L.poly([(21.6, 6.8), (27.6, 6.6), (28.4, 10.0), (24.0, 11.0), (21.0, 12.4)]), 0.42, 0.07)   # wrist checkering
+    L.knurl(L.poly([(35.6, 6.0), (50.4, 6.0), (49.0, 8.6), (36.0, 9.2)]), 0.42, 0.07)                 # forend checkering
+    L.stamp("M77  .308 WIN", 47.6, 2.75, 0.85)
+    L.pin(24.4, 4.4)
+    L.pin(43.2, 4.4)
+
+
+def x_m79(L):
+    L.stamp("M79  40MM", 38.6, 5.35, 1.0)
+    L.stamp("LOT 7743", 38.6, 6.75, 0.72)
+    L.rivets([(25.6, 3.0), (25.6, 11.6), (33.2, 3.0)])
+    L.pin(28.4, 11.4)
+    L.knurl(L.rrect(27.0, 0.0, 29.4, 2.6, 0.4), 0.36, 0.06)        # latch
+
+
+def x_barretm82(L):
+    L.stamp("M82A1", 19.2, 8.85, 1.0)
+    L.stamp(".50 BMG", 25.4, 9.1, 0.78)
+    L.plate(3.0, 8.8, 11.2, 10.7, "SN 00447", 0.75)
+    L.knurl(L.rrect(29.4, 0.0, 33.4, 1.6, 0.4), 0.34, 0.06)        # turret
+    L.knurl(L.rrect(18.0, 0.8, 22.4, 4.2, 0.6), 0.4, 0.05)          # eye piece ring
+    L.pin(29.0, 13.4)
+    L.pin(34.4, 13.2)
+    L.pin(43.0, 13.2)
+    L.groove([(33.4, 11.6), (33.4, 14.4)], 0.18, 0.25, 0.6)
+    L.stamp("SAFE", 27.0, 12.1, 0.8)
+    L.rivets([(50.0, 8.4), (66.0, 8.4)])
+
+
+def x_m249(L):
+    L.stamp("M249  5.56MM", 19.8, 8.75, 1.05)
+    L.pin(26.4, 12.0)
+    L.pin(33.0, 12.2)
+    L.rivets([(46.0, 9.8), (64.6, 9.8)])
+
+
+def x_minigun(L):
+    L.plate(36.8, 14.2, 45.2, 18.6, "M134", 1.15)
+    L.stamp("7.62MM  4000 RPM", 3.4, 24.7, 0.78)
+    L.knurl(L.rrect(13.6, 15.0, 15.6, 19.8, 0.4), 0.36, 0.05)     # motor end cap
+    L.rivets([(46.0, 13.4), (46.0, 26.0), (54.6, 13.4), (54.6, 26.0)], 0.3)
+
+
+def x_colt1911(L):
+    L.stamp("MK23  .45", 53.2, 1.55, 0.85)
+    L.pin(46.4, 5.4)
+    L.pin(49.6, 5.4)
+
+
+def x_deserteagle(L):
+    for ox, oy in ((38.0, 0.0), (6.0, 4.0)):
+        L.stamp(".50 AE", ox + 20.2, oy + 1.05, 0.8)
+        L.pin(ox + 13.6, oy + 7.1)
+        L.pin(ox + 17.4, oy + 7.1)
+
+
+def x_knife(L):
+    L.stamp("TF-7", 19.2, 3.9, 0.85)
+    L.knurl(L.rrect(0.1, 1.2, 1.9, 6.6, 0.6), 0.34, 0.05)          # pommel
+
+
+def x_chainsaw(L):
+    L.stamp("PRO-SERIES 20\"", 84.0, 15.3, 1.25)
+    L.stamp("TF 460", 28.2, 12.55, 1.0, 0.1, 0.35)
+    L.rivets([(56.0, 12.2), (56.0, 17.6)], 0.32)
+
+
+def x_law(L):
+    L.stencil("ROCKET 66MM HEAT M72A2", 8.4, 12.3, 1.0, YEL)
+    L.stencil("LOT 4471-A", 60.0, 12.5, 0.85, YEL)
+    L.rivets([(30.0, 10.0), (30.0, 16.2), (79.0, 10.4)])
+
+
+def x_flamer(L):
+    L.stencil("FUEL", 6.6, 15.6, 1.45, YEL)
+    L.tone(L.band(19.8, 20.6) * L.vband(5.6, 16.4), np.array([2.2, 1.8, 0.7], np.float32))   # warning stripe
+    L.plate(44.6, 8.4, 52.0, 10.0, "M2A1", 0.75)
+    L.knurl(L.rrect(84.0, 6.4, 85.6, 12.0, 0.3), 0.34, 0.05)
+
+
+def x_frag_grenade(L):
+    L.stencil("M67", 4.6, 12.0, 1.3, YEL)
+
+
+def x_cluster_grenade(L):
+    L.stencil("CL-4", 5.6, 19.2, 1.3, (0.18, 0.16, 0.12))
+    L.knurl(L.rrect(6.6, 0.6, 11.4, 2.4, 0.4), 0.34, 0.05)
+
+
+def x_bow(L):
+    L.rivets([(21.6, 38.6), (21.6, 56.4)], 0.32)
+
+
+DETAILS = {
+    "ak74": x_ak74, "mp5": x_mp5, "steyraug": x_steyraug, "spas12": x_spas12, "ruger77": x_ruger77, "m79": x_m79,
+    "barretm82": x_barretm82, "m249": x_m249, "minigun": x_minigun, "colt1911": x_colt1911, "deserteagle": x_deserteagle,
+    "knife": x_knife, "chainsaw": x_chainsaw, "law": x_law, "flamer": x_flamer, "bow": x_bow,
+    "frag-grenade": x_frag_grenade, "cluster-grenade": x_cluster_grenade,
+}
+
+
 # name -> (design fn, seed, axis)
 WEAPONS = {
     "deserteagle": (w_deserteagle, 5, "x"),
@@ -933,6 +1298,8 @@ def build(name):
     cl = classic(name)
     L = W(cl.width, cl.height, seed=seed, axis=axis)
     fn(L)
+    if name in DETAILS:
+        DETAILS[name](L)
     spr, nrm = L.render2()
     exp = (cl.width * HD, cl.height * HD)
     assert spr.size == exp, (name, spr.size, exp)
@@ -988,7 +1355,7 @@ def ensure_import(path):
 
 
 def sheet(made, path):
-    """Classic (nearest x3) | HD per row, on a mid backdrop."""
+    """Classic (nearest, scaled to the HD size) | HD per row, on a mid backdrop."""
     rows = []
     for name in made:
         cl = classic(name)
