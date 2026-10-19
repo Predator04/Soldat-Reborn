@@ -4,6 +4,10 @@ All notable changes to Soldat Reborn.
 
 ## [Unreleased]
 
+## [1.37.0] — 2026-10-19 — Maker
+
+This release also ships everything in 1.36 (Ultra HD soldiers, guns, terrain and dynamic lighting), listed under 1.36.0 below — the two went out together.
+
 ### Added — bots on custom maps (#287)
 - **Bots now know their way around any map** — levels from the editor, Maker mode and shared levels used to have no bot navigation, so bots wandered. The game now builds the navigation graph itself when such a map loads (on a background thread, so the match start doesn't stutter; about a second): walking routes, jumps, jet climbs, drops, ledge detours and bridges to every objective. Rebuilt in-game, all classic maps pass the same route audit as their hand-baked graphs, and it works on dedicated servers too.
 - **Bots handle Maker levels:** routes never run over spikes or lava; bots jet across a spike strip or lava pit holding height instead of a short hop that lands in it, steer off a hazard if they find themselves falling over one, don't bunny-hop into one, and respawn slides off a crowded base spawn never put anyone onto one. They also find, board and drive the buggies you place. The test (gate F `rtnav`) now plays a Maker level with spikes, lava and buggies.

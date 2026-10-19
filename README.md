@@ -18,6 +18,17 @@ the classic had and more, with most of Soldat 2's feature list folded in.
 
 <sub>Real frames from the v1.35 build ( bot matches, 1280×720, rendered in software GL — on a GPU it looks the same, only smoother).</sub>
 
+### What's new in 1.37 — Maker
+
+- **Maker mode** — build levels like Mario Maker: drag ready-made pieces (ground, ramps, hills, islands, bridges, walls), hazards (spikes, lava, jump pads), objectives, weapons, vehicles and scenery onto the map. Touching pieces merge into smooth terrain in the theme you pick. One button to PLAY your level and one to jump back into EDIT. Works on phones too.
+- **LEVELS** — browse, play, like and bookmark levels other players built (Hot, New, Most played, Top liked, Search). Publish your own from the editor and share its code (like `7KQ2-MX9P-4HDA`).
+- **Bots on any map** — editor, Maker and shared levels get bot navigation built in-game when they load. Bots route around spikes and lava, jet over them, and drive the buggies you place.
+- Includes everything from 1.36 Ultra HD below.
+
+![Maker mode](docs/screenshots/maker-mode-1.jpg)
+![Maker mode: hazards and pieces](docs/screenshots/maker-mode-2.jpg)
+![LEVELS browser (test data)](docs/screenshots/levels-browser.jpg)
+
 ### What's new in 1.36 — Ultra HD
 
 - **New soldiers** — redrawn from scratch in ultra HD on the same skeleton, animations and hit boxes: modern proportions, a helmet with a glowing team-colour visor, plate carrier, pads, boots, gloves, a real jetpack, and every cosmetic redrawn. *Classic* soldiers stay in Settings → Video → Soldier look.
