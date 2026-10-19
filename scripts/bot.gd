@@ -84,6 +84,7 @@ var _blocked_t := 0.0               # pushing into something without moving
 var _safe_floor_x := -INF              # last x we stood on solid (non-void) ground
 var _gap_ahead := false             # next path link crosses a bottomless gap
 var _gap_hazard := false            # ...the gap is a Maker kill zone (spikes / lava)
+var _pad_ride := -1                 # >= 0: following a jump-pad link (#286), its steer mode
 
 # Ammo state (#36) — bots run dry and reload like players.
 # `_mag_size` + `_reload_time` are stat lookups per loadout.
@@ -531,6 +532,7 @@ func _physics_process(delta: float) -> void:
 		# even mid-fight — it shoots on the way. Hunting/patrol goals yield to
 		# close-range strafing.
 		var objective: bool = _goal_label in ["flag", "return", "capture", "zone"]
+		_pad_ride = -1
 		if _goal != Vector2.INF and seek_lad == null and (not busy_retreat or objective) \
 				and (not close_fight or objective or _carrying_flag()):
 			var step := _nav_step(_goal, delta)
@@ -555,7 +557,14 @@ func _physics_process(delta: float) -> void:
 					# Never start across a bottomless gap on a low tank.
 					need = maxf(need, 70.0)
 					rise = maxf(rise, 46.0)
-				if rise > 45.0 and fuel < need and not jet_on and not _carrying_flag_under_fire():
+				if _pad_ride >= 0:
+					# Riding a jump pad (#286): the pad does the lifting — no
+					# refuel stop, no jumping off it (a jump / jet cancels the
+					# launch: match_hazards skips soldiers already rising).
+					_refuel_wait = false
+					if on_floor:
+						jump_cd = maxf(jump_cd, 0.1)
+				elif rise > 45.0 and fuel < need and not jet_on and not _carrying_flag_under_fire():
 					_refuel_wait = true
 				if _refuel_wait:
 					# Stop pushing at the wall, drop to the ground (or rest wedged
@@ -644,7 +653,7 @@ func _physics_process(delta: float) -> void:
 		dodge_cd -= delta
 		if dodge_cd <= 0.0:
 			dodge_cd = 0.1  # scan bullets at 10 Hz, not every tick
-			if not _refuel_wait and _bullet_incoming():
+			if not _refuel_wait and _pad_ride < 0 and _bullet_incoming():
 				if on_floor:
 					velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
 					Sfx.jump(global_position)
@@ -1848,6 +1857,9 @@ func _nav_step(goal: Vector2, delta: float) -> Vector3:
 			return Vector3.ZERO
 	if _path.is_empty():
 		return Vector3.ZERO
+	var pads: bool = nav.has_method("has_pads") and nav.has_pads()
+	if pads:
+		_pad_advance(nav, grounded)
 	# Advance past waypoints we've reached. A later waypoint that's already
 	# level with us and close counts too (we overshot on a hop).
 	while _path_i < _path.size() - 1:
@@ -1872,6 +1884,10 @@ func _nav_step(goal: Vector2, delta: float) -> Vector3:
 			_repath_t = 0.0
 			_path = PackedVector2Array()
 			return Vector3.ZERO
+	if pads and _path_i > 0:
+		_pad_ride = nav.pad_ride(_path[_path_i - 1], wp)
+		if _pad_ride >= 0:
+			return _pad_step(_path[_path_i - 1], wp, grounded)
 	var dx: float = wp.x - global_position.x
 	var dy: float = wp.y - global_position.y
 	var d := 0.0 if absf(dx) < 6.0 else signf(dx)
@@ -1906,6 +1922,43 @@ func _nav_step(goal: Vector2, delta: float) -> Vector3:
 		# lower hall ate bots that walked off the lip and jetted too late).
 		up = 1.0
 	return Vector3(d, up, 1.0)
+
+
+# Jump pads (#286): the runtime graph links a pad's node to the spots its
+# launch lands on (nav_builder._add_pad_links). The pad fires as soon as the
+# feet enter its trigger, often before the pad's waypoint counts as reached:
+# step the path on to the landing once we're in the trigger, or once we're
+# flying up off it (nothing else moves a bot up this fast).
+func _pad_advance(nav: RefCounted, grounded: bool) -> void:
+	var last := _path.size() - 1
+	if not grounded and velocity.y < -500.0:
+		for k in range(_path_i, mini(_path_i + 3, last)):
+			var a: Vector2 = _path[k]
+			if absf(a.x - global_position.x) < 64.0 and a.y > global_position.y - 8.0 \
+					and nav.pad_ride(a, _path[k + 1]) >= 0:
+				_path_i = k + 1
+				return
+	if _path_i < last:
+		var w: Vector2 = _path[_path_i]
+		if absf(w.x - global_position.x) < 30.0 and absf(w.y - global_position.y) < 30.0 \
+				and nav.pad_ride(w, _path[_path_i + 1]) >= 0:
+			_path_i += 1
+
+
+# Following a pad ride `pad` -> `land`: on the ground, walk onto the pad's
+# centre (never jump: a soldier already rising isn't launched); in the air,
+# no jets on the way up (the launch was simulated without them) and steer
+# over the landing — at once (mode 0) or once the feet are above its height
+# (mode 1, under an overhang).
+func _pad_step(pad: Vector2, land: Vector2, grounded: bool) -> Vector3:
+	_gap_ahead = false
+	_gap_hazard = false
+	if grounded and global_position.y > land.y + 40.0:
+		var px: float = pad.x - global_position.x
+		return Vector3(0.0 if absf(px) < 4.0 else signf(px), 0.0, 1.0)
+	var hold: bool = _pad_ride == 1 and velocity.y < 0.0 and global_position.y > land.y - 24.0
+	var lx: float = land.x - global_position.x
+	return Vector3(0.0 if hold or absf(lx) < 6.0 else signf(lx), 0.0, 1.0)
 
 
 func _is_gap(a: Vector2, b: Vector2) -> bool:

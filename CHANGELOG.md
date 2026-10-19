@@ -19,6 +19,9 @@ All notable changes to Soldat Reborn.
 ### Added — self-check
 - **`tools/selfcheck.py` / `tools\selfcheck.bat`** — the unattended self-check now lives in the repo (#278 #285 #289 #290): pull, import, dedicated server on a free port, a joining client and a bot-fire client, the whole process tree killed afterwards, a private user dir, `SELFCHECK PASS|FAIL <kind> <sha>`, logs in `build/selfcheck/`, and with `--report-github` ONE `[selfcheck] failing` issue that is commented on while it fails and closes itself on the next pass. Gate C `selfcheck`.
 
+### Added — bots on Maker levels (#287, #286)
+- **Bots use jump pads.** On a Maker level, bots now know where each jump pad (and big jump pad) can throw them and take the pad when it's the way to go — a flag or a fight up on a high floating island, for example. They walk onto the pad instead of jumping or jetting off it (which used to cancel the launch) and steer onto the landing in mid-air. Levels without pads play exactly as before. Bots also board and use the tanks and helicopters you place on a Maker level, like the buggies. (#287)
+
 ## [1.37.0] — 2026-10-19 — Maker
 
 This release also ships everything in 1.36 (Ultra HD soldiers, guns, terrain and dynamic lighting), listed under 1.36.0 below — the two went out together.
