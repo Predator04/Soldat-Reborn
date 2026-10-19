@@ -1431,7 +1431,7 @@ func _smoke_plane_tick() -> void:
 				Input.action_release("grenade")
 			if t > 2.4:
 				st["top"] = hn.global_position.y
-				print("SMOKE-PLANE-FLY seat=%d climbed=%d moved=%d lift=%.1fs v=%d hp=%d heat=%.2f bombs=%d" % [int(st["seat"]),
+				print("SMOKE-PLANE-FLY seat=%d from=%d climbed=%d moved=%d lift=%.1fs v=%d hp=%d heat=%.2f bombs=%d" % [int(st["seat"]), int(st["x0"]),
 					int(float(st["y0"]) - hn.global_position.y), int(absf(hn.global_position.x - float(st["x0"]))), float(st["lift"]),
 					int((h as CharacterBody2D).velocity.length()), int(h.hp), float(st.get("heat", 0.0)), int(h.bombs_dropped)])
 				Input.action_release("jump")

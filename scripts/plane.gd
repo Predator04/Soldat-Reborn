@@ -96,6 +96,8 @@ var _bp_break := 0.0
 var _bp_evade := 0.0
 var _bp_evade_dir := 0.0
 var _bp_climb := 0.0
+var _bp_evade_side := 1.0
+var _bp_evade_over := true
 var _bp_bail := false
 var bot_ban_t := 0.0               # host: bots leave this plane alone for a while after a failed flight
 var bot_flown := 0.0               # tests: px a bot pilot flew it while airborne
@@ -616,7 +618,7 @@ func apply_respawn() -> void:
 	super()
 	throttle = 0.0
 	bomb_cd = 0.0
-	_crash_cd = 0.0
+	_crash_cd = 1.0    # settling on its wheels at the spot isn't a crash
 	_bp_crash_t.clear()
 	_decide_spawn()
 	_grounded = not air_spawn
@@ -873,7 +875,7 @@ func _bot_pilot(delta: float) -> Vector2:
 		want = Vector2(dirx * cos(climb), -sin(climb))
 		# Over the goal with nothing to fight: slow down and bail out.
 		if goal != Vector2.INF and absf(goal.x - pos.x) < 380.0 and _bp_noenemy > 4.0 and _bp_t > 6.0:
-			if spd < 560.0 and alt > 60.0 and alt < 900.0:
+			if spd < 560.0 and alt > 60.0 and alt < 900.0 and _solid_below(pos):
 				_bot_leave(d, 20.0)
 				return Vector2.ZERO
 			want = Vector2(face, -0.25)
@@ -888,26 +890,43 @@ func _bot_pilot(delta: float) -> Vector2:
 	# Committed evasive turns (no flip-flopping between goals frame to frame):
 	# the side of the world or a wall ahead -> turn back toward the middle
 	# (over the top when fast, under when slow and high); ground ahead -> climb.
-	var lead := maxf(absf(velocity.x), 300.0) * 1.2
+	var lead := maxf(absf(velocity.x), 300.0) * 1.5
 	var edge := (velocity.x >= 0.0 and pos.x + lead > mw - 260.0) or (velocity.x <= 0.0 and pos.x - lead < 260.0)
 	var blk := _path_blocked(pos, spd)
 	if (edge and Vector2.from_angle(_tilt).x * center < 0.3) or blk == 2:
 		if _bp_evade <= 0.0:
 			_bp_evade = 1.8
-			_bp_evade_dir = Vector2(center * 0.7, -1.0).angle() if spd > 520.0 or alt < 450.0 else Vector2(center, 0.6).angle()
+			_bp_evade_side = center
+			# Over the top with room above and speed (or too low to go under),
+			# else under (a split-S trades height for speed).
+			var room := pos.y - CEIL_Y
+			_bp_evade_over = (room > 650.0 and (spd > 520.0 or alt < 450.0)) or alt < 350.0
+			_bp_evade_dir = Vector2(center * 0.7, -1.0).angle() if _bp_evade_over else Vector2(center, 0.6).angle()
+		elif blk == 2 and not _bp_evade_over and _bp_evade < 1.2:
+			# Still a wall ahead going under: climb out over it instead.
+			_bp_evade_over = true
+			_bp_evade_dir = Vector2(_bp_evade_side * 0.7, -1.0).angle()
 	if blk == 1:
 		_bp_climb = maxf(_bp_climb, 0.45)
 	if _bp_evade > 0.0:
 		desired = _bp_evade_dir
 		thr = 1.0
 	if _bp_climb > 0.0:
-		desired = Vector2(face * 0.35, -1.0).angle()
+		# Pull up — toward the side the evasive turn is heading, if any.
+		desired = Vector2((_bp_evade_side if _bp_evade > 0.0 else face) * 0.35, -1.0).angle()
 		thr = 1.0
 	# Too slow to fly: nose down (away from the side of the world) to get speed.
 	if spd < STALL_SPEED + 90.0 and _bp_climb <= 0.0:
 		desired = Vector2(center if edge else face, 0.45 if alt > 160.0 else 0.0).angle()
 		thr = 1.0
 	var pitch := clampf(angle_difference(_tilt, desired) * 3.0, -1.0, 1.0)
+	# Turning round (target / goal behind): go under (a split-S) when there's
+	# little sky left above and height to spare, else over the top.
+	if absf(angle_difference(_tilt, desired)) > 1.7 and _bp_evade <= 0.0 and _bp_climb <= 0.0:
+		var under := pos.y - CEIL_Y < 700.0 and alt > 450.0
+		var cw := fposmod(desired - _tilt, TAU)
+		var cw_down := fposmod(PI * 0.5 - _tilt, TAU) < cw
+		pitch = 1.0 if cw_down == under else -1.0
 	if _DBG == "2" and fmod(_bp_t, 0.25) < delta:
 		print("PLANE bot %s pos=%s v=%d tilt=%.2f want=%.2f pitch=%.2f alt=%d atk=%s blk=%d ev=%.1f cl=%.1f" % [str(d.get("display_name")),
 			str(pos.round()), int(spd), _tilt, desired, pitch, int(alt), str(attack), blk, _bp_evade, _bp_climb])
@@ -946,12 +965,24 @@ func _path_blocked(pos: Vector2, spd: float) -> int:
 	var h := _ray_hit(pos, pos + v * 0.9)
 	if not h.is_empty() and absf((h.normal as Vector2).y) < 0.5:
 		return 2
-	for k in [0.3, 0.6, 0.9, 1.2]:
-		var p: Vector2 = pos + v * float(k)
+	# Look ahead about as far as a pull-out takes (~450 px of turn at speed).
+	var tmax := clampf(0.4 + 450.0 / maxf(spd, 1.0), 0.8, 1.2)
+	for k in [0.25, 0.5, 0.75, 1.0]:
+		var p: Vector2 = pos + v * float(k) * tmax
 		var gy := _ground_y(p.x, p.y - 260.0)
 		if gy != INF and gy - p.y < MIN_CLEAR:
 			return 1
 	return 0 if h.is_empty() else 1
+
+
+## Real ground under `pos` (not the void down to the kill line).
+func _solid_below(pos: Vector2) -> bool:
+	var m := get_parent()
+	if m != null and m.has_method("_geom_ground_y"):
+		var gy: float = m._geom_ground_y(pos.x, pos.y)
+		var ky = m.get("KILL_Y")
+		return gy != INF and (ky == null or gy < float(ky))
+	return _ground_below(pos, 1200.0) != INF
 
 
 func _bomb_on_target(tp: Vector2) -> bool:

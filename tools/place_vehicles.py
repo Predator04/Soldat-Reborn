@@ -59,7 +59,8 @@ PLANE_MIN_SKY = 0.75
 PLANE_MIN_RUN = 640.0
 PLANE_STEP = 12.0        # px of height change allowed per 40 px of runway
 PLANE_RISE = 50.0        # most the runway may rise / fall from its start
-PLANE_LIFTOFF = 420.0    # px down the runway where it is airborne
+PLANE_LIFTOFF = 600.0    # px down the runway by which it is airborne and climbing
+PLANE_CLIMB_SLACK = 20.0 # terrain may poke this far over the climb-out line
 PLANE_CLIMB_GRAD = 0.45  # climb-out line: px up per px ahead after lift-off
 PLANE_CLIMB_OUT = 1100.0 # how far past the runway the climb-out is checked
 PLANE_TOP_CLEAR = 420.0  # px of sky above the runway at least
@@ -383,7 +384,7 @@ def check_runway(m, p, solid):
             break
         prev = top[xi]
         run += 40.0
-    if run < PLANE_MIN_RUN - 80.0:
+    if run < PLANE_MIN_RUN:
         return "runway toward the middle only %d px" % int(run)
     # Climb-out: past the take-off point (~PLANE_LIFTOFF px down the runway)
     # the terrain ahead must stay under a gentle climb line.
@@ -394,7 +395,7 @@ def check_runway(m, p, solid):
         xj = xi + d * int(s / R)
         if xj < int(40 / R) or xj >= len(top) - int(40 / R):
             break
-        if top[xj] is not None and top[xj] < y0 - max(0.0, s - PLANE_LIFTOFF) * PLANE_CLIMB_GRAD - PLANE_RISE:
+        if top[xj] is not None and top[xj] < y0 - max(0.0, s - PLANE_LIFTOFF) * PLANE_CLIMB_GRAD - PLANE_CLIMB_SLACK:
             return "terrain in the climb-out %d px ahead" % int(s)
     return None
 

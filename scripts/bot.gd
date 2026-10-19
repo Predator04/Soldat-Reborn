@@ -1603,6 +1603,7 @@ func _think() -> void:
 		return
 	_think_goal()
 	_think_drive()
+	_think_fly()
 
 
 func _think_goal() -> void:
@@ -2046,6 +2047,39 @@ func _think_drive() -> void:
 			m.vehicle_bot_board(v, self, 0)
 		else:
 			_set_goal(vpos, "drive")
+		return
+
+
+# #291: a plane is worth a longer walk than a buggy — a far goal and an empty
+# plane (resting / waiting to launch) within PLANE_PICKUP_RANGE that is roughly
+# on the way. The plane flies itself from there (plane._bot_pilot).
+const PLANE_MIN_TRIP := 1600.0
+const PLANE_PICKUP_RANGE := 900.0
+
+
+func _think_fly() -> void:
+	if _ride_cd > 0.0 or _goal == Vector2.INF or _goal_label == "drive" or _carrying_flag():
+		return
+	var m := _main()
+	if m == null or not m.has_method("vehicle_bot_board"):
+		return
+	if absf(_goal.x - global_position.x) < PLANE_MIN_TRIP:
+		return
+	for v in get_tree().get_nodes_in_group("vehicle"):
+		if not is_instance_valid(v) or str(v.get("kind")) != "plane" or not v.get("alive") or v.driver() != null:
+			continue
+		if not v.bot_board_ok():
+			continue
+		var vpos: Vector2 = (v as Node2D).global_position
+		var dist: float = global_position.distance_to(vpos)
+		if dist > PLANE_PICKUP_RANGE or absf(vpos.y - global_position.y) > 400.0:
+			continue
+		if signf(_goal.x - vpos.x) != signf(_goal.x - global_position.x) and absf(vpos.x - global_position.x) > 300.0:
+			continue
+		if dist < float(v.ENTER_RADIUS) - 6.0:
+			m.vehicle_bot_board(v, self, 0)
+		else:
+			_set_goal(vpos, "fly")
 		return
 
 
