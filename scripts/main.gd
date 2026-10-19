@@ -12,6 +12,7 @@ const KillcamRewind = preload("res://scripts/killcam_rewind.gd")
 const BonusPickup = preload("res://scripts/bonus_pickup.gd")
 const TouchControls = preload("res://scripts/touch_controls.gd")
 const NavGraph = preload("res://scripts/nav_graph.gd")
+const NavBuilder = preload("res://scripts/nav_builder.gd")   # #287 runtime graphs
 
 signal kill(killer_name: String, victim_name: String, weapon_name: String, killer_team: int, victim_team: int)
 signal objective(kind: String, team: int, who: String)   # grab/drop/return/capture/dom/point
@@ -177,6 +178,13 @@ var safety_stats := {"unstuck": 0, "fell": 0}  # read by tools/stuck_test.gd
 # Baked bot navigation graph for this map (empty for editor maps). Bots path
 # over it with A* — see scripts/nav_graph.gd / tools/build_nav.py.
 var nav: RefCounted = null
+# #287: maps without a baked graph (editor / Maker / shared / custom) build one
+# on a WorkerThreadPool thread at match start; bots chase directly until
+# _tick_runtime_nav() adopts it.
+var _nav_task := -1
+var _nav_builder: RefCounted = null
+var _nav_data: Dictionary = {}
+var nav_runtime_ms := -1     # build time once adopted (tests / diagnostics)
 
 var MAPS := [
 	{
@@ -464,6 +472,8 @@ func _ready() -> void:
 		add_child(rp)
 		return
 	nav = NavGraph.load_for(_map)
+	if nav.is_empty():
+		_start_runtime_nav()
 	_world._build_weather()
 	_build_hud()
 	_build_pause_menu()
@@ -1116,6 +1126,9 @@ func net_match_restart(map_idx: int, mode_idx: int) -> void:
 
 
 func _exit_tree() -> void:
+	if _nav_task >= 0:
+		WorkerThreadPool.wait_for_task_completion(_nav_task)   # never leave the builder running on a freed scene
+		_nav_task = -1
 	# Leaving mid-round (quit to menu, disconnect, map change): keep what was played.
 	if recorder != null and is_instance_valid(recorder):
 		recorder.save()
@@ -1246,7 +1259,33 @@ func net_pings(table: Dictionary) -> void:
 	_net.net_pings(table)
 
 
+## #287: build the bot graph in the background (pure data, no scene access).
+func _start_runtime_nav() -> void:
+	if _nav_task >= 0:
+		return
+	_nav_builder = NavBuilder.new()
+	var m: Dictionary = _map.duplicate(true)
+	var b: RefCounted = _nav_builder
+	_nav_task = WorkerThreadPool.add_task(func() -> void: _nav_data = b._build(m), false, "bot nav build")
+
+
+func _tick_runtime_nav() -> void:
+	if _nav_task < 0 or not WorkerThreadPool.is_task_completed(_nav_task):
+		return
+	WorkerThreadPool.wait_for_task_completion(_nav_task)
+	_nav_task = -1
+	if nav != null and nav.has_method("adopt"):
+		nav.adopt(_nav_data)
+	var st: Dictionary = _nav_data.get("stats", {})
+	nav_runtime_ms = int(st.get("ms", 0))
+	print("NAV runtime graph for %s: %d nodes, %d links, %d bridges in %d ms" % [str(_map.get("name", "?")),
+		int(st.get("nodes", 0)), int(st.get("edges", 0)), int(st.get("bridges", 0)), nav_runtime_ms])
+	_nav_data = {}
+	_nav_builder = null
+
+
 func _process(delta: float) -> void:
+	_tick_runtime_nav()
 	_world._tick_ambient_fx()
 	if replay_mode:
 		return

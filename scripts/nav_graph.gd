@@ -57,6 +57,16 @@ static func load_for(m: Dictionary) -> RefCounted:
 	return g
 
 
+## #287: load a graph built in-game by scripts/nav_builder.gd (maps without a
+## bake). Main thread only; ignored once a graph is loaded.
+func adopt(data: Dictionary) -> void:
+	if not is_empty() or data.is_empty():
+		return
+	_build(data.get("nodes", []), data.get("edges", []))
+	for a in data.get("air", []):
+		_air[int(a)] = true
+
+
 func _build(nodes: Array, edges: Array) -> void:
 	var n := nodes.size() / 2
 	astar.reserve_space(n)

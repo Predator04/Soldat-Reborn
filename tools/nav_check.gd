@@ -12,12 +12,15 @@ var _loaded := false
 var _count := -1
 var _bad := 0
 var _checked := 0
+var _runtime := false   # --runtime: rebuild every graph in-game (nav_builder.gd, #287) instead of the bake
+var _ms_total := 0
 
 
 func _initialize() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--from="): _from = int(a.substr(7))
 		elif a.begins_with("--to="): _to = int(a.substr(5))
+		elif a == "--runtime": _runtime = true
 	_idx = _from
 
 
@@ -45,6 +48,14 @@ func _process(_d: float) -> bool:
 	if _count < 0:
 		_count = (m.get("MAPS") as Array).size()
 	var nav = m.get("nav")
+	if _runtime:
+		var t0 := Time.get_ticks_msec()
+		var data: Dictionary = load("res://scripts/nav_builder.gd").new()._build(m.get("_map"))
+		var ms := Time.get_ticks_msec() - t0
+		_ms_total += ms
+		nav = load("res://scripts/nav_graph.gd").new()
+		nav.adopt(data)
+		print("built %3d %-14s %s" % [_idx, str((m.get("_map") as Dictionary).get("name", "?")), str(data.get("stats", {}))])
 	var flags: Array = m.get("flags")
 	var name := str((m.get("_map") as Dictionary).get("name", "?"))
 	_checked += 1
@@ -100,7 +111,7 @@ func _process(_d: float) -> bool:
 			print("map %3d %-14s %s" % [_idx, name, ", ".join(probs)])
 	_idx += 1
 	if _idx > _to or _idx >= _count:
-		print("NAVCHECK checked=%d broken=%d" % [_checked, _bad])
+		print("NAVCHECK checked=%d broken=%d%s" % [_checked, _bad, (" runtime build total %d ms" % _ms_total) if _runtime else ""])
 		quit()
 		return true
 	_loaded = false

@@ -2,6 +2,11 @@
 
 All notable changes to Soldat Reborn.
 
+## [Unreleased]
+
+### Added — bots on custom maps (#287)
+- **Bots now know their way around any map** — levels from the editor, Maker mode and shared levels used to have no bot navigation, so bots wandered. The game now builds the navigation graph itself when such a map loads (on a background thread, so the match start doesn't stutter; about a second): walking routes, jumps, jet climbs, drops, ledge detours and bridges to every objective. Rebuilt in-game, all classic maps pass the same route audit as their hand-baked graphs, and it works on dedicated servers too.
+
 ## [1.36.0] — 2026-10-19 — Ultra HD
 
 ### Added — new soldiers (#280, #281)

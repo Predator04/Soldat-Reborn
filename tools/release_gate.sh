@@ -106,6 +106,12 @@ if has N; then
   line=$(grep -m1 NAVCHECK "$OUT/navcheck.log")
   unknown=$(grep '^map' "$OUT/navcheck.log" | awk '{print $3}' | grep -vwE "${NAV_KNOWN_BROKEN:+$(echo $NAV_KNOWN_BROKEN | tr ' ' '|')}${NAV_KNOWN_BROKEN:-^$}" | tr '\n' ' ')
   if [ -n "$line" ] && [ -z "$unknown" ] && [ "$(errs "$OUT/navcheck.log")" = "0" ]; then pass "N nav routes: $line (known: $NAV_KNOWN_BROKEN)"; else fail "N nav routes: ${line:-no result} new broken: $unknown"; fi
+  # #287: the same audit with every graph built in-game (scripts/nav_builder.gd),
+  # as custom / Maker / shared maps get them — must match the bake.
+  timeout 900 "$G" --headless -s tools/nav_check.gd -- --runtime > "$OUT/navcheck_runtime.log" 2>&1
+  line=$(grep -m1 NAVCHECK "$OUT/navcheck_runtime.log")
+  bad=$(grep '^map' "$OUT/navcheck_runtime.log" | awk '{print $3}' | tr '\n' ' ')
+  if [ -n "$line" ] && [ -z "$bad" ] && [ "$(errs "$OUT/navcheck_runtime.log")" = "0" ]; then pass "N runtime nav routes: $line"; else fail "N runtime nav routes: ${line:-no result} broken: $bad"; fi
 fi
 
 # ── C net ───────────────────────────────────────────────────────────────────
@@ -597,6 +603,7 @@ if has F; then
   ft tank tank_test.gd 100 TANK-TEST "tank: drive / lobbed shell / armor / wreck / respawn / wide-map spawns"
   ft heli heli_test.gd 150 HELI-TEST "helicopter (#277): spin-up gate / climb / hover / fly / soft landing / rockets hit a bot / bullet 0.5x vs explosive / door gunner (human + bot) / spin-out crash kills pilot / respawn on pad / idle return / gentle wreck ejects crew / bot pilot takes off / big-map pads"
   ft vart vehicle_art_test.gd 200 VART-TEST "vehicle art (#276): every vehicle drawn pristine / crewed + firing / 4 damage levels / wreck / respawn at Low / Medium / High in both looks, pooled FX only on Medium+, no node growth, parked bodies unmoved"
+  ft rtnav runtime_nav_test.gd 120 RTNAV-TEST "runtime bot nav (#287): maps without a bake get a graph built on a worker thread (no main-thread stall), CTF legs routable, bots travel on it (classic copy + generated map)"
   ft sart soldier_art_test.gd 60 SOLDIER-ART-TEST "Operator soldier art (#280/#281): every rig part in both facings with normal maps + mipmaps, layer mirrors, every head / vest / pose drawn, jet flame from the pack, classic setting wins"
   ft wart weapons_gfx_test.gd 60 WEAPONS-ART-TEST "HD weapon art (#284): every weapon + belt grenade at 6x its classic sprite with mipmaps + normal map, drawn HD in hand / slung / as a pickup, bullet spawn identical in both looks, drawn barrel scales with the 78% gun, classic asks for no HD"
   ft joincode join_code_test.gd 60 JOINCODE-TEST "join codes: round trip, typos, garbage, host shows its code"
