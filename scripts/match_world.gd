@@ -35,6 +35,11 @@ var _geo_cols: Array = []
 # later at z=0), 2=front (drawn above soldiers).
 const _SCENERY_LEVEL_Z := {0: -3, 1: 0, 2: 5}
 var _soft_blank: Texture2D = null
+# #283: every drawn terrain polygon / platform with its classic colour data
+# (points, vertex colours, texture + tile UVs)
+# and the classic nodes that draw it — scripts/gfx/terrain_hd.gd redraws them
+# in the cinematic look (and hides these nodes meanwhile).
+var _hd_items: Array = []
 
 
 func _apply_world() -> void:
@@ -314,6 +319,12 @@ func _build_gfx_world() -> void:
 	main.add_child(main.terrain_fx)
 	if preload("res://scripts/gfx.gd").on(preload("res://scripts/gfx.gd").MEDIUM):
 		main.terrain_fx.build()
+	# #283: HD materials + painted edges (cinematic look, Medium+; draws
+	# nothing otherwise).
+	var hd: Node2D = preload("res://scripts/gfx/terrain_hd.gd").new()
+	hd.name = "TerrainHD"
+	hd.setup(main, _hd_items, pieces)
+	main.add_child(hd)
 	main.soldier_shadows = Node2D.new()
 	main.soldier_shadows.name = "SoldierShadows"
 	main.soldier_shadows.set_script(preload("res://scripts/soldier_shadows.gd"))
@@ -402,6 +413,9 @@ func _build_terrain() -> void:
 	var world_cfg: Dictionary = main._map.get("world", {}) if typeof(main._map.get("world", {})) == TYPE_DICTIONARY else {}
 	var floor_body := _make_platform(Vector2(main.MAP_W / 2.0, main.GROUND_Y + 100.0), Vector2(main.MAP_W + 200, 200), Color(0.22, 0.26, 0.32), floor_tex)
 	_solid_geo.clear()
+	_hd_items.clear()
+	if bool(world_cfg.get("floor_visible", true)):
+		_hd_register_platform(floor_body, Vector2(main.MAP_W / 2.0, main.GROUND_Y + 100.0), Vector2(main.MAP_W + 200, 200), Color(0.22, 0.26, 0.32), floor_tex, Color.WHITE)
 	_register_solid(PackedVector2Array([Vector2(-100, main.GROUND_Y), Vector2(main.MAP_W + 100, main.GROUND_Y),
 		Vector2(main.MAP_W + 100, main.GROUND_Y + 200), Vector2(-100, main.GROUND_Y + 200)]))
 	if not bool(world_cfg.get("floor_visible", true)):
@@ -430,7 +444,9 @@ func _build_terrain() -> void:
 		var vcols: PackedColorArray = poly.get("vc", PackedColorArray())
 		var cc := int(poly.get("col", 0))
 		# With merged collision outlines the triangles are drawn only.
-		_make_polygon_body(pts, pc, pt, uvs, draw_outline, 3 if has_coll else cc, vcols)
+		var pbody := _make_polygon_body(pts, pc, pt, uvs, draw_outline, 3 if has_coll else cc, vcols)
+		if pbody != null:
+			_hd_items.append({"nodes": _canvas_children(pbody), "pts": pts, "vc": vcols, "col": pc, "tex": pt, "cc": cc, "uvs": uvs})
 		if not has_coll and pts.size() >= 3 and (cc == 0 or cc == 2):
 			_register_solid(pts)
 	# Ported maps: physics from merged, seam-free outlines (tools/pms_to_map.py
@@ -463,6 +479,7 @@ func _build_terrain() -> void:
 		for c in pb.get_children():
 			if c is Polygon2D and (c as Polygon2D).texture != null:
 				(c as Polygon2D).color = Color(0.82, 0.8, 0.78, 1.0)
+		_hd_register_platform(pb, pl["p"], pl["s"], Color(0.28, 0.32, 0.4), plat_tex, Color(0.82, 0.8, 0.78, 1.0))
 	var wall_l := _make_platform(Vector2(0, main.MAP_H / 2.0), Vector2(40, main.MAP_H * 2.0), Color(0.2, 0.23, 0.28))
 	var wall_r := _make_platform(Vector2(main.MAP_W, main.MAP_H / 2.0), Vector2(40, main.MAP_H * 2.0), Color(0.2, 0.23, 0.28))
 	if not bool(world_cfg.get("floor_visible", true)):
@@ -470,6 +487,9 @@ func _build_terrain() -> void:
 			for c in wb.get_children():
 				if c is CanvasItem:
 					(c as CanvasItem).visible = false
+	else:
+		_hd_register_platform(wall_l, Vector2(0, main.MAP_H / 2.0), Vector2(40, main.MAP_H * 2.0), Color(0.2, 0.23, 0.28), "", Color.WHITE)
+		_hd_register_platform(wall_r, Vector2(main.MAP_W, main.MAP_H / 2.0), Vector2(40, main.MAP_H * 2.0), Color(0.2, 0.23, 0.28), "", Color.WHITE)
 	# Ladders — climbable Area2D regions (see player.gd's climbing state).
 	for ld in main._map.get("ladders", []):
 		_make_ladder(float(ld.get("x", 0.0)), float(ld.get("y", 0.0)),
@@ -478,6 +498,24 @@ func _build_terrain() -> void:
 	_spawn_scenery_hints()
 	main._vehicles_sys._spawn_m2_mounts()
 	main._bonuses._spawn_map_weapon_pickups()
+
+
+func _canvas_children(n: Node) -> Array:
+	# Visuals only (never the collision shapes, which are Node2Ds too).
+	var out: Array = []
+	for c in n.get_children():
+		if c is Polygon2D or c is Line2D:
+			out.append(c)
+	return out
+
+
+## #283: a rectangle body made by _make_platform, for terrain_hd.gd. `mod` is
+## the node colour the classic path multiplies a texture with.
+func _hd_register_platform(body: Node, pos: Vector2, size: Vector2, col: Color, tex: String, mod: Color) -> void:
+	var h := size * 0.5
+	_hd_items.append({"nodes": _canvas_children(body), "cc": 0, "col": col, "tex": tex, "mod": mod,
+		"vc": PackedColorArray(), "pts": PackedVector2Array([pos + Vector2(-h.x, -h.y), pos + Vector2(h.x, -h.y),
+		pos + Vector2(h.x, h.y), pos + Vector2(-h.x, h.y)])})
 
 
 func _register_solid(pts: PackedVector2Array) -> void:

@@ -247,6 +247,7 @@ func _build_cinematic_sky() -> void:
 	par.near = top.darkened(0.7)
 	par.rim = Color(0.72, 0.8, 1.0) if night > 0.5 else bottom.lightened(0.5)
 	par.rim_amount = 0.22 if night > 0.5 else 0.14
+	par.theme = preload("res://scripts/gfx/terrain_theme.gd").theme_for(_map)   # #283
 	_par_layer.add_child(par)
 
 

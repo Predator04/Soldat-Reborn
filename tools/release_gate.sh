@@ -608,6 +608,7 @@ if has F; then
   ft pad pad_test.gd 60 PAD-TEST "gamepad: radio (L3 + D-pad), limbo loadout (D-pad)"
   ft gfx gfx_test.gd 60 GFX-TEST "graphics presets: terrain depth / grass / post FX / bloom / lights / shadows / caps, live switch"
   ft atmos atmosphere_test.gd 60 ATMOS-TEST "graphics Phase A (#270): cinematic sky / parallax / ambient / post, pooled lights, rim light, live classic switch"
+  ft terrain terrain_gfx_test.gd 120 TERRAIN-TEST "HD terrain (#283): every map resolves to a material + theme, mipmapped materials / edges, fill + AO + painted edges on 6 themed maps, classic nodes hidden / restored, flat node count on reload"
   ft fxpool fx_test.gd 120 FXPOOL-TEST "graphics Phase B (#271): pooled FX, flat node count, caps per quality, decal ring, Blood 0, hit-stop / shake toggles, sim identical FX on vs off"
   ft ui ui_test.gd 90 UI-TEST "graphics Phase C (#272): menu transitions + Reduce motion, button hover / press scale, D-pad focus, settings preview lifetime, no node growth over 3 passes of every screen, HUD vitals / strip / toast / death band / UI scale"
   ft fxbench fx_bench.gd 90 FX-BENCH "graphics Phase B (#271): FX benchmark, 8 gibbings + minigun + 4 explosions, node count flat, FX ms / frame"

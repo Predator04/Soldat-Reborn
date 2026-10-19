@@ -11,6 +11,12 @@ All notable changes to Soldat Reborn.
 - **Settings → Video → Soldier look:** Operator (default) or Classic. Low graphics quality keeps the classic soldiers (one draw per body part).
 - `tools/gen_operator_gfx.py` paints the whole set (deterministic); `tools/soldier_stage.gd` renders before / after lineups. Gate: new F test SOLDIER-ART-TEST.
 
+### Added — HD terrain (#283)
+- **Every map's ground is repainted in the cinematic look (Medium / High):** twelve new high-resolution materials (rock, dirt, soil, moss / grass, sandstone, snow, metal plate, concrete, wood, brick, masonry, ice) with normal maps, so cliffs show slabs, strata and cracks, dirt has pebbles, bunkers have formwork concrete, rivets and rust streaks, planks and nail heads. Each map keeps its own colours (a green jungle stays green, a snowy map white) and its light-and-shadow shading; materials blend where the classic colours change, and muzzle flashes / explosions light the relief on High.
+- **Painted edges:** grass lips with tufts on grassy ledges, snow caps on snowy maps, sand and crumbly dirt lips, lit rock rims and worn bright metal edges, hanging roots and icicles under overhangs, and a soft shadow just inside every edge. Background walls you can't stand on are darker and calmer, so the playable ground reads first.
+- **Themed backgrounds:** the far hills follow the map — city skylines with lit windows, desert mesas and cacti, snowy peaks and pines, jungle canopy and palms, ruined arches.
+- Collision, map data, bots and netcode are untouched; Low quality and the Classic look draw exactly as before. Built once per map (a handful of draw calls instead of one per polygon). `tools/gen_terrain_gfx.py` generates the art (deterministic), `tools/terrain_capture.gd` renders before / after pairs and benchmarks. Gate: new F test TERRAIN-TEST.
+
 ### Fixed
 - **The next-map vote no longer pops up every time a round ends** — a kill-limit win, a Survival wipe or a Battle Royale finish used to throw the vote at you (often right as you died) and switch maps every couple of minutes. The 5:00 clock is now the match clock: a round that ends early shows a short winner banner ("Next round - 3:12 left in the match"), restarts on the same map and the clock keeps running. Only a round that ends in the **last two minutes**, or the clock running out, ends the match with the winner screen and the map vote; the next match starts with a fresh clock. (#279)
 
