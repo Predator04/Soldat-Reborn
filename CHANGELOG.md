@@ -2,7 +2,7 @@
 
 All notable changes to Soldat Reborn.
 
-## [Unreleased]
+## [1.36.0] — 2026-10-19 — Ultra HD
 
 ### Added — new soldiers (#280, #281)
 - **Every soldier is redrawn.** The chibi shapes are gone: a smaller head, slim limbs, a real torso with shoulders, tall combat boots and gloves, all on the same skeleton, animations and hit boxes. Modern gear: a ballistic helmet with a **glowing visor slit** in your team colour, plate carrier with mag pouches and a radio + antenna, war belt, shoulder / elbow / knee pads, headset with a mic boom, shooting glasses and a neck gaiter. Team colour stays on the uniform and pops in the accents (visor, shoulder stripes, chest patch, IR strobe), so friend / foe still reads at a glance.

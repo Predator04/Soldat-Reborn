@@ -16,7 +16,23 @@ the classic had and more, with most of Soldat 2's feature list folded in.
 | ![Teammatch on Scorpion](docs/screenshots/teammatch-scorpion.jpg) | ![Domination on Jungle](docs/screenshots/domination-jungle.jpg) |
 | ![Main menu](docs/screenshots/menu.jpg) | ![Settings with live preview](docs/screenshots/settings-live-preview.jpg) |
 
-<sub>Real frames from the current build (v1.35, bot matches, 1280×720, rendered in software GL — on a GPU it looks the same, only smoother).</sub>
+<sub>Real frames from the v1.35 build ( bot matches, 1280×720, rendered in software GL — on a GPU it looks the same, only smoother).</sub>
+
+### What's new in 1.36 — Ultra HD
+
+- **New soldiers** — redrawn from scratch in ultra HD on the same skeleton, animations and hit boxes: modern proportions, a helmet with a glowing team-colour visor, plate carrier, pads, boots, gloves, a real jetpack, and every cosmetic redrawn. *Classic* soldiers stay in Settings → Video → Soldier look.
+- **Ultra HD guns** — all 16 weapons and the grenades repainted at 6x: machined wear, wood grain, stippled grips, markings. Same bullet spawn.
+- **HD terrain** — 12 detailed materials (rock, sand, metal, wood, brick, snow, ice …) with painted grass lips, snow caps and icicles, and backgrounds that match each map's theme.
+- **Dynamic lighting** (High) — muzzle flashes, explosions, rockets and jetpack burns light soldiers, guns and terrain by direction; soldiers cast soft contact shadows.
+- The next-map vote now only appears in the last two minutes of a match.
+
+![Soldiers before/after](docs/screenshots/soldiers-before-after.jpg)
+![Ultra HD close-up](docs/screenshots/soldiers-closeup.jpg)
+![Dynamic lighting](docs/screenshots/soldiers-lighting.jpg)
+![Terrain before/after: Airpirates](docs/screenshots/terrain-before-after-airpirates.jpg)
+![Terrain before/after: Kampf](docs/screenshots/terrain-before-after-kampf.jpg)
+![Terrain before/after: Icebeam](docs/screenshots/terrain-before-after-icebeam.jpg)
+![Weapons before/after](docs/screenshots/weapons-before-after.jpg)
 
 ### What's new in 1.35 — Tracerfall
 
