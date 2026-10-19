@@ -28,7 +28,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 G="${GODOT_BIN:-$HOME/godot/Godot_v4.7.2-stable_linux.x86_64}"
 QUICK=0; OUT="build/gate"; ONLY="A B N C D R F E"; MODESEL="0 1 2 3 4 5 6 7 8 9"
-NETSEL="ctf dm dedboot two trust fill ranked friends news featured respawn killcam drive heli rejoin relay host listen lan soak m3 m7 m9 m2"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
+NETSEL="ctf dm dedboot selfcheck two trust fill ranked friends news featured respawn killcam drive heli rejoin relay host listen lan soak m3 m7 m9 m2"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --quick) QUICK=1;; --out) OUT="$2"; shift;; --only) ONLY="$2"; shift;;
@@ -211,6 +211,19 @@ case " $NETSEL " in *" dedboot "*)
     pass "C net dedicated boot from a never-imported checkout: listening after ${secs}s (unimported-asset parse errors: $pe; checkers must --import)"
   else
     fail "C net dedicated boot from a never-imported checkout: no listening line after ${secs}s ($(grep -m1 -E 'SCRIPT ERROR|ERROR' "$OUT/net_dedboot_fresh.log"))"
+  fi
+;; esac
+case " $NETSEL " in *" selfcheck "*)
+  # The unattended self-check the owner's machine runs every 6 h
+  # (tools/selfcheck.py: import, dedicated server, --smoke-join, --smoke-botfire,
+  # process-tree cleanup) must pass here too — no --pull, no GitHub.
+  timeout 400 python3 tools/selfcheck.py --godot "$REAL_G" --out "$OUT/selfcheck" > "$OUT/net_selfcheck.log" 2>&1
+  src=$?
+  line=$(grep -m1 "^SELFCHECK " "$OUT/net_selfcheck.log")
+  if [ "$src" = "0" ] && echo "$line" | grep -q "^SELFCHECK PASS "; then
+    pass "C net selfcheck (tools/selfcheck.py): $line"
+  else
+    fail "C net selfcheck: exit=$src '${line:-no SELFCHECK line}' $(grep -v '^selfcheck: log' "$OUT/net_selfcheck.log" | head -1 | cut -c1-160)"
   fi
 ;; esac
 case " $NETSEL " in *" two "*)
