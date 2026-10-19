@@ -5,6 +5,7 @@ extends Node2D
 
 const SoldierArt := preload("res://scripts/soldier_art.gd")
 const Recorder := preload("res://scripts/replay_recorder.gd")
+const UIBack := preload("res://scripts/ui_back.gd")
 
 var main: Node
 var data: Dictionary = {}
@@ -216,7 +217,23 @@ func exit_replay() -> void:
 	get_tree().change_scene_to_file("res://scenes/menu.tscn")
 
 
+# Android back button / gesture = Esc: leave the replay (there is no pause
+# menu while watching; quit_on_go_back is off, so without this BACK did nothing).
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST and is_inside_tree():
+		_back.call_deferred()
+
+
+func _back() -> void:
+	if is_inside_tree() and not UIBack.dismiss(get_tree()):
+		exit_replay()
+
+
 func _unhandled_input(event: InputEvent) -> void:
+	if UIBack.is_back_event(event):
+		get_viewport().set_input_as_handled()
+		exit_replay()
+		return
 	# Drag (finger or mouse) pans the camera: free cam.
 	var drag := Vector2.ZERO
 	if event is InputEventScreenDrag:
@@ -239,7 +256,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_Q: cycle_follow(-1)
 		KEY_E: cycle_follow(1)
 		KEY_F: follow_id = -1
-		KEY_ESCAPE: exit_replay()
 		_: return
 	get_viewport().set_input_as_handled()
 

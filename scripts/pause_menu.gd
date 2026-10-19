@@ -9,6 +9,8 @@ const ControlsMenu = preload("res://scripts/controls_menu.gd")
 const SettingsPanel = preload("res://scripts/settings_panel.gd")
 const HostAdminPanel = preload("res://scripts/host_admin_panel.gd")
 const UITheme = preload("res://scripts/ui_theme.gd")
+const UIBack = preload("res://scripts/ui_back.gd")
+const TouchControls = preload("res://scripts/touch_controls.gd")
 
 var _root_panel: Control
 var _menu_box: VBoxContainer
@@ -205,51 +207,72 @@ func _pad(px: int) -> Control:
 
 func _input(event: InputEvent) -> void:
 	# ESC (keyboard) or Start (gamepad) — both bind to the `pause` action (#115).
-	# Falls back to a bare KEY_ESCAPE check so a user who somehow unbound `pause`
-	# in the Controls menu still has a way to open the pause overlay.
-	var triggered := false
-	if InputMap.has_action("pause") and event.is_action_pressed("pause"):
-		triggered = true
-	elif event is InputEventKey and event.pressed and not event.echo \
-			and (event.physical_keycode == KEY_ESCAPE or event.keycode == KEY_ESCAPE):
-		# keycode too: remote-play / streaming / automation tools often send
-		# virtual keys without a scancode, which the physical binding misses.
-		triggered = true
-	if triggered:
-		# Don't hijack while the HUD's chat / command LineEdit is focused —
-		# the LineEdit uses ESC to close itself.
-		if not _open:
-			var focused := get_viewport().gui_get_focus_owner()
-			if focused != null and focused is LineEdit:
-				return
-		if _open:
-			# ESC/Start in a sub-panel steps back to the main pause list.
-			# Controls capture handles its own ESC (to cancel a rebind) —
-			# only back out once nothing is being captured, otherwise the
-			# user would lose their rebind session on the first ESC.
-			if _controls_panel.visible:
-				if _controls_panel._capturing_action != "":
-					_controls_panel._abort_capture()
-				else:
-					_close_controls()
-				get_viewport().set_input_as_handled()
-				return
-			if _settings_panel.visible:
-				_close_settings()
-				get_viewport().set_input_as_handled()
-				return
-			if _host_admin_panel.visible:
-				_close_host_admin()
-				get_viewport().set_input_as_handled()
-				return
-			if _quit_confirm_wrapper.visible:
-				_close_quit_confirm()
-				get_viewport().set_input_as_handled()
-				return
-			close()
+	# Falls back to a bare KEY_ESCAPE check (UIBack.is_back_event: keycode or
+	# scancode, or ui_cancel) so a user who somehow unbound `pause` in the
+	# Controls menu still has a way to open the pause overlay; keycode too:
+	# remote-play / streaming / automation tools often send virtual keys
+	# without a scancode, which the physical binding misses.
+	var is_back := UIBack.is_back_event(event)
+	var is_pause := InputMap.has_action("pause") and event.is_action_pressed("pause")
+	if not is_back and not is_pause:
+		return
+	# Don't hijack while the HUD's chat / command LineEdit is focused —
+	# the LineEdit uses ESC to close itself.
+	if not _open:
+		var focused := get_viewport().gui_get_focus_owner()
+		if focused != null and focused is LineEdit:
+			return
+	get_viewport().set_input_as_handled()
+	# Esc is BACK (same as the Android button); Start / a rebound pause key
+	# toggles the overlay as before.
+	if is_back or _open:
+		go_back()
+	else:
+		open()
+
+
+## BACK / Esc in a match (scripts/ui_back.gd rule), top-most first: an open
+## popup list, a pause sub-panel (Controls mid-rebind cancels the capture
+## first, so the rebind session isn't lost), the quit confirm, the pause list
+## itself (= resume); with the overlay closed: the touch-layout editor, the
+## chat / command line, the radio menu, then a Maker play-test goes back to
+## EDIT (like the pause menu's exit) and any other match opens the pause menu.
+func go_back() -> void:
+	if UIBack.dismiss(get_tree()):
+		return
+	if _open:
+		if _controls_panel.visible:
+			if _controls_panel._capturing_action != "":
+				_controls_panel._abort_capture()
+			else:
+				_close_controls()
+		elif _settings_panel.visible:
+			_close_settings()
+		elif _host_admin_panel.visible:
+			_close_host_admin()
+		elif _quit_confirm_wrapper.visible:
+			_close_quit_confirm()
 		else:
-			open()
-		get_viewport().set_input_as_handled()
+			close()
+		return
+	if TouchControls.edit_mode:
+		TouchControls.edit_mode = false
+		Settings.save()
+		return
+	var hud = get_parent().get("hud") if get_parent() != null else null
+	if hud != null and is_instance_valid(hud):
+		var cl = hud.get("command_line")
+		if cl != null and bool(cl.get("is_open")):
+			cl.call("close_command")
+			return
+		var rm = hud.get("radio_menu")
+		if rm != null and is_instance_valid(rm) and (rm as CanvasItem).visible:
+			rm.call("close")
+			return
+	if not Net.maker_return.is_empty() and get_parent() != null and get_parent().has_method("maker_edit"):
+		_exit_to_menu()
+		return
+	open()
 
 
 var _info_lbl: Label
@@ -313,14 +336,13 @@ func _set_frozen(on: bool) -> void:
 		get_tree().paused = on
 
 
-# Android back button / gesture: toggle the pause overlay instead of quitting
-# the app (quit_on_go_back is off in project.godot).
+# Android back button / gesture = Esc (go_back) instead of quitting the app
+# (quit_on_go_back is off in project.godot).
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
-		if _open:
-			close()
-		else:
-			open()
+		if is_inside_tree():
+			# Deferred: the notification walks the tree; EDIT changes scenes.
+			go_back.call_deferred()
 	# Alt-tab / phone home button / incoming call: open the pause menu so a
 	# single-player match doesn't keep running (and you don't come back dead).
 	# In multiplayer it only stops your own input, same as pressing Esc.

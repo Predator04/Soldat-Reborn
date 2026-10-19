@@ -4,6 +4,8 @@ extends RefCounted
 ## layer over it exactly as it did inline; menu.gd keeps thin wrappers so
 ## every existing call site is untouched.
 
+const UIBack = preload("res://scripts/ui_back.gd")
+
 
 ## A real, saved name (used in kill feed, scoreboard, multiplayer).
 static func has_real_name() -> bool:
@@ -98,6 +100,8 @@ static func build(m: Node, then: Callable = Callable(), changing := false) -> vo
 	edit.text_submitted.connect(func(_t: String) -> void: finish.call(then))
 	if cancel != null:
 		cancel.pressed.connect(close)
+	# BACK = CANCEL; the first-launch prompt has no skip, so BACK just stays.
+	UIBack.register(root, close if cancel != null else func() -> void: pass)
 	m._name_prompt_root = root
 	UITheme.safe_grab_focus_deferred(edit)
 

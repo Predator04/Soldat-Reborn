@@ -4,6 +4,9 @@ All notable changes to Soldat Reborn.
 
 ## [Unreleased]
 
+### Fixed — Android BACK button
+- **The phone's BACK button (and Esc on PC) now always closes what's on top first** instead of throwing you out: in the map editor it closes the Publish dialog, the LEVELS browser, the load list, open drop-down lists, the context menu, the problems list and the Open sheet (then un-arms a piece / clears the selection) before leaving the editor; in a Maker test match it closes the pause menu, its Settings or quit prompt one step at a time, the chat line and the touch-layout editor, then goes back to EDIT; in the main menu the server browser goes back to Join, an open drop-down list closes before its screen, and the name prompt, update, WHAT'S NEW and connection-lost dialogs close (the first-launch name prompt stays) — BACK no longer quits the game from under any of them. In a match the pause menu's sub-screens step back one at a time too, and BACK now leaves the replay viewer (it did nothing before). New gate F test BACK-TEST.
+
 ## [1.37.0] — 2026-10-19 — Maker
 
 This release also ships everything in 1.36 (Ultra HD soldiers, guns, terrain and dynamic lighting), listed under 1.36.0 below — the two went out together.

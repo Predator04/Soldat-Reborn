@@ -20,6 +20,7 @@ const MapIO = preload("res://scripts/map_io.gd")
 const MapGen = preload("res://scripts/map_gen.gd")
 const Maker = preload("res://scripts/maker/maker_mode.gd")
 const MakerBuild = preload("res://scripts/maker/maker_build.gd")
+const UIBack = preload("res://scripts/ui_back.gd")
 
 const MAP_W := 4800.0
 const MAP_H := 2000.0
@@ -411,6 +412,11 @@ func _draw_ladder(r: Rect2, col: Color, preview: bool) -> void:
 # ── Input ─────────────────────────────────────────────
 
 func _unhandled_input(event: InputEvent) -> void:
+	# Esc / ui_cancel = the BACK rule (go_back), in both modes.
+	if UIBack.is_back_event(event):
+		get_viewport().set_input_as_handled()
+		go_back()
+		return
 	if _maker != null and _maker.active:
 		_maker.handle_input(event)
 		return
@@ -538,7 +544,6 @@ func _handle_mouse_motion(ev: InputEventMouseMotion) -> void:
 
 func _handle_key(ev: InputEventKey) -> void:
 	match ev.keycode:
-		KEY_ESCAPE: _exit_to_menu()
 		KEY_F5: _play_test()
 		KEY_1: _set_tool(Tool.PLATFORM)
 		KEY_2: _set_tool(Tool.LADDER)
@@ -1133,6 +1138,7 @@ func _build_load_panel(ui: CanvasLayer) -> void:
 	close.custom_minimum_size = Vector2(0, 36)
 	close.pressed.connect(func() -> void: _load_panel.visible = false)
 	vb.add_child(close)
+	UIBack.register(_load_panel, func() -> void: _load_panel.visible = false)
 
 
 # ── Menu callbacks ────────────────────────────────────
@@ -1298,12 +1304,20 @@ func _set_status(s: String) -> void:
 		_status.text = s
 
 
-# Android back button / gesture: close the load list, else leave to the menu.
+# Android back button / gesture (quit_on_go_back is off) = Esc: go_back().
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST and is_inside_tree():
-		if _maker != null and _maker.active and _maker.back_pressed():
-			return
-		if _load_panel != null and _load_panel.visible:
-			_load_panel.visible = false
-		else:
-			_exit_to_menu()
+		# Deferred: the notification walks the tree and leaving changes scenes.
+		go_back.call_deferred()
+
+
+## The editor's BACK / Esc (scripts/ui_back.gd rule): an open popup list or
+## overlay first (PUBLISH, LEVELS, the load list, Maker's context menu /
+## problems / open sheets), then Maker's disarm / deselect, and only with
+## nothing open the editor's own exit (FILE > Exit to menu).
+func go_back() -> void:
+	if UIBack.dismiss(get_tree()):
+		return
+	if _maker != null and _maker.active and _maker.back_pressed():
+		return
+	_exit_to_menu()
