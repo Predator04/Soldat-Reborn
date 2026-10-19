@@ -369,6 +369,16 @@ func _build_game(box: VBoxContainer) -> void:
 		func(on: bool) -> void:
 			Settings.check_updates = on
 			Settings.save()))
+	# #223 Discord Rich Presence — desktop only (Discord's phone app has no
+	# local status API).
+	if not (OS.has_feature("android") or OS.has_feature("mobile")):
+		var dc := _check_button("Discord status (show what you're playing on your Discord profile)", Settings.discord_status,
+			func(on: bool) -> void:
+				Settings.discord_status = on
+				Settings.save()
+				Settings.apply_discord())
+		dc.name = "DiscordStatus"
+		box.add_child(dc)
 	box.add_child(_check_button("Kill cam replay (rewind how you died)", Settings.killcam_replay,
 		func(on: bool) -> void:
 			Settings.killcam_replay = on

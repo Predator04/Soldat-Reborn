@@ -38,6 +38,7 @@ var killcam_replay := true     # rewind the last seconds when you die
 var show_fps := false          # overlay FPS counter on the HUD
 var pause_on_focus_loss := true  # open the pause menu when the window / app loses focus
 var check_updates := true      # look for a newer release on GitHub at startup
+var discord_status := true     # #223: show what you're playing in Discord (desktop; scripts/discord/)
 var colorblind := false        # red team drawn orange (blue / orange)
 var soldier_look := "operator"  # #280: "operator" (3x gear sprites) | "classic" (original soldiers)
 var visual_style := "cinematic" # "cinematic" (dark, high-contrast grade + new sky) | "classic" (original look)
@@ -225,6 +226,26 @@ func _ready() -> void:
 	# binds (actions didn't exist yet) and re-added removed pad defaults.
 	ControlsMap.install_defaults()
 	ControlsMap.load_and_apply()
+	_start_discord()
+
+
+## #223 Discord Rich Presence: a child node on desktop only. Phones, headless
+## runs (every test, the dedicated server) and dedicated hosts never even load
+## the script; on desktop it idles until GameInfo.DISCORD_APP_ID is set.
+func _start_discord() -> void:
+	if OS.has_feature("android") or OS.has_feature("mobile") or OS.has_feature("web") \
+			or DisplayServer.get_name() == "headless":
+		return
+	var p: GDScript = load("res://scripts/discord/discord_presence.gd")
+	if p != null and p.platform_ok():
+		add_child(p.new())
+
+
+## The "Discord status" toggle changed (Settings → Game).
+func apply_discord() -> void:
+	var n := get_node_or_null("DiscordPresence")
+	if n != null:
+		n.call("refresh_enabled")
 
 
 func load_settings() -> void:
@@ -282,6 +303,7 @@ func load_settings() -> void:
 	max_fps = clampi(int(cf.get_value("video", "max_fps", 0)), 0, 360)
 	pause_on_focus_loss = bool(cf.get_value("game", "pause_on_focus_loss", true))
 	check_updates = bool(cf.get_value("game", "check_updates", true))
+	discord_status = bool(cf.get_value("game", "discord_status", true))
 	colorblind = bool(cf.get_value("video", "colorblind", false))
 	visual_style = "classic" if str(cf.get_value("video", "visual_style", "cinematic")) == "classic" else "cinematic"
 	soldier_look = "classic" if str(cf.get_value("video", "soldier_look", "operator")) == "classic" else "operator"
@@ -425,6 +447,7 @@ func _write_file() -> void:
 	cf.set_value("video", "max_fps", max_fps)
 	cf.set_value("game", "pause_on_focus_loss", pause_on_focus_loss)
 	cf.set_value("game", "check_updates", check_updates)
+	cf.set_value("game", "discord_status", discord_status)
 	cf.set_value("video", "colorblind", colorblind)
 	cf.set_value("video", "visual_style", visual_style)
 	cf.set_value("video", "soldier_look", soldier_look)

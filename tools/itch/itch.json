@@ -1,0 +1,10 @@
+{
+  "_help": "itch.io upload target for tools/itch/push.py (#224). Set target to \"<itch user>/<project url name>\" (e.g. \"predator04/tracerfall\") to turn pushing on; empty = off. No secrets here: the API key comes from `butler login` or the BUTLER_API_KEY env var. See docs/itch/README.md.",
+  "target": "",
+  "channels": {
+    "exe": "windows",
+    "apk": "android",
+    "pck": "server"
+  },
+  "push_pck": false
+}

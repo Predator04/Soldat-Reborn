@@ -1,5 +1,10 @@
 # itch.io page for Tracerfall
 
+> **Superseded by [docs/itch/README.md](../../docs/itch/README.md) (#224)**: current page copy
+> (`docs/itch/description.html`), tags, theme colours, the butler upload script
+> (`tools/itch/push.py`) and the release-notes template. This older kit is kept for its
+> screenshots and gameplay.gif; its cover still says "Soldat Reborn".
+
 Everything to paste into itch.io when you create the project
 (itch.io > Dashboard > Create new project). Files are in this folder.
 
