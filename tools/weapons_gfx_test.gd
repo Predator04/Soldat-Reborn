@@ -6,9 +6,10 @@ extends SceneTree
 ## plus a same-size normal map. With the Operator art forced on, the in-hand
 ## weapon, the back-slung weapon + belt grenade and the dropped pickups each
 ## draw the HD texture (pickups switch to mipmapped filtering); with it off
-## nothing asks for one. The muzzle (muzzle_local, and the barrel end the
-## in-hand draw returns) is identical in both looks for every weapon, facing
-## and aim, so bullets spawn where they always did. Zero script errors (the
+## nothing asks for one. muzzle_local (the bullet spawn) is identical in both
+## looks for every weapon, facing and aim, so bullets spawn where they always
+## did; the Operator gun is drawn at OP_GUN_SCALE about the grip (#281) and its
+## drawn barrel end (muzzle flash) scales with it. Zero script errors (the
 ## gate greps the log).
 
 const PUPPET_SRC := """
@@ -40,6 +41,7 @@ func _draw():
 				for on in [false, true]:
 					G.force_operator_for_tests = on
 					pair.append(art._draw_weapon_sprite(self, sh, a, f, ds.weapon_name, Color.WHITE, "bullet"))
+				pair.append(sh)
 				ends.append(pair)
 		G.force_operator_for_tests = keep
 """
@@ -151,8 +153,11 @@ func _check_muzzles() -> void:
 		if p.ends.is_empty():
 			_bad.append("%s barrel-end probe never ran" % w)
 		for pair in p.ends:
-			if pair[0] != pair[1]:
-				_bad.append("%s barrel end moved %s -> %s" % [w, str(pair[0]), str(pair[1])])
+			# #281: the Operator gun is drawn at OP_GUN_SCALE about the grip, so
+			# its drawn barrel end (muzzle flash) sits that far along the classic one.
+			var want: Vector2 = pair[2] + (pair[0] - pair[2]) * float(_art.OP_GUN_SCALE)
+			if not (pair[1] as Vector2).is_equal_approx(want):
+				_bad.append("%s drawn barrel end %s, want %s" % [w, str(pair[1]), str(want)])
 			cnt += 1
 	_G.force_operator_for_tests = true
 	_log.append("muzzles %d identical" % cnt)

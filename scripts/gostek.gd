@@ -388,6 +388,11 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 			var wtex := WeaponGfx.hd_for_path(key)
 			if wtex != null:
 				tex = wtex
+			if gun:
+				w *= 0.78   # matches SoldierArt.OP_GUN_SCALE (slung gun)
+				h *= 0.78
+				cx *= 0.78
+				cy *= 0.78
 		if has_xf:
 			node.draw_set_transform_matrix(xf * Transform2D(angle, Vector2(sx, sy), 0.0, p1))
 		else:

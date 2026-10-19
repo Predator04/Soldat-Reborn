@@ -5,6 +5,7 @@ extends RefCounted
 ## procedurally on top. Jet flame stays procedural for now.
 
 const HP_BAR_Y := -21.0
+const OP_GUN_SCALE := 0.78   # #281: in-hand / slung guns on the Operator soldier
 
 const WEAPON_SPRITE := {
 	"Deagles":      "res://assets/weapons-gfx/deserteagle.png",
@@ -214,22 +215,27 @@ static func _draw_weapon_sprite(
 	# #284: Operator look draws the 3x HD sprite into the same classic rect
 	# (size / pivot / barrel_len above all come from the classic texture).
 	var draw_tex := tex
+	var gs := 1.0
 	if Gostek.operator_on():
 		var hd := WeaponGfx.hd_for_path(str(WEAPON_SPRITE[weapon_name]))
 		if hd != null:
 			draw_tex = hd
+		# #281: guns sized for the chibi gostek dwarf the Operator soldier; draw
+		# them smaller about the grip. Visual only: muzzle_local() (bullet spawn)
+		# keeps the classic barrel length, so play is the same in both looks.
+		gs = OP_GUN_SCALE
 	var plain := xf == Transform2D.IDENTITY
 	if plain:
-		node.draw_set_transform(shoulder, angle, Vector2(1.0, flip_y))
+		node.draw_set_transform(shoulder, angle, Vector2(gs, flip_y * gs))
 	else:
-		node.draw_set_transform_matrix(xf * Transform2D(angle, Vector2(1.0, flip_y), 0.0, shoulder))
+		node.draw_set_transform_matrix(xf * Transform2D(angle, Vector2(gs, flip_y * gs), 0.0, shoulder))
 	node.draw_texture_rect(draw_tex, Rect2(Vector2(-grip_offset, -cy_offset), size), false, skin)
 	if plain:
 		node.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	else:
 		node.draw_set_transform_matrix(xf)
 
-	return shoulder + aim_dir * barrel_len
+	return shoulder + aim_dir * barrel_len * gs
 
 
 # Muzzle (barrel-tip) position in the node's LOCAL space. Used by both the
