@@ -2,7 +2,7 @@ extends SceneTree
 ## HD weapon art (#284, gate stage F).
 ##   godot --headless --fixed-fps 60 -s tools/weapons_gfx_test.gd
 ## Every weapon sprite (and both belt grenades) has an HD twin in
-## assets/weapons-hd/ at exactly 3x the classic size, imported with mipmaps,
+## assets/weapons-hd/ at exactly 6x the classic size, imported with mipmaps,
 ## plus a same-size normal map. With the Operator art forced on, the in-hand
 ## weapon, the back-slung weapon + belt grenade and the dropped pickups each
 ## draw the HD texture (pickups switch to mipmapped filtering); with it off
@@ -44,6 +44,7 @@ func _draw():
 		G.force_operator_for_tests = keep
 """
 
+const HD_SCALE := 6   # HD sprites are 6x their classic sprite (#284 "ultra HD")
 const AIMS := [Vector2.RIGHT, Vector2(0.7, -0.7), Vector2(0.0, -1.0), Vector2(-0.9, 0.3), Vector2(-0.5, -0.85), Vector2(0.2, 0.98)]
 
 var _n := 0
@@ -73,11 +74,14 @@ func _check_assets() -> void:
 		if hd == null:
 			_bad.append("no HD sprite for %s" % base)
 			continue
-		if hd.get_size() != cl.get_size() * 3:
-			_bad.append("%s HD is %s, classic %s x3" % [base, str(hd.get_size()), str(cl.get_size())])
-		var img := hd.get_image()
-		if img != null and not img.has_mipmaps():
-			_bad.append("%s HD imported without mipmaps (mipmaps/generate=true in its .import)" % base)
+		if hd.get_size() != cl.get_size() * HD_SCALE:
+			_bad.append("%s HD is %s, classic %s x%d" % [base, str(hd.get_size()), str(cl.get_size()), HD_SCALE])
+		# #282: the HD sprite may come wrapped in a CanvasTexture with its normal map
+		var diffuse: Texture2D = hd.diffuse_texture if hd is CanvasTexture else hd
+		for t in [diffuse, nm]:
+			var img: Image = t.get_image() if t != null else null
+			if img == null or not img.has_mipmaps():
+				_bad.append("%s imported without mipmaps (mipmaps/generate=true in its .import)" % str(t.resource_path if t != null else base).get_file())
 		if nm == null:
 			_bad.append("no normal map for %s" % base)
 		elif nm.get_size() != hd.get_size():
