@@ -5,6 +5,11 @@ extends SceneTree
 ## same run gives before / after pairs on an older build.
 ##   xvfb-run -a -s "-screen 0 1280x720x24" godot --rendering-driver opengl3 --resolution 1280x720 \
 ##     -s tools/soldier_stage.gd -- --out=DIR [--zoom=4] [--tag=after] [--style=classic|cinematic] [--bg=dark|day|night] [--look=classic|operator] [--debug]
+## --weapons (#284): every weapon in hand (4 x 4 grid, each soldier also has a
+## slung weapon + belt grenade) and every weapon as a dropped pickup, saved one
+## row per shot as weapons_<tag>_r<N>.png / pickups_<tag>_r<N>.png.
+## --classic-weapons: Operator soldiers holding the classic weapon sprites
+## (before / after pairs of the weapon art alone). --skins: cycle the weapon skins.
 var _out := "."
 var _tag := "shot"
 var _zoom := 4.0
@@ -14,8 +19,12 @@ var _n := 0
 var _puppets: Array = []
 var _debug := false
 var _look := ""
-var _bench := false
-var _lights := false  # --lights: dark ambient + two point lights (normal-map check, #282)   # --bench: 36 soldiers, print frame time
+var _bench := false   # --bench: 36 soldiers, print frame time
+var _lights := false  # --lights: dark ambient + two point lights (normal-map check, #282)
+var _weapons := false # --weapons: weapon lineup (#284)
+var _shots: Array = []  # [camera pos, file name] for --weapons
+var _classic_weapons := false
+var _skins := false
 var _t0 := 0
 
 const PUPPET_SRC := """
@@ -80,6 +89,9 @@ func _initialize() -> void:
 		elif a.begins_with("--look="): _look = a.substr(7)
 		elif a == "--bench": _bench = true
 		elif a == "--lights": _lights = true
+		elif a == "--weapons": _weapons = true
+		elif a == "--classic-weapons": _classic_weapons = true
+		elif a == "--skins": _skins = true
 
 
 func _blue() -> Color:
@@ -116,6 +128,8 @@ func _process(_d: float) -> bool:
 	if _n == 2:
 		_build(st)
 		return false
+	if _weapons:
+		return _weapon_shots()
 	if _bench:
 		if _n == 60:
 			_t0 = Time.get_ticks_usec()
@@ -185,6 +199,14 @@ func _build(st) -> void:
 		rim = ShaderMaterial.new()
 		rim.shader = load("res://scripts/gfx/rim_light.gdshader")
 		rim.set_shader_parameter("rim_strength", 0.5)
+	if _weapons:
+		_build_weapons(stage, scr, art, dsc, rim)
+		var wcam := Camera2D.new()
+		wcam.name = "Cam"
+		wcam.zoom = Vector2.ONE * _zoom
+		stage.add_child(wcam)
+		wcam.make_current()
+		return
 	var poses := _poses()
 	if _debug:
 		poses = [poses[0], poses[2]]
@@ -237,3 +259,77 @@ func _build(st) -> void:
 	cam.position = Vector2(0, -6)
 	stage.add_child(cam)
 	cam.make_current()
+
+
+const WEAPON_GAP := Vector2(44, 62)
+
+
+func _weapon_poses() -> Array:
+	var names: Array = load("res://scripts/soldier_art.gd").WEAPON_SPRITE.keys()
+	var skins: Array = [""] + load("res://scripts/customization.gd").WEAPON_SKINS.keys()
+	var out := []
+	for i in names.size():
+		out.append({"body_color": _blue() if i % 2 == 0 else _red(), "weapon_name": names[i],
+			"back_weapon_name": names[(i + 5) % names.size()], "grenade_count": 2, "use_cluster": i % 4 >= 2,
+			"cosmetics": {"wskin": skins[i % skins.size()] if _skins else ""}})
+	return out
+
+
+func _weapon_shots() -> bool:
+	# one shot every 10 frames once everything has settled
+	var k := (_n - 40) / 10
+	if _n >= 40 and (_n - 40) % 10 == 0 and k <= _shots.size():
+		if k > 0:
+			var img := root.get_texture().get_image()
+			img.save_png("%s/%s" % [_out, _shots[k - 1][1]])
+			print("SSTAGE saved %s" % _shots[k - 1][1])
+		if k == _shots.size():
+			quit(0)
+			return false
+		var cam: Camera2D = root.get_node("Stage/Cam")
+		cam.position = _shots[k][0]
+	return false
+
+
+func _build_weapons(stage: Node2D, scr: GDScript, art, dsc, rim) -> void:
+	if _classic_weapons:
+		# a cached null makes WeaponGfx fall back to the classic sprite
+		var wg = load("res://scripts/weapon_gfx.gd")
+		for path in art.WEAPON_SPRITE.values():
+			wg._cache[path] = null
+		var G = load("res://scripts/gostek.gd")
+		wg._cache[G.GRENADE_BELT_FRAG] = null
+		wg._cache[G.GRENADE_BELT_CLUSTER] = null
+	var poses := _weapon_poses()
+	for i in poses.size():
+		var p := Node2D.new()
+		p.set_script(scr)
+		p.ds = dsc.new()
+		p.art = art
+		p.pose = poses[i]
+		p.position = Vector2((i % 4 - 1.5) * WEAPON_GAP.x, int(i / 4) * WEAPON_GAP.y)
+		if rim != null:
+			p.material = rim
+		p.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		stage.add_child(p)
+		_puppets.append(p)
+	var rows := int(ceil(poses.size() / 4.0))
+	for r in rows:
+		_shots.append([Vector2(0, r * WEAPON_GAP.y - 6), "weapons_%s_r%d.png" % [_tag, r]])
+	# dropped pickups: frozen props, same 4-wide grid further down
+	var pk := load("res://scripts/weapon_pickup.gd")
+	var y0 := rows * WEAPON_GAP.y + 400.0
+	for i in poses.size():
+		var b := RigidBody2D.new()
+		b.set_script(pk)
+		b.weapon_name = poses[i]["weapon_name"]
+		b.persistent = true
+		b.freeze = true
+		b.gravity_scale = 0.0
+		b.position = Vector2((i % 4 - 1.5) * WEAPON_GAP.x, y0 + int(i / 4) * 40.0)
+		stage.add_child(b)
+		for c in b.get_children():
+			if c is CanvasItem:
+				c.visible = false   # name tags would cover the close-up
+	for r in rows:
+		_shots.append([Vector2(0, y0 + r * 40.0), "pickups_%s_r%d.png" % [_tag, r]])

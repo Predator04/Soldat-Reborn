@@ -57,6 +57,7 @@ static func _atmo() -> Script:
 	return _atmo_script
 
 const Gostek = preload("res://scripts/gostek.gd")
+const WeaponGfx = preload("res://scripts/weapon_gfx.gd")   # #284 HD weapon sprites
 
 
 ## Paint one soldier on `node` (its own _draw()). `st` carries the pose,
@@ -210,12 +211,19 @@ static func _draw_weapon_sprite(
 	# as the aim wobbles across x=0 (straight up/down).
 	var flip_y := -1.0 if facing < 0.0 else 1.0
 
+	# #284: Operator look draws the 3x HD sprite into the same classic rect
+	# (size / pivot / barrel_len above all come from the classic texture).
+	var draw_tex := tex
+	if Gostek.operator_on():
+		var hd := WeaponGfx.hd_for_path(str(WEAPON_SPRITE[weapon_name]))
+		if hd != null:
+			draw_tex = hd
 	var plain := xf == Transform2D.IDENTITY
 	if plain:
 		node.draw_set_transform(shoulder, angle, Vector2(1.0, flip_y))
 	else:
 		node.draw_set_transform_matrix(xf * Transform2D(angle, Vector2(1.0, flip_y), 0.0, shoulder))
-	node.draw_texture_rect(tex, Rect2(Vector2(-grip_offset, -cy_offset), size), false, skin)
+	node.draw_texture_rect(draw_tex, Rect2(Vector2(-grip_offset, -cy_offset), size), false, skin)
 	if plain:
 		node.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	else:
