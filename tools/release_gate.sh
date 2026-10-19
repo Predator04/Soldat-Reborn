@@ -5,7 +5,8 @@
 #   A static   map audit (0 problems), nav graph per map, version strings agree
 #   B boot     main / menu / map editor scenes load with zero script errors
 #   C net      dedicated server + client smoke (CTF + DM), listen-host smoke,
-#              zero RPC/node errors on either side
+#              zero RPC/node errors on either side; dedboot = dedicated boot
+#              from a never-imported checkout + busy-port failure (#278)
 #   D modes    every game mode (DM..GG) on 3 maps with bots-vs-bots: kills,
 #              objective scoring where the mode has one, no script errors
 #   R rules    Realistic / Survival / Advance toggles (autopilot, menu path)
@@ -27,7 +28,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 G="${GODOT_BIN:-$HOME/godot/Godot_v4.7.2-stable_linux.x86_64}"
 QUICK=0; OUT="build/gate"; ONLY="A B N C D R F E"; MODESEL="0 1 2 3 4 5 6 7 8 9"
-NETSEL="ctf dm two trust fill ranked friends news featured respawn killcam drive heli rejoin relay host listen lan soak m3 m7 m9 m2"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
+NETSEL="ctf dm dedboot two trust fill ranked friends news featured respawn killcam drive heli rejoin relay host listen lan soak m3 m7 m9 m2"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --quick) QUICK=1;; --out) OUT="$2"; shift;; --only) ONLY="$2"; shift;;
@@ -163,6 +164,55 @@ case " $NETSEL " in *" ctf "*) netcase ctf_arena 18 2;; esac
 case " $NETSEL " in *" dm "*) netcase dm_ascent 0 0;; esac
 # Opt-in per-mode cases: --net "m3 m7" = dedicated server on map 19 in mode N.
 for tok in $NETSEL; do case "$tok" in m[0-9]) netcase "mode${tok#m}" 19 "${tok#m}" --smoke-auto;; esac; done
+case " $NETSEL " in *" dedboot "*)
+  # #278 #285 #289 #290: dedicated server boot the way a supervisor / the
+  # external self-check sees it. (1) This (imported) checkout: the first line
+  # is "Dedicated server starting", "listening on port" follows within 20 s,
+  # and no error line at all while it loads the match (menu.tscn is skipped
+  # on a server). (2) A second server on a busy port must exit 1 within
+  # seconds and say why on stdout. (3) A clean, NEVER-imported checkout of
+  # HEAD (git archive: tracked files only, incl. the class cache — what a
+  # pull-and-run checker has) must still START and say so; its match then
+  # can't load unimported assets (preload parse errors), so those are only
+  # counted: a checker must run --import after every pull.
+  port=$((7700 + RANDOM % 200)); t0=$(date +%s)
+  timeout 60 "$G" --headless -- --dedicated --port $port --mode ctf > "$OUT/net_dedboot_server.log" 2>&1 &
+  spid=$!
+  for _ in $(seq 1 60); do grep -q "listening on port" "$OUT/net_dedboot_server.log" 2>/dev/null && break; sleep 0.5; done
+  secs=$(( $(date +%s) - t0 ))
+  sleep 5   # the match loads right after the line
+  timeout 20 "$G" --headless -- --dedicated --port $port --mode ctf > "$OUT/net_dedboot_busy.log" 2>&1
+  brc=$?
+  kill $spid 2>/dev/null; wait $spid 2>/dev/null
+  first=$(grep -v -e '^Godot Engine' -e '^$' "$OUT/net_dedboot_server.log" | head -1)
+  se=$(errs "$OUT/net_dedboot_server.log")
+  if echo "$first" | grep -q "^Dedicated server starting: " && grep -q "listening on port $port" "$OUT/net_dedboot_server.log" \
+      && [ "$secs" -le 20 ] && [ "$se" = "0" ]; then
+    pass "C net dedicated boot: listening after ${secs}s, no errors ($(echo "$first" | cut -c1-60))"
+  else
+    fail "C net dedicated boot: first='$first' '$(grep -m1 -E 'listening|DEDICATED-START' "$OUT/net_dedboot_server.log")' after ${secs}s errors=$se"
+  fi
+  if [ "$brc" = "1" ] && grep -q "^DEDICATED-START-FAILED .*port $port" "$OUT/net_dedboot_busy.log" && ! grep -q "listening on port" "$OUT/net_dedboot_busy.log"; then
+    pass "C net dedicated on a busy port fails fast and says so: $(grep -m1 '^DEDICATED-START-FAILED' "$OUT/net_dedboot_busy.log" | cut -c1-110)"
+  else
+    fail "C net dedicated on a busy port: rc=$brc '$(grep -m1 -E 'DEDICATED-START|listening' "$OUT/net_dedboot_busy.log")'"
+  fi
+  FT="$OUT/dedboot_tree"; rm -rf "$FT"; mkdir -p "$FT"
+  git archive HEAD | tar -x -C "$FT"
+  port=$((7700 + RANDOM % 200)); t0=$(date +%s)
+  timeout 40 "$G" --headless --path "$FT" -- --dedicated --port $port --mode ctf > "$OUT/net_dedboot_fresh.log" 2>&1 &
+  spid=$!
+  for _ in $(seq 1 60); do grep -q "listening on port" "$OUT/net_dedboot_fresh.log" 2>/dev/null && break; sleep 0.5; done
+  secs=$(( $(date +%s) - t0 ))
+  kill $spid 2>/dev/null; wait $spid 2>/dev/null
+  rm -rf "$FT"
+  pe=$(grep -c "Parse Error" "$OUT/net_dedboot_fresh.log" || true)
+  if grep -q "listening on port $port" "$OUT/net_dedboot_fresh.log" && [ "$secs" -le 20 ]; then
+    pass "C net dedicated boot from a never-imported checkout: listening after ${secs}s (unimported-asset parse errors: $pe; checkers must --import)"
+  else
+    fail "C net dedicated boot from a never-imported checkout: no listening line after ${secs}s ($(grep -m1 -E 'SCRIPT ERROR|ERROR' "$OUT/net_dedboot_fresh.log"))"
+  fi
+;; esac
 case " $NETSEL " in *" two "*)
   # Two clients on one dedicated server: the second joins mid-match; every
   # body must keep its exact node name and no RPC may miss its node.

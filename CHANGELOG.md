@@ -4,6 +4,9 @@ All notable changes to Soldat Reborn.
 
 ## [Unreleased]
 
+### Fixed
+- **Dedicated servers no longer build the main menu before they start listening** (#278 #285 #289 #290): `menu.tscn` is only the project's main scene, so a `--dedicated` boot used to build the whole menu (backdrop shader, logo, fonts, every screen, news / LAN browser) for one frame before switching to the match. The server now prints `Dedicated server starting: Tracerfall <version>, port N` first, skips the menu, and when the port can't be opened says so on stdout (`DEDICATED-START-FAILED ... is another server already using UDP N?`) and exits 1 — an engine `ERROR:` line on stderr was all there was before, which log scrapers looking for `SCRIPT ERROR` read as "no error line". Gate C `dedboot`: boot from a never-imported checkout + busy-port case.
+
 ## [1.37.0] — 2026-10-19 — Maker
 
 This release also ships everything in 1.36 (Ultra HD soldiers, guns, terrain and dynamic lighting), listed under 1.36.0 below — the two went out together.

@@ -178,6 +178,10 @@ func _maybe_run_dedicated() -> void:
 	fill_target = maxi(0, fill_arg)
 	if stats_url == "":
 		stats_url = register_url
+	# First line a supervisor / self-check sees, printed before anything else
+	# loads, so a log that stops here says how far the boot got.
+	print("Dedicated server starting: %s %s, port %d" % [preload("res://scripts/game_info.gd").TITLE,
+		str(ProjectSettings.get_setting("application/config/version", "dev")), port])
 	if wants_smoke:
 		call_deferred("_smoke_dedicated", port, map_index, mode_index)
 	else:
@@ -245,7 +249,12 @@ func _start_dedicated(port: int, map_index: int, mode_index: int) -> void:
 	Settings.game_mode = mode_index
 	Settings.custom_map_path = ""
 	if not host_game(port, map_index):
-		push_error("Dedicated host failed on port %d" % port)
+		# Say why on stdout too (an engine "ERROR:" line goes to stderr only and
+		# is not a SCRIPT ERROR, so log scrapers looking for one saw nothing):
+		# by far the usual cause is another server already on this UDP port.
+		var why := "Dedicated host failed on port %d (%s) — is another server already using UDP %d?" % [port, status, port]
+		print("DEDICATED-START-FAILED " + why)
+		push_error(why)
 		get_tree().quit(1)
 		return
 	var map_name: String = MAP_NAMES[map_index] if map_index >= 0 and map_index < MAP_NAMES.size() else "map#%d" % map_index
