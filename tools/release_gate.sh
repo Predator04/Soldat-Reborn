@@ -27,7 +27,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 G="${GODOT_BIN:-$HOME/godot/Godot_v4.7.2-stable_linux.x86_64}"
 QUICK=0; OUT="build/gate"; ONLY="A B N C D R F E"; MODESEL="0 1 2 3 4 5 6 7 8 9"
-NETSEL="ctf dm two trust fill ranked friends news featured respawn killcam drive heli rejoin relay host listen lan soak m3 m7 m9 m2"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
+NETSEL="ctf dm two trust fill ranked friends news featured respawn killcam drive heli plane rejoin relay host listen lan soak m3 m7 m9 m2"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --quick) QUICK=1;; --out) OUT="$2"; shift;; --only) ONLY="$2"; shift;;
@@ -412,6 +412,38 @@ case " $NETSEL " in *" heli "*)
     fail "C net heli: '${line:-no result}' errors=$e trust_lines=${tr:-0}"
   fi
 ;; esac
+case " $NETSEL " in *" plane "*)
+  # #291: a client gets into a plane on a classic runway (the host grants the
+  # seat), takes off with real input (throttle + nose up), climbs, fires the
+  # gun and drops a bomb (relayed by the host), bails out; then the host
+  # simulates the empty plane and the client's replica must move smoothly
+  # (jerk = frames far off the streamed velocity, turn = biggest per-frame
+  # heading step). Honest pilot: no trust lines (checked with every case).
+  # Industrial (55, two runways), --fill=1: no bots once we're in.
+  port=$((7700 + RANDOM % 200))
+  timeout 75 "$G" --headless -- --dedicated --port $port --map 55 --mode 0 --fill=1 > "$OUT/net_plane_server.log" 2>&1 &
+  spid=$!
+  for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_plane_server.log" 2>/dev/null && break; sleep 0.5; done
+  sleep 3
+  timeout 50 "$G" --headless -- --smoke-join --port $port --smoke-secs=18 --smoke-plane > "$OUT/net_plane_client.log" 2>&1
+  kill $spid 2>/dev/null; wait $spid 2>/dev/null
+  e=$(( $(errs "$OUT/net_plane_server.log") + $(errs "$OUT/net_plane_client.log") ))
+  fly=$(grep -m1 "SMOKE-PLANE-FLY " "$OUT/net_plane_client.log")
+  line=$(grep -m1 "SMOKE-PLANE seat" "$OUT/net_plane_client.log")
+  cl=$(echo "$fly" | sed -n 's/.*climbed=\(-\?[0-9]*\).*/\1/p')
+  mv=$(echo "$fly" | sed -n 's/.* moved=\([0-9]*\).*/\1/p')
+  bo=$(echo "$fly" | sed -n 's/.*bombs=\([0-9]*\).*/\1/p')
+  ht=$(echo "$fly" | sed -n 's/.*heat=\([0-9.]*\).*/\1/p')
+  rx=$(echo "$line" | sed -n 's/.*host_rx=\([0-9]*\).*/\1/p')
+  rmv=$(echo "$line" | sed -n 's/.*moved_replica=\([0-9]*\).*/\1/p')
+  jk=$(echo "$line" | sed -n 's/.*jerk=\([0-9]*\).*/\1/p')
+  if echo "$fly" | grep -q "seat=0" && echo "$line" | grep -q "out=true" && [ "${cl:-0}" -gt 150 ] && [ "${mv:-0}" -gt 600 ] \
+      && [ "${bo:-0}" -ge 1 ] && [ "${ht:-0}" != "0.00" ] && [ "${rx:-0}" -gt 10 ] && [ "${rmv:-0}" -gt 200 ] && [ "${jk:-99}" -le 2 ] && [ "$e" = "0" ]; then
+    pass "C net plane: $fly | $line"
+  else
+    fail "C net plane: '${fly:-no flight}' '${line:-no result}' errors=$e"
+  fi
+;; esac
 case " $NETSEL " in *" respawn "*)
   # A client kills itself at 4 s (DM, few bots near spawn): it must come back
   # as the exact same node name with no RPC errors anywhere.
@@ -602,8 +634,9 @@ if has F; then
   ft perf perf_test.gd 90 PERF-TEST "performance: 16 bots on Abel CTF, frame time and hitches"
   ft crew vehicle_crew_test.gd 100 CREW-TEST "buggy crew: solo-fire slowdown / bot gunner boards, shoots, leaves"
   ft tank tank_test.gd 100 TANK-TEST "tank: drive / lobbed shell / armor / wreck / respawn / wide-map spawns"
+  ft plane plane_test.gd 200 PLANE-TEST "plane (#291): map_io round trip / classic runways / F seats a hidden pilot / nose gun hits / take-off run (no lift below rotate speed) / level flight / loop / stall drops the nose + falls, throttle recovers / bomb (cooldown) hits a bot / soft vs hard touchdown by impact speed / nose-dive wreck kills the pilot / respawn / shot down ejects alive / exit / air spawn waits, launches, abandoned plane falls / bot pilot takes off + flies / Maker map: a bot boards and flies a plane"
   ft heli heli_test.gd 150 HELI-TEST "helicopter (#277): spin-up gate / climb / hover / fly / soft landing / rockets hit a bot / bullet 0.5x vs explosive / door gunner (human + bot) / spin-out crash kills pilot / respawn on pad / idle return / gentle wreck ejects crew / bot pilot takes off / big-map pads"
-  ft vart vehicle_art_test.gd 200 VART-TEST "vehicle art (#276): every vehicle drawn pristine / crewed + firing / 4 damage levels / wreck / respawn at Low / Medium / High in both looks, pooled FX only on Medium+, no node growth, parked bodies unmoved"
+  ft vart vehicle_art_test.gd 200 VART-TEST "vehicle art (#276 / #291): every vehicle (buggy, tank, heli, plane) drawn pristine / crewed + firing / 4 damage levels / wreck / respawn at Low / Medium / High in both looks, pooled FX only on Medium+, no node growth, parked bodies unmoved"
   ft rtnav runtime_nav_test.gd 240 RTNAV-TEST "runtime bot nav (#287): maps without a bake get a graph built on a worker thread (no main-thread stall), CTF legs routable, bots travel on it (classic copy + generated map); Maker maps: no node on spikes / lava and no bot dies in them, bots board and drive the buggies"
   ft sart soldier_art_test.gd 60 SOLDIER-ART-TEST "Operator soldier art (#280/#281): every rig part in both facings with normal maps + mipmaps, layer mirrors, every head / vest / pose drawn, jet flame from the pack, classic setting wins"
   ft wart weapons_gfx_test.gd 60 WEAPONS-ART-TEST "HD weapon art (#284): every weapon + belt grenade at 6x its classic sprite with mipmaps + normal map, drawn HD in hand / slung / as a pickup, bullet spawn identical in both looks, drawn barrel scales with the 78% gun, classic asks for no HD"
