@@ -27,6 +27,22 @@ var cinematic := 1.0
 ## Fixed view centre instead of the current camera (the menu backdrop drifts
 ## this slowly; #272). Vector2.INF = follow the camera.
 var center_override := Vector2.INF
+## #283: map theme (terrain_theme.gd theme_for, set by atmosphere.gd before
+## _ready): picks the silhouettes on the middle layers and the ridge shape.
+## "" = the original look (menu backdrop).
+var theme := ""
+
+# Silhouette kinds per theme and how many on each of the five layers (far →
+# near); jag = sharper peaks, caps = snow on the far ridges, smooth = calmer
+# ridge detail (dunes).
+const THEMES := {
+	"rock": {"kinds": [0, 1, 2], "counts": [0, 0, 5, 4, 0]},
+	"urban": {"kinds": [3, 3, 3, 1, 2], "counts": [0, 9, 10, 7, 0]},
+	"desert": {"kinds": [4, 4, 5], "counts": [0, 3, 4, 6, 0], "smooth": 0.35},
+	"snow": {"kinds": [6], "counts": [0, 0, 14, 18, 0], "jag": 1.0, "caps": true},
+	"jungle": {"kinds": [7, 7, 8], "counts": [0, 0, 16, 20, 0]},
+	"ruins": {"kinds": [0, 9, 9, 1], "counts": [0, 0, 6, 6, 0]},
+}
 
 var _peaks: Array = []
 var _ruins: Array = []
@@ -41,9 +57,15 @@ func _ready() -> void:
 			hs.append(rng.randf_range(0.0, 1.0))
 		_peaks.append(hs)
 		var rs: Array = []
-		for _i in int(l["ruins"]):
+		var th: Dictionary = THEMES.get(theme, {})
+		var count := int(l["ruins"]) if th.is_empty() else int((th["counts"] as Array)[_ruins.size()])
+		for _i in count:
 			# x in pattern space, width, height (fraction of layer height), kind
-			rs.append([rng.randf_range(0.0, PERIOD), rng.randf_range(10.0, 34.0), rng.randf_range(0.25, 0.7), rng.randi() % 3])
+			var kind := rng.randi() % 3
+			if not th.is_empty():
+				var ks: Array = th["kinds"]
+				kind = int(ks[rng.randi() % ks.size()])
+			rs.append([rng.randf_range(0.0, PERIOD), rng.randf_range(10.0, 34.0), rng.randf_range(0.25, 0.7), kind])
 		_ruins.append(rs)
 
 
@@ -85,11 +107,18 @@ func _draw_layer(i: int, view: Vector2, cc: Vector2) -> void:
 	var cols := PackedColorArray()
 	var idx := PackedInt32Array()
 	var ridge_y: Array[float] = []
+	var th: Dictionary = THEMES.get(theme, {})
+	var smooth_k: float = float(th.get("smooth", 1.0))
+	var jag: float = float(th.get("jag", 0.0))
+	var caps: bool = bool(th.get("caps", false)) and depth >= 0.5
+	var snow_col := Color(0.82, 0.86, 0.94).lerp(horizon, 0.35 + 0.4 * depth)
 	for s in SEGMENTS + 1:
 		var sx: float = view.x * float(s) / float(SEGMENTS)
 		var wx: float = sx + cc.x * f
 		var r: float = _sample_ridge(wx, hs, float(l["peaks"]))
-		var detail: float = 0.06 * sin(wx * 0.011 + float(i) * 1.7) + 0.035 * sin(wx * 0.033 + float(i) * 3.1)
+		var detail: float = (0.06 * sin(wx * 0.011 + float(i) * 1.7) + 0.035 * sin(wx * 0.033 + float(i) * 3.1)) * smooth_k
+		if jag > 0.0:
+			detail += jag * 0.09 * (1.0 - absf(sin(wx * 0.017 + float(i)))) * r
 		var ry: float = view.y - max_h * maxf(0.02, 0.30 + 0.65 * r + detail) + y_off
 		if is_nan(ry):
 			ry = view.y * 0.7
@@ -97,9 +126,16 @@ func _draw_layer(i: int, view: Vector2, cc: Vector2) -> void:
 		ridge_y.append(ry)
 		# Three vertices per column: rim (ridge), body (a bit below), fog (base).
 		pts.append(Vector2(sx, ry))
-		cols.append(top_col)
-		pts.append(Vector2(sx, minf(ry + 1.5, base_y)))
-		cols.append(body)
+		if caps:
+			# Snow on the high ground of the far ridges.
+			var cap := smoothstep(0.45, 0.85, r)
+			cols.append(top_col.lerp(snow_col, cap))
+			pts.append(Vector2(sx, minf(ry + 1.5 + cap * max_h * 0.14, base_y)))
+			cols.append(body.lerp(snow_col, 0.55 * cap))
+		else:
+			cols.append(top_col)
+			pts.append(Vector2(sx, minf(ry + 1.5, base_y)))
+			cols.append(body)
 		pts.append(Vector2(sx, base_y))
 		cols.append(base_col)
 	for s in SEGMENTS:
@@ -137,6 +173,8 @@ func _draw_layer(i: int, view: Vector2, cc: Vector2) -> void:
 					draw_rect(Rect2(sx - w * 0.15, gy - h, w * 0.3, h), c)
 					draw_rect(Rect2(sx - w, gy - h, w * 2.0, 3.0), c)
 					draw_line(Vector2(sx + w * 0.9, gy - h + 3.0), Vector2(sx + w * 0.9, gy - h * 0.55), c, 1.0)
+				_:
+					_draw_theme_kind(int(ru[3]), sx, gy, w, h, c, depth, float(ru[0]))
 
 
 func _sample_ridge(wx: float, hs: Array[float], peaks: float) -> float:
@@ -146,3 +184,56 @@ func _sample_ridge(wx: float, hs: Array[float], peaks: float) -> float:
 	var t := fposmod(x / seg, 1.0)
 	t = t * t * (3.0 - 2.0 * t)
 	return lerpf(hs[i % hs.size()], hs[(i + 1) % hs.size()], t)
+
+
+## #283 theme silhouettes: skyline blocks with a few lit windows, mesas and
+## cacti, pines, canopy trees and palms, broken arches.
+func _draw_theme_kind(kind: int, sx: float, gy: float, w: float, h: float, c: Color, depth: float, seed_x: float) -> void:
+	match kind:
+		3:  # building block, some windows lit
+			var bw := w * 1.6
+			var bh := h * 1.15
+			draw_rect(Rect2(sx - bw * 0.5, gy - bh, bw, bh), c)
+			if int(seed_x) % 3 == 0:
+				draw_rect(Rect2(sx - bw * 0.15, gy - bh - h * 0.25, bw * 0.12, h * 0.25), c)
+			var lit := Color(1.0, 0.78, 0.45, 0.45 * (1.0 - depth * 0.6))
+			var hs := int(seed_x * 7.0)
+			for k in 6:
+				hs = (hs * 1103515245 + 12345) & 0x7fffffff
+				if hs % 3 != 0:
+					continue
+				var wx := sx - bw * 0.4 + float(hs % 5) * bw * 0.18
+				var wy := gy - bh + 4.0 + float((hs >> 4) % 6) * bh * 0.14
+				draw_rect(Rect2(wx, wy, 2.0, 2.0), lit)
+		4:  # mesa
+			draw_colored_polygon(PackedVector2Array([Vector2(sx - w * 2.4, gy + 2.0), Vector2(sx - w * 1.5, gy - h * 0.8),
+				Vector2(sx + w * 1.3, gy - h * 0.8), Vector2(sx + w * 2.2, gy + 2.0)]), c)
+		5:  # cactus
+			var tw := maxf(2.0, w * 0.12)
+			draw_rect(Rect2(sx - tw * 0.5, gy - h * 0.6, tw, h * 0.6), c)
+			draw_rect(Rect2(sx - tw * 2.2, gy - h * 0.42, tw, h * 0.2), c)
+			draw_rect(Rect2(sx - tw * 2.2, gy - h * 0.26, tw * 2.0, tw), c)
+			draw_rect(Rect2(sx + tw * 1.2, gy - h * 0.5, tw, h * 0.22), c)
+			draw_rect(Rect2(sx + tw * 0.4, gy - h * 0.32, tw * 1.6, tw), c)
+		6:  # pine
+			var pw := w * 0.55
+			var ph := h * 0.9
+			draw_colored_polygon(PackedVector2Array([Vector2(sx - pw, gy), Vector2(sx, gy - ph * 0.6), Vector2(sx + pw, gy)]), c)
+			draw_colored_polygon(PackedVector2Array([Vector2(sx - pw * 0.75, gy - ph * 0.35), Vector2(sx, gy - ph), Vector2(sx + pw * 0.75, gy - ph * 0.35)]), c)
+		7:  # canopy tree
+			draw_rect(Rect2(sx - 1.5, gy - h * 0.5, 3.0, h * 0.5), c)
+			draw_circle(Vector2(sx, gy - h * 0.62), w * 0.55, c)
+			draw_circle(Vector2(sx - w * 0.45, gy - h * 0.5), w * 0.4, c)
+			draw_circle(Vector2(sx + w * 0.5, gy - h * 0.52), w * 0.42, c)
+		8:  # palm
+			var top := Vector2(sx + w * 0.35, gy - h * 0.95)
+			draw_polyline(PackedVector2Array([Vector2(sx, gy), Vector2(sx + w * 0.12, gy - h * 0.5), top]), c, 2.0)
+			for k in 5:
+				var a := -2.6 + float(k) * 0.55
+				var tip := top + Vector2(cos(a), sin(a) * 0.55 + 0.25) * w * 0.9
+				draw_polyline(PackedVector2Array([top, top.lerp(tip, 0.5) + Vector2(0, -3.0), tip]), c, 1.5)
+		9:  # broken arch / colonnade
+			var cw := maxf(3.0, w * 0.22)
+			draw_rect(Rect2(sx - w, gy - h, cw, h), c)
+			draw_rect(Rect2(sx + w - cw, gy - h * 0.7, cw, h * 0.7), c)
+			draw_rect(Rect2(sx - w - cw * 0.3, gy - h - cw * 0.6, w * 1.3, cw * 0.6), c)
