@@ -7,6 +7,9 @@ All notable changes to Soldat Reborn.
 ### Added — bots on custom maps (#287)
 - **Bots now know their way around any map** — levels from the editor, Maker mode and shared levels used to have no bot navigation, so bots wandered. The game now builds the navigation graph itself when such a map loads (on a background thread, so the match start doesn't stutter; about a second): walking routes, jumps, jet climbs, drops, ledge detours and bridges to every objective. Rebuilt in-game, all classic maps pass the same route audit as their hand-baked graphs, and it works on dedicated servers too.
 
+### Added — level sharing (#288)
+- **LEVELS: play, like and share levels other players built** (main menu → LEVELS, or the map editor's new Levels button). Tabs for Hot (likes and plays this week, newest count most), New, Most played, Top liked, Bookmarked and Search (title, author or share code). Every card draws the level's outline in its own colours with the flags and points marked, plus plays, likes and the modes it was built for. Pick one for PLAY (a bot match on it, in a mode it was made for), HOST ONLINE (the Host screen with the level picked, so friends can join), LIKE and BOOKMARK (bookmarks are kept with your settings and work offline; levels you've played before still play offline). Every level has a share code like `7KQ2-MX9P-4HDA`: type it into the course-code box (case, spaces and dashes don't matter). **Publish** in the map editor names your map, uploads it and shows its code; offensive titles are refused (and masked on the server). The old map library is still there under MAP FILES. Needs the updated master server. (#288)
+
 ## [1.36.0] — 2026-10-19 — Ultra HD
 
 ### Added — new soldiers (#280, #281)

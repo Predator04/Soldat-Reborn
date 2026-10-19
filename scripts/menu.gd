@@ -10,6 +10,7 @@ const UITheme = preload("res://scripts/ui_theme.gd")
 const NamePromptUI = preload("res://scripts/name_prompt.gd")
 const MenuUpdate = preload("res://scripts/menu_update.gd")
 const MenuNews = preload("res://scripts/menu_news.gd")
+const LevelsPanel = preload("res://scripts/levels_panel.gd")
 
 # Slots 0..2 are the three procedural remakes; slots 3..12 are the classic
 # Soldat maps bundled from res://assets/maps/*.json (see MapIO.BUNDLED_CLASSICS
@@ -202,6 +203,12 @@ func _ready() -> void:
 	Net.connected.connect(_on_net_connected)
 	Net.disconnected.connect(_on_net_disconnected)
 	Net.map_received.connect(_on_map_received)
+	# #288: HOST ONLINE pressed in the map editor's LEVELS overlay.
+	if LevelsPanel.pending_host != "":
+		var hp := LevelsPanel.pending_host
+		LevelsPanel.pending_host = ""
+		host_level(hp, LevelsPanel.pending_host_title)
+		return
 	# #93: seed keyboard focus so arrow keys / gamepad D-pad navigate before
 	# the user has to mouse-click a widget.
 	UITheme.safe_grab_focus_deferred(_menu_first_focus)
@@ -433,9 +440,12 @@ func _build_menu() -> void:
 	var cust := _make_button("CUSTOMIZE")
 	cust.tooltip_text = "Your soldier's look and weapon skins. More unlock as you level up."
 	cust.pressed.connect(_open_customize)
-	var lib := _make_button("MAP LIBRARY")
-	lib.tooltip_text = "Download maps other players made, or share your own."
-	lib.pressed.connect(_open_map_library)
+	# #288: the LEVELS browser (the classic map-file library stays reachable
+	# from its MAP FILES link).
+	var lib := _make_button("LEVELS")
+	lib.name = "LevelsButton"
+	lib.tooltip_text = "Play, like and bookmark levels other players built, or find one by its share code."
+	lib.pressed.connect(_open_levels)
 	var extra_row := HBoxContainer.new()
 	extra_row.add_theme_constant_override("separation", 8)
 	var rep := _make_button("REPLAYS")
@@ -1345,6 +1355,40 @@ func _notification(what: int) -> void:
 
 var _lb_panel: Control = null
 var _lib_panel: Control = null
+var _levels_panel: Control = null
+
+
+## #288 LEVELS browser (levels_panel.gd).
+func _open_levels(which: String = "") -> void:
+	if _levels_panel == null:
+		_levels_panel = LevelsPanel.new()
+		_levels_panel.name = "LevelsBrowser"
+		_levels_panel.visible = false
+		_levels_panel.play_hook = _go_to_match
+		_levels_panel.gate = _with_name
+		add_child(_levels_panel)
+		_levels_panel.closed.connect(func() -> void: _menu_root.visible = true)
+		_levels_panel.host_requested.connect(host_level)
+		_levels_panel.map_files_requested.connect(_open_map_library)
+	_menu_root.visible = false
+	_levels_panel.open(which)
+
+
+## Host screen with `path` (a downloaded level) picked in its map list — the
+## same START HOSTING path as every other custom map (#288 HOST ONLINE).
+func host_level(path: String, title: String) -> void:
+	if _map_pick == null:
+		return
+	var i := _host_custom_paths.find(path)
+	if i < 0:
+		_host_custom_paths.append(path)
+		i = _host_custom_paths.size() - 1
+		_map_pick.add_item("Level: %s" % title, 10000 + i)
+	_map_pick.select(_map_pick.get_item_index(10000 + i))
+	_map_pick.item_selected.emit(_map_pick.selected)
+	if _host_mode_pick != null:
+		_host_mode_pick.selected = clampi(Settings.game_mode, 0, MODE_NAMES.size() - 1)
+	_open_host()
 
 
 func _open_leaderboard() -> void:
@@ -1408,7 +1452,7 @@ func _open_map_library() -> void:
 
 
 func _go_back() -> void:
-	for pn in [_lb_panel, _lib_panel, _cust_panel, _friends_panel, _replays_panel]:
+	for pn in [_lb_panel, _lib_panel, _cust_panel, _friends_panel, _replays_panel, _levels_panel]:
 		if pn != null and pn.visible:
 			pn.visible = false
 			pn.closed.emit()
