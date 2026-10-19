@@ -181,6 +181,17 @@ const DEFAULT_MASTER_URL := "https://161-153-9-69.sslip.io"
 var master_url := DEFAULT_MASTER_URL
 var recent_servers: Array = []   # "ip:port", newest first (Browse -> Recent)
 var news_dismissed := ""          # #261: text of the menu news line the player hid
+# #288 level browser: bookmarked levels, newest first —
+# [{id, code, title, author, modes, plays, likes}] (meta cached for offline).
+var level_bookmarks: Array = []
+const LEVEL_BOOKMARKS_MAX := 100
+
+
+## Anonymous id the level server counts likes / plays under (#288): derived
+## from profile_id, so it is stable per install but can't be linked to the
+## leaderboard's profile hash.
+func level_pid() -> String:
+	return ("levels:" + profile_id).sha256_text().left(32)
 
 # Convenience: DM / Rambo / Battle Royale / Gun Game are FFA (friendly-fire on), teams disable friendly damage.
 func friendly_fire_on() -> bool:
@@ -334,6 +345,13 @@ func load_settings() -> void:
 	var rs = cf.get_value("net", "recent_servers", [])
 	recent_servers = (rs as Array).duplicate() if rs is Array else []
 	news_dismissed = str(cf.get_value("net", "news_dismissed", "")).left(200)
+	level_bookmarks = []
+	var lb = cf.get_value("levels", "bookmarks", [])
+	if lb is Array:
+		for b in lb:
+			if b is Dictionary and str(b.get("id", "")).length() == 16:
+				level_bookmarks.append((b as Dictionary).duplicate())
+		level_bookmarks = level_bookmarks.slice(0, LEVEL_BOOKMARKS_MAX)
 
 
 func save() -> void:
@@ -456,6 +474,7 @@ func _write_file() -> void:
 	cf.set_value("net", "master_url", master_url)
 	cf.set_value("net", "recent_servers", recent_servers)
 	cf.set_value("net", "news_dismissed", news_dismissed)
+	cf.set_value("levels", "bookmarks", level_bookmarks)
 	cf.save(PATH)
 
 

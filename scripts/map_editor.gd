@@ -1018,6 +1018,9 @@ func _build_ui() -> void:
 	ui.add_child(_tool_label)
 
 	_build_load_panel(ui)
+	# ── #288 level sharing: PUBLISH + LEVELS toolbar buttons (all the logic
+	# lives in scripts/level_publish.gd; this line is the editor's only hook).
+	preload("res://scripts/level_publish.gd").attach(self, top, ui)
 	_style_tree(top)
 	# The toolbar wraps to 3 rows at 1280 wide; size the backing strip to it.
 	top.resized.connect(_fit_top_bar)

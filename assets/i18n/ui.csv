@@ -411,3 +411,69 @@ Cinematic,Cinemático,Cinematográfico,Filmisch,Cinématique
 Classic,Clásico,Clássico,Klassisch,Classique
 Soldier look,Aspecto del soldado,Visual do soldado,Soldaten-Look,Apparence du soldat
 Operator,Operador,Operador,Operator,Opérateur
+LEVELS,NIVELES,NÍVEIS,LEVELS,NIVEAUX
+"Play, like and share levels made by players","Juega, valora y comparte niveles creados por jugadores","Jogue, curta e compartilhe níveis feitos por jogadores","Spiele, like und teile Levels von Spielern","Joue, aime et partage des niveaux créés par les joueurs"
+Course code,Código de nivel,Código do nível,Level-Code,Code du niveau
+FIND,BUSCAR,ABRIR,FINDEN,TROUVER
+Open the level with this share code (like 7KQ2-MX9P-4HDA).,Abre el nivel con este código (como 7KQ2-MX9P-4HDA).,Abre o nível com este código (como 7KQ2-MX9P-4HDA).,Öffnet das Level mit diesem Code (z. B. 7KQ2-MX9P-4HDA).,Ouvre le niveau avec ce code (comme 7KQ2-MX9P-4HDA).
+HOT,POPULARES,EM ALTA,ANGESAGT,TENDANCE
+NEW,NUEVOS,NOVOS,NEU,NOUVEAUX
+MOST PLAYED,MÁS JUGADOS,MAIS JOGADOS,MEISTGESPIELT,LES PLUS JOUÉS
+TOP LIKED,MÁS VALORADOS,MAIS CURTIDOS,MEISTE LIKES,LES PLUS AIMÉS
+BOOKMARKED,GUARDADOS,SALVOS,GEMERKT,FAVORIS
+SEARCH,BUSCAR,BUSCAR,SUCHEN,RECHERCHE
+"Title, author or course code","Título, autor o código","Título, autor ou código","Titel, Autor oder Level-Code","Titre, auteur ou code"
+MORE,MÁS,MAIS,MEHR,PLUS
+MAP FILES,ARCHIVOS DE MAPA,ARQUIVOS DE MAPA,KARTENDATEIEN,FICHIERS DE CARTE
+"The classic map library: download map files to edit, or share a saved map.",La biblioteca clásica: descarga mapas para editarlos o comparte uno guardado.,A biblioteca clássica: baixe mapas para editar ou compartilhe um mapa salvo.,Die klassische Kartenbibliothek: Karten zum Bearbeiten laden oder eine gespeicherte teilen.,La bibliothèque classique : télécharge des cartes à modifier ou partage une carte enregistrée.
+Pick a level to see it here.,Elige un nivel para verlo aquí.,Escolha um nível para vê-lo aqui.,"Wähle ein Level, um es hier zu sehen.",Choisis un niveau pour le voir ici.
+Share code: friends type it into the course code box.,Código para compartir: tus amigos lo escriben en la casilla de código.,Código para compartilhar: seus amigos digitam no campo de código.,Teil-Code: Freunde tippen ihn ins Code-Feld.,Code de partage : tes amis le tapent dans la case du code.
+COPY,COPIAR,COPIAR,KOPIEREN,COPIER
+Code copied - paste it to a friend.,Código copiado: pégaselo a un amigo.,Código copiado: cole para um amigo.,Code kopiert - schick ihn einem Freund.,Code copié - colle-le à un ami.
+Game mode for PLAY and HOST ONLINE. Listed: the modes this level was built for.,Modo para JUGAR y CREAR EN LÍNEA. Se listan los modos para los que se hizo el nivel.,Modo para JOGAR e HOSPEDAR ONLINE. Lista: os modos para os quais o nível foi feito.,"Modus für SPIELEN und ONLINE HOSTEN. Aufgeführt: die Modi, für die das Level gebaut wurde.",Mode pour JOUER et HÉBERGER EN LIGNE. Liste : les modes pour lesquels le niveau a été conçu.
+A bot match on this level.,Una partida contra bots en este nivel.,Uma partida contra bots neste nível.,Ein Bot-Match auf diesem Level.,Une partie contre des bots sur ce niveau.
+HOST ONLINE,CREAR EN LÍNEA,HOSPEDAR ONLINE,ONLINE HOSTEN,HÉBERGER EN LIGNE
+Host a game on this level that friends can join.,Crea una partida en este nivel a la que puedan unirse tus amigos.,Hospede uma partida neste nível para seus amigos entrarem.,"Hoste ein Spiel auf diesem Level, dem Freunde beitreten können.",Héberge une partie sur ce niveau que tes amis peuvent rejoindre.
+LIKE,ME GUSTA,CURTIR,LIKEN,J'AIME
+LIKED,TE GUSTA,CURTIDO,GELIKT,AIMÉ
+BOOKMARK,GUARDAR,SALVAR,MERKEN,FAVORI
+NO PREVIEW,SIN VISTA PREVIA,SEM PRÉVIA,KEINE VORSCHAU,PAS D'APERÇU
+"Search by title, author or course code.","Busca por título, autor o código.","Busque por título, autor ou código.","Suche nach Titel, Autor oder Level-Code.","Cherche par titre, auteur ou code."
+Loading levels...,Cargando niveles...,Carregando níveis...,Levels werden geladen...,Chargement des niveaux...
+No bookmarks yet. Open a level and press BOOKMARK to keep it here.,Aún no tienes guardados. Abre un nivel y pulsa GUARDAR para tenerlo aquí.,Nenhum nível salvo. Abra um nível e toque em SALVAR para guardá-lo aqui.,"Noch nichts gemerkt. Öffne ein Level und drücke MERKEN, um es hier zu behalten.",Pas encore de favoris. Ouvre un niveau et appuie sur FAVORI pour le garder ici.
+Can't load levels right now.,No se pueden cargar los niveles ahora.,Não foi possível carregar os níveis agora.,Levels können gerade nicht geladen werden.,Impossible de charger les niveaux pour l'instant.
+"Nothing found for ""%s"".","No se encontró nada para ""%s"".","Nada encontrado para ""%s"".","Nichts gefunden für ""%s"".",Rien trouvé pour « %s ».
+No levels here yet. Build one in the Map Editor and press Publish!,Aún no hay niveles. ¡Crea uno en el Editor de mapas y pulsa Publicar!,Ainda não há níveis. Crie um no Editor de mapas e toque em Publicar!,Hier gibt es noch keine Levels. Bau eins im Karteneditor und drücke Veröffentlichen!,Pas encore de niveaux. Crées-en un dans l'éditeur de cartes et appuie sur Publier !
+by %s,por %s,por %s,von %s,par %s
+by an unknown builder,de un autor desconocido,de um autor desconhecido,von unbekannt,d'un auteur inconnu
+Built for: %s,Hecho para: %s,Feito para: %s,Gebaut für: %s,Conçu pour : %s
+%s plays   ·   %s likes,%s partidas   ·   %s me gusta,%s partidas   ·   %s curtidas,%s Spiele   ·   %s Likes,%s parties   ·   %s j'aime
+Looking up %s...,Buscando %s...,Procurando %s...,Suche %s...,Recherche de %s...
+Removed from your bookmarks.,Quitado de tus guardados.,Removido dos seus salvos.,Aus deinen Merklisten entfernt.,Retiré de tes favoris.
+"Bookmarked. Find it under BOOKMARKED, even offline.","Guardado. Lo encontrarás en GUARDADOS, incluso sin conexión.","Salvo. Encontre em SALVOS, mesmo offline.","Gemerkt. Du findest es unter GEMERKT, auch offline.","Ajouté aux favoris. Retrouve-le dans FAVORIS, même hors ligne."
+Downloading the level...,Descargando el nivel...,Baixando o nível...,Level wird geladen...,Téléchargement du niveau...
+That level couldn't be downloaded.,No se pudo descargar ese nivel.,Não foi possível baixar esse nível.,Das Level konnte nicht geladen werden.,Impossible de télécharger ce niveau.
+"You're offline, or the level server can't be reached right now. Bookmarked levels you've played before still work.",Estás sin conexión o no se puede contactar con el servidor de niveles. Los niveles guardados que ya jugaste siguen funcionando.,Você está offline ou o servidor de níveis não responde agora. Níveis salvos que você já jogou continuam funcionando.,"Du bist offline oder der Level-Server ist gerade nicht erreichbar. Gemerkte Levels, die du schon gespielt hast, gehen weiterhin.",Tu es hors ligne ou le serveur de niveaux est injoignable. Les niveaux en favoris déjà joués fonctionnent toujours.
+Slow down a little - try again in a minute.,Más despacio: inténtalo de nuevo en un minuto.,Calma: tente de novo em um minuto.,Etwas langsamer - versuch es in einer Minute noch mal.,Doucement - réessaie dans une minute.
+No level with that code.,No hay ningún nivel con ese código.,Nenhum nível com esse código.,Kein Level mit diesem Code.,Aucun niveau avec ce code.
+This master server doesn't have the level library yet.,Este servidor maestro aún no tiene la biblioteca de niveles.,Este servidor mestre ainda não tem a biblioteca de níveis.,Dieser Master-Server hat die Level-Bibliothek noch nicht.,Ce serveur maître n'a pas encore la bibliothèque de niveaux.
+The level server said: %s,El servidor de niveles dijo: %s,O servidor de níveis disse: %s,Der Level-Server sagt: %s,Le serveur de niveaux a répondu : %s
+PUBLISH LEVEL,PUBLICAR NIVEL,PUBLICAR NÍVEL,LEVEL VERÖFFENTLICHEN,PUBLIER LE NIVEAU
+Title,Título,Título,Titel,Titre
+A name players will search for,Un nombre que los jugadores buscarán,Um nome que os jogadores vão buscar,"Ein Name, nach dem Spieler suchen",Un nom que les joueurs chercheront
+CLOSE,CERRAR,FECHAR,SCHLIESSEN,FERMER
+COPY CODE,COPIAR CÓDIGO,COPIAR CÓDIGO,CODE KOPIEREN,COPIER LE CODE
+SEE IN LEVELS,VER EN NIVELES,VER EM NÍVEIS,IN LEVELS ANSEHEN,VOIR DANS NIVEAUX
+PUBLISH,PUBLICAR,PUBLICAR,VERÖFFENTLICHEN,PUBLIER
+"Everyone will be able to find, play and like it. You get a code to share.","Todos podrán encontrarlo, jugarlo y valorarlo. Recibirás un código para compartir.","Todos poderão encontrar, jogar e curtir. Você recebe um código para compartilhar.","Alle können es finden, spielen und liken. Du bekommst einen Code zum Teilen.","Tout le monde pourra le trouver, y jouer et l'aimer. Tu reçois un code à partager."
+Add at least one platform first (or Generate).,Añade al menos una plataforma primero (o Generar).,Adicione pelo menos uma plataforma primeiro (ou Gerar).,Füge zuerst mindestens eine Plattform hinzu (oder Generieren).,Ajoute d'abord au moins une plateforme (ou Générer).
+Give your level a title first.,Primero ponle un título a tu nivel.,Dê um título ao seu nível primeiro.,Gib deinem Level zuerst einen Titel.,Donne d'abord un titre à ton niveau.
+That title isn't allowed - please pick another.,Ese título no está permitido: elige otro.,Esse título não é permitido: escolha outro.,Dieser Titel ist nicht erlaubt - bitte wähle einen anderen.,Ce titre n'est pas autorisé - choisis-en un autre.
+Publishing...,Publicando...,Publicando...,Wird veröffentlicht...,Publication...
+Already published - here's its code again.,Ya publicado: aquí tienes su código otra vez.,Já publicado: aqui está o código de novo.,Schon veröffentlicht - hier ist sein Code noch mal.,Déjà publié - voici à nouveau son code.
+"Published! Give friends this code, or find it in LEVELS.",¡Publicado! Pasa este código a tus amigos o búscalo en NIVELES.,Publicado! Passe este código aos amigos ou encontre em NÍVEIS.,Veröffentlicht! Gib Freunden diesen Code oder finde es unter LEVELS.,Publié ! Donne ce code à tes amis ou retrouve-le dans NIVEAUX.
+Publish,Publicar,Publicar,Veröffentlichen,Publier
+Levels,Niveles,Níveis,Levels,Niveaux
+"Share this map as a level: everyone can find, play and like it in LEVELS, and you get a code to give friends.","Comparte este mapa como nivel: todos podrán encontrarlo, jugarlo y valorarlo en NIVELES, y recibes un código para tus amigos.","Compartilhe este mapa como nível: todos podem encontrar, jogar e curtir em NÍVEIS, e você recebe um código para os amigos.","Teile diese Karte als Level: Alle können es unter LEVELS finden, spielen und liken, und du bekommst einen Code für Freunde.","Partage cette carte comme niveau : tout le monde peut la trouver, y jouer et l'aimer dans NIVEAUX, et tu reçois un code pour tes amis."
+"Browse, play and like levels other players made.","Explora, juega y valora niveles de otros jugadores.","Explore, jogue e curta níveis de outros jogadores.","Stöbere in Levels anderer Spieler, spiele und like sie.","Parcours, joue et aime les niveaux des autres joueurs."
+"Play, like and bookmark levels other players built, or find one by its share code.","Juega, valora y guarda niveles de otros jugadores, o encuentra uno por su código.","Jogue, curta e salve níveis de outros jogadores, ou encontre um pelo código.","Spiele, like und merke dir Levels anderer Spieler oder finde eins über seinen Code.","Joue, aime et mets en favori les niveaux des autres joueurs, ou trouves-en un par son code."
