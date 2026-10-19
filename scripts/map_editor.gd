@@ -43,6 +43,7 @@ enum Tool {
 	BUGGY,   # v1.19 vehicle spawn
 	TANK,    # v1.20 tank spawn
 	HELI,    # #277 helicopter pad
+	PLANE,   # #291 plane (ground: runway start; open air: starts flying)
 }
 
 # Weapon names offered by the WEAPON_PICKUP tool. Order mirrors the Gun Game
@@ -132,6 +133,7 @@ const EDITOR_TIPS := {
 	"Dom Pt": "A Domination control point.",
 	"M2": "A mounted M2 machine gun (press F next to it in game).",
 	"Heli": "A helicopter pad (#277). Flat ground with lots of open sky above it — big, open maps only.",
+	"Plane": "A plane (#291). On the ground: the start of a long, flat runway. Placed in open air: it waits there and starts flying when someone gets in.",
 	"Tank": "A tank spawn. Wide maps only: it needs a long, flat run (1600px+) and room for its turret.",
 	"Buggy": "A buggy spawn. Put it on a long stretch of open ground (it needs room to drive).",
 	"Poly": "Click points to draw a free-form terrain shape; Enter closes it, Backspace removes the last point.",
@@ -329,6 +331,8 @@ func _draw() -> void:
 		_draw_marker(tb, Color(0.8, 0.85, 0.55), "TNK", 34.0)
 	for hb in _map.get("heli_spawns", []):
 		_draw_marker(hb, Color(0.7, 0.88, 0.8), "HEL", 34.0)
+	for pb in _map.get("plane_spawns", []):
+		_draw_marker(pb, Color(0.72, 0.8, 0.92), "PLN", 34.0)
 	# Pickups: weapon / bonus / point.
 	for wp in _map.get("weapon_pickups", []):
 		var pos_wp: Vector2 = wp.get("pos", Vector2.ZERO)
@@ -616,6 +620,10 @@ func _on_lmb_press(mp: Vector2) -> void:
 			var arrh: Array = _map.get("heli_spawns", [])
 			arrh.append(_snap(mp))
 			_map["heli_spawns"] = arrh
+		Tool.PLANE:
+			var arrp: Array = _map.get("plane_spawns", [])
+			arrp.append(_snap(mp))
+			_map["plane_spawns"] = arrp
 		Tool.TERRAIN_POLY:
 			# Click adds a vertex; Enter commits, right-click deletes existing poly.
 			_poly_pts.append(_snap(mp))
@@ -765,6 +773,10 @@ func _find_at(mp: Vector2) -> Array:
 	for i in hsp.size():
 		if mp.distance_to(hsp[i]) < 40.0:
 			return ["heli_spawns", i]
+	var psp: Array = _map.get("plane_spawns", [])
+	for i in psp.size():
+		if mp.distance_to(psp[i]) < 40.0:
+			return ["plane_spawns", i]
 	var wps: Array = _map.get("weapon_pickups", [])
 	for i in wps.size():
 		var pos_wp: Vector2 = wps[i].get("pos", Vector2.ZERO)
@@ -922,6 +934,7 @@ func _build_ui() -> void:
 		["Buggy", Tool.BUGGY],
 		["Tank", Tool.TANK],
 		["Heli", Tool.HELI],
+		["Plane", Tool.PLANE],
 		# #113 additions.
 		["Poly", Tool.TERRAIN_POLY],
 		["Scenery", Tool.SCENERY],
@@ -1282,6 +1295,7 @@ func _tool_name(t: int) -> String:
 		Tool.BUGGY: return "Buggy (place on long, open ground)"
 		Tool.TANK: return "Tank (wide maps: long, flat ground)"
 		Tool.HELI: return "Helicopter pad (flat ground, open sky)"
+		Tool.PLANE: return "Plane (runway start, or open air: starts flying)"
 		Tool.TERRAIN_POLY: return "Terrain Poly (click verts, Enter to close)"
 		Tool.SCENERY: return "Scenery (from palette)"
 		Tool.WEAPON_PICKUP: return "Weapon Pickup (from palette)"

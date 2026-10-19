@@ -1666,7 +1666,8 @@ func net_bot_state(arr: Array) -> void:
 
 # ── Vehicles (v1.19) ──────────────────────────────────
 # Buggies spawn at the map's "vehicle_spawns", tanks at "tank_spawns",
-# helicopters at "heli_spawns" (tools/place_vehicles.py). The
+# helicopters at "heli_spawns", planes at "plane_spawns" (#291)
+# (tools/place_vehicles.py). The
 # host owns them (damage, wrecks, respawns, who sits where); the driver's peer
 # simulates movement and streams it. Every message goes through vehicle_send:
 # single-player applies it directly, the host broadcasts it (and runs it), a

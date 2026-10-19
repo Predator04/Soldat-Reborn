@@ -1,7 +1,7 @@
 extends Node
 ## Main's vehicles and M2 turrets (#258 split of main.gd).
 ## Buggies / tanks / helicopters spawn at the map's vehicle_spawns / tank_spawns /
-## heli_spawns (#277). The host owns
+## heli_spawns (#277) / plane_spawns (#291). The host owns
 ## them (damage, wrecks, respawns, who sits where); the driver's peer simulates
 ## movement and streams it. Every message goes through vehicle_send:
 ## single-player applies it directly, the host broadcasts it (and runs it), a
@@ -14,6 +14,7 @@ const Main = preload("res://scripts/main.gd")
 const Tank = preload("res://scripts/tank.gd")
 const Buggy = preload("res://scripts/buggy.gd")
 const Heli = preload("res://scripts/heli.gd")
+const PlaneV = preload("res://scripts/plane.gd")
 const RELAY_SPAN_MS := 250
 const RELAY_WORLD_MARGIN := 600.0
 
@@ -154,7 +155,7 @@ func _spawn_vehicles() -> void:
 	if not Settings.vehicles or Settings.game_mode == Settings.MODE_GG:
 		return
 	var vid := 0
-	for pair in [["vehicle_spawns", "buggy"], ["tank_spawns", "tank"], ["heli_spawns", "heli"]]:
+	for pair in [["vehicle_spawns", "buggy"], ["tank_spawns", "tank"], ["heli_spawns", "heli"], ["plane_spawns", "plane"]]:
 		for v in main._map.get(pair[0], []):
 			var p: Vector2 = v if v is Vector2 else Vector2(float(v[0]), float(v[1]))
 			_make_vehicle(vid, p + Vector2(0, -4), p + Vector2(0, -4), -1.0, true, pair[1])
@@ -164,8 +165,8 @@ func _spawn_vehicles() -> void:
 func _make_vehicle(vid: int, spawn: Vector2, pos: Vector2, hp_v: float, alive_v: bool, kind := "buggy") -> Node:
 	if main._vehicles.has(vid) and is_instance_valid(main._vehicles[vid]):
 		main._vehicles[vid].queue_free()
-	var b = Tank.new() if kind == "tank" else (Heli.new() if kind == "heli" else Buggy.new())
-	b.name = "%s_%d" % [{"tank": "Tank", "heli": "Heli"}.get(kind, "Buggy"), vid]
+	var b = Tank.new() if kind == "tank" else (Heli.new() if kind == "heli" else (PlaneV.new() if kind == "plane" else Buggy.new()))
+	b.name = "%s_%d" % [{"tank": "Tank", "heli": "Heli", "plane": "Plane"}.get(kind, "Buggy"), vid]
 	b.vehicle_id = vid
 	b.position = spawn
 	main.add_child(b)
@@ -343,7 +344,7 @@ func net_vehicle_fire(vid: int, muzzle: Vector2, dir: Vector2) -> void:
 	if Net.is_networked() and not Net.is_host() and main.multiplayer.get_remote_sender_id() != 1:
 		return
 	# The muzzle must be on the buggy (no firing from across the map).
-	if muzzle.distance_to((v as Node2D).global_position) > 90.0:
+	if muzzle.distance_to((v as Node2D).global_position) > float(v.get("FIRE_REACH")):
 		return
 	v.apply_fire(muzzle, dir.normalized())
 
@@ -408,7 +409,7 @@ func net_vehicle_fire_seat(vid: int, seat: int, muzzle: Vector2, dir: Vector2) -
 		return
 	if Net.is_networked() and not Net.is_host() and main.multiplayer.get_remote_sender_id() != 1:
 		return
-	if muzzle.distance_to((v as Node2D).global_position) > 120.0:
+	if muzzle.distance_to((v as Node2D).global_position) > maxf(120.0, float(v.get("FIRE_REACH"))):
 		return
 	v.apply_fire_seat(seat, muzzle, dir.normalized())
 

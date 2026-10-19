@@ -129,6 +129,8 @@ const BASE := {
 		"tip": "A tank. Wide maps only: it needs a long flat run."},
 	"heli": {"tab": "vehicles", "label": "Heli pad", "kind": "entity", "key": "heli_spawns", "anchor": "feet",
 		"tip": "A helicopter pad: flat ground with open sky above."},
+	"plane": {"tab": "vehicles", "label": "Plane", "kind": "entity", "key": "plane_spawns", "anchor": "feet",
+		"tip": "A plane. On the ground it needs a long, flat runway; up in open air it starts already flying."},
 	"m2": {"tab": "vehicles", "label": "M2 gun", "kind": "entity", "key": "m2_mounts", "anchor": "feet",
 		"tip": "A mounted M2 machine gun (press F next to it)."},
 }
@@ -226,6 +228,7 @@ static func entity_id_for(key: String, team: int = 0, slot: int = 0, weapon: Str
 		"vehicle_spawns": return "buggy"
 		"tank_spawns": return "tank"
 		"heli_spawns": return "heli"
+		"plane_spawns": return "plane"
 		"m2_mounts": return "m2"
 		"weapon_pickups": return "w_" + _slug(weapon)
 	return ""
@@ -462,6 +465,8 @@ static func draw_entity(ci: CanvasItem, id: String, foot: Vector2, s: float, alp
 			ci.draw_arc(Vector2.ZERO, h * 0.95, 0.0, TAU, 32, Color(1, 0.86, 0.3, alpha), lw * 2.6, true)
 			ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 			_text(ci, foot + Vector2(0, -h * 0.75), "H", int(maxf(8.0, s * 0.5)), Color(1, 0.86, 0.3, alpha))
+		"plane":
+			_plane(ci, foot, s, alpha)
 		"m2":
 			var mc := Color(0.6, 0.66, 0.7, alpha)
 			ci.draw_line(foot + Vector2(-h * 0.5, 0), c + Vector2(0, h * 0.15), mc, lw * 1.6, true)
@@ -512,3 +517,25 @@ static func _vehicle(ci: CanvasItem, foot: Vector2, s: float, tank: bool, alpha:
 		for wx in [-h * 0.58, h * 0.58]:
 			ci.draw_circle(foot + Vector2(wx, -h * 0.26), h * 0.26, dark)
 			ci.draw_circle(foot + Vector2(wx, -h * 0.26), h * 0.11, Color(0.6, 0.62, 0.66, alpha))
+
+
+## Plane thumbnail (#291): side-on jet resting on its gear, nose right.
+static func _plane(ci: CanvasItem, foot: Vector2, s: float, alpha: float) -> void:
+	var h := s * 0.5
+	var body := Color(0.62, 0.68, 0.74, alpha)
+	var dark := Color(0.12, 0.13, 0.15, alpha)
+	var c := foot + Vector2(0, -h * 0.42)
+	ci.draw_line(c + Vector2(h * 0.5, h * 0.05), foot + Vector2(h * 0.52, -h * 0.08), dark, maxf(1.0, s * 0.03), true)
+	ci.draw_line(c + Vector2(-h * 0.2, h * 0.05), foot + Vector2(-h * 0.22, -h * 0.1), dark, maxf(1.0, s * 0.03), true)
+	ci.draw_circle(foot + Vector2(h * 0.52, -h * 0.08), h * 0.08, dark)
+	ci.draw_circle(foot + Vector2(-h * 0.22, -h * 0.1), h * 0.1, dark)
+	ci.draw_colored_polygon(PackedVector2Array([c + Vector2(h * 1.0, h * 0.04), c + Vector2(h * 0.7, -h * 0.12), c + Vector2(h * 0.1, -h * 0.17),
+		c + Vector2(-h * 0.7, -h * 0.12), c + Vector2(-h * 1.0, -h * 0.05), c + Vector2(-h * 1.0, h * 0.06), c + Vector2(-h * 0.6, h * 0.14),
+		c + Vector2(h * 0.6, h * 0.12)]), body)
+	ci.draw_colored_polygon(PackedVector2Array([c + Vector2(-h * 0.55, -h * 0.12), c + Vector2(-h * 0.85, -h * 0.55), c + Vector2(-h * 1.0, -h * 0.55),
+		c + Vector2(-h * 0.98, -h * 0.08)]), body.darkened(0.15))
+	ci.draw_colored_polygon(PackedVector2Array([c + Vector2(h * 0.25, h * 0.03), c + Vector2(-h * 0.55, h * 0.1), c + Vector2(-h * 0.25, h * 0.0)]), body.darkened(0.3))
+	ci.draw_colored_polygon(PackedVector2Array([c + Vector2(h * 0.55, -h * 0.13), c + Vector2(h * 0.35, -h * 0.3), c + Vector2(h * 0.08, -h * 0.3),
+		c + Vector2(-h * 0.05, -h * 0.16)]), Color(0.55, 0.82, 1.0, 0.9 * alpha))
+	ci.draw_colored_polygon(PackedVector2Array([c + Vector2(-h * 1.0, -h * 0.06), c + Vector2(-h * 1.28, -h * 0.03), c + Vector2(-h * 1.0, h * 0.04)]),
+		Color(1.0, 0.62, 0.25, 0.85 * alpha))
