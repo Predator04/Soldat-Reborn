@@ -37,6 +37,8 @@ const VOID_MAX := 56.0
 const BRIDGE_MAX_RISE := 790.0   # bake: 740 at 2 px cells; the coarser raster measures climbs a little longer
 const BRIDGE_STEP := 6          # coarse cells between bridge waypoints (coarse = 2 cells = 8 px)
 const BRIDGE_BUDGET := 600000   # Dijkstra pops per leg
+const HAZARD_PAD_X := 20.0     # hazard kill box margin (match_hazards tests feet +-6 px; + path-follow slop)
+const HAZARD_PAD_TOP := 20.0   # air waypoints stay this far over a hazard
 
 var nx := 0
 var ny := 0
@@ -63,6 +65,7 @@ func _build(m: Dictionary) -> Dictionary:
 	_raster(m)
 	_fits()
 	_ground_cells()
+	_apply_hazards(m)
 	var walk := _walkable()
 	var nodes := _sample_nodes(walk)
 	if OS.get_environment("NAV_DEBUG") != "":
@@ -149,6 +152,9 @@ func _raster(m: Dictionary) -> void:
 		if not pp.is_finite() or not ss.is_finite():
 			continue
 		_fill_rect(pp.x - ss.x * 0.5, pp.y - ss.y * 0.5, pp.x + ss.x * 0.5, pp.y + ss.y * 0.5)
+	# Maker hazards: solid for clearance (never ground — _apply_hazards).
+	for r: Rect2 in _hazard_rects(m):
+		_fill_rect(r.position.x - HAZARD_PAD_X, r.position.y - HAZARD_PAD_TOP, r.end.x + HAZARD_PAD_X, r.end.y)
 	# Baseline floor (top edge at ground_y) and the side walls (main.gd).
 	_fill_rect(0.0, G, W + R, H + R)
 	_fill_rect(-R, -R, 20.0, H + R)
@@ -249,6 +255,46 @@ func _ground_cells() -> void:
 				ground[i] = 1
 				rows.append(y)
 		col_ground[x] = rows
+
+
+## Maker hazards (#286) as world rects ("hazards": [{kind, rect, dir}], the
+## rect a Rect2 in-game or [x, y, w, h] in JSON).
+func _hazard_rects(m: Dictionary) -> Array:
+	var out: Array = []
+	var list: Variant = m.get("hazards", [])
+	if not (list is Array):
+		return out
+	for h in list:
+		if not (h is Dictionary):
+			continue
+		var rv: Variant = h.get("rect")
+		if rv is Rect2:
+			out.append(rv)
+		elif (rv is Array or rv is PackedFloat32Array) and rv.size() >= 4:
+			out.append(Rect2(float(rv[0]), float(rv[1]), float(rv[2]), float(rv[3])))
+	return out
+
+
+## Spikes / lava are not ground: no nodes on (or just above) them. They are
+## rastered as solid too (_raster), so a link or an air bridge can't pass
+## through one — bots path over them with a jump / jet and never through.
+## The kill test (match_hazards) checks the feet a few px inside the rect and
+## +-6 px either side, hence the margins.
+func _apply_hazards(m: Dictionary) -> void:
+	for r: Rect2 in _hazard_rects(m):
+		var x0 := clampi(int(floor((r.position.x - HAZARD_PAD_X) / R)), 0, nx - 1)
+		var x1 := clampi(int(ceil((r.end.x + HAZARD_PAD_X) / R)), 0, nx - 1)
+		var y0 := int(floor((r.position.y - STAND_H) / R))
+		var y1 := int(ceil((r.end.y + 8.0) / R))
+		for x in range(x0, x1 + 1):
+			var rows: PackedInt32Array = col_ground[x]
+			var keep := PackedInt32Array()
+			for y in rows:
+				if y >= y0 and y <= y1:
+					ground[y * nx + x] = 0
+				else:
+					keep.append(y)
+			col_ground[x] = keep
 
 
 ## Vertical dilation of `g` by `r` cells each way (any ground within +-r rows).

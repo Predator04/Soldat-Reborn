@@ -26,6 +26,7 @@ var zones: Array = []          # {kind, rect: Rect2, dir}
 var pads: Array = []           # {pos: Vector2, power: float}
 var launches := 0              # pad launches this match (tests)
 var kills := 0                 # hazard deaths this match (tests)
+var kill_log: Array = []       # tests: "<name> <kind> at <feet>" (last 16)
 var _pad_cd: Dictionary = {}   # soldier instance id -> msec of its last launch
 var _visual: Node2D = null
 
@@ -85,6 +86,9 @@ func _tick(_delta: float) -> void:
 				s.set("ceasefire_t", 0.0)
 				s.take_damage(9999.0, str(s.get("display_name")), "Spikes" if str(z.get("kind", "")) == "spikes" else "Lava", int(s.get("team")))
 				kills += 1
+				kill_log.append("%s %s at %s" % [str(s.get("display_name")), str(z.get("kind", "")), str(feet.round())])
+				if kill_log.size() > 16:
+					kill_log.pop_front()
 				break
 		if bool(s.get("dead")):
 			continue

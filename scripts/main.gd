@@ -897,6 +897,12 @@ func _safe_spawn_near(pos: Vector2, team: int) -> Vector2:
 		# outside face, and bots slid off the map on every respawn.
 		if clear and step > 0 and not _spawn_slide_ok(pos, candidate):
 			clear = false
+		# ...and never onto Maker spikes / lava (#286): the 3rd slide off a
+		# CTF base spawn landed bots in a spike strip.
+		if clear and step > 0 and has_hazards():
+			var hg: float = _geom_ground_y(candidate.x, candidate.y - 2.0)
+			if hazard_at(Vector2(candidate.x, (hg if hg != INF else candidate.y) - 6.0), 40.0):
+				clear = false
 		for s in get_tree().get_nodes_in_group("soldier"):
 			if not clear:
 				break

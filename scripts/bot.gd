@@ -83,6 +83,7 @@ var _refuel_wait := false           # standing still to refill jets before a cli
 var _blocked_t := 0.0               # pushing into something without moving
 var _safe_floor_x := -INF              # last x we stood on solid (non-void) ground
 var _gap_ahead := false             # next path link crosses a bottomless gap
+var _gap_hazard := false            # ...the gap is a Maker kill zone (spikes / lava)
 
 # Ammo state (#36) — bots run dry and reload like players.
 # `_mag_size` + `_reload_time` are stat lookups per loadout.
@@ -583,6 +584,14 @@ func _physics_process(delta: float) -> void:
 				dir = -dir
 				strafe_dir = dir
 				wander_dir = dir
+		# In the air over spikes / lava (#286): never stall over them (no
+		# refuel stop, no hovering at a waypoint) and never drop into them —
+		# head for the nearer edge.
+		if not on_floor and _hazard_below():
+			_refuel_wait = false
+			var ex: float = _hazard_exit_dir()
+			if ex != 0.0 and (dir == 0.0 or not navigating or velocity.y > 120.0):
+				dir = ex
 
 		# Escape manoeuvre (see _progress_anchor). Only when the bot actually
 		# wants to travel — close-range strafing legitimately stays in place.
@@ -666,7 +675,7 @@ func _physics_process(delta: float) -> void:
 				# land first instead of burning the tank sinking (that sank bots
 				# into Triumph's pits). Over a void, jet regardless.
 				var falling_to_land: bool = not on_floor and velocity.y > 40.0 \
-						and not _void_below() and _ground_within(90.0)
+						and not _void_below() and not _hazard_below() and _ground_within(90.0)
 				if on_floor and jump_cd <= 0.0:
 					velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
 					jump_cd = 0.3
@@ -676,7 +685,8 @@ func _physics_process(delta: float) -> void:
 					fuel = maxf(0.0, fuel - (40.0 / maxf(0.1, MatchConfig.mod_jet())) * delta)
 					jet_on = true
 			elif on_floor and jump_cd <= 0.0 and _hop_cd <= 0.0 and dir != 0.0 and fuel > 90.0 \
-					and _path_i < _path.size() and absf(_path[_path_i].x - global_position.x) > 200.0:
+					and _path_i < _path.size() and absf(_path[_path_i].x - global_position.x) > 200.0 \
+					and not _hazard_ahead(dir, HOP_REACH):
 				# Long flat stretch: bunny-hop for speed like players do.
 				velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
 				velocity.x = dir * maxf(RUN_SPEED * MatchConfig.mod_speed(), absf(velocity.x) * 1.08)
@@ -691,7 +701,7 @@ func _physics_process(delta: float) -> void:
 				velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
 				jump_cd = 0.9
 				Sfx.jump(global_position)
-			elif on_floor and jump_cd <= 0.0 and dist_h > 260.0 and _hop_cd <= 0.0:
+			elif on_floor and jump_cd <= 0.0 and dist_h > 260.0 and _hop_cd <= 0.0 and not _hazard_ahead(signf(dx), HOP_REACH):
 				velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
 				velocity.x = signf(dx) * maxf(RUN_SPEED * MatchConfig.mod_speed(), absf(velocity.x) * 1.08)
 				jump_cd = 0.35
@@ -715,15 +725,17 @@ func _physics_process(delta: float) -> void:
 		# or got blasted off a ledge, or dove after a target) — burn fuel and
 		# steer back over the last ground we stood on. Before this, idle bots
 		# on Airpirates dropped off ledges with a full tank.
+		# Spikes / lava below (Maker maps, #286) count as a void: same rescue,
+		# except a bot deliberately crossing them keeps going.
 		if on_floor:
-			if not _void_below():
+			if not _void_below() and not _hazard_below():
 				_safe_floor_x = global_position.x
-		elif velocity.y > 40.0 and fuel > 0.0 and _void_below():
+		elif velocity.y > 40.0 and fuel > 0.0 and (_void_below() or _hazard_below()):
 			if not jet_on:
 				velocity.y += JET_THRUST * MatchConfig.mod_jet() * MatchConfig.mod_gravity() * delta
 				fuel = maxf(0.0, fuel - (40.0 / maxf(0.1, MatchConfig.mod_jet())) * delta)
 				jet_on = true
-			if _safe_floor_x > -1.0e8:
+			if _safe_floor_x > -1.0e8 and not (navigating and _gap_ahead and _gap_hazard):
 				var back: float = signf(_safe_floor_x - global_position.x)
 				velocity.x = move_toward(velocity.x, back * RUN_SPEED * MatchConfig.mod_speed(), 1400.0 * delta)
 				# (Sfx.jet is the LOCAL player's single jet loop — bots toggling it made
@@ -1882,7 +1894,12 @@ func _nav_step(goal: Vector2, delta: float) -> Vector3:
 	# between Airpirates' ships): hold altitude with jets instead of arcing
 	# down into the void.
 	_gap_ahead = _is_gap(global_position, wp)
-	if _gap_ahead and (global_position.y > wp.y - 200.0 or velocity.y > 120.0):
+	if _gap_ahead and _gap_hazard:
+		# Over spikes / lava (#286): hold the waypoints' altitude — jetting
+		# high just runs the tank dry and drops us straight in.
+		if global_position.y > wp.y - 20.0 or velocity.y > 60.0:
+			up = 1.0
+	elif _gap_ahead and (global_position.y > wp.y - 200.0 or velocity.y > 120.0):
 		# Jump at the lip and jet the whole way (jets barely beat gravity).
 		# Also on a downhill gap once we start dropping: jets can't arrest a
 		# fall that's already fast, so they must catch it early (Triumph's
@@ -1892,10 +1909,20 @@ func _nav_step(goal: Vector2, delta: float) -> Vector3:
 
 
 func _is_gap(a: Vector2, b: Vector2) -> bool:
-	if absf(b.x - a.x) < 40.0:
-		return false
+	_gap_hazard = false
 	var m := _main()
 	if m == null or not m.has_method("_geom_ground_y"):
+		return false
+	# Maker maps (#286): spikes / lava under us or under the hop count as a
+	# gap too, so the bot jets across instead of a short hop that lands in them.
+	if m.has_method("has_hazards") and m.has_hazards():
+		var n: int = clampi(int(absf(b.x - a.x) / 24.0), 1, 24)
+		for i in range(0, n + 1):
+			var q: Vector2 = a.lerp(b, float(i) / float(n))
+			if _hazard_under(m, q.x, minf(a.y, b.y) - 6.0):
+				_gap_hazard = true
+				return true
+	if absf(b.x - a.x) < 40.0:
 		return false
 	var kill_y: float = float(m.get("KILL_Y"))
 	if kill_y == INF:
@@ -2031,6 +2058,56 @@ func _void_below() -> bool:
 		return false
 	var gy: float = m._geom_ground_y(global_position.x, global_position.y)
 	return gy == INF or gy > kill_y
+
+
+# The first ground under (x, from_y) is a Maker kill zone (spikes / lava).
+func _hazard_under(m: Node, x: float, from_y: float) -> bool:
+	var gy: float = m._geom_ground_y(x, from_y)
+	return gy != INF and m.hazard_at(Vector2(x, gy - 6.0), 6.0)
+
+
+# Spikes / lava on the ground within `dist` px ahead (a bunny-hop that far
+# would land in them).
+const HOP_REACH := 200.0
+
+
+func _hazard_ahead(d: float, dist: float) -> bool:
+	if d == 0.0:
+		return false
+	var m := _main()
+	if m == null or not m.has_method("has_hazards") or not m.has_hazards():
+		return false
+	var x := 16.0
+	while x <= dist:
+		if _hazard_under(m, global_position.x + d * x, global_position.y - 6.0):
+			return true
+		x += 16.0
+	return false
+
+
+# Which way off the kill zone under us is shorter (-1 / +1, 0 = none).
+func _hazard_exit_dir() -> float:
+	var m := _main()
+	var hz = m.get("_hazards") if m != null else null
+	if hz == null:
+		return 0.0
+	var x: float = global_position.x
+	for z in hz.zones:
+		var r: Rect2 = (z["rect"] as Rect2).grow(12.0)
+		if x >= r.position.x and x <= r.end.x and r.end.y >= global_position.y:
+			return -1.0 if x - r.position.x < r.end.x - x else 1.0
+	return 0.0
+
+
+# In the air over spikes / lava: landing here is dying, like a void.
+func _hazard_below() -> bool:
+	var m := _main()
+	if m == null or not m.has_method("has_hazards") or not m.has_hazards():
+		return false
+	for off in [-8.0, 0.0, 8.0]:
+		if _hazard_under(m, global_position.x + off, global_position.y):
+			return true
+	return false
 
 
 func _ground_within(dist: float) -> bool:
