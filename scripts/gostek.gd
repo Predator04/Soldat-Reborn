@@ -375,6 +375,13 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 		var h := float(tex.get_height()) * SPRITE_SCALE
 		var cx := cx_frac * w
 		var cy := use_cy_frac * h
+		# #281: the classic belt grenade is sized for the chibi gostek; on the
+		# slimmer Operator soldier it hangs at 60 % so it reads as a grenade, not a melon.
+		if hd and (key == GRENADE_BELT_FRAG or key == GRENADE_BELT_CLUSTER):
+			w *= 0.6
+			h *= 0.6
+			cx *= 0.6
+			cy *= 0.6
 		# #284: back-slung weapon / belt grenade use the 3x HD sprite, drawn
 		# into the classic rect (w / h / cx / cy above come from the classic).
 		if hd and key.begins_with("res://"):
