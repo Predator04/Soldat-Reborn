@@ -119,6 +119,9 @@ var winner_team := -1
 # "3-3 tie", etc.). Broadcast alongside the rest of match state.
 var winner_note := ""
 var winner_end_t := 0.0
+# #279: the round that just ended also ended the match (inside the last two
+# minutes, or by time) — only then is there a map vote and a fresh clock.
+var match_over := false
 # End-of-round map vote: three candidate maps on the winner screen. Players
 # press 1/2/3 (D-pad, or tap); most votes wins. No votes = same map again,
 # except a dedicated server rotates to the first choice.

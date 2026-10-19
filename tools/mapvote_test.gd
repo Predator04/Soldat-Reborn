@@ -1,7 +1,9 @@
 extends SceneTree
-## End-of-round map vote (gate stage F): the winner screen offers three other
-## maps, pressing 2 votes for the second, and the next round loads it. With no
-## votes the same map continues.
+## End-of-match map vote (gate stage F): a round that ends early (more than
+## two minutes on the clock, #279) restarts on the same map with no vote and the
+## clock keeps running; one that ends inside the last two minutes shows three
+## other maps, pressing 2 votes for the second, and the next match loads it.
+## With no votes the same map continues with a fresh clock.
 ##   godot --headless -s tools/mapvote_test.gd
 
 var _n := 0
@@ -35,17 +37,41 @@ func _process(_d: float) -> bool:
 		st.custom_map_path = ""
 		root.get_node("Net").set_singleplayer()
 		change_scene_to_file("res://scenes/main.tscn")
-		_st = 1
+		_st = 10
 		return false
 	var m = current_scene
 	if m == null or m.get("next_map_choices") == null:
 		return false
 	match _st:
-		1:
+		10:
 			if _n < 40:
 				return false
 			_first_map = m.cur_map_index
-			# Round 1 ends with no votes: same map again.
+			# #279: an early round end (e.g. a kill limit at 4:10) is not the match.
+			m.time_left = 250.0
+			m._end_round(-1)
+			if not m.next_map_choices.is_empty() or m.match_over:
+				return _end(false, "early round end offered a vote: %s" % str(m.next_map_choices))
+			m.hud._process(0.016)
+			if m.hud.next_map_panel != null and m.hud.next_map_panel.visible:
+				return _end(false, "vote panel shown on an early round end")
+			m.winner_end_t = 0.05
+			_t = _n
+			_st = 11
+		11:
+			if _n - _t < 20:
+				return false
+			if not m.round_active or m.cur_map_index != _first_map:
+				return _end(false, "early round didn't restart on the same map")
+			if m.time_left > 250.0 or m.time_left < 240.0:
+				return _end(false, "match clock reset on an early round end (%.1f)" % m.time_left)
+			_log.append("early round end -> no vote, clock kept %.0f" % m.time_left)
+			_t = _n
+			_st = 1
+		1:
+			_first_map = m.cur_map_index
+			# Round ends in the last two minutes with no votes: same map again.
+			m.time_left = 100.0
 			m._end_round(-1)
 			if m.next_map_choices.size() != 3 or m.next_map_choices.has(_first_map):
 				return _end(false, "choices %s (current %d)" % [str(m.next_map_choices), _first_map])
@@ -59,7 +85,10 @@ func _process(_d: float) -> bool:
 				return false
 			if not m.round_active or m.cur_map_index != _first_map:
 				return _end(false, "no-vote round didn't restart on the same map")
-			_log.append("no votes -> same map")
+			if m.time_left < 290.0:
+				return _end(false, "new match didn't get a fresh clock (%.1f)" % m.time_left)
+			_log.append("no votes -> same map, fresh clock")
+			m.time_left = 0.0
 			m._end_round(-1)
 			_want = int(m.next_map_choices[1])
 			_t = _n

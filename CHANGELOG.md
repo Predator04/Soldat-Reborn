@@ -2,6 +2,11 @@
 
 All notable changes to Soldat Reborn.
 
+## [Unreleased]
+
+### Fixed
+- **The next-map vote no longer pops up every time a round ends** — a kill-limit win, a Survival wipe or a Battle Royale finish used to throw the vote at you (often right as you died) and switch maps every couple of minutes. The 5:00 clock is now the match clock: a round that ends early shows a short winner banner ("Next round - 3:12 left in the match"), restarts on the same map and the clock keeps running. Only a round that ends in the **last two minutes**, or the clock running out, ends the match with the winner screen and the map vote; the next match starts with a fresh clock. (#279)
+
 ## [1.35.0] — 2026-10-18 — Tracerfall
 
 ### Added — helicopter (#277)

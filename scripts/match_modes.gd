@@ -50,6 +50,10 @@ const GG_LADDER_NAMES := [
 ]
 const WINNER_DISPLAY := 4.0
 const WINNER_VOTE_DISPLAY := 10.0    # winner screen with a next-map vote
+# #279: the round clock is the match clock. A round that ends with more than
+# this much time left restarts on the same map (no vote, clock keeps running);
+# one that ends inside it, or by time, ends the match: winner screen + vote.
+const MATCH_VOTE_WINDOW := 120.0
 
 
 func _spawn_mode_entities() -> void:
@@ -748,7 +752,11 @@ func _end_round(team: int) -> void:
 	main.winner_team = team
 	main.round_active = false
 	main.winner_end_t = WINNER_DISPLAY
-	if not Net.is_networked() or Net.is_host():
+	main.match_over = main.time_left <= MATCH_VOTE_WINDOW
+	if not main.match_over and main.time_left > 0.0:
+		var left := "%d:%02d" % [int(main.time_left) / 60, int(main.time_left) % 60]
+		main.winner_note = (main.winner_note + "   ·   " if main.winner_note != "" else "") + "Next round - %s left in the match" % left
+	if main.match_over and (not Net.is_networked() or Net.is_host()):
 		main._votes._pick_next_map_choices()
 		if not main.next_map_choices.is_empty():
 			main.winner_end_t = WINNER_VOTE_DISPLAY
@@ -854,7 +862,11 @@ func _reset_round() -> void:
 		for wp in main.get_tree().get_nodes_in_group("weapon_pickup"):
 			if is_instance_valid(wp):
 				wp.queue_free()
-	main.time_left = main.ROUND_TIME
+	# #279: a fresh clock only after a whole match; mid-match rounds keep it
+	# running. Clients take the host's clock from the match-state stream.
+	if main.match_over and (not Net.is_networked() or Net.is_host()):
+		main.time_left = main.ROUND_TIME
+	main.match_over = false
 	main.winner_team = -1
 	main.winner_note = ""
 	main.winner_end_t = 0.0
