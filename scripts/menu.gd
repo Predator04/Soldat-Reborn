@@ -166,6 +166,17 @@ func _attach(h: Node, n: String) -> Node:
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# Dedicated server (--dedicated / --server / --smoke-dedicated): menu.tscn is
+	# only the project's main scene here — Net (autoload, ready first) has set
+	# is_dedicated and queued _start_dedicated, which switches to main.tscn at the
+	# end of this frame. Building the menu (backdrop shader, logo, fonts, every
+	# screen, news / LAN browser) is pure cost and risk on a server: it used to
+	# run in full before the "listening" line, on a box that never shows it
+	# (#278 #285 #289 #290). Stay an inert Control until the scene change.
+	if Net.is_dedicated:
+		set_process(false)
+		set_process_unhandled_input(false)
+		return
 	Input.set_custom_mouse_cursor(load("res://assets/interface-gfx/menucursor.png"), Input.CURSOR_ARROW, Vector2(0, 0))
 	Settings.apply_display()
 	Net.leave()  # clean state on returning to menu from a game
@@ -1350,7 +1361,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 # Android back button / gesture behaves like ESC (quit_on_go_back is off).
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_WM_GO_BACK_REQUEST and is_inside_tree():
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST and is_inside_tree() and not Net.is_dedicated:
 		# Deferred: the notification walks the tree, and leaving a screen may
 		# change scenes / free nodes ("parent node is busy" otherwise).
 		_go_back.call_deferred()
