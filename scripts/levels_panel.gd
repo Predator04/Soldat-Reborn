@@ -19,6 +19,7 @@ const LevelsApi = preload("res://scripts/levels_api.gd")
 const LevelThumb = preload("res://scripts/level_thumb.gd")
 const MapIO = preload("res://scripts/map_io.gd")
 const GameLists = preload("res://scripts/game_lists.gd")
+const UIBack = preload("res://scripts/ui_back.gd")
 
 const CACHE_DIR := "user://levels/"
 const CARD_W := 236.0
@@ -224,6 +225,9 @@ func _ready() -> void:
 	visibility_changed.connect(func() -> void:
 		if not visible:
 			_release())
+	# BACK / Esc: the scene's dispatcher (menu _go_back / editor go_back) closes
+	# the browser while it is the top overlay (scripts/ui_back.gd).
+	UIBack.register(self, close)
 
 
 func _build_detail(body: HBoxContainer) -> void:
@@ -338,15 +342,6 @@ func _release() -> void:
 	_clear_cards()
 	levels = []
 	_show_detail({})
-
-
-func _unhandled_input(event: InputEvent) -> void:
-	# The editor overlay closes itself; the menu routes ESC / back via _go_back.
-	if in_menu or not visible:
-		return
-	if event is InputEventKey and event.pressed and not event.echo and (event as InputEventKey).keycode == KEY_ESCAPE:
-		close()
-		get_viewport().set_input_as_handled()
 
 
 func set_tab(key: String) -> void:

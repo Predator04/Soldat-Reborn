@@ -7,6 +7,7 @@ extends RefCounted
 
 const Updater = preload("res://scripts/updater.gd")
 const UITheme = preload("res://scripts/ui_theme.gd")
+const UIBack = preload("res://scripts/ui_back.gd")
 
 
 static func updater(tree: SceneTree) -> Node:
@@ -132,6 +133,7 @@ static func on_pressed(m: Node) -> void:
 		m._upd_panel = null
 		m._menu_root.visible = true)
 	box.add_child(later)
+	UIBack.register(m._upd_panel, func() -> void: later.pressed.emit())
 	m._menu_root.visible = false
 	UITheme.safe_grab_focus_deferred(go)
 
@@ -237,5 +239,6 @@ static func maybe_whats_new(m: Node) -> void:
 		root.queue_free()
 		m._menu_root.visible = true)
 	box.add_child(ok)
+	UIBack.register(root, func() -> void: ok.pressed.emit())
 	m._menu_root.visible = false
 	UITheme.safe_grab_focus_deferred(ok)

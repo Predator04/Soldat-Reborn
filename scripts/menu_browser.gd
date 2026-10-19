@@ -10,6 +10,7 @@ extends Node
 
 const Menu = preload("res://scripts/menu.gd")
 const UITheme = preload("res://scripts/ui_theme.gd")
+const UIBack = preload("res://scripts/ui_back.gd")
 
 var menu: Menu
 
@@ -142,6 +143,7 @@ func _build_browse() -> void:
 		menu._browse_root.visible = false
 		menu._join_root.visible = true)
 	_browse_panel.add_child(back)
+	UIBack.register(menu._browse_root, func() -> void: back.pressed.emit())
 
 
 func _on_browse_pressed() -> void:

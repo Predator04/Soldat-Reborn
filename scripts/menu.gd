@@ -11,6 +11,7 @@ const NamePromptUI = preload("res://scripts/name_prompt.gd")
 const MenuUpdate = preload("res://scripts/menu_update.gd")
 const MenuNews = preload("res://scripts/menu_news.gd")
 const LevelsPanel = preload("res://scripts/levels_panel.gd")
+const UIBack = preload("res://scripts/ui_back.gd")
 
 # Slots 0..2 are the three procedural remakes; slots 3..12 are the classic
 # Soldat maps bundled from res://assets/maps/*.json (see MapIO.BUNDLED_CLASSICS
@@ -691,6 +692,8 @@ func _go_to_match() -> void:
 		_loading_lbl.add_child(bg)
 		bg.show_behind_parent = true
 		add_child(_loading_lbl)
+		# The match is about to load: BACK waits instead of leaving under it.
+		UIBack.register(_loading_lbl, func() -> void: pass)
 	_loading_lbl.text = "LOADING MATCH..."
 	_loading_lbl.visible = true
 	# A second map_received (fast rejoin after a kick / drop) can arrive after
@@ -1138,6 +1141,7 @@ func _build_rejoin() -> void:
 		_rejoin_root.visible = false
 		_menu_root.visible = true)
 	box.add_child(no)
+	UIBack.register(_rejoin_root, func() -> void: no.pressed.emit())
 	_menu_root.visible = false
 	_rejoin_t = 5.0
 	_tick_rejoin(0.0)
@@ -1335,23 +1339,21 @@ func _on_net_disconnected() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	# ESC in the main menu = back-out. Sub-panels return to the main list; from
-	# the root list we quit the game.
-	if not (event is InputEventKey) or not event.pressed or event.echo:
+	# ESC / ui_cancel in the main menu = back-out (scripts/ui_back.gd rule):
+	# the top dialog closes, sub-panels return to the main list, the root list
+	# quits. A LineEdit being typed in takes the first Esc itself (ends editing).
+	if not UIBack.is_back_event(event):
 		return
-	if event.keycode != KEY_ESCAPE:
-		return
-	var focused := get_viewport().gui_get_focus_owner()
-	if focused != null and focused is LineEdit:
-		return
-	_go_back()
 	get_viewport().set_input_as_handled()
+	_go_back()
 
 
 # Android back button / gesture behaves like ESC (quit_on_go_back is off).
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST and is_inside_tree():
-		_go_back()
+		# Deferred: the notification walks the tree, and leaving a screen may
+		# change scenes / free nodes ("parent node is busy" otherwise).
+		_go_back.call_deferred()
 
 
 var _lb_panel: Control = null
@@ -1453,6 +1455,10 @@ func _open_map_library() -> void:
 
 
 func _go_back() -> void:
+	# Open popup lists and registered dialogs (name prompt, update, WHAT'S NEW,
+	# rejoin, server browser, LEVELS, loading) first, top-most first.
+	if UIBack.dismiss(get_tree()):
+		return
 	for pn in [_lb_panel, _lib_panel, _cust_panel, _friends_panel, _replays_panel, _levels_panel]:
 		if pn != null and pn.visible:
 			pn.visible = false
@@ -1485,8 +1491,10 @@ func _go_back() -> void:
 			_connect_btn.disabled = false
 		_join_root.visible = false
 		_menu_root.visible = true
-	else:
+	elif _menu_root == null or _menu_root.visible:
 		get_tree().quit()
+	# else: something we don't know is showing instead of the main list —
+	# never quit from under it (its own buttons lead out).
 
 
 # ── SP map picker ─────────────────────────────────────
