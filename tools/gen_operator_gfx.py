@@ -232,24 +232,24 @@ class Layer:
         """A dashed seam along a polyline: a groove with lighter thread dashes."""
         groove = self.line(pts, width * 1.6)
         self.carve(groove, depth, 0.8, 0.01)
+        seg = [(np.array(p0, float), np.array(p1, float)) for p0, p1 in zip(pts[:-1], pts[1:])]
+        lens = [float(np.linalg.norm(q1 - q0)) for q0, q1 in seg]
+        total = sum(lens)
+
+        def at(d):
+            for (q0, q1), L in zip(seg, lens):
+                if d <= L:
+                    return q0 + (q1 - q0) * (d / max(L, 1e-9))
+                d -= L
+            return seg[-1][1]
+
         im = self._img()
-        d = ImageDraw.Draw(im)
-        acc = 0.0
-        for (xa, ya), (xb, yb) in zip(pts[:-1], pts[1:]):
-            L = math.hypot(xb - xa, yb - ya)
-            t = 0.0
-            while t < L:
-                if (acc % (dash + gap)) < dash:
-                    e = min(L, t + min(dash - (acc % (dash + gap)), L - t))
-                    p0 = self._p(xa + (xb - xa) * t / L, ya + (yb - ya) * t / L)
-                    p1 = self._p(xa + (xb - xa) * e / L, ya + (yb - ya) * e / L)
-                    d.line([p0, p1], fill=255, width=max(1, int(width * K)))
-                    acc += e - t
-                    t = e
-                else:
-                    step = min(gap - ((acc % (dash + gap)) - dash), L - t)
-                    acc += step
-                    t += step
+        dr = ImageDraw.Draw(im)
+        n = int(total / (dash + gap)) + 1
+        for i in range(n):
+            d = i * (dash + gap)
+            p0, p1 = at(d), at(min(total, d + dash))
+            dr.line([self._p(*p0), self._p(*p1)], fill=255, width=max(1, int(width * K)))
         th = self._m(im) * (self.a > 0.01)
         self.alb = self.alb * (1 - th[..., None]) + self.alb * light * th[..., None]
         self.z += th * depth * 0.6
