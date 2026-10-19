@@ -39,6 +39,7 @@ var show_fps := false          # overlay FPS counter on the HUD
 var pause_on_focus_loss := true  # open the pause menu when the window / app loses focus
 var check_updates := true      # look for a newer release on GitHub at startup
 var colorblind := false        # red team drawn orange (blue / orange)
+var soldier_look := "operator"  # #280: "operator" (3x gear sprites) | "classic" (original soldiers)
 var visual_style := "cinematic" # "cinematic" (dark, high-contrast grade + new sky) | "classic" (original look)
 var impact_aberration := true  # brief colour split on nearby explosions / when hit
 var reduce_motion := false     # #272: instant menu transitions, still menu background, no button motion
@@ -272,6 +273,7 @@ func load_settings() -> void:
 	check_updates = bool(cf.get_value("game", "check_updates", true))
 	colorblind = bool(cf.get_value("video", "colorblind", false))
 	visual_style = "classic" if str(cf.get_value("video", "visual_style", "cinematic")) == "classic" else "cinematic"
+	soldier_look = "classic" if str(cf.get_value("video", "soldier_look", "operator")) == "classic" else "operator"
 	impact_aberration = bool(cf.get_value("video", "impact_aberration", true))
 	reduce_motion = bool(cf.get_value("video", "reduce_motion", false))
 	ui_scale = clampf(float(cf.get_value("video", "ui_scale", 1.0)), 0.75, 1.5)
@@ -407,6 +409,7 @@ func _write_file() -> void:
 	cf.set_value("game", "check_updates", check_updates)
 	cf.set_value("video", "colorblind", colorblind)
 	cf.set_value("video", "visual_style", visual_style)
+	cf.set_value("video", "soldier_look", soldier_look)
 	cf.set_value("video", "impact_aberration", impact_aberration)
 	cf.set_value("video", "reduce_motion", reduce_motion)
 	cf.set_value("video", "ui_scale", ui_scale)

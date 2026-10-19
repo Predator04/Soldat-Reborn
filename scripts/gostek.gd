@@ -7,8 +7,19 @@ extends RefCounted
 ## anim from it, advance a per-instance clock, and blit the parts.
 
 const PoaLoader = preload("res://scripts/poa_loader.gd")
+const Gfx = preload("res://scripts/gfx.gd")
 
 const DIR := "res://assets/gostek-gfx/"
+# #280 "Operator" look: 3x sprites painted by tools/gen_operator_gfx.py on the
+# same footprints, each up to three layers — base (tinted like the classic
+# sprite), _trim (gear, untinted) and _acc (accents in the bright team colour).
+# Settings.soldier_look picks it; Low quality and headless keep the classic
+# sprites (one draw per part, no mipmapped textures).
+const HD_DIR := "res://assets/gostek-hd/"
+const HD_PARTS := {"klata": true, "kamizelka": true, "biodro": true, "udo": true, "noga": true, "stopa": true,
+	"ramie": true, "reka": true, "dlon": true, "morda": true, "helm": true, "kap": true, "jetpack": true}
+const HD_UNTINTED := {"dlon": true}   # gloves: real colours, not skin tone
+static var force_operator_for_tests := false
 
 # Scale factor from .poa loader units → local Godot pixels. The loader
 # already applies Anims.pas SCALE=3; this puts feet at ~+20 (bottom of
@@ -55,6 +66,9 @@ const AIM_ARM_LIMIT := 0.28
 # Blood/damage sprites (ranny/*.png) auto-overlay on top of the wounded body
 # parts once health drops below WOUND_HEALTH.
 const PARTS := [
+	# --- #280 Operator jetpack: rides the back line (back shoulder 10 -> back
+	# hip 5), so it follows the torso when prone, rolling or dead -----------
+	["<jetpack>", 10, 5, -0.1, -0.3, 0.0, "none"],
 	# --- back leg (LEFT_*) ------------------------------
 	["udo",    6,  3, 0.20, 0.50, 5.0, "pants"],
 	["noga",   3,  2, 0.15, 0.55, 0.0, "pants"],
@@ -137,6 +151,7 @@ const GRENADE_BELT_CLUSTER := "res://assets/weapons-gfx/cluster-grenade.png"
 const SKIN := Color(0.98, 0.82, 0.65)
 
 static var _tex_cache: Dictionary = {}
+static var _hd_cache: Dictionary = {}
 # instance_id (int) -> { anim: String, phase: float, last_msec: int, frame: PackedVector2Array }
 static var _states: Dictionary = {}
 static var _last_gc_ms := 0   # #249: rate-limits the stale-state sweep
@@ -170,6 +185,12 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 	var arm_pivot: Vector2 = _joint_local(frame, 10, flip)
 
 	var cos: Dictionary = gs.get("cosmetics", {})
+	var hd := operator_on()
+	var accent := body_color.lerp(Color.WHITE, 0.4) if not dead else body_color.darkened(0.6)
+	var trim_col := Color.WHITE if not dead else Color(0.45, 0.45, 0.45)
+	# The 3x sprites are minified ~3-9x on screen: sample their mipmaps.
+	if hd and node.texture_filter != CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS:
+		node.set_deferred("texture_filter", CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS)
 	# Phase B (#271): visual-only squash / recoil transform about the feet
 	# (soldier_art.gd), composed in front of every part transform.
 	var has_xf := gs.has("xf")
@@ -198,6 +219,10 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 
 		# Resolve cosmetic placeholders. Missing / disabled → skip the row.
 		match key:
+			"<jetpack>":
+				if not hd:
+					continue
+				key = "jetpack"
 			"<head>":
 				var h: String = str(cos.get("head", "helm"))
 				if h == "none":
@@ -264,10 +289,14 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 		var angle := bone.angle()
 
 		var tex := _tex(key, false)
+		var hd_only := false
+		if tex == null and hd and HD_PARTS.has(key):
+			tex = _tex_hd(key, false)
+			hd_only = true
 		var sy := 1.0
 		var use_cy_frac := cy_frac
 		if flip:
-			var mirror := _tex(key, true)
+			var mirror := _tex(key, true) if not hd_only else _tex_hd(key, true)
 			if mirror != null:
 				tex = mirror
 				use_cy_frac = 1.0 - cy_frac
@@ -278,6 +307,9 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 
 		var w := float(tex.get_width()) * SPRITE_SCALE
 		var h := float(tex.get_height()) * SPRITE_SCALE
+		if hd_only:
+			w /= 3.0
+			h /= 3.0
 		var sx := 1.0
 		if flex > 0.0:
 			var ref_len := flex * POA_TO_PIXEL
@@ -301,19 +333,36 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 				# full-brightness white boots against the darkened body.
 				col = Color(0.4, 0.4, 0.4, 1.0) if dead else Color.WHITE
 
+		var hd_key := hd and HD_PARTS.has(key)
 		if paint != "" and FINISHES.has(paint):
 			# The vest sprite is dark grey (~0.3), so lift the paint or it all
-			# reads as near-black.
-			var vc: Color = (FINISHES[paint] as Color) * 3.0
+			# reads as near-black. (The operator vest is painted light.)
+			var vc: Color = (FINISHES[paint] as Color) * (3.0 if not hd_key else 1.0)
 			vc.a = 1.0
 			col = vc if not dead else vc.darkened(0.5)
 		elif gun:
 			col = wskin if not dead else wskin.darkened(0.4)
+		elif hd_key and key == "kamizelka":
+			col = tint.darkened(0.55).lerp(Color(0.3, 0.31, 0.31), 0.5)
+		if hd_key and HD_UNTINTED.has(key):
+			col = trim_col
 		if has_xf:
 			node.draw_set_transform_matrix(xf * Transform2D(angle, Vector2(sx, sy), 0.0, p1))
 		else:
 			node.draw_set_transform(p1, angle, Vector2(sx, sy))
-		node.draw_texture_rect(tex, Rect2(-cx, -cy, w, h), false, col)
+		if hd_key:
+			var mir := flip and use_cy_frac != cy_frac
+			var rect := Rect2(-cx, -cy, w, h)
+			var hb := _tex_hd(key, mir)
+			node.draw_texture_rect(hb if hb != null else tex, rect, false, col)
+			var ht := _tex_hd(key + "_trim", mir)
+			if ht != null:
+				node.draw_texture_rect(ht, rect, false, trim_col)
+			var ha := _tex_hd(key + "_acc", mir)
+			if ha != null:
+				node.draw_texture_rect(ha, rect, false, accent)
+		else:
+			node.draw_texture_rect(tex, Rect2(-cx, -cy, w, h), false, col)
 
 		# Wound blood overlay (#60). Same transform + rect, so the blood sits
 		# in register on top of the part. Ranny PNGs mirror the base body-part
@@ -560,6 +609,47 @@ static func warm_cache() -> void:
 	for k in WOUND_KEYS:
 		_tex("ranny/" + k, false)
 		_tex("ranny/" + k, true)
+
+
+## Jetpack nozzle in the node's local space and the way it points (#280), for
+## the jet flame. Empty when the pose has no frame yet.
+const JET_NOZZLE := Vector2(9.8, 4.0)    # on the <jetpack> rect (x along 10->5, y away from the back)
+
+
+static func jet_nozzle(node: CanvasItem) -> Array:
+	var st: Dictionary = _states.get(node.get_instance_id(), {})
+	var frame: PackedVector2Array = st.get("frame", PackedVector2Array())
+	if frame.is_empty():
+		return []
+	var flip: bool = float(st.get("facing", 1.0)) < 0.0
+	var p1 := _joint_local(frame, 10, flip)
+	var p2 := _joint_local(frame, 5, flip)
+	if not p1.is_finite() or not p2.is_finite() or p1.is_equal_approx(p2):
+		return []
+	var dir := (p2 - p1).normalized()
+	var side := Vector2(-dir.y, dir.x) * (-1.0 if flip else 1.0)
+	return [p1 + dir * JET_NOZZLE.x + side * JET_NOZZLE.y, dir]
+
+
+## Whether soldiers draw with the Operator sprites (#280).
+static func operator_on() -> bool:
+	if force_operator_for_tests:
+		return true
+	var ml := Engine.get_main_loop() as SceneTree
+	var st: Node = ml.root.get_node_or_null("Settings") if ml != null else null
+	if st != null and str(st.get("soldier_look")) == "classic":
+		return false
+	return Gfx.on(Gfx.MEDIUM) and DisplayServer.get_name() != "headless"
+
+
+static func _tex_hd(key: String, mirror: bool) -> Texture2D:
+	var nm := key + ("2" if mirror else "")
+	if _hd_cache.has(nm):
+		return _hd_cache[nm]
+	var path := HD_DIR + nm + ".png"
+	var t: Texture2D = load(path) as Texture2D if ResourceLoader.exists(path) else null
+	_hd_cache[nm] = t
+	return t
 
 
 static func _tex(key: String, mirror: bool) -> Texture2D:

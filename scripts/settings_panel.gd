@@ -214,6 +214,11 @@ func _build_video(box: VBoxContainer) -> void:
 			Settings.visual_style = v
 			Settings.save()
 			Atmosphere.restyle(get_tree())))
+	# #280: soldier sprites — Operator gear (Medium / High) or the classic look.
+	box.add_child(_option_row("Soldier look", ["operator", "classic"], Settings.soldier_look,
+		func(v: String) -> void:
+			Settings.soldier_look = v
+			Settings.save()))
 	# #272: UI scale (accessibility: bigger menus + HUD text) — applies live.
 	var us_opts := [0.85, 1.0, 1.15, 1.3]
 	var us_row := HBoxContainer.new()

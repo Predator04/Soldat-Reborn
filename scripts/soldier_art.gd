@@ -66,14 +66,22 @@ static func draw_soldier(node: CanvasItem, st: SoldierDrawState) -> void:
 	var has_xf := not xf.is_equal_approx(Transform2D.IDENTITY)
 	if has_xf:
 		node.draw_set_transform_matrix(xf)
-	if st.jet_on and not dead:
-		_draw_jet_flame(node, facing, Gostek.Custom.JET_COLORS.get(str(cosmetics.get("jet", "")), Color(1.0, 0.35, 0.10)))
+	var op := Gostek.operator_on()
+	var jet_col: Color = Gostek.Custom.JET_COLORS.get(str(cosmetics.get("jet", "")), Color(1.0, 0.35, 0.10))
+	if st.jet_on and not dead and not op:
+		_draw_jet_flame(node, facing, jet_col)
 
 	# Jetpack — sits behind the torso on the opposite side of `facing`.
-	var pack_col := body_color.darkened(0.25) if not dead else body_color.darkened(0.6)
-	var pack_x := -facing * 3.3
-	node.draw_rect(Rect2(pack_x - 1.25, -9.0, 2.5, 6.25), pack_col)
-	node.draw_rect(Rect2(pack_x - 1.7, -9.0, 3.3, 1.25), pack_col.darkened(0.2))
+	# (#280 Operator: a sprite on the back line, drawn by gostek.gd.)
+	if not op:
+		var pack_col := body_color.darkened(0.25) if not dead else body_color.darkened(0.6)
+		var pack_x := -facing * 3.3
+		node.draw_rect(Rect2(pack_x - 1.25, -9.0, 2.5, 6.25), pack_col)
+		node.draw_rect(Rect2(pack_x - 1.7, -9.0, 3.3, 1.25), pack_col.darkened(0.2))
+	elif st.jet_on and not dead:
+		var nz: Array = Gostek.jet_nozzle(node)
+		if not nz.is_empty():
+			_draw_jet_flame(node, facing, jet_col, nz[0], nz[1], xf)
 
 	# Real body sprites, driven by .poa keyframes.
 	var gs := {
@@ -222,12 +230,18 @@ static func _weapon_texture(weapon_name: String) -> Texture2D:
 	return tex
 
 
-static func _draw_jet_flame(node: CanvasItem, facing: float, base: Color = Color(1.0, 0.35, 0.10)) -> void:
+static func _draw_jet_flame(node: CanvasItem, facing: float, base: Color = Color(1.0, 0.35, 0.10), at := Vector2.INF, down := Vector2.DOWN, base_xf := Transform2D.IDENTITY) -> void:
 	var outer := Color(base.r, base.g, base.b, 0.55)
 	var mid := base.lerp(Color(1, 1, 0.8), 0.45)
 	mid.a = 0.75
 	var t := Time.get_ticks_msec() * 0.001
-	var origin: Vector2 = Vector2(-facing * 3.3, 1.2)
+	var origin: Vector2 = Vector2(-facing * 3.3, 1.2) if not at.is_finite() else at
+	# #280: the flame leaves the nozzle along the back line; draw it in a frame
+	# where +y is that direction.
+	var rot := Vector2.DOWN.angle_to(down) if at.is_finite() else 0.0
+	if rot != 0.0:
+		node.draw_set_transform_matrix(base_xf * Transform2D(rot, origin))
+		origin = Vector2.ZERO
 	var length := 9.0 + sin(t * 26.0) * 1.9
 	var wobble := cos(t * 18.0) * 0.5
 	var w0 := 2.0 + wobble
@@ -273,3 +287,5 @@ static func _draw_jet_flame(node: CanvasItem, facing: float, base: Color = Color
 			Color(1.0, 1.0, 0.85, 0.0),
 		])
 	)
+	if rot != 0.0:
+		node.draw_set_transform_matrix(base_xf)

@@ -16,6 +16,7 @@ var _nohud := false
 var _focus: Node2D = null
 var _ab := false   # --ab: each shot saved twice, classic look then cinematic (graphics before/after)
 var _ab_step := 0
+var _look := ""   # --look=classic|operator: soldier sprites (#280)
 
 
 func _initialize() -> void:
@@ -28,6 +29,7 @@ func _initialize() -> void:
 		elif a.begins_with("--mode="): _mode = int(a.substr(7))
 		elif a.begins_with("--bots="): _bots = int(a.substr(7))
 		elif a.begins_with("--zoom="): _zoom = float(a.substr(7))
+		elif a.begins_with("--look="): _look = a.substr(7)
 		elif a == "--nohud": _nohud = true
 		elif a == "--ab": _ab = true
 
@@ -39,6 +41,8 @@ func _process(_d: float) -> bool:
 		return false
 	if _n == 2:
 		st.bot_count = _bots
+		if _look != "":
+			st.soldier_look = _look
 		st.game_mode = _mode
 		st.map_index = _map
 		st.custom_map_path = ""

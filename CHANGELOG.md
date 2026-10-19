@@ -4,6 +4,13 @@ All notable changes to Soldat Reborn.
 
 ## [Unreleased]
 
+### Added — "Operator" soldiers (#280)
+- **New soldier art.** Every soldier is redrawn in modern combat gear, on the same skeleton, animations and hit boxes: a ballistic helmet with a **glowing wrap-around visor** in your team colour, plate carrier with mag pouches and a radio + antenna, war belt with buckle and pouches, shoulder / elbow / knee pads, coyote boots and gloves, a headset with a mic boom and shooting glasses. Team colour stays on the uniform and pops in the accents (visor slit, shoulder stripes, chest patch, IR strobe on the helmet), so friend / foe still reads at a glance.
+- **A real jetpack** on every soldier's back (twin tanks, nozzle, status light). It rides the torso when you're prone, rolling or dead, and the jet flame now comes out of its nozzle.
+- Sprites are 3x sharper than the classic set (with mipmaps), lit, bevelled and outlined so they hold up on big screens and in the kill cam. Every cosmetic still works: the cap gets a headset, the Vest becomes heavy plate armour (Vest paint applies), helmet paint, skin tone, trousers, chains, cigar, dog tag, dreadlocks.
+- **Settings → Video → Soldier look:** Operator (default) or Classic. Low graphics quality keeps the classic soldiers (one draw per body part).
+- `tools/gen_operator_gfx.py` paints the whole set (deterministic); `tools/soldier_stage.gd` renders before / after lineups. Gate: new F test SOLDIER-ART-TEST.
+
 ### Fixed
 - **The next-map vote no longer pops up every time a round ends** — a kill-limit win, a Survival wipe or a Battle Royale finish used to throw the vote at you (often right as you died) and switch maps every couple of minutes. The 5:00 clock is now the match clock: a round that ends early shows a short winner banner ("Next round - 3:12 left in the match"), restarts on the same map and the clock keeps running. Only a round that ends in the **last two minutes**, or the clock running out, ends the match with the winner screen and the map vote; the next match starts with a fresh clock. (#279)
 
