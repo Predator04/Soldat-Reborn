@@ -16,6 +16,9 @@ All notable changes to Soldat Reborn.
 ### Added — itch.io (#224)
 - **Page kit for itch.io** (docs/itch/): page text, tags, genre, theme colours matching the game, cover and screenshot list, a release-notes template and a step-by-step guide. **One-command uploads with butler:** `python tools/itch/push.py` pushes the Windows exe and Android apk to their itch channels with the game's version (optional server pack); `publish.bat` does it automatically after the GitHub release once butler and the project target are set up — and it can never make the GitHub release fail. Gate A checks the script with a fake butler.
 
+### Added — self-check
+- **`tools/selfcheck.py` / `tools\selfcheck.bat`** — the unattended self-check now lives in the repo (#278 #285 #289 #290): pull, import, dedicated server on a free port, a joining client and a bot-fire client, the whole process tree killed afterwards, a private user dir, `SELFCHECK PASS|FAIL <kind> <sha>`, logs in `build/selfcheck/`, and with `--report-github` ONE `[selfcheck] failing` issue that is commented on while it fails and closes itself on the next pass. Gate C `selfcheck`.
+
 ## [1.37.0] — 2026-10-19 — Maker
 
 This release also ships everything in 1.36 (Ultra HD soldiers, guns, terrain and dynamic lighting), listed under 1.36.0 below — the two went out together.
