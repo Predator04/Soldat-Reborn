@@ -170,6 +170,13 @@ func note_fired() -> void:
 	fired = true
 
 
+## Just spawned / reset / in or out of a seat: the body may have jumped to a
+## spot the host hasn't heard about yet, so "where it is" is not reliable.
+func placed_recently() -> bool:
+	var now := Time.get_ticks_msec()
+	return now < amnesty_until_ms or now < _ride_until_ms
+
+
 func protected() -> bool:
 	return not fired and Time.get_ticks_msec() < protect_until_ms
 

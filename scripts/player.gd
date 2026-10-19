@@ -2101,7 +2101,7 @@ func net_grenade(g_pos: Vector2, g_vel: Vector2, g_ang: float, cluster: bool = f
 		# no harder than a full wind-up throws.
 		var why := ""
 		var off := g_pos.distance_to(_net_base_pos())
-		if not _trust_riding() and off > 60.0 + _net_vel.length() * 0.1:
+		if not _trust_riding() and not _trust.placed_recently() and off > 60.0 + _net_vel.length() * 0.1:
 			why = "thrown %.0f px from its body" % off
 		elif g_vel.length() > 700.0 or not is_finite(g_vel.x) or not is_finite(g_vel.y):
 			why = "thrown at %.0f px/s" % g_vel.length()
@@ -2708,7 +2708,9 @@ func _host_shot_check(shot_pos: Vector2, dirs: PackedVector2Array, w: Dictionary
 			return no
 		nd.append(d.normalized())
 	var base := _net_base_pos()
-	var riding := _trust_riding()
+	# (Riding, or just spawned / reset: where the host last saw the body is
+	# no measure of where it fires from.)
+	var riding := _trust_riding() or g.placed_recently()
 	if not riding:
 		var lim := 80.0 + _net_vel.length() * 0.1
 		var off := shot_pos.distance_to(base)
