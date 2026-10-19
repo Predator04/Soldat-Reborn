@@ -39,6 +39,23 @@ const BRIDGE_STEP := 6          # coarse cells between bridge waypoints (coarse 
 const BRIDGE_BUDGET := 600000   # Dijkstra pops per leg
 const HAZARD_PAD_X := 20.0     # hazard kill box margin (match_hazards tests feet +-6 px; + path-follow slop)
 const HAZARD_PAD_TOP := 20.0   # air waypoints stay this far over a hazard
+# Maker jump pads (#286, runtime builder only): a bot walking onto a pad is
+# launched (match_hazards: feet within PAD_HALF_W 28 px of its centre) about
+# this far from the centre, at full run speed toward it.
+const PAD_ENTRY := 24.0
+const PAD_SIM_DT := 1.0 / 60.0  # the bots' physics tick
+const PAD_SIM_T := 4.0          # longest ride simulated
+const PAD_MIN_RISE := 60.0      # landings at least this far above the pad (lower ones are a walk / drop)
+const PAD_LAND_DX := 48.0       # the simulated landing must be this close to the node...
+const PAD_LAND_DY := 12.0       # ...and on its surface
+
+# Bot physics for the launch arc — bot.gd BASE_GRAVITY / RUN_SPEED / the
+# 1300 px/s^2 run (and air) acceleration / MAX_FALL; main sets them scaled by
+# the match's gravity / speed modifiers before the build.
+var pad_gravity := 1700.0
+var pad_run := 235.0
+var pad_accel := 1300.0
+var pad_max_fall := 1200.0
 
 var nx := 0
 var ny := 0
@@ -51,6 +68,7 @@ var stand := PackedByteArray()
 var ground := PackedByteArray()
 var col_ground: Array = []      # per column: PackedInt32Array of ground rows (sorted)
 var stats := {}
+var _pad_links: Array = []      # Vector3i(pad node, landing node, steer mode)
 
 
 ## Build the graph for map `m`. Returns {} when the map has no walkable space.
@@ -85,10 +103,13 @@ func _build(m: Dictionary) -> Dictionary:
 	var res := _link(pts)
 	var pts_l: Array = res[0]
 	var edges: Array = res[1]
+	_add_pad_links(m, pts, pts_l, edges)
 	var nb := _bridges(m, pts_l, edges)
 	var out := _components(pts_l, edges)
 	stats = {"ms": Time.get_ticks_msec() - t0, "nodes": out["nodes"].size() / 2, "edges": out["edges"].size() / 2,
 		"bridges": nb, "cells": nx * ny}
+	if out.has("pads"):
+		stats["pads"] = (out["pads"] as Array).size() / 3
 	out["stats"] = stats
 	return out
 
@@ -516,6 +537,143 @@ func _link(pts: Array) -> Array:
 	return [pts_l, edges]
 
 
+# ── jump pads (#286) ────────────────────────────────────────────────────────
+
+## Maker jump pads as {pos: Vector2 (the pad's base, on the ground), power}
+## ("jump_pads": pos a Vector2 in-game or [x, y] in JSON).
+func _jump_pads(m: Dictionary) -> Array:
+	var out: Array = []
+	var list: Variant = m.get("jump_pads", [])
+	if not (list is Array):
+		return out
+	for j in list:
+		if not (j is Dictionary):
+			continue
+		var p := _v2(j.get("pos"))
+		var pw := float(j.get("power", 1150.0))
+		if p.is_finite() and pw > 0.0:
+			out.append({"pos": p, "power": pw})
+	return out
+
+
+func _fits_at(x: float, y: float) -> bool:
+	return _stand_at(int(round(x / R)), int(round(y / R)))
+
+
+## Pad links: a node on each pad (reached by walking from the nodes beside
+## it) and one-way links pad -> every node the launch can land a bot on. The
+## ride is SIMULATED with the bots' own physics on the stand raster: launched
+## at PAD_ENTRY px from the centre at full run speed toward it (either side
+## it can be walked onto), velocity.y = -power, gravity, the run / air
+## acceleration steering at the landing node; walls stop the sideways
+## motion, ceilings the rise. Steer mode 0 = steer at once, 1 = rise straight
+## until the feet are over the landing's height, then steer (under an
+## overhang). Both approach sides must land on the node's surface. No pads
+## in the map = nothing changes.
+func _add_pad_links(m: Dictionary, pts: Array, pts_l: Array, edges: Array) -> void:
+	_pad_links.clear()
+	var pads := _jump_pads(m)
+	if pads.is_empty():
+		return
+	var n_ground := pts.size()   # sampled surface nodes (detour waypoints come after)
+	for pad: Dictionary in pads:
+		var pp: Vector2 = pad["pos"]
+		var power: float = pad["power"]
+		var cx := int(round(pp.x / R))
+		if cx < 0 or cx >= nx:
+			continue
+		# The trigger wants the feet within [pos.y - 24, pos.y + 6].
+		var gy := -1
+		for y in (col_ground[cx] as PackedInt32Array):
+			var wy := float(y) * R
+			if wy >= pp.y - 24.0 and wy <= pp.y + 6.0 and (gy < 0 or absf(wy - pp.y) < absf(float(gy) * R - pp.y)):
+				gy = y
+		if gy < 0:
+			continue
+		var pn := Vector2(pp.x, float(gy) * R)
+		# Approach sides: standing room on the pad's level PAD_ENTRY px out.
+		var starts: Array = []
+		for sgn: float in [-1.0, 1.0]:
+			var sx := pn.x + sgn * PAD_ENTRY
+			for dy: float in [0.0, -R, R]:
+				if _fits_at(sx, pn.y + dy) and _clear(Vector2(sx, pn.y + dy), pn):
+					starts.append(Vector3(sx, pn.y + dy, -sgn * pad_run))
+					break
+		if starts.is_empty():
+			continue
+		var pi := pts_l.size()
+		var ins: Array = []
+		for j in n_ground:
+			var q: Vector2 = pts_l[j]
+			if absf(q.x - pn.x) <= NODE_STEP * 2.0 and absf(q.y - pn.y) <= 16.0 and _clear(q, pn):
+				ins.append(j)
+		if ins.is_empty():
+			continue
+		pts_l.append(pn)
+		for j: int in ins:
+			edges.append(Vector2i(j, pi))
+		var apex := pn.y - power * power / (2.0 * pad_gravity)
+		var reach := pad_run * (2.0 * power / pad_gravity + 0.5)
+		for j in n_ground:
+			var q: Vector2 = pts_l[j]
+			if q.y > pn.y - PAD_MIN_RISE or q.y < apex - 4.0 or absf(q.x - pn.x) > reach:
+				continue
+			for mode in 2:
+				var ok := true
+				for st: Vector3 in starts:
+					var land := _pad_ride(Vector2(st.x, st.y), st.z, -power, q, mode)
+					if not land.is_finite() or absf(land.y - q.y) > PAD_LAND_DY or absf(land.x - q.x) > PAD_LAND_DX \
+							or not _clear(land, q):
+						ok = false
+						break
+				if ok:
+					edges.append(Vector2i(pi, j))
+					_pad_links.append(Vector3i(pi, j, mode))
+					break
+
+
+## One simulated pad ride (feet position, bot physics at 60 Hz) steering at
+## `to`. Returns where it lands, or INF (fell past the kill line / too long).
+func _pad_ride(p: Vector2, vx: float, vy: float, to: Vector2, mode: int) -> Vector2:
+	var dt := PAD_SIM_DT
+	var x := p.x
+	var y := p.y
+	var t := 0.0
+	var ky := minf(K, H)
+	while t < PAD_SIM_T:
+		t += dt
+		var dir := 0.0
+		if absf(to.x - x) >= 6.0 and not (mode == 1 and vy < 0.0 and y > to.y - 24.0):
+			dir = signf(to.x - x)
+		vx = move_toward(vx, dir * pad_run, pad_accel * dt)
+		vy = minf(vy + pad_gravity * dt, pad_max_fall)
+		var mx := vx * dt
+		if mx != 0.0:
+			if _fits_at(x + mx, y):
+				x += mx
+			else:
+				vx = 0.0
+		var my := vy * dt
+		var n := maxi(1, int(ceil(absf(my) / 8.0)))
+		var stepy := my / float(n)
+		for _k in n:
+			if _fits_at(x, y + stepy):
+				y += stepy
+			elif vy > 0.0:
+				# Landed: settle onto the ground row below.
+				var cxl := int(round(x / R))
+				var cyl := int(round(y / R))
+				while cyl + 1 < ny and _stand_at(cxl, cyl + 1):
+					cyl += 1
+				return Vector2(x, float(cyl) * R)
+			else:
+				vy = 0.0
+				break
+		if y > ky:
+			return Vector2.INF
+	return Vector2.INF
+
+
 # ── bridges ─────────────────────────────────────────────────────────────────
 
 func _landed(v: Variant) -> Vector2:
@@ -877,4 +1035,12 @@ func _components(pts_l: Array, edges: Array) -> Dictionary:
 		if idx.has(e.x) and idx.has(e.y):
 			out_edges.append(idx[e.x])
 			out_edges.append(idx[e.y])
-	return {"nodes": nodes, "edges": out_edges, "air": air}
+	var out := {"nodes": nodes, "edges": out_edges, "air": air}
+	if not _pad_links.is_empty():
+		# Jump-pad rides (#286): [pad node, landing node, steer mode] triples.
+		var pads: Array = []
+		for pl: Vector3i in _pad_links:
+			if idx.has(pl.x) and idx.has(pl.y):
+				pads.append_array([idx[pl.x], idx[pl.y], pl.z])
+		out["pads"] = pads
+	return out
