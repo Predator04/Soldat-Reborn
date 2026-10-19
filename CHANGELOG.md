@@ -11,6 +11,11 @@ All notable changes to Soldat Reborn.
 - **Settings → Video → Soldier look:** Operator (default) or Classic. Low graphics quality keeps the classic soldiers (one draw per body part).
 - `tools/gen_operator_gfx.py` paints the whole set (deterministic); `tools/soldier_stage.gd` renders before / after lineups. Gate: new F test SOLDIER-ART-TEST.
 
+### Added — weapons in HD (#284)
+- **All 16 weapons and the frag / cluster grenades are redrawn at 3x** to match the Operator soldiers: clean shapes in real materials (gunmetal, polymer, wood, brass, OD green), bevelled, lit and outlined, with rails, ejection ports with a brass case, magazines, sights and muzzle devices. They replace the blurry classic sprites in your hands, slung on your back, on the grenade belt and as dropped pickups (mipmapped, so they stay sharp when zoomed in or out).
+- Grip, barrel length, muzzle flash and bullet spawn are exactly where they were — nothing about how the guns play changes. Weapon skins still tint them (the metal is mid-grey so desert / arctic / gold read properly). The Classic soldier look and Low quality keep the classic weapon sprites. Each sprite also ships a normal map for a future dynamic-lighting pass.
+- `tools/gen_weapons_gfx.py` paints the set (deterministic); `tools/soldier_stage.gd --weapons [--classic-weapons] [--skins]` renders the lineups. Gate: new F test WEAPONS-ART-TEST.
+
 ### Fixed
 - **The next-map vote no longer pops up every time a round ends** — a kill-limit win, a Survival wipe or a Battle Royale finish used to throw the vote at you (often right as you died) and switch maps every couple of minutes. The 5:00 clock is now the match clock: a round that ends early shows a short winner banner ("Next round - 3:12 left in the match"), restarts on the same map and the clock keeps running. Only a round that ends in the **last two minutes**, or the clock running out, ends the match with the winner screen and the map vote; the next match starts with a fresh clock. (#279)
 

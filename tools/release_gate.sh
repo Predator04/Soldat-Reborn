@@ -598,6 +598,7 @@ if has F; then
   ft heli heli_test.gd 150 HELI-TEST "helicopter (#277): spin-up gate / climb / hover / fly / soft landing / rockets hit a bot / bullet 0.5x vs explosive / door gunner (human + bot) / spin-out crash kills pilot / respawn on pad / idle return / gentle wreck ejects crew / bot pilot takes off / big-map pads"
   ft vart vehicle_art_test.gd 200 VART-TEST "vehicle art (#276): every vehicle drawn pristine / crewed + firing / 4 damage levels / wreck / respawn at Low / Medium / High in both looks, pooled FX only on Medium+, no node growth, parked bodies unmoved"
   ft sart soldier_art_test.gd 60 SOLDIER-ART-TEST "Operator soldier art (#280): every part at 3x its classic footprint in both facings, layer mirrors, every head / vest / pose drawn, jet flame from the pack, classic setting wins"
+  ft wart weapons_gfx_test.gd 60 WEAPONS-ART-TEST "HD weapon art (#284): every weapon + belt grenade at 3x its classic sprite with mipmaps + normal map, drawn HD in hand / slung / as a pickup, muzzle + barrel end identical in both looks, classic asks for no HD"
   ft joincode join_code_test.gd 60 JOINCODE-TEST "join codes: round trip, typos, garbage, host shows its code"
   ft replay replay_test.gd 150 REPLAY-TEST "replays: record, save on leave, list, play back in place, seek, exit restores"
   ft tags label_overlap_test.gd 120 LABELS-TEST "pickup name tags never overlap (#185)"

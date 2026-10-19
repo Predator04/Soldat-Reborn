@@ -157,6 +157,15 @@ func _draw() -> void:
 	var tex: Texture2D = SoldierArt._weapon_texture(weapon_name)
 	if tex != null:
 		var size := tex.get_size() * (1.0 / 3.0)
-		draw_texture_rect(tex, Rect2(Vector2(-size.x * 0.5, -size.y * 0.5), size), false)
+		# #284: Operator look draws the 3x HD sprite into the same classic rect,
+		# sampled through its mipmaps.
+		var draw_tex := tex
+		if SoldierArt.Gostek.operator_on():
+			var hd := SoldierArt.WeaponGfx.hd_for_path(str(SoldierArt.WEAPON_SPRITE[weapon_name]))
+			if hd != null:
+				draw_tex = hd
+				if texture_filter != CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS:
+					set_deferred("texture_filter", CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS)
+		draw_texture_rect(draw_tex, Rect2(Vector2(-size.x * 0.5, -size.y * 0.5), size), false)
 	else:
 		draw_rect(Rect2(-12, -3, 24, 6), Color(0.85, 0.85, 0.95))

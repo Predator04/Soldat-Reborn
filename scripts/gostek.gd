@@ -8,6 +8,7 @@ extends RefCounted
 
 const PoaLoader = preload("res://scripts/poa_loader.gd")
 const Gfx = preload("res://scripts/gfx.gd")
+const WeaponGfx = preload("res://scripts/weapon_gfx.gd")   # #284 HD weapon sprites
 
 const DIR := "res://assets/gostek-gfx/"
 # #280 "Operator" look: 3x sprites painted by tools/gen_operator_gfx.py on the
@@ -346,6 +347,12 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 			col = tint.darkened(0.55).lerp(Color(0.3, 0.31, 0.31), 0.5)
 		if hd_key and HD_UNTINTED.has(key):
 			col = trim_col
+		# #284: back-slung weapon / belt grenade use the 3x HD sprite, drawn
+		# into the classic rect (w / h / cx / cy above come from the classic).
+		if hd and key.begins_with("res://"):
+			var wtex := WeaponGfx.hd_for_path(key)
+			if wtex != null:
+				tex = wtex
 		if has_xf:
 			node.draw_set_transform_matrix(xf * Transform2D(angle, Vector2(sx, sy), 0.0, p1))
 		else:
