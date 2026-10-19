@@ -13,6 +13,13 @@ extends Object
 const TITLE := "Tracerfall"
 const TITLE_UPPER := "TRACERFALL"
 
+## #223 Discord Rich Presence — the Discord application's id ("Application
+## ID" on https://discord.com/developers/applications → your app → General
+## Information; a long number, not a secret). Empty = the feature is off.
+## TODO(owner): paste the id between the quotes, e.g. "1234567890123456789".
+## See docs/discord/SETUP.md.
+const DISCORD_APP_ID := ""
+
 const MODES := [
 	["DEATHMATCH", "Everyone for themselves. First to 20 kills wins.",
 		"Every kill is a point. Round ends at 20 kills or when the 5-minute timer runs out."],

@@ -7,12 +7,17 @@
   python tools/github/sync.py all                     # labels + every backlog_*.json + release of the
                                                       # version in project.godot
 
+After a release (release / all) the same builds go to itch.io with butler when
+that's set up (tools/itch/push.py --optional, #224): only if tools/itch/itch.json
+has a target, butler is installed and has a key. It can never fail the GitHub
+release; set SKIP_ITCH=1 to leave it out.
+
 Auth: GITHUB_TOKEN / GH_TOKEN, else `gh auth token`, else the token Git already
 stores for github.com (`git credential fill`, i.e. Git Credential Manager).
 Everything is idempotent: existing labels / issues (same title) / releases are
 reused, so re-running is safe.
 """
-import json, os, re, subprocess, sys, urllib.request, urllib.error
+import importlib.util, json, os, re, subprocess, sys, urllib.request, urllib.error
 
 REPO = "Predator04/Tracerfall"   # renamed from Soldat-Reborn (#269); GitHub only redirects GETs
 API = "https://api.github.com"
@@ -195,6 +200,21 @@ def release(tag):
     print("release:", rel.get("html_url"))
 
 
+def itch_push():
+    """#224: optional last step: push the release builds to itch.io. Runs after
+    the GitHub release is published; any problem is printed and swallowed."""
+    if os.environ.get("SKIP_ITCH", "").strip() not in ("", "0"):
+        print("itch: skipped (SKIP_ITCH)")
+        return
+    try:
+        spec = importlib.util.spec_from_file_location("itch_push", os.path.join(ROOT, "tools", "itch", "push.py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        mod.main(["--optional"])
+    except BaseException as e:  # never let itch break a release
+        print("itch: skipped (%s)" % e)
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         sys.exit(__doc__)
@@ -206,11 +226,13 @@ if __name__ == "__main__":
         backlog(sys.argv[2])
     elif cmd == "release":
         release(sys.argv[2] if len(sys.argv) > 2 else project_version())
+        itch_push()
     elif cmd == "all":
         labels()
         for f in sorted(os.listdir(HERE)):
             if f.startswith("backlog_") and f.endswith(".json"):
                 backlog(os.path.join(HERE, f))
         release(project_version())
+        itch_push()
     else:
         sys.exit(__doc__)

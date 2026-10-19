@@ -84,6 +84,9 @@ WV=$(sed -n 's/^application\/file_version="\(.*\)"/\1/p' export_presets.cfg)
 CV=$(grep -m1 -oE '^## \[[0-9.]+\]' CHANGELOG.md | tr -d '#[] ')
 if [ "$V" = "$AV" ] && [ "$WV" = "$V.0" ] && [ "$CV" = "$V" ]; then pass "A versions agree: $V (android $AV, windows $WV, changelog $CV)"; else fail "A versions: project=$V android=$AV windows=$WV changelog=$CV"; fi
 if [ "$(grep -c 'include_filter="\*.poa, \*.json' export_presets.cfg)" -ge 2 ]; then pass "A exports ship map JSON (Windows + Android)"; else fail "A export include_filter missing *.json"; fi
+# #224 itch.io upload script: butler command lines (fake butler), skips cleanly without a key / target.
+il=$(python3 tools/itch/push.py --self-test 2>&1 | tail -1)
+if echo "$il" | grep -q "ITCH-SELFTEST ok"; then pass "A itch push: ${il#ITCH-SELFTEST ok }"; else fail "A itch push self-test: $il"; fi
 
 fi
 
@@ -672,6 +675,7 @@ if has F; then
   ft fxpool fx_test.gd 120 FXPOOL-TEST "graphics Phase B (#271): pooled FX, flat node count, caps per quality, decal ring, Blood 0, hit-stop / shake toggles, sim identical FX on vs off"
   ft ui ui_test.gd 90 UI-TEST "graphics Phase C (#272): menu transitions + Reduce motion, button hover / press scale, D-pad focus, settings preview lifetime, no node growth over 3 passes of every screen, HUD vitals / strip / toast / death band / UI scale"
   ft levels levels_test.gd 90 LEVELS-TEST "level sharing (#288): Hot / New / Most played / Top liked order, search by title + share code, course-code box, like on / off, bookmark saved + listed (also offline), offline message, flat node count over open / close, editor Publish round trip + title filter, editor LEVELS overlay, PLAY -> bot match on the level + play counted (in-process fake level server)"
+  ft discord discord_test.gd 90 DISCORD-TEST "Discord Rich Presence (#223): desktop only (Android / headless / dedicated never start it), silent without an app id, handshake + SET_ACTIVITY for menu / LEVELS / CTF match / Maker editor over a fake pipe, PING/PONG, dedupe + throttle, toggle closes / reconnects, refused id stops, Linux Unix-socket transport"
   ft fxbench fx_bench.gd 90 FX-BENCH "graphics Phase B (#271): FX benchmark, 8 gibbings + minigun + 4 explosions, node count flat, FX ms / frame"
   ft killcam killcam_test.gd 60 KILLCAM-TEST "kill cam: rewind w/ slow-mo, respawn waits, skip, live follow"
   ft lagcomp lagcomp_test.gd 60 LAGCOMP-TEST "lag compensation: hits where the shooter saw you, capped"

@@ -10,6 +10,12 @@ All notable changes to Soldat Reborn.
 ### Fixed — dedicated servers
 - **Dedicated servers no longer build the main menu before they start listening** (#278 #285 #289 #290): `menu.tscn` is only the project's main scene, so a `--dedicated` boot used to build the whole menu (backdrop shader, logo, fonts, every screen, news / LAN browser) for one frame before switching to the match. The server now prints `Dedicated server starting: Tracerfall <version>, port N` first, skips the menu, and when the port can't be opened says so on stdout (`DEDICATED-START-FAILED ... is another server already using UDP N?`) and exits 1 — an engine `ERROR:` line on stderr was all there was before, which log scrapers looking for `SCRIPT ERROR` read as "no error line". Gate C `dedboot`: boot from a never-imported checkout + busy-port case.
 
+### Added — Discord status (#223)
+- **Your Discord profile shows what you're playing** (Windows / Linux, Discord desktop app): "Playing Capture the Flag on Ascent" with the score ("Blue 3 – 2 Red", your score, or your Gun Game rung), elapsed time, a mode badge and the party size in online games — or "In the Maker editor", "Browsing levels", "In menus". Built in pure GDScript over Discord's local connection: nothing extra to install, no native plugins, never slows the game (it talks to Discord on a background thread, at most one update every 4 seconds). Turn it off in Settings → Game → **Discord status**. Phones and dedicated servers never run it. It goes live once the game's Discord application id is filled in (docs/discord/SETUP.md). New gate F test DISCORD-TEST.
+
+### Added — itch.io (#224)
+- **Page kit for itch.io** (docs/itch/): page text, tags, genre, theme colours matching the game, cover and screenshot list, a release-notes template and a step-by-step guide. **One-command uploads with butler:** `python tools/itch/push.py` pushes the Windows exe and Android apk to their itch channels with the game's version (optional server pack); `publish.bat` does it automatically after the GitHub release once butler and the project target are set up — and it can never make the GitHub release fail. Gate A checks the script with a fake butler.
+
 ## [1.37.0] — 2026-10-19 — Maker
 
 This release also ships everything in 1.36 (Ultra HD soldiers, guns, terrain and dynamic lighting), listed under 1.36.0 below — the two went out together.
