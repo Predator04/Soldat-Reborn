@@ -6,7 +6,7 @@ This set keeps the SAME skeleton (.poa joints), animations, weapon anchors and
 hit boxes, but every body part gets its own modern-proportioned sprite: a
 smaller head, slim tapered limbs, a real torso with shoulders, proper boots and
 hands. Each part is designed in game pixels ("units") around its bone and
-painted at 9 px per unit (3x the classic sprites' 3 px per unit), so it holds
+painted at 18 px per unit (6x the classic sprites' 3 px per unit), so it holds
 up on big screens and in the kill cam.
 
 Layers per part, drawn in order with one transform by scripts/gostek.gd:
@@ -21,7 +21,7 @@ Layers per part, drawn in order with one transform by scripts/gostek.gd:
                      up) for the dynamic lighting pass (#282)
   <name>2.png        mirrors (vertical flips; normal maps get green flipped)
 plus rig.json: each part's pivot (cx, cy) in its rect; the rect size is the
-texture size / 9. Shapes are vectors on a supersampled canvas, extruded into a
+texture size / px_per_unit (18). Shapes are vectors on a supersampled canvas, extruded into a
 height field (bevels, seams, folds), lit, given ambient occlusion and a thin
 outline, then downsampled. Deterministic: re-running gives the same bytes.
 
@@ -45,8 +45,8 @@ from scipy import ndimage
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "assets", "gostek-hd")
-PX = 9          # output pixels per game pixel (unit)
-SS = 4          # supersampling
+PX = 18         # output pixels per game pixel (unit) — "ultra HD" (#281)
+SS = 3          # supersampling
 K = PX * SS     # canvas pixels per unit
 LIGHT = np.array([0.5, -0.7, 0.52])
 LIGHT = LIGHT / np.linalg.norm(LIGHT)
@@ -207,6 +207,102 @@ class Layer:
         out = ndimage.gaussian_filter(out, 0.05 * K)
         self.alb *= (1 + out * amount)[..., None]
 
+    # ── fine detail (reads at 18 px / unit) ──
+    def _grid(self):
+        yy, xx = np.mgrid[0:self.h, 0:self.w].astype(np.float32)
+        return xx / K, yy / K
+
+    def weave(self, m, amount=0.06, period=0.1, zamt=0.006):
+        """Twill fabric texture."""
+        x, y = self._grid()
+        pat = np.sin((x + y) * math.tau / period) * 0.6 + np.sin((x - y * 0.4) * math.tau / (period * 2.3)) * 0.4
+        mm = np.clip(m, 0, 1) * (self.a > 0.01)
+        self.alb *= (1 + pat * amount * mm)[..., None]
+        self.z += pat * zamt * mm
+
+    def webbing(self, m, amount=0.08, period=0.07):
+        """Nylon webbing: fine stripes along x."""
+        x, y = self._grid()
+        pat = np.sin(y * math.tau / period)
+        mm = np.clip(m, 0, 1) * (self.a > 0.01)
+        self.alb *= (1 + pat * amount * mm)[..., None]
+        self.z += pat * 0.004 * mm
+
+    def stitch(self, pts, dash=0.11, gap=0.07, width=0.035, light=1.3, depth=0.03):
+        """A dashed seam along a polyline: a groove with lighter thread dashes."""
+        groove = self.line(pts, width * 1.6)
+        self.carve(groove, depth, 0.8, 0.01)
+        im = self._img()
+        d = ImageDraw.Draw(im)
+        acc = 0.0
+        for (xa, ya), (xb, yb) in zip(pts[:-1], pts[1:]):
+            L = math.hypot(xb - xa, yb - ya)
+            t = 0.0
+            while t < L:
+                if (acc % (dash + gap)) < dash:
+                    e = min(L, t + min(dash - (acc % (dash + gap)), L - t))
+                    p0 = self._p(xa + (xb - xa) * t / L, ya + (yb - ya) * t / L)
+                    p1 = self._p(xa + (xb - xa) * e / L, ya + (yb - ya) * e / L)
+                    d.line([p0, p1], fill=255, width=max(1, int(width * K)))
+                    acc += e - t
+                    t = e
+                else:
+                    step = min(gap - ((acc % (dash + gap)) - dash), L - t)
+                    acc += step
+                    t += step
+        th = self._m(im) * (self.a > 0.01)
+        self.alb = self.alb * (1 - th[..., None]) + self.alb * light * th[..., None]
+        self.z += th * depth * 0.6
+
+    def scratches(self, m, n=24, seed=1, length=(0.15, 0.6), width=0.02, bright=1.45):
+        rng = np.random.default_rng(seed)
+        ys, xs = np.nonzero(m > 0.5)
+        if len(xs) == 0:
+            return
+        im = self._img()
+        d = ImageDraw.Draw(im)
+        for i in range(n):
+            j = rng.integers(len(xs))
+            x, y = xs[j] / K + self.x0, ys[j] / K + self.y0
+            a = rng.uniform(0, math.tau)
+            l = rng.uniform(*length)
+            pts = [self._p(x, y), self._p(x + math.cos(a) * l, y + math.sin(a) * l)]
+            d.line(pts, fill=int(rng.uniform(120, 255)), width=max(1, int(width * K)))
+        sc = self._m(im) * np.clip(m, 0, 1)
+        self.alb *= (1 + sc * (bright - 1))[..., None]
+
+    def edgewear(self, m, width=0.07, amount=1.35):
+        """Lighter, worn edges on hard gear."""
+        mm = np.clip(m, 0, 1)
+        d = ndimage.distance_transform_edt(mm > 0.5) / K
+        band = np.clip(1 - d / width, 0, 1) * (mm > 0.5)
+        rng = np.random.default_rng(int(mm.sum()) % 9973)
+        n = ndimage.gaussian_filter(rng.standard_normal(mm.shape).astype(np.float32), 0.03 * K)
+        band *= np.clip(0.5 + n * 2.0, 0, 1)
+        self.alb *= (1 + band * (amount - 1))[..., None]
+
+    def molle(self, m, y0, y1, rows, loop=0.42):
+        """Rows of MOLLE webbing loops (bands with bar-tack slits)."""
+        x, y = self._grid()
+        h = (y1 - y0) / rows
+        for r in range(rows):
+            band = self.band(y0 + r * h + h * 0.18, y0 + r * h + h * 0.82) * np.clip(m, 0, 1)
+            self.webbing(band, 0.1)
+            self.bump(band, 0.05, 0.01)
+            slit = ((np.mod(x - self.x0, loop) < 0.035).astype(np.float32)) * band
+            self.carve(slit, 0.05, 0.55, 0.005)
+
+    def velcro(self, m, amount=0.14, seed=5):
+        rng = np.random.default_rng(seed)
+        n = ndimage.gaussian_filter(rng.standard_normal((self.h, self.w)).astype(np.float32), 0.012 * K)
+        n /= max(1e-6, n.std())
+        mm = np.clip(m, 0, 1) * (self.a > 0.01)
+        self.alb *= (1 + n * amount * mm)[..., None]
+        self.z += n * 0.006 * mm
+
+    def rivet(self, x, y, r=0.06, col=METAL, z=None):
+        self.fill(self.ell(x, y, r, r), col, z=(self.z.max() if z is None else z), height=r * 0.8, bevel=r, spec=0.9)
+
     def shadow_from(self, other, dx=-0.15, dy=0.22, strength=0.45, blur=0.18):
         sh = ndimage.shift(other.a, (dy * K, dx * K), order=1)
         sh = ndimage.gaussian_filter(sh, blur * K)
@@ -257,6 +353,7 @@ def fabric(L, m, seed, shade=0.84, bevel=0.55, height=0.6):
     L.fill(m, GREY(shade), height=height, bevel=bevel)
     L.noise(0.02, 0.05, 0.01, seed=seed)
     L.camo(seed=seed + 500)
+    L.weave(m)
 
 
 def wound_layer(base, seed, n=5):
@@ -290,6 +387,9 @@ def d_klata():
     b.carve(b.line([(2.2, -1.25), (2.7, -0.6), (3.3, -1.25)], 0.12) * torso, 0.08, 0.7)       # collar
     b.carve(b.line([(1.0, 1.4), (1.6, 2.6)], 0.1) * torso, 0.06, 0.82)                         # folds
     b.carve(b.line([(2.0, 4.9), (3.0, 5.8)], 0.1) * torso, 0.06, 0.82)
+    b.stitch([(0.15, -0.6), (1.2, -0.95), (2.0, -1.2)])
+    b.stitch([(3.4, -1.2), (4.6, -0.6), (5.45, 0.2)])
+    b.stitch([(-0.5, 1.6), (-0.4, 4.0), (-0.05, 6.0)])
     t = b.like()
     body = b.erode(torso, 0.06)
     front = b.rrect(3.4, 0.3, 5.98, 4.6, 0.45) * b.dilate(torso, 0.15)
@@ -300,13 +400,29 @@ def d_klata():
     t.carve(cumm * t.band(3.95, 4.08), 0.06, 0.6)
     t.fill(back, CARRIER, z=0.6, height=0.6, bevel=0.3)
     t.fill(front, CARRIER, z=0.7, height=0.75, bevel=0.35)
-    t.fill(t.line([(0.2, 0.35), (1.35, -0.62), (3.1, -0.68), (4.15, 0.45)], 0.7) * b.dilate(torso, 0.1), WEB, z=0.6, height=0.35, bevel=0.15)
+    t.molle(front, 0.55, 2.4, 3)
+    t.stitch([(3.55, 0.45), (5.82, 0.45), (5.82, 4.45), (3.55, 4.45), (3.55, 0.45)], light=1.5)
+    t.stitch([(-0.6, 0.35), (0.62, 0.35), (0.62, 4.15)], light=1.5)
+    t.molle(cumm, 2.95, 4.55, 2)
+    t.edgewear(front, 0.06, 1.45)
+    t.edgewear(back, 0.06, 1.4)
+    t.scratches(front, 14, seed=13)
+    strap = t.line([(0.2, 0.35), (1.35, -0.62), (3.1, -0.68), (4.15, 0.45)], 0.7) * b.dilate(torso, 0.1)
+    t.fill(strap, WEB, z=0.6, height=0.35, bevel=0.15)
+    t.webbing(strap)
     t.fill(t.rrect(2.15, -0.84, 2.7, -0.5, 0.08), METAL, z=1.0, height=0.12, bevel=0.06, spec=0.9)   # buckle
     for x0 in (3.55, 4.78):   # mag pouches
         pm = t.rrect(x0, 2.55, x0 + 1.12, 4.75, 0.22)
         t.fill(pm, POUCH, z=1.15, height=0.45, bevel=0.2)
         t.carve(t.rrect(x0 + 0.08, 2.55, x0 + 1.04, 2.98, 0.12), 0.07, 0.6)
-    t.fill(t.rrect(-0.98, 0.85, 0.22, 3.3, 0.3), POUCH, z=1.0, height=0.5, bevel=0.22)            # radio
+        t.velcro(t.rrect(x0 + 0.2, 2.62, x0 + 0.92, 2.9, 0.06), 0.2, seed=int(x0 * 10))
+        t.stitch([(x0 + 0.1, 3.05), (x0 + 0.1, 4.62), (x0 + 1.02, 4.62), (x0 + 1.02, 3.05)], light=1.45)
+        t.edgewear(pm, 0.05, 1.3)
+    radio = t.rrect(-0.98, 0.85, 0.22, 3.3, 0.3)
+    t.fill(radio, POUCH, z=1.0, height=0.5, bevel=0.22)            # radio
+    t.stitch([(-0.88, 1.0), (0.12, 1.0)], light=1.45)
+    t.fill(t.rrect(-0.75, 1.25, -0.05, 1.7, 0.08), (0.06, 0.06, 0.07), z=1.5, height=0.08, bevel=0.04, spec=0.6)
+    t.fill(t.ell(-0.25, 1.45, 0.05, 0.05), (0.2, 1.0, 0.35), z=1.6, height=0.03, bevel=0.02, emit=0.9)
     t.fill(t.line([(-0.42, 0.95), (-0.62, -1.2), (-0.82, -2.45)], 0.16), WEB, z=1.2, height=0.12, bevel=0.06)
     t.fill(t.ell(-0.82, -2.45, 0.12, 0.12), WEB, z=1.2, height=0.12, bevel=0.06)
     t.noise(0.05, 0.04, 0.008, seed=12)
@@ -345,8 +461,13 @@ def d_biodro():
     t = b.like()
     belt = b.dilate(pelvis, 0.05) * b.band(-0.95, 0.1)
     t.fill(belt, WEB, z=0.7, height=0.4, bevel=0.15)
+    t.webbing(belt)
+    t.stitch([(-0.9, -0.85), (4.6, -0.85)], light=1.4)
+    t.stitch([(-0.9, 0.0), (4.6, 0.0)], light=1.4)
     t.carve(belt * t.band(-0.48, -0.4), 0.05, 0.6)
-    t.fill(t.rrect(3.75, -1.0, 4.55, 0.15, 0.12), METAL, z=1.1, height=0.15, bevel=0.07, spec=0.9)
+    buckle = t.rrect(3.75, -1.0, 4.55, 0.15, 0.12)
+    t.fill(buckle, METAL, z=1.1, height=0.15, bevel=0.07, spec=0.9)
+    t.scratches(buckle, 6, seed=33, length=(0.08, 0.3), width=0.015)
     t.fill(t.rrect(3.92, -0.78, 4.38, -0.08, 0.06), WEB, z=1.25, height=0.05, bevel=0.03)
     t.fill(t.rrect(-0.95, -0.65, 0.55, 1.2, 0.4), POUCH, z=1.0, height=0.55, bevel=0.3)            # dump pouch
     t.carve(t.rrect(-0.85, -0.65, 0.45, -0.25, 0.15), 0.08, 0.65)
@@ -367,6 +488,8 @@ def d_udo():
     b.carve(b.rrect(-0.98, 1.52, 0.88, 3.58, 0.24) - b.rrect(-0.88, 1.62, 0.78, 3.48, 0.2), 0.06, 0.75)
     b.carve(pk * b.band(1.98, 2.06), 0.06, 0.75)
     b.carve(b.line([(0.9, 0.2), (0.4, 1.0)], 0.08) * thigh, 0.05, 0.85)
+    b.stitch([(-0.88, 1.65), (-0.88, 3.45), (0.78, 3.45), (0.78, 1.65)])
+    b.stitch([(1.3, -0.4), (1.35, 2.0), (1.05, 5.0)])
     t = b.like()
     t.fill(b.erode(thigh, 0.03) * t.band(3.95, 4.3), WEB, z=0.95, height=0.18, bevel=0.07)
     t.fill(t.rrect(-0.35, 3.85, 0.15, 4.4, 0.06), METAL, z=1.15, height=0.08, bevel=0.04, spec=0.8)
@@ -381,9 +504,14 @@ def d_noga():
     fabric(b, shin, 51, bevel=1.0, height=0.8)
     for y in (3.3, 3.65, 4.0):
         b.carve(b.line([(-0.9, y), (0.9, y + 0.12)], 0.1) * shin, 0.05, 0.8)
+    b.stitch([(-0.95, 0.4), (-0.92, 3.0)])
     t = b.like()
     pad = t.rrect(0.05, -0.62, 1.48, 1.62, 0.55)
     t.fill(pad, PAD, z=0.8, height=0.8, bevel=0.45, spec=0.55)
+    t.edgewear(pad, 0.07, 1.6)
+    t.scratches(pad, 12, seed=53)
+    t.rivet(0.3, 0.95, 0.07)
+    t.rivet(1.25, 0.95, 0.07)
     t.carve(t.rrect(0.32, -0.32, 1.25, 1.3, 0.38) - t.rrect(0.42, -0.22, 1.15, 1.2, 0.32), 0.06, 0.65)
     t.fill(b.erode(shin, 0.02) * t.band(0.85, 1.12) * t.vband(-2, 0.2), WEB, z=0.85, height=0.15, bevel=0.06)
     b.shadow_from(t, dy=0.15)
@@ -405,6 +533,11 @@ def d_stopa():
         y = 0.05 + i * 0.45
         b.fill(b.line([(0.45, y), (1.0, y + 0.13)], 0.12), WEB, z=0.8, height=0.07, bevel=0.04)
     b.carve(b.line([(-0.95, 2.05), (0.95, 1.95), (2.2, 2.25)], 0.07) * boot, 0.05, 0.7)
+    b.velcro(boot, 0.08, seed=62)                                   # leather grain
+    b.stitch([(-1.05, 3.0), (3.2, 3.0)], light=1.35)                # welt
+    b.stitch([(-0.82, 1.9), (0.9, 1.85), (2.1, 2.15)], light=1.3)
+    for i in range(4):                                              # eyelets
+        b.rivet(0.92, 0.0 + i * 0.45, 0.055, (0.3, 0.3, 0.32))
     b.noise(0.05, 0.05, 0.012, seed=61)
     sole = b.rrect(-1.2, 3.1, 3.42, 3.88, 0.26)
     b.fill(sole, RUBBER, height=0.3, bevel=0.13)
@@ -424,6 +557,8 @@ def d_ramie():
     pad = smooth(pad, 0.12)
     t.fill(pad, PAD, z=0.7, height=0.75, bevel=0.55, spec=0.5)
     t.carve(pad * t.band(0.62, 0.72), 0.05, 0.65)
+    t.edgewear(pad, 0.07, 1.55)
+    t.scratches(pad, 10, seed=73)
     acc = b.like()
     acc.fill(pad * acc.band(-0.08, 0.36), GREY(1.0), height=0.06, bevel=0.03, emit=0.7)
     b.shadow_from(t, dy=0.15)
@@ -440,7 +575,11 @@ def d_reka():
     cuff = b.dilate(arm, 0.06) * t.band(4.15, 5.45)
     t.fill(cuff, GLOVE, z=0.65, height=0.4, bevel=0.18)
     t.carve(cuff * t.band(4.5, 4.58), 0.05, 0.65)
-    t.fill(b.dilate(arm, 0.08) * t.band(-0.6, 0.85), PAD, z=0.65, height=0.4, bevel=0.25, spec=0.4)
+    epad = b.dilate(arm, 0.08) * t.band(-0.6, 0.85)
+    t.fill(epad, PAD, z=0.65, height=0.4, bevel=0.25, spec=0.4)
+    t.edgewear(epad, 0.06, 1.5)
+    t.stitch([(-0.75, 4.25), (0.75, 4.25)], light=1.5)
+    b.stitch([(0.82, 0.2), (0.8, 2.9)])
     b.shadow_from(t, dy=0.1)
     return {"": b, "_trim": t, "_wound": wound_layer(b, 181, 2)}
 
@@ -453,6 +592,8 @@ def d_dlon():
     b.fill(b.ell(0.45, 1.25, 0.6, 0.62) * b.erode(fist, 0.1), GLOVE_D, z=0.6, height=0.25, bevel=0.2, spec=0.4)
     for y in (0.8, 1.2, 1.6):
         b.carve(b.line([(-0.6, y), (0.9, y + 0.1)], 0.07) * fist, 0.05, 0.7)
+    b.velcro(fist, 0.1, seed=92)
+    b.stitch([(-0.85, 0.5), (-0.95, 1.4), (-0.6, 1.95)], light=1.4)
     b.noise(0.05, 0.04, 0.01, seed=91)
     return {"": b}
 
@@ -476,7 +617,15 @@ def d_morda():
     b.fill(head, GREY(0.92), height=0.9, bevel=1.0)
     b.bump(b.ell(-0.35, -1.12, 0.36, 0.55), 0.2, 0.06)                     # ear
     b.carve(b.ell(-0.33, -1.08, 0.16, 0.3), 0.08, 0.75)
-    b.carve(b.ell(1.45, -1.27, 0.2, 0.13), 0.12, 0.25)                      # eye
+    b.carve(b.ell(1.45, -1.27, 0.2, 0.13), 0.12, 0.25)                      # eye socket
+    b.paint(b.ell(1.5, -1.27, 0.13, 0.08), (0.86, 0.84, 0.8))               # eye white
+    b.paint(b.ell(1.58, -1.27, 0.06, 0.07), (0.12, 0.1, 0.09))              # iris
+    b.paint(b.line([(1.62, -0.1), (1.94, -0.08)], 0.09), (0.72, 0.55, 0.5), 0.6)   # lips
+    rng = np.random.default_rng(105)
+    stub = ndimage.gaussian_filter(rng.standard_normal((b.h, b.w)).astype(np.float32), 0.012 * K)
+    jaw = b.poly([(0.3, -0.5), (1.9, -0.4), (2.0, 0.35), (1.42, 0.66), (0.25, 0.3)], r=0.15) * head
+    b.alb *= (1 - np.clip(stub * 2.0, 0, 1) * 0.22 * jaw)[..., None]       # stubble
+    b.velcro(head, 0.05, seed=106)                                           # skin pores
     b.bump(b.line([(1.15, -1.55), (1.82, -1.6)], 0.16), 0.12, 0.05)        # brow
     b.tone(b.line([(1.2, -1.45), (1.78, -1.48)], 0.12), 0.82)
     b.carve(b.line([(1.62, -0.12), (1.95, -0.1)], 0.07), 0.05, 0.55)       # mouth
@@ -514,11 +663,19 @@ def d_helm():
     b.carve(b.line([(-1.9, -1.0), (-0.95, -1.05), (-0.6, -1.78), (0.6, -1.82), (1.85, -1.6)], 0.09) * shell, 0.06, 0.78)
     b.carve(b.line([(-0.3, -3.95), (-0.45, -1.9)], 0.07) * shell, 0.04, 0.85)
     b.noise(0.02, 0.06, 0.012, seed=201)
+    b.velcro(shell, 0.07, seed=203)                                 # textured coating
+    b.edgewear(shell, 0.06, 1.35)
+    b.scratches(shell, 18, seed=204)
     t = b.like()
     t.fill(t.line([(-1.95, -1.15), (-0.95, -1.22), (-0.62, -1.9), (0.5, -1.95)], 0.24) * b.dilate(shell, 0.05), HEADSET, z=1.0, height=0.22, bevel=0.08)
-    t.fill(t.rrect(-0.75, -3.2, 0.55, -2.55, 0.12), POUCH, z=1.15, height=0.1, bevel=0.06)
+    patch = t.rrect(-0.75, -3.2, 0.55, -2.55, 0.12)
+    t.fill(patch, POUCH, z=1.15, height=0.1, bevel=0.06)
+    t.velcro(patch, 0.25, seed=205)
+    for x in (-1.6, -1.05, 0.0):
+        t.rivet(x, -1.2 if x < -1 else -1.93, 0.06)
     vis = t.poly([(1.1, -1.72), (2.32, -1.95), (2.48, -1.2), (2.3, -0.72), (1.35, -0.8)], r=0.06)
     t.fill(vis, LENS, z=1.05, height=0.4, bevel=0.22, spec=1.0)
+    t.paint(t.line([(1.3, -1.62), (2.25, -1.82)], 0.07) * vis, (0.55, 0.6, 0.7), 0.5)   # reflection streak
     t.fill(t.line([(1.05, -1.75), (2.3, -1.98)], 0.2), HEADSET, z=1.3, height=0.15, bevel=0.07)
     t.fill(t.ell(1.12, -1.55, 0.2, 0.2), METAL, z=1.35, height=0.12, bevel=0.08, spec=0.9)
     t.noise(0.04, 0.04, 0.006, seed=202)
@@ -654,11 +811,21 @@ def d_jetpack():
     near = b.rrect(0.3, 0.9, 7.6, 3.8, 1.35)
     b.fill(near, (0.24, 0.25, 0.265), z=0.3, height=0.95, bevel=0.95, spec=0.85)
     b.carve(near * b.band(3.15, 3.25), 0.06, 0.7)
+    b.edgewear(near, 0.08, 1.4)
+    b.scratches(near, 22, seed=301)
+    for x in np.arange(1.0, 7.2, 0.7):
+        b.rivet(float(x), 1.2, 0.05)
+    lab = b.rrect(2.9, 1.5, 4.9, 2.3, 0.08)
+    b.paint(lab, (0.55, 0.47, 0.18), 0.85)                          # warning label
+    for x in np.arange(2.95, 4.9, 0.28):
+        b.paint(b.poly([(x, 1.5), (x + 0.12, 1.5), (x + 0.02, 2.3), (x - 0.1, 2.3)]) * lab, (0.1, 0.1, 0.1), 0.8)
     for x in (2.15, 5.45):
         b.fill(b.rrect(x, 0.65, x + 0.5, 3.95, 0.12), WEB, z=1.2, height=0.15, bevel=0.07)
     b.fill(b.poly([(7.3, 1.3), (8.0, 1.12), (8.8, 0.82), (8.8, 3.92), (8.0, 3.55), (7.3, 3.35)], r=0.06),
            (0.34, 0.35, 0.37), z=0.3, height=0.6, bevel=0.3, spec=0.9)
     b.carve(b.rrect(8.45, 1.08, 8.9, 3.65, 0.15), 0.3, 0.25, 0.04)
+    heat = b.vband(7.9, 8.9) * b.poly([(7.3, 1.3), (8.0, 1.12), (8.8, 0.82), (8.8, 3.92), (8.0, 3.55), (7.3, 3.35)])
+    b.paint(heat, (0.36, 0.3, 0.42), 0.45)                          # heat-blued nozzle
     b.fill(b.ell(0.45, 2.3, 0.45, 0.45), METAL, z=1.0, height=0.25, bevel=0.15, spec=0.9)
     acc = b.like()
     acc.fill(acc.rrect(3.2, 2.75, 4.55, 3.28, 0.12), GREY(1.0), height=0.05, bevel=0.03, emit=0.9)
