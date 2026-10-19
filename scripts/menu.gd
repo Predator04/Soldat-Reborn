@@ -167,6 +167,7 @@ func _ready() -> void:
 	Input.set_custom_mouse_cursor(load("res://assets/interface-gfx/menucursor.png"), Input.CURSOR_ARROW, Vector2(0, 0))
 	Settings.apply_display()
 	Net.leave()  # clean state on returning to menu from a game
+	Net.maker_return = {}  # a Maker PLAY session (#286) ends at the menu
 	_build_backdrop()
 	_build_title()
 	_build_menu()

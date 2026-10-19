@@ -1571,6 +1571,10 @@ func _patrol(center: Vector2, radius: float) -> Vector2:
 
 
 func _set_goal(pos: Vector2, label: String) -> void:
+	# Maker-map spikes / lava (#286): never pick a goal inside a kill zone.
+	var m := _main()
+	if m != null and m.has_method("hazard_safe_goal"):
+		pos = m.hazard_safe_goal(pos)
 	_goal = pos
 	_goal_label = label
 
@@ -1910,17 +1914,21 @@ func _carrying_flag_under_fire() -> bool:
 
 
 func _pit_ahead(dir: float) -> bool:
-	# Ground under the next ~30 px of travel ends below the kill line?
+	# Ground under the next ~30 px of travel ends below the kill line — or in
+	# a Maker-map kill zone (spikes / lava, #286)?
 	var m := _main()
 	if m == null or not m.has_method("_geom_ground_y"):
 		return false
 	var kill_y: float = float(m.get("KILL_Y"))
-	if kill_y == INF:
+	var hz: bool = m.has_method("has_hazards") and m.has_hazards()
+	if kill_y == INF and not hz:
 		return false
 	for off in [14.0, 30.0]:
 		var x: float = global_position.x + dir * off
 		var gy: float = m._geom_ground_y(x, global_position.y - 6.0)
-		if gy == INF or gy > kill_y:
+		if kill_y != INF and (gy == INF or gy > kill_y):
+			return true
+		if hz and gy != INF and m.hazard_at(Vector2(x, gy - 6.0), 4.0):
 			return true
 	return false
 

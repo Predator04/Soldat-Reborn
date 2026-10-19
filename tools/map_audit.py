@@ -13,10 +13,14 @@ For every map entity (spawns, flags, M2s, pickups, DOM points) it reports:
   * isolated      — it lands in a pocket that isn't connected to the main arena
   * over a pit    — it falls below the map's kill line
   * long fall     — spawns that drop > 250 px before touching ground
+  * kill zone     — it sits in a Maker-map hazard (spikes / lava, #286); the
+                    zones count as pits for landing and connectivity
 
 Usage:
     python3 tools/map_audit.py            # audit built-ins + assets/maps/*.json
     python3 tools/map_audit.py nuubia     # only maps whose name contains "nuubia"
+    python3 tools/map_audit.py path/to/map.json   # one map file (e.g. a Maker map
+                                                  # from user://maps/)
 
 Needs numpy, pillow and scipy (pip install numpy pillow scipy).
 """
@@ -94,6 +98,16 @@ def fits(solid, w, h):
     return free
 
 
+def hazard_rects(m):
+    """Maker kill zones as (x0, y0, x1, y1) world rects."""
+    out = []
+    for h in m.get("hazards") or []:
+        r = h.get("rect") if isinstance(h, dict) else None
+        if isinstance(r, (list, tuple)) and len(r) >= 4:
+            out.append((float(r[0]), float(r[1]), float(r[0]) + float(r[2]), float(r[1]) + float(r[3])))
+    return out
+
+
 def entities(m):
     out = []
     if m.get("player_spawn") is not None:
@@ -136,6 +150,12 @@ class Space:
         layers = np.stack([fits(self.solid, w, h) for (w, h) in STANCES])
         if self.K is not None:
             layers[:, int(self.K / R):, :] = False  # below the kill line = dead
+        # Maker-map kill zones (spikes / lava, #286): dead like the kill line.
+        dead = np.zeros(layers.shape[1:], dtype=bool)
+        for z in hazard_rects(m):
+            x0, y0, x1, y1 = (int(v / R) for v in z)
+            dead[max(0, y0):max(0, y1 + 1), max(0, x0):max(0, x1 + 1)] = True
+        layers[:, dead] = False
         self.stand = layers[0]
         self.lab, _ = ndimage.label(layers, structure=ndimage.generate_binary_structure(3, 1))
         self.ny, self.nx = self.stand.shape
@@ -143,6 +163,10 @@ class Space:
         below = np.zeros_like(self.stand)
         below[:-1, :] = self.stand[1:, :]
         self.ground = self.stand & ~below
+        if dead.any():  # standing on a kill zone is not ground
+            up = np.zeros_like(dead)
+            up[:-1, :] = dead[1:, :]
+            self.ground &= ~up
         if self.K is not None:
             self.ground[max(0, int(self.K / R) - 1):, :] = False
         spawn_labels = []
@@ -300,7 +324,12 @@ def audit(m):
         sub = pm[max(0, y0):y1, max(0, x0):x1]
         if sub.size and sub.mean() > 0.25:
             problems.append("platform[%d] @ (%d, %d): %d%% buried inside terrain" % (i, px, py, sub.mean() * 100))
+    zones = hazard_rects(m)
     for kind, i, p in entities(m):
+        if any(z[0] <= p[0] <= z[2] and z[1] <= p[1] - 4 <= z[3] for z in zones):
+            label = kind if i is None else "%s[%d]" % (kind, i)
+            problems.append("%s @ (%d, %d): in a kill zone (spikes / lava)" % (label, p[0], p[1]))
+            continue
         prob, _ = sp.check(kind, p)
         if prob:
             label = kind if i is None else "%s[%d]" % (kind, i)
@@ -310,7 +339,12 @@ def audit(m):
 
 def main(argv):
     only = argv[1] if len(argv) > 1 else None
-    maps = builtin_maps() + classic_maps()
+    if only and only.endswith(".json") and os.path.isfile(only):
+        d = json.load(open(only, encoding="utf-8"))
+        d["_label"] = os.path.basename(only)
+        maps, only = [d], None
+    else:
+        maps = builtin_maps() + classic_maps()
     bad = 0
     for m in maps:
         if only and only.lower() not in m["_label"].lower():

@@ -79,6 +79,15 @@ static func map_to_json(m: Dictionary) -> String:
 				for c in vc:
 					hex.append((c as Color).to_html(true))
 				entry["vc"] = hex
+			# Tile-space UVs (ported maps, Maker terrain #286) — json_to_map has
+			# always read them; without them a re-saved map lost its texturing.
+			var uv = poly.get("uvs", PackedVector2Array())
+			if typeof(uv) == TYPE_PACKED_VECTOR2_ARRAY and (uv as PackedVector2Array).size() == pts.size():
+				var uflat: Array = []
+				for u in uv:
+					uflat.append(u.x)
+					uflat.append(u.y)
+				entry["uvs"] = uflat
 			polys_out.append(entry)
 		out["polys"] = polys_out
 	# Editor-placed scenery — array of {tex, pos, scale?, mod?, z?}. Distinct from
@@ -138,6 +147,8 @@ static func map_to_json(m: Dictionary) -> String:
 			var e := {"points": flat}
 			if int(c.get("col", 0)) != 0:
 				e["col"] = int(c["col"])
+			if bool(c.get("prop", false)):
+				e["prop"] = true
 			coll_out.append(e)
 		out["collision"] = coll_out
 	if m.has("team_spawns") and typeof(m["team_spawns"]) == TYPE_DICTIONARY:
@@ -148,6 +159,31 @@ static func map_to_json(m: Dictionary) -> String:
 				arr.append([v.x, v.y])
 			ts_out[str(k)] = arr
 		out["team_spawns"] = ts_out
+	if m.has("weather") and str(m["weather"]) != "":
+		out["weather"] = str(m["weather"])
+	# Maker mode (#286): kill zones, jump pads and the editor's own piece list
+	# (plain JSON values; the game ignores "maker").
+	if m.has("hazards") and typeof(m["hazards"]) == TYPE_ARRAY:
+		var hz_out: Array = []
+		for h in m["hazards"]:
+			if typeof(h) != TYPE_DICTIONARY or not (h.get("rect") is Rect2):
+				continue
+			var r: Rect2 = h["rect"]
+			var he := {"kind": str(h.get("kind", "spikes")), "rect": [r.position.x, r.position.y, r.size.x, r.size.y]}
+			if int(h.get("dir", 0)) != 0:
+				he["dir"] = int(h["dir"])
+			hz_out.append(he)
+		out["hazards"] = hz_out
+	if m.has("jump_pads") and typeof(m["jump_pads"]) == TYPE_ARRAY:
+		var jp_out: Array = []
+		for j in m["jump_pads"]:
+			if typeof(j) != TYPE_DICTIONARY:
+				continue
+			var jp: Vector2 = j.get("pos", Vector2.ZERO)
+			jp_out.append({"pos": [jp.x, jp.y], "power": float(j.get("power", 1150.0))})
+		out["jump_pads"] = jp_out
+	if m.has("maker") and typeof(m["maker"]) == TYPE_DICTIONARY:
+		out["maker"] = m["maker"]
 	return JSON.stringify(out, "  ")
 
 
@@ -343,7 +379,12 @@ static func json_to_map(text: String) -> Dictionary:
 				pts.append(Vector2(float(flat[i]), float(flat[i + 1])))
 				i += 2
 			if pts.size() >= 3:
-				coll.append({"points": pts, "col": int(c.get("col", 0))})
+				var ce := {"points": pts, "col": int(c.get("col", 0))}
+				# A solid prop (Maker crate / sandbags, #286): drawn by its
+				# scenery sprite, so no painted terrain edge along it.
+				if c.get("prop", false) == true:
+					ce["prop"] = true
+				coll.append(ce)
 		m["collision"] = coll
 	# Per-team spawn lists {"1": [[x,y]...], "2": [...]} → {1: [Vector2], 2: [...]}.
 	if parsed.has("team_spawns") and typeof(parsed["team_spawns"]) == TYPE_DICTIONARY:
@@ -356,6 +397,32 @@ static func json_to_map(text: String) -> Dictionary:
 		m["team_spawns"] = ts
 	if parsed.has("weather"):
 		m["weather"] = str(parsed["weather"])
+	# Maker mode (#286): kill zones [{kind, rect: [x, y, w, h], dir?}] and jump
+	# pads [{pos: [x, y], power}]. Sizes / counts / power clamped (hostile JSON).
+	if parsed.has("hazards"):
+		var hz: Array = []
+		for h in _arr(parsed["hazards"]):
+			if typeof(h) != TYPE_DICTIONARY or hz.size() >= 256:
+				continue
+			var ra: Array = _arr(h.get("rect"))
+			if ra.size() < 4:
+				continue
+			var kind := str(h.get("kind", "spikes"))
+			if kind != "spikes" and kind != "lava":
+				kind = "spikes"
+			hz.append({"kind": kind, "dir": clampi(int(_num_or(h.get("dir", 0), 0.0)), 0, 3),
+				"rect": Rect2(_num_or(ra[0], 0.0), _num_or(ra[1], 0.0),
+					clampf(_num_or(ra[2], 0.0), 4.0, WORLD_MAX), clampf(_num_or(ra[3], 0.0), 4.0, WORLD_MAX))})
+		m["hazards"] = hz
+	if parsed.has("jump_pads"):
+		var jps: Array = []
+		for j in _arr(parsed["jump_pads"]):
+			if typeof(j) != TYPE_DICTIONARY or jps.size() >= 256:
+				continue
+			jps.append({"pos": _v2(j.get("pos")), "power": clampf(_num_or(j.get("power", 1150.0), 1150.0), 300.0, 2400.0)})
+		m["jump_pads"] = jps
+	if parsed.has("maker") and typeof(parsed["maker"]) == TYPE_DICTIONARY:
+		m["maker"] = parsed["maker"]
 	if parsed.has("ctf_ground_y"):
 		m["ctf_ground_y"] = float(parsed["ctf_ground_y"])
 	# Passed through untouched — main.gd reads _scenery_hints to spawn the

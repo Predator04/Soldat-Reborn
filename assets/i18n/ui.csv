@@ -411,3 +411,198 @@ Cinematic,Cinemático,Cinematográfico,Filmisch,Cinématique
 Classic,Clásico,Clássico,Klassisch,Classique
 Soldier look,Aspecto del soldado,Visual do soldado,Soldaten-Look,Apparence du soldat
 Operator,Operador,Operador,Operator,Opérateur
+That's the most %s a map can have.,Ya hay el máximo de %s en un mapa.,Esse é o máximo de %s que um mapa pode ter.,Mehr %s geht auf einer Karte nicht.,C'est le maximum de %s pour une carte.
+The player start can't be deleted — drag it instead.,El inicio del jugador no se puede borrar: arrástralo.,O início do jogador não pode ser apagado — arraste-o.,Der Spielerstart lässt sich nicht löschen — verschieb ihn stattdessen.,Le départ du joueur ne peut pas être supprimé — déplace-le.
+Theme: %s,Tema: %s,Tema: %s,Thema: %s,Thème : %s
+Grid: %d px,Rejilla: %d px,Grade: %d px,Raster: %d px,Grille : %d px
+New map.,Mapa nuevo.,Mapa novo.,Neue Karte.,Nouvelle carte.
+%d selected,%d seleccionados,%d selecionados,%d ausgewählt,%d sélectionnés
+Tap the map to place %s · right-click / Esc to stop,Toca el mapa para colocar %s · clic derecho / Esc para parar,Toque no mapa para colocar %s · clique direito / Esc para parar,"Tippe auf die Karte, um %s zu setzen · Rechtsklick / Esc zum Beenden",Touche la carte pour placer %s · clic droit / Échap pour arrêter
+Save failed.,No se pudo guardar.,Falha ao salvar.,Speichern fehlgeschlagen.,Échec de l'enregistrement.
+Saved: %s,Guardado: %s,Salvo: %s,Gespeichert: %s,Enregistré : %s
+Couldn't open that map.,No se pudo abrir ese mapa.,Não foi possível abrir esse mapa.,Diese Karte ließ sich nicht öffnen.,Impossible d'ouvrir cette carte.
+Opened: %s,Abierto: %s,Aberto: %s,Geöffnet: %s,Ouvert : %s
+Couldn't write the play-test map.,No se pudo escribir el mapa de prueba.,Não foi possível gravar o mapa de teste.,Die Testkarte konnte nicht geschrieben werden.,Impossible d'écrire la carte de test.
+FILE,ARCHIVO,ARQUIVO,DATEI,FICHIER
+New map,Mapa nuevo,Mapa novo,Neue Karte,Nouvelle carte
+Save,Guardar,Salvar,Speichern,Enregistrer
+Open...,Abrir...,Abrir...,Öffnen...,Ouvrir...
+Exit to menu,Salir al menú,Sair para o menu,Zum Menü,Retour au menu
+MAKER,CREADOR,CRIADOR,BAUKASTEN,ATELIER
+Map name,Nombre del mapa,Nome do mapa,Kartenname,Nom de la carte
+"Theme: terrain materials, painted edges and sky.","Tema: materiales del terreno, bordes pintados y cielo.","Tema: materiais do terreno, bordas pintadas e céu.","Thema: Geländematerial, gemalte Kanten und Himmel.","Thème : matériaux du terrain, bords peints et ciel."
+MAP,MAPA,MAPA,KARTE,CARTE
+World size and what's below the map.,Tamaño del mundo y lo que hay bajo el mapa.,Tamanho do mundo e o que há embaixo do mapa.,Weltgröße und was unter der Karte liegt.,Taille du monde et ce qu'il y a sous la carte.
+Size %s (%d x %d),Tamaño %s (%d x %d),Tamanho %s (%d x %d),Größe %s (%d x %d),Taille %s (%d x %d)
+Bottomless (falling = death),Sin fondo (caer = morir),Sem fundo (cair = morrer),Bodenlos (Absturz = Tod),Sans fond (tomber = mourir)
+Solid floor,Suelo sólido,Chão sólido,Fester Boden,Sol solide
+The game mode PLAY tests.,El modo de juego que prueba JUGAR.,O modo de jogo que JOGAR testa.,"Der Spielmodus, den SPIELEN testet.",Le mode de jeu testé par JOUER.
+Grid size (G).,Tamaño de la rejilla (G).,Tamanho da grade (G).,Rastergröße (G).,Taille de la grille (G).
+UNDO,DESHACER,DESFAZER,RÜCKGÄNGIG,ANNULER
+Undo (Ctrl+Z).,Deshacer (Ctrl+Z).,Desfazer (Ctrl+Z).,Rückgängig (Strg+Z).,Annuler (Ctrl+Z).
+REDO,REHACER,REFAZER,WIEDERHOLEN,RÉTABLIR
+Redo (Ctrl+Y).,Rehacer (Ctrl+Y).,Refazer (Ctrl+Y).,Wiederholen (Strg+Y).,Rétablir (Ctrl+Y).
+SELECT,SELECCIONAR,SELECIONAR,AUSWAHL,SÉLECTION
+Drag on empty space to select an area instead of moving the view.,Arrastra en un espacio vacío para seleccionar una zona en vez de mover la vista.,Arraste em espaço vazio para selecionar uma área em vez de mover a vista.,"Auf freier Fläche ziehen wählt einen Bereich aus, statt die Ansicht zu verschieben.",Glisse dans le vide pour sélectionner une zone au lieu de déplacer la vue.
+ADVANCED,AVANZADO,AVANÇADO,ERWEITERT,AVANCÉ
+"The classic editor tools (free-form polygons, platforms, textures).","Las herramientas clásicas del editor (polígonos libres, plataformas, texturas).","As ferramentas clássicas do editor (polígonos livres, plataformas, texturas).","Die klassischen Editor-Werkzeuge (freie Polygone, Plattformen, Texturen).","Les outils classiques de l'éditeur (polygones libres, plateformes, textures)."
+Test the map from where the camera is (F5).,Prueba el mapa desde donde está la cámara (F5).,Teste o mapa de onde a câmera está (F5).,"Teste die Karte dort, wo die Kamera ist (F5).",Teste la carte depuis l'endroit où est la caméra (F5).
+FIT,AJUSTAR,AJUSTAR,EINPASSEN,AJUSTER
+ROTATE,GIRAR,GIRAR,DREHEN,PIVOTER
+FLIP,VOLTEAR,ESPELHAR,SPIEGELN,RETOURNER
+COPY,COPIAR,COPIAR,KOPIE,COPIER
+KEEP EDITING,SEGUIR EDITANDO,CONTINUAR EDITANDO,WEITER BAUEN,CONTINUER
+PLAY ANYWAY,JUGAR IGUAL,JOGAR ASSIM MESMO,TROTZDEM SPIELEN,JOUER QUAND MÊME
+OPEN A MAP,ABRIR UN MAPA,ABRIR UM MAPA,KARTE ÖFFNEN,OUVRIR UNE CARTE
+CLOSE,CERRAR,FECHAR,SCHLIESSEN,FERMER
+Drag on empty space selects an area.,Arrastrar en un espacio vacío selecciona una zona.,Arrastar em espaço vazio seleciona uma área.,Ziehen auf freier Fläche wählt einen Bereich aus.,Glisser dans le vide sélectionne une zone.
+Drag on empty space moves the view.,Arrastrar en un espacio vacío mueve la vista.,Arrastar em espaço vazio move a vista.,Ziehen auf freier Fläche verschiebt die Ansicht.,Glisser dans le vide déplace la vue.
+GRID %d,REJILLA %d,GRADE %d,RASTER %d,GRILLE %d
+World size changed.,Tamaño del mundo cambiado.,Tamanho do mundo alterado.,Weltgröße geändert.,Taille du monde modifiée.
+Falling off the bottom kills.,Caer por abajo mata.,Cair pelo fundo mata.,"Wer unten herausfällt, stirbt.",Tomber par le bas tue.
+A solid floor runs under the whole map.,Un suelo sólido recorre todo el mapa por debajo.,Um chão sólido passa por baixo de todo o mapa.,Unter der ganzen Karte liegt fester Boden.,Un sol solide court sous toute la carte.
+Drag pieces up onto the map · one finger moves the view · pinch to zoom · hold for options,Arrastra piezas hacia el mapa · un dedo mueve la vista · pellizca para hacer zoom · mantén para opciones,Arraste peças para o mapa · um dedo move a vista · pinça para zoom · segure para opções,Teile auf die Karte ziehen · ein Finger verschiebt die Ansicht · zum Zoomen kneifen · gedrückt halten für Optionen,Glisse les pièces sur la carte · un doigt déplace la vue · pince pour zoomer · maintiens pour les options
+Drag pieces onto the map · wheel zoom · right-drag pan · R rotate · F flip · Del delete,Arrastra piezas al mapa · rueda: zoom · arrastre derecho: mover · R girar · F voltear · Supr borrar,Arraste peças para o mapa · roda: zoom · arrastar com o direito: mover · R girar · F espelhar · Del apagar,Teile auf die Karte ziehen · Mausrad Zoom · Rechtsziehen verschiebt · R drehen · F spiegeln · Entf löschen,Glisse les pièces sur la carte · molette : zoom · clic droit glissé : déplacer · R pivoter · F retourner · Suppr effacer
+Duplicate,Duplicar,Duplicar,Duplizieren,Dupliquer
+Rotate,Girar,Girar,Drehen,Pivoter
+Flip,Voltear,Espelhar,Spiegeln,Retourner
+Delete,Borrar,Apagar,Löschen,Supprimer
+Select area,Seleccionar zona,Selecionar área,Bereich auswählen,Sélectionner une zone
+Move the view,Mover la vista,Mover a vista,Ansicht verschieben,Déplacer la vue
+Select all,Seleccionar todo,Selecionar tudo,Alles auswählen,Tout sélectionner
+Zoom to fit,Ajustar a la pantalla,Ajustar à tela,Ganze Karte zeigen,Vue d'ensemble
+Place %s here,Colocar %s aquí,Colocar %s aqui,%s hier setzen,Placer %s ici
+Undo,Deshacer,Desfazer,Rückgängig,Annuler
+A FEW THINGS TO FIX FIRST,PRIMERO HAY QUE ARREGLAR ALGO,ALGUMAS COISAS PARA CORRIGIR ANTES,ERST NOCH EIN PAAR DINGE,QUELQUES CHOSES À CORRIGER D'ABORD
+BEFORE YOU PLAY,ANTES DE JUGAR,ANTES DE JOGAR,BEVOR DU SPIELST,AVANT DE JOUER
+...and %d more.,...y %d más.,...e mais %d.,...und %d weitere.,...et %d de plus.
+OPEN,ABRIR,ABRIR,ÖFFNEN,OUVRIR
+No saved maps yet — build one and Save.,Aún no hay mapas guardados: crea uno y guárdalo.,Nenhum mapa salvo ainda — crie um e salve.,Noch keine gespeicherten Karten — bau eine und speichere sie.,Aucune carte enregistrée — construis-en une et enregistre-la.
+Overview — click to jump there.,Vista general: haz clic para ir allí.,Visão geral — clique para ir até lá.,"Übersicht — klicken, um dorthin zu springen.",Vue d'ensemble — clique pour t'y rendre.
+Player start,Inicio del jugador,Início do jogador,Spielerstart,Départ du joueur
+FFA spawn,Aparición libre,Spawn livre,FFA-Spawn,Apparition libre
+Blue spawn,Aparición azul,Spawn azul,Blauer Spawn,Apparition bleue
+Red spawn,Aparición roja,Spawn vermelho,Roter Spawn,Apparition rouge
+Blue flag,Bandera azul,Bandeira azul,Blaue Flagge,Drapeau bleu
+Red flag,Bandera roja,Bandeira vermelha,Rote Flagge,Drapeau rouge
+%s pickup,%s en el suelo,%s no chão,%s zum Aufheben,%s à ramasser
+There's nothing to stand on yet — drag some Ground in from the Terrain tab.,Aún no hay dónde pisar: arrastra algo de Suelo desde la pestaña Terreno.,Ainda não há onde pisar — arraste um Chão da aba Terreno.,Noch gibt es nichts zum Stehen — zieh Boden aus dem Reiter Gelände herein.,Il n'y a encore rien où se tenir — fais glisser du Sol depuis l'onglet Terrain.
+%s is outside the map — drag it back in.,%s está fuera del mapa: arrástralo de vuelta.,%s está fora do mapa — arraste de volta.,%s liegt außerhalb der Karte — zieh es zurück.,%s est hors de la carte — ramène-le.
+%s is buried in the terrain — drag it up into open air.,%s está enterrado en el terreno: súbelo al aire libre.,%s está enterrado no terreno — arraste para o ar livre.,%s steckt im Gelände — zieh es nach oben ins Freie.,%s est enterré dans le terrain — remonte-le à l'air libre.
+%s sits in spikes or lava.,%s está en pinchos o lava.,%s está em espinhos ou lava.,%s steht in Stacheln oder Lava.,%s est dans des pointes ou de la lave.
+%s is over a bottomless pit.,%s está sobre un abismo sin fondo.,%s está sobre um abismo sem fundo.,%s steht über einem bodenlosen Abgrund.,%s est au-dessus d'un gouffre sans fond.
+A %s is completely outside the map.,Una pieza (%s) está totalmente fuera del mapa.,Uma peça (%s) está totalmente fora do mapa.,Ein Teil (%s) liegt komplett außerhalb der Karte.,Une pièce (%s) est entièrement hors de la carte.
+Part of a %s sticks out of the map.,Parte de una pieza (%s) sale del mapa.,Parte de uma peça (%s) sai do mapa.,Ein Teil (%s) ragt aus der Karte.,Une partie d'une pièce (%s) dépasse de la carte.
+The Blue team needs a spawn — drag a Blue spawn in from Objectives.,El equipo azul necesita una aparición: arrastra una Aparición azul desde Objetivos.,A equipe azul precisa de um spawn — arraste um Spawn azul de Objetivos.,Team Blau braucht einen Spawn — zieh einen blauen Spawn aus Ziele herein.,L'équipe bleue a besoin d'une apparition — fais glisser une Apparition bleue depuis Objectifs.
+The Red team needs a spawn — drag a Red spawn in from Objectives.,El equipo rojo necesita una aparición: arrastra una Aparición roja desde Objetivos.,A equipe vermelha precisa de um spawn — arraste um Spawn vermelho de Objetivos.,Team Rot braucht einen Spawn — zieh einen roten Spawn aus Ziele herein.,L'équipe rouge a besoin d'une apparition — fais glisser une Apparition rouge depuis Objectifs.
+Capture the Flag needs a Blue flag and a Red flag (Objectives).,Captura la bandera necesita una bandera azul y una roja (Objetivos).,Capture a bandeira precisa de uma bandeira azul e uma vermelha (Objetivos).,Capture the Flag braucht eine blaue und eine rote Flagge (Ziele).,La capture du drapeau demande un drapeau bleu et un rouge (Objectifs).
+No Infiltration flag placed — one goes on the terrain in the middle.,"No hay bandera de Infiltración: se pone una en el terreno, en el centro.","Nenhuma bandeira de Infiltração — uma vai no terreno, no meio.",Keine Infiltrations-Flagge gesetzt — eine kommt mittig aufs Gelände.,"Aucun drapeau d'Infiltration — un est placé sur le terrain, au milieu."
+No Hold the Flag flag placed — one goes on the terrain in the middle.,"No hay bandera de Mantén la bandera: se pone una en el terreno, en el centro.","Nenhuma bandeira de Segure a bandeira — uma vai no terreno, no meio.",Keine Hold-the-Flag-Flagge gesetzt — eine kommt mittig aufs Gelände.,"Aucun drapeau de Garde le drapeau — un est placé sur le terrain, au milieu."
+No Rambo bow placed — one goes on the terrain in the middle.,"No hay arco de Rambo: se pone uno en el terreno, en el centro.","Nenhum arco do Rambo — um vai no terreno, no meio.",Kein Rambo-Bogen gesetzt — einer kommt mittig aufs Gelände.,"Aucun arc de Rambo — un est placé sur le terrain, au milieu."
+"No DOM points placed — three go on the terrain, left, middle and right.","No hay puntos DOM: se ponen tres en el terreno, a la izquierda, en el centro y a la derecha.","Nenhum ponto DOM — três vão no terreno, à esquerda, no meio e à direita.","Keine DOM-Punkte gesetzt — drei kommen aufs Gelände: links, Mitte, rechts.","Aucun point DOM — trois sont placés sur le terrain, à gauche, au milieu et à droite."
+Only one spawn point — add a few so players don't all appear in one spot.,Solo hay un punto de aparición: añade algunos para que no aparezcan todos en el mismo sitio.,Só um ponto de spawn — adicione alguns para que nem todos apareçam no mesmo lugar.,"Nur ein Spawnpunkt — setz ein paar mehr, damit nicht alle an derselben Stelle erscheinen.",Un seul point d'apparition — ajoutes-en pour que tout le monde n'apparaisse pas au même endroit.
+INF flag,Bandera INF,Bandeira INF,INF-Flagge,Drapeau INF
+HTF flag,Bandera HTF,Bandeira HTF,HTF-Flagge,Drapeau HTF
+Rambo bow,Arco de Rambo,Arco do Rambo,Rambo-Bogen,Arc de Rambo
+DOM point,Punto DOM,Ponto DOM,DOM-Punkt,Point DOM
+Point,Punto,Ponto,Punkt,Point
+Bonus box,Caja de bonus,Caixa de bônus,Bonuskiste,Caisse bonus
+Medikit,Botiquín,Kit médico,Medikit,Trousse de soins
+Grenade kit,Kit de granadas,Kit de granadas,Granatenkit,Kit de grenades
+Buggy,Buggy,Buggy,Buggy,Buggy
+Tank,Tanque,Tanque,Panzer,Char
+Heli pad,Helipuerto,Heliponto,Hubschrauberlandeplatz,Héliport
+EDIT,EDITAR,EDITAR,BEARBEITEN,MODIFIER
+"Back to the Maker, same spot, map unchanged.","Volver al creador, mismo sitio, mapa sin cambios.","Voltar ao criador, mesmo lugar, mapa inalterado.","Zurück in den Baukasten, gleiche Stelle, Karte unverändert.","Retour à l'atelier, même endroit, carte inchangée."
+Ground,Suelo,Chão,Boden,Sol
+Wide ground,Suelo ancho,Chão largo,Breiter Boden,Sol large
+Ramp up 30°,Rampa arriba 30°,Rampa sobe 30°,Rampe hoch 30°,Rampe montante 30°
+Ramp down 30°,Rampa abajo 30°,Rampa desce 30°,Rampe runter 30°,Rampe descendante 30°
+Ramp up 45°,Rampa arriba 45°,Rampa sobe 45°,Rampe hoch 45°,Rampe montante 45°
+Ramp down 45°,Rampa abajo 45°,Rampa desce 45°,Rampe runter 45°,Rampe descendante 45°
+Round hill,Colina,Colina,Hügel,Colline
+Floating,Flotante,Flutuante,Schwebend,Flottant
+Thin ledge,Saliente fino,Saliência fina,Schmaler Sims,Corniche fine
+Bridge,Puente,Ponte,Brücke,Pont
+Bullet wall,Muro antibalas,Parede antibala,Kugelwand,Mur pare-balles
+Pillar,Pilar,Pilar,Säule,Pilier
+Wall,Muro,Parede,Mauer,Mur
+Spikes,Pinchos,Espinhos,Stacheln,Pointes
+Lava pit,Foso de lava,Poço de lava,Lavagrube,Fosse de lave
+Jump pad,Plataforma de salto,Plataforma de salto,Sprungfeld,Tremplin
+Big jump pad,Plataforma de salto grande,Plataforma de salto grande,Großes Sprungfeld,Grand tremplin
+Ladder,Escalera,Escada,Leiter,Échelle
+Crate,Caja,Caixa,Kiste,Caisse
+Big crate,Caja grande,Caixa grande,Große Kiste,Grande caisse
+Sandbags,Sacos terreros,Sacos de areia,Sandsäcke,Sacs de sable
+Barrel,Barril,Barril,Fass,Tonneau
+M2 gun,Ametralladora M2,Metralhadora M2,M2-MG,Mitrailleuse M2
+A solid block of ground. Solid pieces that touch merge into one smooth piece of terrain.,Un bloque sólido de suelo. Las piezas sólidas que se tocan se funden en un solo terreno suave.,Um bloco sólido de chão. Peças sólidas que se tocam se fundem num só terreno suave.,"Ein fester Bodenblock. Feste Teile, die sich berühren, verschmelzen zu einem glatten Gelände.",Un bloc de sol solide. Les pièces solides qui se touchent fusionnent en un seul terrain lisse.
+A long stretch of ground: the base of most maps.,Un tramo largo de suelo: la base de casi todos los mapas.,Um trecho longo de chão: a base da maioria dos mapas.,Ein langes Stück Boden: die Basis der meisten Karten.,Une longue bande de sol : la base de la plupart des cartes.
+A gentle ramp going up to the right (flip it with F).,Una rampa suave que sube a la derecha (voltéala con F).,Uma rampa suave subindo para a direita (espelhe com F).,Eine sanfte Rampe nach rechts oben (mit F spiegeln).,Une rampe douce qui monte vers la droite (retourne-la avec F).
+A gentle ramp going down to the right.,Una rampa suave que baja a la derecha.,Uma rampa suave descendo para a direita.,Eine sanfte Rampe nach rechts unten.,Une rampe douce qui descend vers la droite.
+A steep ramp going up to the right — jets or a run-up get you over it.,Una rampa empinada que sube a la derecha: súbela con el jetpack o con carrerilla.,Uma rampa íngreme subindo para a direita — suba com o jato ou correndo.,Eine steile Rampe nach rechts oben — mit Jets oder Anlauf kommst du hoch.,Une rampe raide qui monte vers la droite — les jets ou de l'élan te font passer.
+A steep ramp going down to the right.,Una rampa empinada que baja a la derecha.,Uma rampa íngreme descendo para a direita.,Eine steile Rampe nach rechts unten.,Une rampe raide qui descend vers la droite.
+A smooth rounded hill. Put it on a ground block and they merge.,Una colina redondeada. Ponla sobre un bloque de suelo y se funden.,Uma colina arredondada. Coloque sobre um bloco de chão e eles se fundem.,Ein runder Hügel. Setz ihn auf einen Bodenblock und beide verschmelzen.,Une colline arrondie. Pose-la sur un bloc de sol et ils fusionnent.
+A floating island to jump or jet up to.,Una isla flotante a la que saltar o subir con el jetpack.,Uma ilha flutuante para pular ou subir com o jato.,Eine schwebende Insel zum Hochspringen oder -fliegen.,Une île flottante à atteindre en sautant ou avec les jets.
+A thin ledge soldiers stand on — bullets fly through it.,Un saliente fino donde se puede estar: las balas lo atraviesan.,Uma saliência fina onde se pode ficar — as balas atravessam.,Ein schmaler Sims zum Draufstehen — Kugeln fliegen hindurch.,Une corniche fine où se tenir — les balles la traversent.
+A plank bridge over a gap. Bullets pass between the planks.,Un puente de tablas sobre un hueco. Las balas pasan entre las tablas.,Uma ponte de tábuas sobre um vão. As balas passam entre as tábuas.,Eine Bretterbrücke über eine Lücke. Kugeln gehen zwischen den Brettern durch.,Un pont de planches au-dessus d'un vide. Les balles passent entre les planches.
+"A see-through barrier: soldiers walk through it, bullets stop.","Una barrera transparente: los soldados la cruzan, las balas no.","Uma barreira transparente: soldados atravessam, balas param.","Eine durchsichtige Sperre: Soldaten gehen durch, Kugeln bleiben stecken.","Une barrière transparente : les soldats la traversent, les balles s'arrêtent."
+A tall column to hide behind or climb onto.,Una columna alta para cubrirse o subirse.,Uma coluna alta para se esconder atrás ou subir.,Eine hohe Säule zum Verstecken oder Hochklettern.,Une haute colonne pour se cacher derrière ou monter dessus.
+A tall thin wall.,Un muro alto y delgado.,Uma parede alta e fina.,"Eine hohe, dünne Mauer.",Un mur haut et mince.
+Instant death to the touch. Rotate (R) for ceiling or wall spikes.,Muerte instantánea al tocarlos. Gíralos (R) para el techo o la pared.,Morte instantânea ao toque. Gire (R) para teto ou parede.,Sofortiger Tod bei Berührung. Drehen (R) für Decken- oder Wandstacheln.,Mort instantanée au contact. Pivote (R) pour des pointes au plafond ou au mur.
+A pool of lava on a rock basin. Drop it into a gap between two blocks.,Un charco de lava en una cubeta de roca. Suéltalo en un hueco entre dos bloques.,Uma poça de lava numa bacia de rocha. Solte num vão entre dois blocos.,Ein Lavabecken in einer Felswanne. Setz es in eine Lücke zwischen zwei Blöcken.,Une mare de lave dans un bassin de roche. Pose-la dans un creux entre deux blocs.
+Launches whoever steps on it high into the air.,Lanza por los aires a quien la pise.,Lança alto quem pisar nela.,"Schleudert jeden, der drauftritt, hoch in die Luft.",Propulse dans les airs quiconque marche dessus.
+A much stronger launch — reach the top of the map.,Un lanzamiento mucho más fuerte: llega a lo alto del mapa.,Um lançamento muito mais forte — chegue ao topo do mapa.,Ein viel stärkerer Schub — bis ganz nach oben.,Une propulsion bien plus forte — atteins le haut de la carte.
+A ladder soldiers can climb. Drag the handles to make it taller.,Una escalera para trepar. Arrastra los tiradores para alargarla.,Uma escada para subir. Arraste as alças para aumentá-la.,"Eine Leiter zum Klettern. Zieh an den Griffen, um sie zu verlängern.",Une échelle à grimper. Tire les poignées pour l'agrandir.
+A solid wooden crate — cover you can stand on.,Una caja de madera sólida: cobertura en la que subirse.,Uma caixa de madeira sólida — cobertura para subir.,Eine feste Holzkiste — Deckung zum Draufstehen.,Une caisse en bois solide — un abri sur lequel monter.
+A big solid crate.,Una caja grande y sólida.,Uma caixa grande e sólida.,"Eine große, feste Kiste.",Une grande caisse solide.
+Low solid cover: crouch behind it.,Cobertura baja: agáchate detrás.,Cobertura baixa: agache atrás dela.,Niedrige Deckung: dahinter ducken.,Abri bas : accroupis-toi derrière.
+A solid barrel.,Un barril sólido.,Um barril sólido.,Ein festes Fass.,Un tonneau solide.
+Where you start in free-for-all modes (there is always one — drag it).,Donde empiezas en los modos todos contra todos (siempre hay uno: arrástralo).,Onde você começa nos modos cada um por si (sempre há um — arraste-o).,Wo du in Jeder-gegen-jeden-Modi startest (es gibt immer einen — verschieb ihn).,Là où tu commences dans les modes chacun pour soi (il y en a toujours un — déplace-le).
+A spawn point for the Blue team (team modes).,Un punto de aparición del equipo azul (modos por equipos).,Um ponto de spawn da equipe azul (modos em equipe).,Ein Spawnpunkt für Team Blau (Teammodi).,Un point d'apparition de l'équipe bleue (modes en équipe).
+A spawn point for the Red team (team modes).,Un punto de aparición del equipo rojo (modos por equipos).,Um ponto de spawn da equipe vermelha (modos em equipe).,Ein Spawnpunkt für Team Rot (Teammodi).,Un point d'apparition de l'équipe rouge (modes en équipe).
+"A free-for-all spawn point (deathmatch, bots).","Un punto de aparición libre (todos contra todos, bots).","Um ponto de spawn livre (mata-mata, bots).","Ein freier Spawnpunkt (Deathmatch, Bots).","Un point d'apparition libre (chacun pour soi, bots)."
+Blue team's flag base (Capture the Flag).,Base de la bandera azul (Captura la bandera).,Base da bandeira azul (Capture a bandeira).,Flaggenbasis von Team Blau (Capture the Flag).,Base du drapeau bleu (Capture du drapeau).
+Red team's flag base (Capture the Flag).,Base de la bandera roja (Captura la bandera).,Base da bandeira vermelha (Capture a bandeira).,Flaggenbasis von Team Rot (Capture the Flag).,Base du drapeau rouge (Capture du drapeau).
+Infiltration: the flag Red carries to Blue's base.,Infiltración: la bandera que el rojo lleva a la base azul.,Infiltração: a bandeira que o vermelho leva à base azul.,"Infiltration: die Flagge, die Rot zur blauen Basis bringt.",Infiltration : le drapeau que les rouges portent à la base bleue.
+Hold the Flag: the one flag both teams fight over.,Mantén la bandera: la única bandera por la que luchan ambos equipos.,Segure a bandeira: a única bandeira que as duas equipes disputam.,"Hold the Flag: die eine Flagge, um die beide Teams kämpfen.",Garde le drapeau : l'unique drapeau que les deux équipes se disputent.
+A Domination control point (up to five).,Un punto de control de Dominación (hasta cinco).,Um ponto de controle de Dominação (até cinco).,Ein Kontrollpunkt für Domination (bis zu fünf).,Un point de contrôle de Domination (jusqu'à cinq).
+Where the Rambo Bow lies (Rambomatch).,Donde está el arco de Rambo (Rambomatch).,Onde fica o arco do Rambo (Rambomatch).,Wo der Rambo-Bogen liegt (Rambomatch).,Là où se trouve l'arc de Rambo (Rambomatch).
+A Pointmatch diamond (+1 point).,Un diamante de Pointmatch (+1 punto).,Um diamante de Pointmatch (+1 ponto).,Ein Pointmatch-Diamant (+1 Punkt).,Un diamant de Pointmatch (+1 point).
+A power-up crate spot (Predator / Berserker / Vest / Cluster).,Un lugar para cajas de mejora (Predator / Berserker / Chaleco / Racimo).,Um local de caixa de bônus (Predator / Berserker / Colete / Cluster).,Ein Platz für Bonuskisten (Predator / Berserker / Weste / Cluster).,Un emplacement de caisse bonus (Predator / Berserker / Gilet / Cluster).
+Heals to full.,Cura por completo.,Cura totalmente.,Heilt vollständig.,Soigne entièrement.
+Refills grenades.,Recarga las granadas.,Recarrega as granadas.,Füllt Granaten auf.,Recharge les grenades.
+"A buggy. Give it a long, open stretch of ground.",Un buggy. Dale un tramo de suelo largo y despejado.,Um buggy. Dê a ele um trecho de chão longo e aberto.,"Ein Buggy. Gib ihm eine lange, freie Strecke.",Un buggy. Donne-lui une longue étendue de sol dégagée.
+A tank. Wide maps only: it needs a long flat run.,Un tanque. Solo mapas anchos: necesita un tramo largo y llano.,Um tanque. Só mapas largos: precisa de um trecho longo e plano.,"Ein Panzer. Nur breite Karten: er braucht eine lange, flache Strecke.",Un char. Cartes larges uniquement : il lui faut une longue piste plate.
+A helicopter pad: flat ground with open sky above.,Un helipuerto: suelo llano con cielo abierto encima.,Um heliponto: chão plano com céu aberto acima.,"Ein Hubschrauberlandeplatz: flacher Boden, freier Himmel darüber.",Un héliport : sol plat avec le ciel dégagé au-dessus.
+A mounted M2 machine gun (press F next to it).,Una ametralladora M2 fija (pulsa F a su lado).,Uma metralhadora M2 fixa (aperte F ao lado).,Ein montiertes M2-MG (daneben F drücken).,Une mitrailleuse M2 fixe (appuie sur F à côté).
+A %s lying on the ground to pick up.,Un %s en el suelo para recoger.,Um %s no chão para pegar.,Ein %s zum Aufheben am Boden.,Un %s au sol à ramasser.
+Decoration (no collision).,Decoración (sin colisión).,Decoração (sem colisão).,Deko (keine Kollision).,Décor (sans collision).
+Terrain,Terreno,Terreno,Gelände,Terrain
+Hazards & helpers,Peligros y ayudas,Perigos e ajudas,Gefahren & Helfer,Dangers & aides
+Objectives,Objetivos,Objetivos,Ziele,Objectifs
+Items,Objetos,Itens,Gegenstände,Objets
+Vehicles,Vehículos,Veículos,Fahrzeuge,Véhicules
+Scenery,Decorado,Cenário,Kulisse,Décor
+Tree,Árbol,Árvore,Baum,Arbre
+Oak,Roble,Carvalho,Eiche,Chêne
+Palm,Palmera,Palmeira,Palme,Palmier
+Jungle tree,Árbol tropical,Árvore da selva,Dschungelbaum,Arbre de jungle
+Dead tree,Árbol seco,Árvore morta,Toter Baum,Arbre mort
+Bush,Arbusto,Arbusto,Busch,Buisson
+Shrub,Matorral,Moita,Strauch,Arbuste
+Grass,Hierba,Grama,Gras,Herbe
+Cactus,Cactus,Cacto,Kaktus,Cactus
+Rocks,Rocas,Rochas,Felsen,Rochers
+Stone,Piedra,Pedra,Stein,Pierre
+Fence,Valla,Cerca,Zaun,Clôture
+Barbed wire,Alambre de espino,Arame farpado,Stacheldraht,Barbelés
+Lamp,Lámpara,Lâmpada,Lampe,Lampe
+Gravestone,Lápida,Lápide,Grabstein,Pierre tombale
+Skulls,Calaveras,Caveiras,Schädel,Crânes
+Grassland,Pradera,Campos,Grasland,Prairie
+Snow,Nieve,Neve,Schnee,Neige
+Jungle,Selva,Selva,Dschungel,Jungle
+Cave,Cueva,Caverna,Höhle,Grotte
+Play,Jugar,Jogar,Spielen,Jouer

@@ -27,6 +27,7 @@ const MatchModes = preload("res://scripts/match_modes.gd")
 const MatchNet = preload("res://scripts/match_net.gd")
 const MatchBots = preload("res://scripts/match_bots.gd")
 const MatchWorld = preload("res://scripts/match_world.gd")
+const MatchHazards = preload("res://scripts/match_hazards.gd")
 var _vehicles_sys: MatchVehicles = null   # match_vehicles.gd
 var _bonuses: MatchBonuses = null   # match_bonuses.gd
 var _votes: MatchVotes = null   # match_votes.gd
@@ -34,6 +35,7 @@ var _modes: MatchModes = null   # match_modes.gd
 var _net: MatchNet = null   # match_net.gd
 var _bots: MatchBots = null   # match_bots.gd
 var _world: MatchWorld = null   # match_world.gd
+var _hazards: MatchHazards = null   # match_hazards.gd (#286 spikes / lava / jump pads)
 
 var player: Node2D = null            # LOCAL player (whichever peer owns us)
 var hud: CanvasLayer = null
@@ -390,6 +392,7 @@ func _init() -> void:
 	_net = _attach(MatchNet.new(), "MatchNet")
 	_bots = _attach(MatchBots.new(), "MatchBots")
 	_world = _attach(MatchWorld.new(), "MatchWorld")
+	_hazards = _attach(MatchHazards.new(), "MatchHazards")
 
 
 ## A system helper is an internal child: freed with Main, invisible to
@@ -453,6 +456,7 @@ func _ready() -> void:
 	Atmosphere.install(self, _map)
 	_world._build_terrain()
 	_world._build_gfx_world()
+	_hazards._build()
 	# Warm lazily-loaded art during the load, not mid-fight (frame hitches).
 	preload("res://scripts/gostek.gd").warm_cache()
 	if Net.replay_path != "":
@@ -474,6 +478,7 @@ func _ready() -> void:
 		tr.set("main", self)
 		hud.add_child(tr)
 	_maybe_build_touch_controls()
+	_build_maker_bar()
 	_modes._spawn_mode_entities()
 	_bonuses._spawn_bonus_boxes_init()
 	_vehicles_sys._spawn_vehicles()
@@ -551,6 +556,77 @@ func _settle_on_ground(pos: Vector2) -> Vector2:
 	return _world._settle_on_ground(pos)
 
 
+## Maker-map kill zones (#286): bots' pit guard and goal picking.
+func has_hazards() -> bool:
+	return not _hazards.zones.is_empty()
+
+
+func hazard_at(p: Vector2, grow: float = 0.0) -> bool:
+	return _hazards.hazard_at(p, grow)
+
+
+func hazard_safe_goal(p: Vector2) -> Vector2:
+	return _hazards.safe_goal(p)
+
+
+# ── Maker mode PLAY / EDIT (#286) ───────────────────────
+# The editor's PLAY button saves the map, stores its own state in
+# Net.maker_return and starts this scene; the first spawn is where the editor
+# camera was, and EDIT (button / F5 / pause menu Quit) goes back to the editor,
+# which restores the map, camera and undo history from Net.maker_return.
+
+func _maker_spawn_override(p: Node2D) -> void:
+	if Net.is_networked() or not Net.maker_return.has("spawn"):
+		return
+	var at: Vector2 = Net.maker_return["spawn"]
+	Net.maker_return.erase("spawn")
+	var g := _settle_on_ground(at)
+	var gy := _geom_ground_y(g.x, g.y - 2.0)
+	if gy == INF or gy > minf(KILL_Y, GROUND_Y + 1.0):
+		return   # nothing to stand on below the camera: keep the map's own spawn
+	p.position = _world._find_free_spot_near(Vector2(g.x, gy))
+
+
+func _build_maker_bar() -> void:
+	if Net.maker_return.is_empty() or Net.is_networked():
+		return
+	var layer := CanvasLayer.new()
+	layer.name = "MakerBar"
+	layer.layer = 40
+	add_child(layer)
+	var b := Button.new()
+	b.name = "Edit"
+	b.text = tr("EDIT") + "  (F5)"
+	b.tooltip_text = tr("Back to the Maker, same spot, map unchanged.")
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(150, 48 if UITheme.is_touch() else 40)
+	UITheme.style_button(b, 18, true)
+	# Top centre, under the score strip: clear of the touch controls.
+	b.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	b.offset_left = -75
+	b.offset_right = 75
+	b.offset_top = 142
+	b.offset_bottom = 142 + b.custom_minimum_size.y
+	b.pressed.connect(maker_edit)
+	layer.add_child(b)
+
+
+func maker_edit() -> void:
+	if Net.maker_return.is_empty():
+		return
+	get_tree().paused = false
+	Settings.custom_map_path = ""
+	Settings.save()
+	get_tree().change_scene_to_file("res://scenes/map_editor.tscn")
+
+
+func _unhandled_key_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and (event as InputEventKey).keycode == KEY_F5 \
+			and not Net.maker_return.is_empty():
+		get_viewport().set_input_as_handled()
+		maker_edit()
+
+
 @rpc("any_peer", "call_local", "reliable")
 func net_m2_mount(m2_id: int, peer_id: int) -> void:
 	_vehicles_sys.net_m2_mount(m2_id, peer_id)
@@ -608,6 +684,7 @@ func _spawn_player() -> void:
 	var my_team: int = TEAM_BLUE if Settings.is_team_mode() else 0
 	var pick: Vector2 = _team_spawn_pick(TEAM_BLUE) if Settings.is_team_mode() else _pick_spawn_away(ffa, 0)
 	p.position = _safe_spawn_near(pick, my_team)
+	_maker_spawn_override(p)
 	# In team modes player joins BLUE (team 1); in DM/RM she's team 0 (FFA).
 	if Settings.is_team_mode():
 		p.team = TEAM_BLUE
@@ -1257,6 +1334,8 @@ func _process(delta: float) -> void:
 	_votes._tick_vote(delta)
 	# Kill line + anti-stuck watchdog — per peer, for locally-owned soldiers.
 	_world._tick_soldier_safety(delta)
+	# Maker-map spikes / lava / jump pads (#286) — same per-authority rule.
+	_hazards._tick(delta)
 	_tick_perf_watch(delta)
 	# New round (on every peer, from the synced round_active flag): fresh board.
 	if round_active and not _stats_round_active:
