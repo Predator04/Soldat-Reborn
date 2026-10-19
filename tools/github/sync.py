@@ -14,7 +14,7 @@ reused, so re-running is safe.
 """
 import json, os, re, subprocess, sys, urllib.request, urllib.error
 
-REPO = "Predator04/Soldat-Reborn"
+REPO = "Predator04/Tracerfall"   # renamed from Soldat-Reborn (#269); GitHub only redirects GETs
 API = "https://api.github.com"
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
@@ -76,6 +76,10 @@ def call(method, path, body=None, url=None, data=None, ctype="application/json")
             return json.loads(raw) if raw else {}
     except urllib.error.HTTPError as e:
         msg = e.read().decode(errors="replace")
+        # A renamed / moved repo answers 301 / 307 / 308; urllib won't replay a
+        # POST / PATCH there, so follow it ourselves (same method + body).
+        if e.code in (301, 302, 307, 308) and e.headers.get("Location"):
+            return call(method, None, body, e.headers["Location"], data, ctype)
         if e.code == 404 and method == "GET":
             return None
         sys.exit("%s %s -> %d %s" % (method, path or url, e.code, msg[:400]))

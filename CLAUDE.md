@@ -1,6 +1,6 @@
 # Tracerfall (formerly Soldat Reborn) — project context
 
-**Name (#269):** the game is shown as **Tracerfall** (`GameInfo.TITLE`; window title set in `Settings._ready`). Internal identifiers deliberately keep the old name: `project.godot` `config/name` (it decides the user:// data folder — changing it orphans every player's settings, stats and replays), the Android package id `com.soldatreborn.game`, the update/release asset names `SoldatReborn.exe/.apk/.pck(.sig)`, the LAN tag and the repo name/URL. Never "fix" those.
+**Name (#269):** the game is shown as **Tracerfall** (`GameInfo.TITLE`; window title set in `Settings._ready`). Internal identifiers deliberately keep the old name: `project.godot` `config/name` (it decides the user:// data folder — changing it orphans every player's settings, stats and replays), the Android package id `com.soldatreborn.game`, the update/release asset names `SoldatReborn.exe/.apk/.pck(.sig)`, the LAN tag and the updater URL (the GitHub repo itself is now Predator04/Tracerfall; GitHub redirects the old URL for downloads, but `tools/github/sync.py` must use the new name because redirects are not replayed for POSTs). Never "fix" those.
 
 2D Soldat remake. Godot 4.7 (GL Compatibility renderer), GDScript, ENet multiplayer.
 This directory (`game/`) is the git repo root — note the space in the parent path `"soldat reborn"`.
