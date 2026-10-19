@@ -1,9 +1,9 @@
 extends SceneTree
 ## Operator soldier art (#280, gate stage F).
 ##   godot --headless -s tools/soldier_art_test.gd
-## Checks that every Operator sprite exists in both facings at exactly 3x its
-## classic sprite (same footprint, so the .poa animation and pivots line up),
-## that every trim / accent layer has its mirror, and that the draw path paints
+## Checks that every Operator part in rig.json exists in both facings with a
+## normal map and mipmaps, that every trim / accent / wound layer has its
+## mirror, and that the draw path paints
 ## soldiers in every pose and look with the Operator art forced on: all head
 ## cosmetics, vest with / without paint, dead, prone, jetting both ways, low
 ## HP. The jet flame leaves the pack behind the soldier. The setting picks the
@@ -33,26 +33,34 @@ var _G = null
 
 
 func _check_assets() -> void:
-	var parts: Dictionary = _G.HD_PARTS
-	for key in parts.keys():
+	# Every part in rig.json: base + mirror, a normal map for each, mipmaps, and
+	# every extra layer (_trim / _acc / _wound) present in both facings.
+	_G._load_rig()
+	var keys: Array = _G._rig.keys()
+	keys.erase("__none__")
+	for want in ["klata", "biodro", "udo", "noga", "stopa", "ramie", "reka", "dlon", "morda", "helm", "kap",
+			"hair1", "hair2", "hair3", "hair4", "kamizelka", "jetpack", "lancuch", "zlotylancuch", "metal", "cygaro", "dred"]:
+		if not keys.has(want):
+			_bad.append("rig.json has no %s" % want)
+	for key in keys:
 		for mir in [false, true]:
 			var sfx := "2" if mir else ""
-			var hd: Texture2D = _G._tex_hd(key, mir)
+			var hd = _G._tex_hd(key, mir)
 			if hd == null:
 				_bad.append("missing %s%s" % [key, sfx])
 				continue
-			var img := hd.get_image()
+			if not (hd is CanvasTexture) or (hd as CanvasTexture).normal_texture == null:
+				_bad.append("%s%s has no normal map" % [key, sfx])
+			var diff: Texture2D = hd.diffuse_texture if hd is CanvasTexture else hd
+			var img := diff.get_image()
 			if img != null and not img.has_mipmaps():
 				_bad.append("%s%s imported without mipmaps (set mipmaps/generate=true in its .import)" % [key, sfx])
-			var cl: Texture2D = _G._tex(key, mir)
-			if cl != null and hd.get_size() != cl.get_size() * 3:
-				_bad.append("%s%s is %s, classic %s x3" % [key, sfx, str(hd.get_size()), str(cl.get_size())])
-			for lay in ["_trim", "_acc"]:
+			for lay in ["_trim", "_acc", "_wound"]:
 				var base_has: bool = _G._tex_hd(key + lay, false) != null
 				var mir_has: bool = _G._tex_hd(key + lay, true) != null
 				if base_has != mir_has:
 					_bad.append("%s%s has no mirror pair" % [key, lay])
-	_log.append("assets %d parts" % parts.size())
+	_log.append("assets %d parts" % keys.size())
 
 
 func _poses() -> Array:
@@ -69,7 +77,8 @@ func _poses() -> Array:
 	out.append({"body_color": B, "prone": true, "weapon_name": "Barrett"})
 	out.append({"body_color": R, "crouching": true, "facing": -1.0, "aim_dir": Vector2.LEFT})
 	out.append({"body_color": B, "dead": true})
-	out.append({"body_color": B, "health": 20.0, "vel": Vector2(215, 0), "grenade_count": 3, "back_weapon_name": "USSOCOM"})
+	out.append({"body_color": B, "health": 20.0, "vel": Vector2(215, 0), "grenade_count": 3, "back_weapon_name": "USSOCOM",
+		"cosmetics": {"head": "hair4", "dreadlocks": true, "chain": "silver"}})
 	out.append({"body_color": R, "rolling": true, "vel": Vector2(300, 0)})
 	return out
 
@@ -110,7 +119,8 @@ func _process(_d: float) -> bool:
 		# every Operator layer the poses need was actually loaded
 		for k in ["klata", "klata_trim", "klata_acc", "helm", "helm_trim", "helm_acc", "kap", "morda_trim", "jetpack",
 				"jetpack_acc", "kamizelka", "stopa", "dlon", "udo_trim", "noga_trim", "ramie_acc", "reka_trim", "biodro_trim",
-				"klata2", "helm2", "jetpack2", "morda2"]:
+				"klata2", "helm2", "jetpack2", "morda2", "hair1", "hair2", "hair3", "hair4", "dred", "cygaro", "zlotylancuch",
+				"metal", "klata_wound", "udo_wound"]:
 			if _G._hd_cache.get(k) == null:
 				_bad.append("layer %s never drawn" % k)
 		# jet flame comes out of the pack, behind the soldier

@@ -10,15 +10,20 @@ const PoaLoader = preload("res://scripts/poa_loader.gd")
 const Gfx = preload("res://scripts/gfx.gd")
 
 const DIR := "res://assets/gostek-gfx/"
-# #280 "Operator" look: 3x sprites painted by tools/gen_operator_gfx.py on the
-# same footprints, each up to three layers — base (tinted like the classic
-# sprite), _trim (gear, untinted) and _acc (accents in the bright team colour).
+# #280 / #281 "Operator" look: modern-proportioned sprites painted by
+# tools/gen_operator_gfx.py on the same skeleton, each with its own rect
+# (texture size / rig px_per_unit) and pivot (assets/gostek-hd/rig.json), up to
+# four layers — base (tinted like the classic part), _trim (gear, untinted),
+# _acc (accents in the bright team colour), _wound (blood below 60 HP) — and a
+# normal map per layer (CanvasTexture) for the dynamic lights.
 # Settings.soldier_look picks it; Low quality and headless keep the classic
 # sprites (one draw per part, no mipmapped textures).
 const HD_DIR := "res://assets/gostek-hd/"
-const HD_PARTS := {"klata": true, "kamizelka": true, "biodro": true, "udo": true, "noga": true, "stopa": true,
-	"ramie": true, "reka": true, "dlon": true, "morda": true, "helm": true, "kap": true, "jetpack": true}
-const HD_UNTINTED := {"dlon": true}   # gloves: real colours, not skin tone
+# Parts drawn untinted in this look (real-colour gloves and hair).
+const HD_UNTINTED := {"dlon": true, "hair1": true, "hair2": true, "hair3": true, "hair4": true, "dred": true}
+# Parts whose Operator sprite hangs on other joints than the classic row (the
+# chest pieces are painted on the torso rect; dreads hang from the head).
+const HD_JOINTS := {"lancuch": [10, 11], "zlotylancuch": [10, 11], "metal": [10, 11], "dred": [9, 12]}
 static var force_operator_for_tests := false
 
 # Scale factor from .poa loader units → local Godot pixels. The loader
@@ -152,6 +157,8 @@ const SKIN := Color(0.98, 0.82, 0.65)
 
 static var _tex_cache: Dictionary = {}
 static var _hd_cache: Dictionary = {}
+static var _rig: Dictionary = {}   # key -> Vector2(cx, cy)
+static var _rig_px := 9.0
 # instance_id (int) -> { anim: String, phase: float, last_msec: int, frame: PackedVector2Array }
 static var _states: Dictionary = {}
 static var _last_gc_ms := 0   # #249: rate-limits the stale-state sweep
@@ -271,6 +278,10 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 				key = str(BACK_WEAPON_TEX[bw])
 				gun = true
 
+		var hd_key := hd and _hd_has(key)
+		if hd_key and HD_JOINTS.has(key):
+			p1_id = int(HD_JOINTS[key][0])
+			p2_id = int(HD_JOINTS[key][1])
 		var p1 := _joint_local(frame, p1_id, flip)
 		var p2 := _joint_local(frame, p2_id, flip)
 		# Skip parts anchored on a missing joint — _joint_local returns Vector2.INF
@@ -288,34 +299,9 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 			continue
 		var angle := bone.angle()
 
-		var tex := _tex(key, false)
-		var hd_only := false
-		if tex == null and hd and HD_PARTS.has(key):
-			tex = _tex_hd(key, false)
-			hd_only = true
-		var sy := 1.0
-		var use_cy_frac := cy_frac
-		if flip:
-			var mirror := _tex(key, true) if not hd_only else _tex_hd(key, true)
-			if mirror != null:
-				tex = mirror
-				use_cy_frac = 1.0 - cy_frac
-			else:
-				sy = -1.0
-		if tex == null:
-			continue
-
-		var w := float(tex.get_width()) * SPRITE_SCALE
-		var h := float(tex.get_height()) * SPRITE_SCALE
-		if hd_only:
-			w /= 3.0
-			h /= 3.0
 		var sx := 1.0
 		if flex > 0.0:
-			var ref_len := flex * POA_TO_PIXEL
-			sx = minf(1.5, bone.length() / ref_len)
-		var cx := cx_frac * w
-		var cy := use_cy_frac * h
+			sx = minf(1.5, bone.length() / (flex * POA_TO_PIXEL))
 
 		var col: Color = Color.WHITE
 		match col_kind:
@@ -332,11 +318,9 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 				# "none" parts (feet) still darken on death so corpses don't have
 				# full-brightness white boots against the darkened body.
 				col = Color(0.4, 0.4, 0.4, 1.0) if dead else Color.WHITE
-
-		var hd_key := hd and HD_PARTS.has(key)
 		if paint != "" and FINISHES.has(paint):
-			# The vest sprite is dark grey (~0.3), so lift the paint or it all
-			# reads as near-black. (The operator vest is painted light.)
+			# The classic vest sprite is dark grey (~0.3), so lift the paint or it
+			# all reads as near-black. (The Operator vest is painted light.)
 			var vc: Color = (FINISHES[paint] as Color) * (3.0 if not hd_key else 1.0)
 			vc.a = 1.0
 			col = vc if not dead else vc.darkened(0.5)
@@ -346,23 +330,55 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 			col = tint.darkened(0.55).lerp(Color(0.3, 0.31, 0.31), 0.5)
 		if hd_key and HD_UNTINTED.has(key):
 			col = trim_col
+
+		if hd_key:
+			# Operator sprite: its own rect and pivot; mirrors for left-facing.
+			var hb := _tex_hd(key, flip)
+			if hb == null:
+				continue
+			var piv: Vector2 = _rig[key]
+			var hw := float(hb.get_width()) / _rig_px
+			var hh := float(hb.get_height()) / _rig_px
+			var hcy := (1.0 - piv.y) if flip else piv.y
+			var rect := Rect2(-piv.x * hw, -hcy * hh, hw, hh)
+			if has_xf:
+				node.draw_set_transform_matrix(xf * Transform2D(angle, Vector2(sx, 1.0), 0.0, p1))
+			else:
+				node.draw_set_transform(p1, angle, Vector2(sx, 1.0))
+			node.draw_texture_rect(hb, rect, false, col)
+			var ht := _tex_hd(key + "_trim", flip)
+			if ht != null:
+				node.draw_texture_rect(ht, rect, false, trim_col)
+			var ha := _tex_hd(key + "_acc", flip)
+			if ha != null:
+				node.draw_texture_rect(ha, rect, false, accent)
+			if wound_alpha > 0.0:
+				var hwd := _tex_hd(key + "_wound", flip)
+				if hwd != null:
+					node.draw_texture_rect(hwd, rect, false, Color(1.0, 1.0, 1.0, wound_alpha))
+			continue
+
+		var tex := _tex(key, false)
+		var sy := 1.0
+		var use_cy_frac := cy_frac
+		if flip:
+			var mirror := _tex(key, true)
+			if mirror != null:
+				tex = mirror
+				use_cy_frac = 1.0 - cy_frac
+			else:
+				sy = -1.0
+		if tex == null:
+			continue
+		var w := float(tex.get_width()) * SPRITE_SCALE
+		var h := float(tex.get_height()) * SPRITE_SCALE
+		var cx := cx_frac * w
+		var cy := use_cy_frac * h
 		if has_xf:
 			node.draw_set_transform_matrix(xf * Transform2D(angle, Vector2(sx, sy), 0.0, p1))
 		else:
 			node.draw_set_transform(p1, angle, Vector2(sx, sy))
-		if hd_key:
-			var mir := flip and use_cy_frac != cy_frac
-			var rect := Rect2(-cx, -cy, w, h)
-			var hb := _tex_hd(key, mir)
-			node.draw_texture_rect(hb if hb != null else tex, rect, false, col)
-			var ht := _tex_hd(key + "_trim", mir)
-			if ht != null:
-				node.draw_texture_rect(ht, rect, false, trim_col)
-			var ha := _tex_hd(key + "_acc", mir)
-			if ha != null:
-				node.draw_texture_rect(ha, rect, false, accent)
-		else:
-			node.draw_texture_rect(tex, Rect2(-cx, -cy, w, h), false, col)
+		node.draw_texture_rect(tex, Rect2(-cx, -cy, w, h), false, col)
 
 		# Wound blood overlay (#60). Same transform + rect, so the blood sits
 		# in register on top of the part. Ranny PNGs mirror the base body-part
@@ -613,7 +629,7 @@ static func warm_cache() -> void:
 
 ## Jetpack nozzle in the node's local space and the way it points (#280), for
 ## the jet flame. Empty when the pose has no frame yet.
-const JET_NOZZLE := Vector2(9.8, 4.0)    # on the <jetpack> rect (x along 10->5, y away from the back)
+const JET_NOZZLE := Vector2(8.85, 2.35)   # jetpack design frame: x down the back from joint 10, y away from it
 
 
 static func jet_nozzle(node: CanvasItem) -> Array:
@@ -642,14 +658,44 @@ static func operator_on() -> bool:
 	return Gfx.on(Gfx.MEDIUM) and DisplayServer.get_name() != "headless"
 
 
+## Operator layer texture (+ its normal map as a CanvasTexture so 2D lights
+## shade it, #282). `mirror` = the left-facing (vertically flipped) variant.
 static func _tex_hd(key: String, mirror: bool) -> Texture2D:
 	var nm := key + ("2" if mirror else "")
 	if _hd_cache.has(nm):
 		return _hd_cache[nm]
 	var path := HD_DIR + nm + ".png"
 	var t: Texture2D = load(path) as Texture2D if ResourceLoader.exists(path) else null
+	var npath := HD_DIR + key + ("2" if mirror else "") + "_n.png"
+	if t != null and ResourceLoader.exists(npath):
+		var ct := CanvasTexture.new()
+		ct.diffuse_texture = t
+		ct.normal_texture = load(npath) as Texture2D
+		t = ct
 	_hd_cache[nm] = t
 	return t
+
+
+## Whether `key` has an Operator sprite (rig.json lists every painted part).
+static func _hd_has(key: String) -> bool:
+	if _rig.is_empty():
+		_load_rig()
+	return _rig.has(key)
+
+
+static func _load_rig() -> void:
+	var f := FileAccess.open(HD_DIR + "rig.json", FileAccess.READ)
+	if f == null:
+		_rig["__none__"] = Vector2.ZERO
+		return
+	var d = JSON.parse_string(f.get_as_text())
+	if d is Dictionary:
+		_rig_px = float(d.get("px_per_unit", 9))
+		var pv: Dictionary = d.get("pivot", {})
+		for k in pv:
+			_rig[str(k)] = Vector2(float(pv[k][0]), float(pv[k][1]))
+	if _rig.is_empty():
+		_rig["__none__"] = Vector2.ZERO
 
 
 static func _tex(key: String, mirror: bool) -> Texture2D:

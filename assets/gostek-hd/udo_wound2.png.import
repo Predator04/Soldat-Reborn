@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://oxyjeae87k3t"
-path="res://.godot/imported/kap_trim.png-bec37b2325726d03bfa7c4afde67d132.ctex"
+uid="uid://bdkjg3pr8cd8o"
+path="res://.godot/imported/udo_wound2.png-b83f65bde1c9557b4cacd8ef0168fc85.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/gostek-hd/kap_trim.png"
-dest_files=["res://.godot/imported/kap_trim.png-bec37b2325726d03bfa7c4afde67d132.ctex"]
+source_file="res://assets/gostek-hd/udo_wound2.png"
+dest_files=["res://.godot/imported/udo_wound2.png-b83f65bde1c9557b4cacd8ef0168fc85.ctex"]
 
 [params]
 
