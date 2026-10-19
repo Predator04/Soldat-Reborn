@@ -298,7 +298,9 @@ func _build_gfx_world() -> void:
 	if has_coll:
 		for c in main._map["collision"]:
 			var ccl := int(c.get("col", 0))
-			if ccl == 0 or ccl == 2:
+			# Maker props (#286: crates, sandbags) are drawn by their sprite —
+			# no grass lip / rim along them.
+			if (ccl == 0 or ccl == 2) and not bool(c.get("prop", false)):
 				pieces.append(c["points"])   # convex pieces: shared edges dropped
 	var plat_tex: String = str(main._map.get("platform_texture", default_tex))
 	for pl in main._map.get("platforms", []):

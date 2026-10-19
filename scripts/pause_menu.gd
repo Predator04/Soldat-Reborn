@@ -378,6 +378,11 @@ func _exit_to_menu() -> void:
 	# Unpause first so the next scene doesn't inherit a paused tree, and drop any
 	# active network peer since the main menu is single-scene / lobby.
 	get_tree().paused = false
+	# Maker PLAY session (#286): Quit goes back to the editor, not the menu.
+	var m := get_tree().current_scene
+	if not Net.maker_return.is_empty() and m != null and m.has_method("maker_edit"):
+		m.maker_edit()
+		return
 	Net.leave()
 	get_tree().change_scene_to_file("res://scenes/menu.tscn")
 

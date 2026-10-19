@@ -46,6 +46,7 @@ var register_url := ""   # master-server URL from --register (dedicated lobby he
 var fill_target := 0
 var replay_path := ""   # set by the REPLAYS screen: main.tscn shows this replay
 var replay_restore: Dictionary = {}   # settings to put back after watching
+var maker_return: Dictionary = {}   # #286 Maker PLAY: the editor state EDIT goes back to (main.maker_edit)
 # Ranked results (dedicated): where to report them (--stats=URL, default the
 # --register master) and each connected player's profile hash.
 var stats_url := ""

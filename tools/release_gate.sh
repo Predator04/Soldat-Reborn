@@ -582,6 +582,7 @@ ft() {  # key script timeout TAG label
 }
 if has F; then
   ft grenade grenade_test.gd 90 GRENADE-TEST "grenade cooking"
+  ft maker maker_test.gd 120 MAKER-TEST "Maker mode (#286): place / merge / select / resize / undo / redo, hazards + pads, validation, save-load round trip, PLAY at the camera + EDIT back unchanged, pad launches, spikes kill, flat node count over 3 cycles"
   ft ppickup persistent_pickup_test.gd 120 PPICKUP-TEST "map weapon pickups persist + regenerate in place (#241/#254)"
   ft community community_test.gd 90 COMMUNITY-TEST "host weapon bans (#256) + host chat commands (#257)"
   ft vreset vehicle_reset_test.gd 90 VRESET-TEST "vehicles: idle respawn home, touch resets, occupied never teleports (#259)"

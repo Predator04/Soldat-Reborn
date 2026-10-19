@@ -9,9 +9,17 @@ extends Node2D
 ## Save/Load round-trip through res://scripts/map_io.gd JSON files under
 ## user://maps/, and Play-test writes a temp file + hands off to main.tscn
 ## via Settings.custom_map_path.
+##
+## #286: the editor opens in Maker mode (scripts/maker/maker_mode.gd — palette
+## of ready-made pieces, drag and drop, PLAY / EDIT). These classic tools are
+## the "Advanced" mode of the same editor and the same _map: a Maker map keeps
+## its pieces in _map["maker"] and is compiled (scripts/maker/maker_build.gd)
+## whenever it is saved or played.
 
 const MapIO = preload("res://scripts/map_io.gd")
 const MapGen = preload("res://scripts/map_gen.gd")
+const Maker = preload("res://scripts/maker/maker_mode.gd")
+const MakerBuild = preload("res://scripts/maker/maker_build.gd")
 
 const MAP_W := 4800.0
 const MAP_H := 2000.0
@@ -90,6 +98,8 @@ var _scenery_idx: int = 0
 var _weapon_idx: int = 0
 
 var _cam: Camera2D = null
+var _maker: Node = null          # maker_mode.gd (#286)
+var _adv_ui: CanvasLayer = null  # the classic toolbar ("Advanced")
 var _dragging: bool = false
 var _drag_kind: String = ""      # "platform" | "move"
 var _drag_start: Vector2 = Vector2.ZERO
@@ -132,6 +142,7 @@ const EDITOR_TIPS := {
 	"INF": "Infiltration flag (red carries it to blue's base).",
 	"HTF": "Hold the Flag flag.",
 	"Rambo": "Where the Rambo Bow appears (Rambomatch).",
+	"Maker": "Back to Maker mode: the piece palette, drag and drop, PLAY / EDIT.",
 	"New": "Start an empty map.",
 	"Save": "Save under the name on the right (your maps folder).",
 	"Load": "Open one of your saved maps.",
@@ -164,11 +175,38 @@ func _ready() -> void:
 	_cam.limit_top = -400
 	_cam.limit_bottom = int(MAP_H) + 400
 	add_child(_cam)
+	# Maker previews draw the classic textures with tile-space UVs.
+	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	_build_ui()
+	_adv_ui = get_node("UI") as CanvasLayer
 	_set_tool(Tool.PLATFORM)
 	_set_status("Ready. LMB place/drag · RMB delete · MMB pan · wheel zoom · 1–9 tools · Ctrl+Z / Ctrl+Y undo / redo · F5 play-test · ESC exit.")
+	_maker = Maker.new()
+	_maker.name = "Maker"
+	add_child(_maker)
+	_maker.setup(self)
+	if not Net.maker_return.is_empty():
+		# Back from a Maker PLAY session: same map, view and undo history.
+		_maker.restore_session(Net.maker_return)
+		Net.maker_return = {}
+		_set_maker(true)
+	else:
+		_map = MakerBuild.starter_map()
+		_set_maker(true)
+		_maker.fit_view()
 	queue_redraw()
 	_checkpoint()
+
+
+## Maker mode (#286) <-> the classic tools ("Advanced").
+func _set_maker(on: bool) -> void:
+	if _adv_ui != null:
+		_adv_ui.visible = not on
+	if _maker != null:
+		_maker.set_active(on)
+	if not on:
+		_set_status("Advanced tools. MAKER (top bar) goes back to the piece palette.")
+	queue_redraw()
 
 
 # ── Rendering ─────────────────────────────────────────
@@ -183,6 +221,9 @@ func _process(_delta: float) -> void:
 
 
 func _draw() -> void:
+	if _maker != null and _maker.active:
+		_maker.draw_world(self)
+		return
 	# Map background + grid.
 	draw_rect(Rect2(0, 0, MAP_W, MAP_H), Color(0.05, 0.08, 0.14))
 	var grid_col := Color(0.15, 0.18, 0.24, 0.6)
@@ -197,6 +238,11 @@ func _draw() -> void:
 		y += step
 	# Ground reference line (matches main.gd's ground body top edge).
 	draw_line(Vector2(0, GROUND_Y), Vector2(MAP_W, GROUND_Y), Color(0.28, 0.32, 0.4), 2.0)
+	# Maker pieces (#286), compiled exactly as the game gets them.
+	if _maker != null and MakerBuild.is_maker(_map):
+		_maker._rebuild()
+		_maker.draw_terrain(self)
+		_maker.draw_extras(self)
 	# Terrain polygons — filled outline, distinct color from platforms so hills
 	# read at a glance during editing.
 	for poly in _map.get("polys", []):
@@ -365,6 +411,9 @@ func _draw_ladder(r: Rect2, col: Color, preview: bool) -> void:
 # ── Input ─────────────────────────────────────────────
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _maker != null and _maker.active:
+		_maker.handle_input(event)
+		return
 	# Touch: two fingers pan + pinch-zoom (no middle mouse / wheel on phones).
 	if event is InputEventScreenTouch:
 		if event.pressed:
@@ -896,6 +945,7 @@ func _build_ui() -> void:
 	top.add_child(VSeparator.new())
 
 	var op_specs := [
+		["Maker", "_to_maker"],
 		["New", "_new_map"],
 		["Save", "_save_map"],
 		["Load", "_open_load"],
@@ -1087,7 +1137,15 @@ func _build_load_panel(ui: CanvasLayer) -> void:
 
 # ── Menu callbacks ────────────────────────────────────
 
+func _to_maker() -> void:
+	_set_maker(true)
+
+
 func _new_map() -> void:
+	# The classic empty map (Advanced tools); Maker's FILE > New gives a
+	# starter map instead.
+	if _maker != null and _maker.active:
+		_set_maker(false)
 	_map = _fresh_map()
 	_set_status("New empty map.")
 	queue_redraw()
@@ -1099,7 +1157,7 @@ func _save_map() -> void:
 	if display_name == "":
 		display_name = "map"
 	_map["name"] = display_name
-	var path := MapIO.save_to_file(display_name, _map)
+	var path := MapIO.save_to_file(display_name, MakerBuild.compile(_map))
 	if path == "":
 		_set_status("Save failed.")
 	else:
@@ -1144,7 +1202,7 @@ func _load_map(path: String) -> void:
 	if m.is_empty():
 		_set_status("Load failed: %s" % path.get_file())
 		return
-	_map = m
+	_map = MakerBuild.decompile(m)
 	_name_edit.text = str(m.get("name", "map"))
 	_load_panel.visible = false
 	_set_status("Loaded %s" % path.get_file())
@@ -1173,10 +1231,11 @@ func _generate() -> void:
 
 
 func _play_test() -> void:
-	if _map.get("platforms", []).is_empty():
+	var playable := MakerBuild.compile(_map)
+	if playable.get("platforms", []).is_empty() and playable.get("polys", []).is_empty():
 		_set_status("Add at least one platform first (or Generate).")
 		return
-	var path := MapIO.save_to_file("_playtest", _map)
+	var path := MapIO.save_to_file("_playtest", playable)
 	if path == "":
 		_set_status("Play-test save failed.")
 		return
@@ -1242,6 +1301,8 @@ func _set_status(s: String) -> void:
 # Android back button / gesture: close the load list, else leave to the menu.
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST and is_inside_tree():
+		if _maker != null and _maker.active and _maker.back_pressed():
+			return
 		if _load_panel != null and _load_panel.visible:
 			_load_panel.visible = false
 		else:
