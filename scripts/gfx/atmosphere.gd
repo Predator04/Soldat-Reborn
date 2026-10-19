@@ -23,7 +23,7 @@ const ParallaxCinematic = preload("res://scripts/gfx/parallax_cinematic.gd")
 const SkyClassic = preload("res://scripts/sky.gd")
 const ParallaxClassic = preload("res://scripts/parallax.gd")
 
-const LIGHT_POOL := 16
+const LIGHT_POOL := 24   # #282: jets + rockets keep lights too
 const AMBIENT_NIGHT := Color(0.84, 0.86, 0.89)
 const AMBIENT_DAY := Color(0.93, 0.93, 0.94)
 
@@ -312,6 +312,10 @@ func _set_light(i: int, at: Vector2, col: Color, radius: float, life: float, ene
 	l.global_position = at
 	l.color = col
 	l.texture_scale = radius / 40.0
+	# #282: normal-mapped sprites (Operator soldiers, HD weapons / terrain) are
+	# shaded by the angle to the light; a light at height 0 only grazes them.
+	# Lift it with its size so faces toward it light up and the far side falls off.
+	l.height = radius * 0.55
 	l.energy = energy
 	l.enabled = true
 	_light_t[i] = life

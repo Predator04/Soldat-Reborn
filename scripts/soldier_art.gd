@@ -46,6 +46,15 @@ const WEAPON_PIVOT := {
 }
 
 static var _tex_cache: Dictionary = {}
+static var _atmo_script: Script = null
+
+
+## scripts/gfx/atmosphere.gd, loaded on first use (soldier_art is preloaded by
+## scripts that -s tests compile before the class cache is ready).
+static func _atmo() -> Script:
+	if _atmo_script == null:
+		_atmo_script = load("res://scripts/gfx/atmosphere.gd")
+	return _atmo_script
 
 const Gostek = preload("res://scripts/gostek.gd")
 
@@ -82,6 +91,17 @@ static func draw_soldier(node: CanvasItem, st: SoldierDrawState) -> void:
 		var nz: Array = Gostek.jet_nozzle(node)
 		if not nz.is_empty():
 			_draw_jet_flame(node, facing, jet_col, nz[0], nz[1], xf)
+			# #282: the burn lights the soldier and the ground below (pooled light).
+			_atmo().light_keep(node.get_instance_id() * 8 + 5, node.to_global(nz[0] + (nz[1] as Vector2) * 6.0), jet_col, 75.0, 0.85)
+	if op and st.on_floor and not st.prone and not dead:
+		# #282: soft contact shadow under the boots grounds the soldier.
+		node.draw_set_transform(Vector2(0.0, 6.4), 0.0, Vector2(1.0, 0.24))
+		node.draw_circle(Vector2.ZERO, 6.5, Color(0, 0, 0, 0.16))
+		node.draw_circle(Vector2.ZERO, 4.2, Color(0, 0, 0, 0.18))
+		if has_xf:
+			node.draw_set_transform_matrix(xf)
+		else:
+			node.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	# Real body sprites, driven by .poa keyframes.
 	var gs := {
@@ -249,7 +269,9 @@ static func _draw_jet_flame(node: CanvasItem, facing: float, base: Color = Color
 	var w2 := 0.8
 	# Phase B (#271): a faint neon bloom around the nozzle (embers + heat
 	# shimmer come from fx_world.gd).
-	node.draw_circle(origin + Vector2(0.0, 2.5), 3.6 + sin(t * 31.0) * 0.6, Color(base.r, base.g, base.b, 0.16))
+	var bloom_r := 3.6 + sin(t * 31.0) * 0.6
+	for k in 3:
+		node.draw_circle(origin + Vector2(0.0, 2.5), bloom_r * (1.0 - k * 0.28), Color(base.r, base.g, base.b, 0.06))
 
 	node.draw_polygon(
 		PackedVector2Array([

@@ -14,7 +14,8 @@ var _n := 0
 var _puppets: Array = []
 var _debug := false
 var _look := ""
-var _bench := false   # --bench: 36 soldiers, print frame time
+var _bench := false
+var _lights := false  # --lights: dark ambient + two point lights (normal-map check, #282)   # --bench: 36 soldiers, print frame time
 var _t0 := 0
 
 const PUPPET_SRC := """
@@ -78,6 +79,7 @@ func _initialize() -> void:
 		elif a == "--debug": _debug = true
 		elif a.begins_with("--look="): _look = a.substr(7)
 		elif a == "--bench": _bench = true
+		elif a == "--lights": _lights = true
 
 
 func _blue() -> Color:
@@ -206,6 +208,29 @@ func _build(st) -> void:
 		p.add_to_group("soldier_stage")
 		stage.add_child(p)
 		_puppets.append(p)
+	if _lights:
+		var cm := CanvasModulate.new()
+		cm.color = Color(0.32, 0.34, 0.4)
+		stage.add_child(cm)
+		var gt2 := GradientTexture2D.new()
+		var g2 := Gradient.new()
+		g2.set_color(0, Color.WHITE)
+		g2.set_color(1, Color(1, 1, 1, 0))
+		gt2.gradient = g2
+		gt2.fill = GradientTexture2D.FILL_RADIAL
+		gt2.fill_from = Vector2(0.5, 0.5)
+		gt2.fill_to = Vector2(1.0, 0.5)
+		gt2.width = 128
+		gt2.height = 128
+		for i in 2:
+			var pl := PointLight2D.new()
+			pl.texture = gt2
+			pl.texture_scale = 2.2
+			pl.energy = 1.6
+			pl.height = 18.0
+			pl.color = Color(1.0, 0.62, 0.3) if i == 0 else Color(0.45, 0.65, 1.0)
+			pl.position = Vector2(-60 if i == 0 else 70, -14)
+			stage.add_child(pl)
 	var cam := Camera2D.new()
 	cam.name = "Cam"
 	cam.zoom = Vector2.ONE * _zoom

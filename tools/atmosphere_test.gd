@@ -73,6 +73,11 @@ func _process(_d: float) -> bool:
 					real_lights += 1
 			if real_lights > 0:
 				_bad.append("%d unpooled PointLight2D created" % real_lights)
+			# #282: lit pool lights stand above the plane so normal maps shade.
+			for c in m.get_children():
+				if c is PointLight2D and str(c.name).begins_with("PoolLight") and c.enabled and c.height <= 0.0:
+					_bad.append("pool light %s at height 0 (normal-mapped sprites stay dark)" % c.name)
+					break
 			_log.append("children %d->%d" % [before, m.get_child_count()])
 			_st = 2
 			_n = 0

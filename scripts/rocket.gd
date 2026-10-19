@@ -230,6 +230,9 @@ func _explode() -> void:
 
 
 func _draw() -> void:
+	# #282: the motor lights up what it passes (pooled light, High + cinematic).
+	if not _exploded:
+		Atmosphere.light_keep(get_instance_id(), global_position - direction * 10.0, Color(1.0, 0.62, 0.3), 95.0, 0.95)
 	# Warhead + fins + plume
 	var back := -direction
 	var side := Vector2(-direction.y, direction.x)
