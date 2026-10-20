@@ -196,6 +196,11 @@ func _enter_hint() -> String:
 	return "F: PILOT"
 
 
+## #299: hovering / flying in place is normal — no wedge reset.
+func _wedge_watch() -> bool:
+	return false
+
+
 ## Bots only take a plane that is resting on its wheels or waiting on an air
 ## spawn, and leave one alone for a while after a failed flight.
 func bot_board_ok() -> bool:
