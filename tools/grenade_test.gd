@@ -3,6 +3,9 @@ extends SceneTree
 ##   godot --headless --fixed-fps 60 -s tools/grenade_test.gd
 ## tap -> thrown, soft; 0.9 s hold -> thrown hard with a shorter fuse;
 ## hold past the fuse -> goes off in hand and kills the thrower.
+## #293: the expected fuse follows the grenade actually thrown — bonus boxes
+## spawn on (shuffled) bot spawns, and the player sometimes spawned on a
+## "cluster" box: cluster fuse 1.9 vs frag 2.2, both throws "0.3 s short".
 
 var _t := 0.0
 var _phase := 0
@@ -20,7 +23,7 @@ var _holding := false
 
 func _on_child(n: Node) -> void:
 	if n is RigidBody2D and n.get("fuse") != null:
-		_spawned.append([(n as RigidBody2D).linear_velocity.length(), float(n.get("fuse"))])
+		_spawned.append([(n as RigidBody2D).linear_velocity.length(), float(n.get("fuse")), bool(n.get("cluster"))])
 
 
 func _process(d: float) -> bool:
@@ -110,6 +113,10 @@ func _check(label: String, vmin: float, vmax: float, fmin: float, fmax: float) -
 		return "%s FAIL spawned=%d" % [label, _spawned.size()]
 	var sp: float = _spawned[0][0]
 	var fu: float = _spawned[0][1]
+	var cl: bool = _spawned[0][2]
 	_spawned.clear()
-	var ok: bool = sp >= vmin and sp <= vmax and fu >= fmin and fu <= fmax
-	return "%s %s speed=%.0f fuse=%.2f" % [label, "ok" if ok else "FAIL", sp, fu]
+	# Ranges are for a frag; a cluster's fuse is shorter by the difference.
+	var PS = load("res://scripts/player.gd")
+	var shift: float = (float(PS.GRENADE_FUSE) - float(PS.CLUSTER_FUSE)) if cl else 0.0
+	var ok: bool = sp >= vmin and sp <= vmax and fu >= fmin - shift and fu <= fmax - shift
+	return "%s %s speed=%.0f fuse=%.2f%s" % [label, "ok" if ok else "FAIL", sp, fu, " (cluster)" if cl else ""]
