@@ -979,11 +979,18 @@ func _smoke_port() -> int:
 
 
 
+## A smoke client's window counts from launch, so under CPU load less of it is
+## left once the match has loaded: the release gate's GATE_LOAD factor (#293,
+## 1 = quiet, <= 4; unset outside the gate) stretches it.
 func _smoke_secs(default_secs: float) -> float:
+	var secs := default_secs
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--smoke-secs="):
-			return maxf(1.0, float(a.substr(13)))
-	return default_secs
+			secs = maxf(1.0, float(a.substr(13)))
+	var lf := OS.get_environment("GATE_LOAD")
+	if lf.is_valid_float():
+		secs *= clampf(float(lf), 1.0, 4.0)
+	return secs
 
 
 # --smoke-auto: drive the joined client's soldier with random input (move, jet,
@@ -1062,11 +1069,23 @@ func _smoke_auto_tick(delta: float) -> void:
 # the same network can join without typing an IP.
 const LAN_PORT := 23074
 const LAN_TAG := "soldat-reborn"
+# #293: test isolation only — TRACERFALL_LAN_PORT=<port> moves discovery
+# (beacons + listener) off LAN_PORT so parallel release gates on one machine
+# neither hear each other's servers nor fail to bind the listener. Unset for
+# players: always LAN_PORT.
+var lan_discovery_port: int = _lan_port_from_env()
 var lan_servers: Dictionary = {}    # "ip:port" -> {ip, port, name, map, mode, players, max, v, seen}
 var _lan_tx: PacketPeerUDP = null
 var _lan_rx: PacketPeerUDP = null
 var _lan_timer: Timer = null
 var _lan_port := DEFAULT_PORT
+
+
+static func _lan_port_from_env() -> int:
+	var v := OS.get_environment("TRACERFALL_LAN_PORT")
+	if v.is_valid_int() and int(v) > 0 and int(v) < 65536:
+		return int(v)
+	return LAN_PORT
 
 
 func _lan_advertise_start(port: int) -> void:
@@ -1097,7 +1116,7 @@ func _lan_beacon() -> void:
 	var pkt := JSON.stringify(server_info()).to_utf8_buffer()
 	# Broadcast for the LAN, loopback for a second copy on this machine.
 	for dest in ["255.255.255.255", "127.0.0.1"]:
-		if _lan_tx.set_dest_address(dest, LAN_PORT) == OK:
+		if _lan_tx.set_dest_address(dest, lan_discovery_port) == OK:
 			_lan_tx.put_packet(pkt)
 
 
@@ -1128,7 +1147,7 @@ func lan_listen_start() -> bool:
 	if _lan_rx != null:
 		return true
 	_lan_rx = PacketPeerUDP.new()
-	if _lan_rx.bind(LAN_PORT, "*") != OK:
+	if _lan_rx.bind(lan_discovery_port, "*") != OK:
 		_lan_rx = null
 		return false
 	lan_servers.clear()

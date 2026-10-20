@@ -11,6 +11,7 @@ var _t := 0.0
 var _loaded := false
 var _step := 0
 var _log: PackedStringArray = PackedStringArray()
+var _shift := 0.0   # seconds the steps after a held step 9 are pushed back
 
 
 func _initialize() -> void:
@@ -43,10 +44,15 @@ func _process(delta: float) -> bool:
 	_t += delta
 	var p = m.get("player")
 	var at := [1.0, 3.0, 5.0, 8.0, 12.0, 16.0, 20.0, 24.0, 27.0, 30.0, 34.0, 38.0]
-	if _step < at.size() and _t >= at[_step]:
+	if _step < at.size() and _t >= at[_step] + _shift:
 		# The /kill + limbo step needs a live player: if a bot just killed us,
 		# wait for the respawn instead of testing on a dying body (flaky).
+		# The steps after it move back by the same wait (#293): a bot kill
+		# with a kill-cam rewind holds the respawn ~4.6 s, and step 10 then
+		# ran inside step 9's 0.5 / 0.9 s limbo timers, resetting the pick
+		# before it was checked ("limbo pick not stored: spawn_primary=2").
 		if _step == 9 and (p == null or not is_instance_valid(p) or bool(p.get("dead"))):
+			_shift = _t - at[9]
 			return false
 		match _step:
 			0:

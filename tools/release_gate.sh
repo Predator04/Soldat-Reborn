@@ -19,6 +19,20 @@
 #   M modes    (opt-in: --only M --msweep MODE:FROM:TO, then --only M --mode-verdict)
 #              every map in INF / HTF / DOM: errors, falls, objective activity
 # --quick skips E (CI-sized). Logs + summary land in build/gate/ (or --out).
+# Load-robust + isolated (#293), so several gates can share one machine:
+#   - every Godot launch gets this run's own user-data dir (XDG_DATA_HOME =
+#     $OUT/.userdata-<pid>-<time>, fresh settings / controls each launch,
+#     removed at exit; GATE_KEEP_USERDATA=1 keeps it) and its own LAN
+#     discovery port (TRACERFALL_LAN_PORT); game / master ports are picked
+#     free (bind test) instead of at random.
+#   - LOAD = (1-min loadavg + 1) / CPUs at the start, re-read before each
+#     step (never below the start value), clamped to [1, 4]: every timeout
+#     and wait-style step scales by it (T), and tests get it as GATE_LOAD for
+#     their own wall-clock deadlines (tools/gate_load.gd). Measured limits
+#     (perf, stall, respawn timing ...) never scale.
+# SERVER_DIR=<master-server dir> (default ../server/master-server; a dir that
+# holds master-server/ works too; from a git worktree the default is also
+# looked up beside the main checkout).
 # Piecewise runs (each piece fits a short shell budget; summary accumulates):
 #   --only "A B"   run just these stages      --modes "0 1 2"  subset for D
 #   --net "ctf dm host"  subset for C          --sweep FROM:TO  map range for E
@@ -53,23 +67,109 @@ fail() { echo "FAIL  $1" | tee -a "$SUM"; FAILS=$((FAILS+1)); }
 info() { echo "INFO  $1" | tee -a "$SUM"; }
 errs() { grep -cE "$ERR_RE" "$1" 2>/dev/null || true; }
 
-echo "== Release gate $(date -Is)  godot=$G" | tee -a "$SUM"
+# ── Load factor, free ports, master server (#293) ──────────────────────────
+NPROC=$(nproc 2>/dev/null || echo 2)
+_load_now() { awk -v n="$NPROC" '{f = ($1 + 1) / n; if (f < 1) f = 1; if (f > 4) f = 4; printf "%.2f", f}' /proc/loadavg 2>/dev/null || echo 1; }
+LOAD0=$(_load_now)
+# Current factor: the load right now, never below the start value, <= 4.
+load_f() { awk -v a="$LOAD0" -v b="$(_load_now)" 'BEGIN {printf "%.2f", (b > a ? b : a)}'; }
+# T SECS -> SECS scaled by the load (timeouts and waits only, never a limit).
+T() { awk -v t="$1" -v f="$(load_f)" 'BEGIN {printf "%d", t * f + 0.999}'; }
+# wait_log FILE REGEX SECS: poll until the line shows up (SECS scaled).
+wait_log() {
+  local n; n=$(( $(T "$3") * 2 ))
+  for ((_w = 0; _w < n; _w++)); do grep -qE "$2" "$1" 2>/dev/null && return 0; sleep 0.5; done
+  return 1
+}
+# wait_ready LOG: a dedicated server is listening AND has loaded its match
+# (the clients used to start after a fixed "sleep 4", too short under load).
+wait_ready() { wait_log "$1" "listening on port|DEDICATED-START-FAILED" 30 && wait_log "$1" "Dedicated match ready|DEDICATED-START-FAILED" 40; }
+# wait_http PORT SECS: a local HTTP server (master / fake GitHub) answers
+# (any status) — a fixed "sleep 1" lost the menu news fetch under load.
+wait_http() {
+  local n; n=$(( $(T "$2") * 4 ))
+  for ((_w = 0; _w < n; _w++)); do curl -s -o /dev/null --max-time 2 "http://127.0.0.1:$1/" && return 0; sleep 0.25; done
+  return 1
+}
+# freeport udp|tcp: a free game port whose query port (+1) is free too / a
+# free TCP port (random ports used to collide with another gate's servers).
+freeport() {
+  python3 -c '
+import random, socket, sys
+def free(p, kind):
+    s = socket.socket(socket.AF_INET, kind)
+    try:
+        s.bind(("0.0.0.0", p))
+        return True
+    except OSError:
+        return False
+    finally:
+        s.close()
+for _ in range(500):
+    if sys.argv[1] == "udp":
+        p = random.randrange(20000, 29990)
+        if free(p, socket.SOCK_DGRAM) and free(p + 1, socket.SOCK_DGRAM):
+            break
+    else:
+        p = random.randrange(12000, 19990)
+        if free(p, socket.SOCK_STREAM):
+            break
+print(p)' "$1"
+}
+# Master server checkout: SERVER_DIR (the master-server dir, or a dir that
+# holds master-server/), else ../server/master-server, else (git worktree)
+# the same path beside the main checkout.
+_srv_dir() {
+  local c cands=()
+  if [ -n "${SERVER_DIR:-}" ]; then cands=("$SERVER_DIR" "$SERVER_DIR/master-server")
+  else
+    cands=(../server/master-server)
+    local common; common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
+    [ -n "$common" ] && cands+=("$(dirname "$common")/../server/master-server")
+  fi
+  for c in "${cands[@]}"; do [ -x "$c/dist/soldat-master-linux-amd64" ] && { (cd "$c" && pwd -P); return; }; done
+  echo "${cands[0]}"
+}
+SRV=$(_srv_dir)
+RB="$SRV/dist/soldat-master-linux-amd64"
+need_master() { [ -x "$RB" ] && return 0; fail "C net $1: master server binary missing ($RB) — set SERVER_DIR"; return 1; }
+
+echo "== Release gate $(date -Is)  godot=$G  load=x$LOAD0 ($(cut -d' ' -f1 /proc/loadavg 2>/dev/null) on $NPROC CPUs)  server=$SRV" | tee -a "$SUM"
 # Refresh Godot's global class cache first: a checkout pulled after a commit
 # that adds a `class_name` script fails to parse every user of that class
 # until it is re-imported (the cache lives in .godot/, which isn't in git).
 "$G" --headless --import > "$OUT/import.log" 2>&1 || true
 
-# Hermetic runs: every Godot launch starts from default settings / controls
-# (tests toggle mods, bot counts, loadouts and some of them save), and this
-# machine's own files are restored when the gate exits.
-UD="${GODOT_USER_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/godot/app_userdata/Soldat Reborn}"
-BAK="$OUT/.userbak"; mkdir -p "$BAK"
-for f in settings.cfg controls.cfg; do [ -f "$UD/$f" ] && cp "$UD/$f" "$BAK/$f"; done
-restore_user() { for f in settings.cfg controls.cfg; do rm -f "$UD/$f"; [ -f "$BAK/$f" ] && cp "$BAK/$f" "$UD/$f"; done; rm -rf "$BAK"; }
-trap restore_user EXIT
+# Hermetic + isolated runs (#293): this gate run has its own user-data dir
+# (parallel gates used to share ~/.local/share/godot/app_userdata/Soldat Reborn
+# and delete / list each other's replays, settings and maps) and its own LAN
+# discovery port (they heard each other's servers, and the second listener
+# could not bind). Every Godot launch also starts from default settings /
+# controls (tests toggle mods, bot counts, loadouts and some of them save).
+# The machine's own user files are never touched.
+RUN_ID="$$-$(date +%s)"
+GATE_DATA="$(cd "$OUT" && pwd)/.userdata-$RUN_ID"
+mkdir -p "$GATE_DATA"
+UD="$GATE_DATA/godot/app_userdata/Soldat Reborn"
+export XDG_DATA_HOME="$GATE_DATA"
+export TRACERFALL_LAN_PORT; TRACERFALL_LAN_PORT=$(freeport udp)
+export GATE_LOAD="$LOAD0"
+gate_cleanup() { [ "${GATE_KEEP_USERDATA:-0}" = 1 ] || rm -rf "$GATE_DATA"; }
+trap gate_cleanup EXIT
 trap "exit 143" TERM INT
 REAL_G="$G"; G="$OUT/.godot_fresh.sh"
-printf '#!/bin/bash\nrm -f "%s/settings.cfg" "%s/controls.cfg"\nexec "%s" "$@"\n' "$UD" "$UD" "$REAL_G" > "$G"; chmod +x "$G"
+cat > "$G" <<EOF
+#!/bin/bash
+# release_gate.sh launcher (#293): fresh settings, this run's user dir + LAN
+# port, GATE_LOAD = the load factor right now (never below the gate's start).
+rm -f "$UD/settings.cfg" "$UD/controls.cfg"
+export XDG_DATA_HOME="$GATE_DATA" TRACERFALL_LAN_PORT="$TRACERFALL_LAN_PORT"
+f=\$(awk -v n="$NPROC" -v a="$LOAD0" '{f = (\$1 + 1) / n; if (f < a) f = a; if (f < 1) f = 1; if (f > 4) f = 4; printf "%.2f", f}' /proc/loadavg 2>/dev/null)
+export GATE_LOAD="\${f:-$LOAD0}"
+exec "$REAL_G" "\$@"
+EOF
+chmod +x "$G"
+info "isolation: user data $GATE_DATA, LAN discovery port $TRACERFALL_LAN_PORT"
 
 # ── A static ────────────────────────────────────────────────────────────────
 NMAPS=$(ls assets/maps/*.json | wc -l)
@@ -98,7 +198,7 @@ fi
 
 # ── B boot ──────────────────────────────────────────────────────────────────
 has B && for sc in main menu map_editor; do
-  timeout 90 "$G" --headless --quit-after 700 "res://scenes/$sc.tscn" > "$OUT/boot_$sc.log" 2>&1
+  timeout $(T 90) "$G" --headless --quit-after 700 "res://scenes/$sc.tscn" > "$OUT/boot_$sc.log" 2>&1
   n=$(errs "$OUT/boot_$sc.log")
   if [ "$n" = "0" ]; then pass "B boot $sc.tscn"; else fail "B boot $sc.tscn: $n error lines"; fi
 done
@@ -106,13 +206,13 @@ done
 # ── N nav reachability ──────────────────────────────────────────────────────
 NAV_KNOWN_BROKEN=""   # every CTF route works; add a map name here only with a reason
 if has N; then
-  timeout 330 "$G" --headless -s tools/nav_check.gd > "$OUT/navcheck.log" 2>&1
+  timeout $(T 330) "$G" --headless -s tools/nav_check.gd > "$OUT/navcheck.log" 2>&1
   line=$(grep -m1 NAVCHECK "$OUT/navcheck.log")
   unknown=$(grep '^map' "$OUT/navcheck.log" | awk '{print $3}' | grep -vwE "${NAV_KNOWN_BROKEN:+$(echo $NAV_KNOWN_BROKEN | tr ' ' '|')}${NAV_KNOWN_BROKEN:-^$}" | tr '\n' ' ')
   if [ -n "$line" ] && [ -z "$unknown" ] && [ "$(errs "$OUT/navcheck.log")" = "0" ]; then pass "N nav routes: $line (known: $NAV_KNOWN_BROKEN)"; else fail "N nav routes: ${line:-no result} new broken: $unknown"; fi
   # #287: the same audit with every graph built in-game (scripts/nav_builder.gd),
   # as custom / Maker / shared maps get them — must match the bake.
-  timeout 900 "$G" --headless -s tools/nav_check.gd -- --runtime > "$OUT/navcheck_runtime.log" 2>&1
+  timeout $(T 900) "$G" --headless -s tools/nav_check.gd -- --runtime > "$OUT/navcheck_runtime.log" 2>&1
   line=$(grep -m1 NAVCHECK "$OUT/navcheck_runtime.log")
   bad=$(grep '^map' "$OUT/navcheck_runtime.log" | awk '{print $3}' | tr '\n' ' ')
   if [ -n "$line" ] && [ -z "$bad" ] && [ "$(errs "$OUT/navcheck_runtime.log")" = "0" ]; then pass "N runtime nav routes: $line"; else fail "N runtime nav routes: ${line:-no result} broken: $bad"; fi
@@ -120,13 +220,13 @@ fi
 
 # ── C net ───────────────────────────────────────────────────────────────────
 netcase() { # label map mode [extra client flags]
-  local L="$1" port=$((7700 + RANDOM % 200))
-  timeout 95 "$G" --headless -- --dedicated --port $port --map "$2" --mode "$3" > "$OUT/net_${L}_server.log" 2>&1 &
+  local L="$1" port=$(freeport udp)
+  timeout $(T 95) "$G" --headless -- --dedicated --port $port --map "$2" --mode "$3" > "$OUT/net_${L}_server.log" 2>&1 &
   local spid=$!
   # Wait for the server to actually listen (boot time varies with CPU load).
-  for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_${L}_server.log" 2>/dev/null && break; sleep 0.5; done
-  sleep 4
-  timeout 70 "$G" --headless -- --smoke-botfire --port $port ${4:-} > "$OUT/net_${L}_client.log" 2>&1
+  wait_ready "$OUT/net_${L}_server.log"
+  sleep 1
+  timeout $(T 70) "$G" --headless -- --smoke-botfire --port $port ${4:-} > "$OUT/net_${L}_client.log" 2>&1
   kill $spid 2>/dev/null; wait $spid 2>/dev/null
   local line; line=$(grep -m1 SMOKE-BOTFIRE "$OUT/net_${L}_client.log")
   local ce se; ce=$(errs "$OUT/net_${L}_client.log"); se=$(errs "$OUT/net_${L}_server.log")
@@ -143,15 +243,15 @@ netcase() { # label map mode [extra client flags]
 # A modified client against a dedicated host: the host's trust checks must
 # catch it (trust_guard.gd). trustcase KIND MAP MODE SECS EXPECT_REGEX
 trustcase() {
-  local K="$1" port=$((7700 + RANDOM % 200))
-  timeout $(( $4 + 50 )) "$G" --headless -- --dedicated --port $port --map "$2" --mode "$3" > "$OUT/net_trust_${K}_server.log" 2>&1 &
+  local K="$1" port=$(freeport udp)
+  timeout $(T $(( $4 + 50 ))) "$G" --headless -- --dedicated --port $port --map "$2" --mode "$3" > "$OUT/net_trust_${K}_server.log" 2>&1 &
   local spid=$!
-  for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_trust_${K}_server.log" 2>/dev/null && break; sleep 0.5; done
-  sleep 3
+  wait_ready "$OUT/net_trust_${K}_server.log"
+  sleep 1
   # Godmode stands still where the bots are (no autopilot) so the host's hit
   # detection keeps landing shots on it; the others run the autopilot.
   local auto="--smoke-auto"; [ "$K" = "godmode" ] && auto=""
-  timeout $(( $4 + 40 )) "$G" --headless -- --smoke-botfire --port $port $auto --smoke-secs=$4 --smoke-cheat=$K > "$OUT/net_trust_${K}_client.log" 2>&1
+  timeout $(T $(( $4 + 40 ))) "$G" --headless -- --smoke-botfire --port $port $auto --smoke-secs=$4 --smoke-cheat=$K > "$OUT/net_trust_${K}_client.log" 2>&1
   kill $spid 2>/dev/null; wait $spid 2>/dev/null
   # The cheater is force-killed / kicked mid-stream, so the engine may report
   # packets from it addressed to a body that is already gone (or a peer that
@@ -178,19 +278,19 @@ case " $NETSEL " in *" dedboot "*)
   # pull-and-run checker has) must still START and say so; its match then
   # can't load unimported assets (preload parse errors), so those are only
   # counted: a checker must run --import after every pull.
-  port=$((7700 + RANDOM % 200)); t0=$(date +%s)
-  timeout 60 "$G" --headless -- --dedicated --port $port --mode ctf > "$OUT/net_dedboot_server.log" 2>&1 &
+  port=$(freeport udp); t0=$(date +%s)
+  timeout $(T 60) "$G" --headless -- --dedicated --port $port --mode ctf > "$OUT/net_dedboot_server.log" 2>&1 &
   spid=$!
-  for _ in $(seq 1 60); do grep -q "listening on port" "$OUT/net_dedboot_server.log" 2>/dev/null && break; sleep 0.5; done
+  wait_log "$OUT/net_dedboot_server.log" "listening on port" 30
   secs=$(( $(date +%s) - t0 ))
-  sleep 5   # the match loads right after the line
-  timeout 20 "$G" --headless -- --dedicated --port $port --mode ctf > "$OUT/net_dedboot_busy.log" 2>&1
+  wait_log "$OUT/net_dedboot_server.log" "Dedicated match ready" 40   # no error while the match loads
+  timeout $(T 20) "$G" --headless -- --dedicated --port $port --mode ctf > "$OUT/net_dedboot_busy.log" 2>&1
   brc=$?
   kill $spid 2>/dev/null; wait $spid 2>/dev/null
   first=$(grep -v -e '^Godot Engine' -e '^$' "$OUT/net_dedboot_server.log" | head -1)
   se=$(errs "$OUT/net_dedboot_server.log")
   if echo "$first" | grep -q "^Dedicated server starting: " && grep -q "listening on port $port" "$OUT/net_dedboot_server.log" \
-      && [ "$secs" -le 20 ] && [ "$se" = "0" ]; then
+      && [ "$secs" -le "$(T 20)" ] && [ "$se" = "0" ]; then
     pass "C net dedicated boot: listening after ${secs}s, no errors ($(echo "$first" | cut -c1-60))"
   else
     fail "C net dedicated boot: first='$first' '$(grep -m1 -E 'listening|DEDICATED-START' "$OUT/net_dedboot_server.log")' after ${secs}s errors=$se"
@@ -202,15 +302,15 @@ case " $NETSEL " in *" dedboot "*)
   fi
   FT="$OUT/dedboot_tree"; rm -rf "$FT"; mkdir -p "$FT"
   git archive HEAD | tar -x -C "$FT"
-  port=$((7700 + RANDOM % 200)); t0=$(date +%s)
-  timeout 40 "$G" --headless --path "$FT" -- --dedicated --port $port --mode ctf > "$OUT/net_dedboot_fresh.log" 2>&1 &
+  port=$(freeport udp); t0=$(date +%s)
+  timeout $(T 40) "$G" --headless --path "$FT" -- --dedicated --port $port --mode ctf > "$OUT/net_dedboot_fresh.log" 2>&1 &
   spid=$!
-  for _ in $(seq 1 60); do grep -q "listening on port" "$OUT/net_dedboot_fresh.log" 2>/dev/null && break; sleep 0.5; done
+  wait_log "$OUT/net_dedboot_fresh.log" "listening on port" 30
   secs=$(( $(date +%s) - t0 ))
   kill $spid 2>/dev/null; wait $spid 2>/dev/null
   rm -rf "$FT"
   pe=$(grep -c "Parse Error" "$OUT/net_dedboot_fresh.log" || true)
-  if grep -q "listening on port $port" "$OUT/net_dedboot_fresh.log" && [ "$secs" -le 20 ]; then
+  if grep -q "listening on port $port" "$OUT/net_dedboot_fresh.log" && [ "$secs" -le "$(T 20)" ]; then
     pass "C net dedicated boot from a never-imported checkout: listening after ${secs}s (unimported-asset parse errors: $pe; checkers must --import)"
   else
     fail "C net dedicated boot from a never-imported checkout: no listening line after ${secs}s ($(grep -m1 -E 'SCRIPT ERROR|ERROR' "$OUT/net_dedboot_fresh.log"))"
@@ -220,7 +320,7 @@ case " $NETSEL " in *" selfcheck "*)
   # The unattended self-check the owner's machine runs every 6 h
   # (tools/selfcheck.py: import, dedicated server, --smoke-join, --smoke-botfire,
   # process-tree cleanup) must pass here too — no --pull, no GitHub.
-  timeout 400 python3 tools/selfcheck.py --godot "$REAL_G" --out "$OUT/selfcheck" > "$OUT/net_selfcheck.log" 2>&1
+  GATE_LOAD=$(load_f) timeout $(T 400) python3 tools/selfcheck.py --godot "$REAL_G" --out "$OUT/selfcheck" > "$OUT/net_selfcheck.log" 2>&1
   src=$?
   line=$(grep -m1 "^SELFCHECK " "$OUT/net_selfcheck.log")
   if [ "$src" = "0" ] && echo "$line" | grep -q "^SELFCHECK PASS "; then
@@ -232,15 +332,17 @@ case " $NETSEL " in *" selfcheck "*)
 case " $NETSEL " in *" two "*)
   # Two clients on one dedicated server: the second joins mid-match; every
   # body must keep its exact node name and no RPC may miss its node.
-  port=$((7700 + RANDOM % 200))
-  timeout 100 "$G" --headless -- --dedicated --port $port --map 19 --mode 2 > "$OUT/net_two_server.log" 2>&1 &
+  port=$(freeport udp)
+  timeout $(T 100) "$G" --headless -- --dedicated --port $port --map 19 --mode 2 > "$OUT/net_two_server.log" 2>&1 &
   spid=$!
-  for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_two_server.log" 2>/dev/null && break; sleep 0.5; done
-  sleep 3
-  timeout 80 "$G" --headless -- --smoke-botfire --port $port --cos-head=kap --cos-skin=dark > "$OUT/net_two_c1.log" 2>&1 &
+  wait_ready "$OUT/net_two_server.log"
+  sleep 1
+  timeout $(T 80) "$G" --headless -- --smoke-botfire --port $port --cos-head=kap --cos-skin=dark > "$OUT/net_two_c1.log" 2>&1 &
   c1=$!
-  sleep 3
-  timeout 70 "$G" --headless -- --smoke-join --port $port > "$OUT/net_two_c2.log" 2>&1
+  # The second client starts once the host has the first one (#293: a fixed
+  # 3 s head start wasn't one under load); smoke windows scale with GATE_LOAD.
+  wait_log "$OUT/net_two_server.log" "FILL humans=1" 40
+  timeout $(T 70) "$G" --headless -- --smoke-join --port $port > "$OUT/net_two_c2.log" 2>&1
   wait $c1 2>/dev/null; wait $spid 2>/dev/null
   e=$(( $(errs "$OUT/net_two_server.log") + $(errs "$OUT/net_two_c1.log") + $(errs "$OUT/net_two_c2.log") ))
   names=$(grep -m1 "SMOKE-JOIN-PLAYERS" "$OUT/net_two_c2.log")
@@ -254,17 +356,21 @@ case " $NETSEL " in *" two "*)
 case " $NETSEL " in *" fill "*)
   # Bot fill: a --fill=4 server keeps 4 soldiers; bots step aside as two
   # players join and come back when they leave. Teams stay even.
-  port=$((7700 + RANDOM % 200))
-  timeout 90 "$G" --headless -- --dedicated --fill=4 --port $port --map 19 --mode 2 > "$OUT/net_fill_server.log" 2>&1 &
+  port=$(freeport udp)
+  timeout $(T 120) "$G" --headless -- --dedicated --fill=4 --port $port --map 19 --mode 2 > "$OUT/net_fill_server.log" 2>&1 &
   spid=$!
-  for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_fill_server.log" 2>/dev/null && break; sleep 0.5; done
-  sleep 3
-  timeout 40 "$G" --headless -- --smoke-join --port $port --smoke-secs=20 > "$OUT/net_fill_c1.log" 2>&1 &
+  wait_ready "$OUT/net_fill_server.log"
+  sleep 1
+  # #293: event-driven — the second player starts once the host counts the
+  # first, and the first stays long enough to outlast the second's whole run
+  # (a fixed 6 s head start + 20 s stay left them never in together under
+  # load); smoke windows scale with GATE_LOAD.
+  timeout $(T 70) "$G" --headless -- --smoke-join --port $port --smoke-secs=30 > "$OUT/net_fill_c1.log" 2>&1 &
   c1=$!
-  sleep 6
-  timeout 30 "$G" --headless -- --smoke-join --port $port --smoke-secs=8 > "$OUT/net_fill_c2.log" 2>&1
+  wait_log "$OUT/net_fill_server.log" "FILL humans=1" 40
+  timeout $(T 30) "$G" --headless -- --smoke-join --port $port --smoke-secs=8 > "$OUT/net_fill_c2.log" 2>&1
   wait $c1 2>/dev/null
-  for _ in $(seq 1 30); do grep -q "FILL humans=0" "$OUT/net_fill_server.log" && break; sleep 0.5; done
+  wait_log "$OUT/net_fill_server.log" "FILL humans=0" 15
   kill $spid 2>/dev/null; wait $spid 2>/dev/null
   e=$(( $(errs "$OUT/net_fill_server.log") + $(errs "$OUT/net_fill_c1.log") + $(errs "$OUT/net_fill_c2.log") ))
   seq=$(grep -o "FILL humans=[0-9]* bots=[0-9]* blue=[0-9]* red=[0-9]*" "$OUT/net_fill_server.log" | sed 's/FILL //' | tr '\n' ';')
@@ -275,23 +381,23 @@ case " $NETSEL " in *" fill "*)
   fi
 ;; esac
 case " $NETSEL " in *" ranked "*)
+  if need_master "leaderboard"; then
   # Leaderboard: the host's ranked reporter -> master /report -> /leaderboard.
-  RB="../server/master-server/dist/soldat-master-linux-amd64"
-  rport=$((8300 + RANDOM % 400)); rdir=$(mktemp -d)
-  SOLDAT_DATA_DIR="$rdir" timeout 150 "$RB" -port $rport > "$OUT/net_ranked_master.log" 2>&1 &
-  rpid=$!; sleep 1
-  timeout 50 "$G" --headless -s tools/ranked_test.gd -- --master=http://127.0.0.1:$rport > "$OUT/net_ranked.log" 2>&1
-  timeout 60 "$G" --headless --fixed-fps 60 -s tools/online_panels_test.gd -- --master=http://127.0.0.1:$rport > "$OUT/net_panels.log" 2>&1
+  rport=$(freeport tcp); rdir=$(mktemp -d)
+  SOLDAT_DATA_DIR="$rdir" timeout $(T 150) "$RB" -port $rport > "$OUT/net_ranked_master.log" 2>&1 &
+  rpid=$!; wait_http $rport 20
+  timeout $(T 50) "$G" --headless -s tools/ranked_test.gd -- --master=http://127.0.0.1:$rport > "$OUT/net_ranked.log" 2>&1
+  timeout $(T 60) "$G" --headless --fixed-fps 60 -s tools/online_panels_test.gd -- --master=http://127.0.0.1:$rport > "$OUT/net_panels.log" 2>&1
   pline=$(grep -m1 "PANELS-TEST" "$OUT/net_panels.log")
   if echo "$pline" | grep -q "PANELS-TEST ok" && [ "$(errs "$OUT/net_panels.log")" = "0" ]; then pass "C net leaderboard + map library screens: $pline"; else fail "C net leaderboard + map library screens: '${pline:-no result}' errors=$(errs "$OUT/net_panels.log")"; fi
   # End to end like the official server: dedicated + --register, a brand-new
   # player (no settings file yet) joins, dies, leaves -> on the leaderboard.
-  port=$((7700 + RANDOM % 200))
-  timeout 60 "$G" --headless -- --dedicated --port $port --map 19 --mode 2 --fill=2 --register http://127.0.0.1:$rport > "$OUT/net_ranked_server.log" 2>&1 &
+  port=$(freeport udp)
+  timeout $(T 60) "$G" --headless -- --dedicated --port $port --map 19 --mode 2 --fill=2 --register http://127.0.0.1:$rport > "$OUT/net_ranked_server.log" 2>&1 &
   spid=$!
-  for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_ranked_server.log" 2>/dev/null && break; sleep 0.5; done
-  sleep 2
-  timeout 40 "$G" --headless -- --smoke-join --port $port --smoke-secs=12 --smoke-die > "$OUT/net_ranked_client.log" 2>&1
+  wait_ready "$OUT/net_ranked_server.log"
+  sleep 1
+  timeout $(T 40) "$G" --headless -- --smoke-join --port $port --smoke-secs=12 --smoke-die > "$OUT/net_ranked_client.log" 2>&1
   sleep 4; kill $spid 2>/dev/null; wait $spid 2>/dev/null
   board=$(curl -s "http://127.0.0.1:$rport/leaderboard")
   if echo "$board" | grep -q '"total":3' && grep -q "RANKED queued" "$OUT/net_ranked_server.log" && [ "$(errs "$OUT/net_ranked_server.log")" = "0" ]; then
@@ -299,24 +405,25 @@ case " $NETSEL " in *" ranked "*)
   else
     fail "C net leaderboard end to end: board=$board $(grep -m1 RANKED "$OUT/net_ranked_server.log")"
   fi
-  timeout 60 "$G" --headless -s tools/matchmaking_test.gd -- --master=http://127.0.0.1:$rport > "$OUT/net_matchmaking.log" 2>&1
+  timeout $(T 60) "$G" --headless -s tools/matchmaking_test.gd -- --master=http://127.0.0.1:$rport > "$OUT/net_matchmaking.log" 2>&1
   mline=$(grep -m1 "MATCHMAKING-TEST" "$OUT/net_matchmaking.log")
   if echo "$mline" | grep -q "MATCHMAKING-TEST ok" && [ "$(errs "$OUT/net_matchmaking.log")" = "0" ]; then pass "C net skill matchmaking: $(echo "$mline" | cut -c1-120)"; else fail "C net skill matchmaking: '${mline:-no result}' errors=$(errs "$OUT/net_matchmaking.log")"; fi
   kill $rpid 2>/dev/null; wait $rpid 2>/dev/null
   line=$(grep -m1 "RANKED-TEST" "$OUT/net_ranked.log")
   if echo "$line" | grep -q "RANKED-TEST ok" && [ "$(errs "$OUT/net_ranked.log")" = "0" ]; then pass "C net leaderboard: $line"; else fail "C net leaderboard: '${line:-no result}' errors=$(errs "$OUT/net_ranked.log")"; fi
+  fi
 ;; esac
 case " $NETSEL " in *" m2 "*)
   # M2 turret mount/dismount over the real client->host RPC path (#235/#254
   # regression): the mount used to recurse the host to death, the dismount
   # used to leave the host's turret occupied. SMOKE-M2 drives both packets
   # and asserts the end state came back through the host.
-  port=$((7700 + RANDOM % 200))
-  timeout 45 "$G" --headless -- --dedicated --port $port --map abel --mode 0 > "$OUT/net_m2_host.log" 2>&1 &
+  port=$(freeport udp)
+  timeout $(T 45) "$G" --headless -- --dedicated --port $port --map abel --mode 0 > "$OUT/net_m2_host.log" 2>&1 &
   m2pid=$!
-  for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_m2_host.log" 2>/dev/null && break; sleep 0.5; done
-  sleep 2
-  timeout 30 "$G" --headless -- --smoke-m2 --port $port --smoke-secs=10 > "$OUT/net_m2.log" 2>&1
+  wait_ready "$OUT/net_m2_host.log"
+  sleep 1
+  timeout $(T 30) "$G" --headless -- --smoke-m2 --port $port --smoke-secs=10 > "$OUT/net_m2.log" 2>&1
   kill $m2pid 2>/dev/null; wait $m2pid 2>/dev/null
   line=$(grep -m1 "SMOKE-M2" "$OUT/net_m2.log")
   m2he=$(errs "$OUT/net_m2_host.log"); m2ce=$(errs "$OUT/net_m2.log")
@@ -327,20 +434,20 @@ case " $NETSEL " in *" m2 "*)
   fi
 ;; esac
 case " $NETSEL " in *" friends "*)
+  if need_master "clan tag + friends"; then
   # Clan tag + friends: a tagged player shows up by name in the master's game
   # list, and another player who meets them has them on their recent list.
-  RB="../server/master-server/dist/soldat-master-linux-amd64"
-  fport=$((8300 + RANDOM % 400)); port=$((7700 + RANDOM % 200))
-  SOLDAT_DATA_DIR="$(mktemp -d)" timeout 80 "$RB" -port $fport > "$OUT/net_friends_master.log" 2>&1 &
-  fpid=$!; sleep 1
-  timeout 75 "$G" --headless -- --dedicated --port $port --map 19 --mode 2 --fill=2 --register http://127.0.0.1:$fport > "$OUT/net_friends_server.log" 2>&1 &
+  fport=$(freeport tcp); port=$(freeport udp)
+  SOLDAT_DATA_DIR="$(mktemp -d)" timeout $(T 80) "$RB" -port $fport > "$OUT/net_friends_master.log" 2>&1 &
+  fpid=$!; wait_http $fport 20
+  timeout $(T 75) "$G" --headless -- --dedicated --port $port --map 19 --mode 2 --fill=2 --register http://127.0.0.1:$fport > "$OUT/net_friends_server.log" 2>&1 &
   spid=$!
-  for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_friends_server.log" 2>/dev/null && break; sleep 0.5; done
-  sleep 2
-  timeout 50 "$G" --headless -- --smoke-join --port $port --smoke-secs=30 --clan=abc > "$OUT/net_friends_c1.log" 2>&1 &
+  wait_ready "$OUT/net_friends_server.log"
+  sleep 1
+  timeout $(T 50) "$G" --headless -- --smoke-join --port $port --smoke-secs=30 --clan=abc > "$OUT/net_friends_c1.log" 2>&1 &
   c1=$!
   sleep 6
-  timeout 40 "$G" --headless -- --smoke-join --port $port --smoke-secs=14 > "$OUT/net_friends_c2.log" 2>&1
+  timeout $(T 40) "$G" --headless -- --smoke-join --port $port --smoke-secs=14 > "$OUT/net_friends_c2.log" 2>&1
   sleep 1; list=$(curl -s "http://127.0.0.1:$fport/list")
   wait $c1 2>/dev/null; kill $spid $fpid 2>/dev/null; wait $spid $fpid 2>/dev/null
   rec=$(grep -m1 "SMOKE-RECENT" "$OUT/net_friends_c2.log")
@@ -350,33 +457,35 @@ case " $NETSEL " in *" friends "*)
   else
     fail "C net clan tag + friends: list=$(echo "$list" | head -c 300) recent='$rec' errors=$e"
   fi
+  fi
 ;; esac
 case " $NETSEL " in *" news "*)
+  if need_master "menu news line"; then
   # #261 menu news line (+ #264 featured fallback) against a real master
   # serving news.json: shown under the version button, x hides it for good,
   # a new message shows again, expired / missing / unreachable show nothing.
-  RB="../server/master-server/dist/soldat-master-linux-amd64"
-  nport=$((8300 + RANDOM % 400)); ndir=$(mktemp -d)
-  SOLDAT_DATA_DIR="$ndir" SOLDAT_FEATURED_FILE="$ndir/featured.json" timeout 100 "$RB" -port $nport > "$OUT/net_news_master.log" 2>&1 &
-  npid=$!; sleep 1
-  timeout 90 "$G" --headless -s tools/news_test.gd -- --menu-news --master=http://127.0.0.1:$nport --news-file="$ndir/news.json" --featured-file="$ndir/featured.json" > "$OUT/net_news.log" 2>&1
+  nport=$(freeport tcp); ndir=$(mktemp -d)
+  SOLDAT_DATA_DIR="$ndir" SOLDAT_FEATURED_FILE="$ndir/featured.json" timeout $(T 100) "$RB" -port $nport > "$OUT/net_news_master.log" 2>&1 &
+  npid=$!; wait_http $nport 20
+  timeout $(T 90) "$G" --headless -s tools/news_test.gd -- --menu-news --master=http://127.0.0.1:$nport --news-file="$ndir/news.json" --featured-file="$ndir/featured.json" > "$OUT/net_news.log" 2>&1
   kill $npid 2>/dev/null; wait $npid 2>/dev/null; rm -rf "$ndir"
   line=$(grep -m1 "NEWS-TEST" "$OUT/net_news.log")
   if echo "$line" | grep -q "NEWS-TEST ok" && [ "$(errs "$OUT/net_news.log")" = "0" ]; then pass "C net menu news line (#261): $(echo "$line" | cut -c1-140)"; else fail "C net menu news line: '${line:-no result}' errors=$(errs "$OUT/net_news.log")"; fi
+  fi
 ;; esac
 case " $NETSEL " in *" featured "*)
   # #264 weekly featured server: the deploy script turns featured.json into
   # the unit's ExecStart; the dedicated server starts in that mode / map with
   # the bans; a bad entry falls back to the defaults with a log line.
-  FT="../server/master-server/deploy/featured_test.sh"
+  FT="$SRV/deploy/featured_test.sh"
   line=$(bash "$FT" 2>&1 | tail -3 | tr '\n' ' ')
   if echo "$line" | grep -q "FEATURED-SCRIPT-TEST ok"; then pass "C net featured: deploy ExecStart generator + weekly rotation"; else fail "C net featured script: $line"; fi
-  port=$((7700 + RANDOM % 200))
-  timeout 40 "$G" --headless -- --dedicated --port $port --mode ctf --mode rm --map Voland "--bans=Minigun,steyr aug,Nope" > "$OUT/net_featured_server.log" 2>&1 &
+  port=$(freeport udp)
+  timeout $(T 40) "$G" --headless -- --dedicated --port $port --mode ctf --mode rm --map Voland "--bans=Minigun,steyr aug,Nope" > "$OUT/net_featured_server.log" 2>&1 &
   spid=$!
-  for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_featured_server.log" 2>/dev/null && break; sleep 0.5; done
-  sleep 3
-  timeout 20 "$G" --headless -- --smoke-query --port $port > "$OUT/net_featured_query.log" 2>&1
+  wait_ready "$OUT/net_featured_server.log"
+  sleep 1
+  timeout $(T 20) "$G" --headless -- --smoke-query --port $port > "$OUT/net_featured_query.log" 2>&1
   kill $spid 2>/dev/null; wait $spid 2>/dev/null
   q=$(grep -m1 SMOKE-QUERY "$OUT/net_featured_query.log")
   e=$(( $(errs "$OUT/net_featured_server.log") + $(errs "$OUT/net_featured_query.log") ))
@@ -385,11 +494,11 @@ case " $NETSEL " in *" featured "*)
   else
     fail "C net featured server: '${q:-no query}' $(grep -m1 'weapon bans' "$OUT/net_featured_server.log") errors=$e"
   fi
-  port=$((7700 + RANDOM % 200))
-  timeout 30 "$G" --headless -- --dedicated --port $port --mode ctf --mode bogusmode --map Nowhere --bans= > "$OUT/net_featured_bad.log" 2>&1 &
+  port=$(freeport udp)
+  timeout $(T 30) "$G" --headless -- --dedicated --port $port --mode ctf --mode bogusmode --map Nowhere --bans= > "$OUT/net_featured_bad.log" 2>&1 &
   spid=$!
-  for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_featured_bad.log" 2>/dev/null && break; sleep 0.5; done
-  sleep 2; kill $spid 2>/dev/null; wait $spid 2>/dev/null
+  wait_ready "$OUT/net_featured_bad.log"
+  sleep 1; kill $spid 2>/dev/null; wait $spid 2>/dev/null
   if grep -q "unknown mode 'bogusmode', keeping Capture the Flag" "$OUT/net_featured_bad.log" && grep -q "unknown map 'Nowhere'" "$OUT/net_featured_bad.log" \
       && grep -q "listening on port $port, map=.* mode=Capture the Flag" "$OUT/net_featured_bad.log" && [ "$(errs "$OUT/net_featured_bad.log")" = "0" ]; then
     pass "C net featured bad entry falls back: $(grep -m1 'listening on port' "$OUT/net_featured_bad.log")"
@@ -399,34 +508,33 @@ case " $NETSEL " in *" featured "*)
 ;; esac
 case " $NETSEL " in *" relay "*)
   # Host and client both go through the WebSocket relay on the master server.
-  RB="../server/master-server/dist/soldat-master-linux-amd64"
   if [ -x "$RB" ]; then
-    rport=$((8300 + RANDOM % 400))
-    SOLDAT_DATA_DIR="$(mktemp -d)" timeout 70 "$RB" -port $rport > "$OUT/net_relay_server.log" 2>&1 &
-    rpid=$!; sleep 1
+    rport=$(freeport tcp)
+    SOLDAT_DATA_DIR="$(mktemp -d)" timeout $(T 70) "$RB" -port $rport > "$OUT/net_relay_server.log" 2>&1 &
+    rpid=$!; wait_http $rport 20
     cf="$OUT/relay_code.txt"; rm -f "$cf"
-    timeout 60 "$G" --headless -- --smoke-host --relay-host=http://127.0.0.1:$rport --code-file="$cf" --smoke-secs=28 > "$OUT/net_relay_host.log" 2>&1 &
+    timeout $(T 60) "$G" --headless -- --smoke-host --relay-host=http://127.0.0.1:$rport --code-file="$cf" --smoke-secs=28 > "$OUT/net_relay_host.log" 2>&1 &
     hpid=$!
-    for _ in $(seq 1 40); do [ -s "$cf" ] && break; sleep 0.5; done
+    for ((_w = 0; _w < $(T 20) * 2; _w++)); do [ -s "$cf" ] && break; sleep 0.5; done
     sleep 3
-    timeout 40 "$G" --headless -- --smoke-join --relay-join=http://127.0.0.1:$rport --code-file="$cf" --smoke-secs=12 > "$OUT/net_relay_client.log" 2>&1
+    timeout $(T 40) "$G" --headless -- --smoke-join --relay-join=http://127.0.0.1:$rport --code-file="$cf" --smoke-secs=12 > "$OUT/net_relay_client.log" 2>&1
     wait $hpid 2>/dev/null; kill $rpid 2>/dev/null; wait $rpid 2>/dev/null
     e=$(( $(errs "$OUT/net_relay_host.log") + $(errs "$OUT/net_relay_client.log") ))
     line=$(grep -m1 "SMOKE-JOIN " "$OUT/net_relay_client.log")
     if echo "$line" | grep -q "players=2" && [ "$e" = "0" ]; then pass "C net relay: code $(cat "$cf" 2>/dev/null) | $line"; else fail "C net relay: '${line:-no result}' errors=$e"; fi
   else
-    fail "C net relay: relay binary missing ($RB)"
+    fail "C net relay: relay binary missing ($RB) — set SERVER_DIR"
   fi
 ;; esac
 case " $NETSEL " in *" rejoin "*)
   # A client drops hard; the menu's REJOIN countdown brings it back under the
   # same name and team (the host retires the stale connection).
-  port=$((7700 + RANDOM % 200))
-  timeout 60 "$G" --headless -- --dedicated --port $port --map 2 --mode 2 > "$OUT/net_rejoin_server.log" 2>&1 &
+  port=$(freeport udp)
+  timeout $(T 60) "$G" --headless -- --dedicated --port $port --map 2 --mode 2 > "$OUT/net_rejoin_server.log" 2>&1 &
   spid=$!
-  for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_rejoin_server.log" 2>/dev/null && break; sleep 0.5; done
-  sleep 3
-  timeout 45 "$G" --headless -- --smoke-rejoin --port $port > "$OUT/net_rejoin_client.log" 2>&1
+  wait_ready "$OUT/net_rejoin_server.log"
+  sleep 1
+  timeout $(T 45) "$G" --headless -- --smoke-rejoin --port $port > "$OUT/net_rejoin_client.log" 2>&1
   kill $spid 2>/dev/null; wait $spid 2>/dev/null
   e=$(( $(errs "$OUT/net_rejoin_server.log") + $(errs "$OUT/net_rejoin_client.log") ))
   line=$(grep "SMOKE-REJOIN" "$OUT/net_rejoin_client.log" | tail -1)
@@ -434,12 +542,12 @@ case " $NETSEL " in *" rejoin "*)
 ;; esac
 case " $NETSEL " in *" drive "*)
   # A client gets into a buggy (the host grants the seat) and drives it.
-  port=$((7700 + RANDOM % 200))
-  timeout 60 "$G" --headless -- --dedicated --port $port --map 2 --mode 0 > "$OUT/net_drive_server.log" 2>&1 &
+  port=$(freeport udp)
+  timeout $(T 60) "$G" --headless -- --dedicated --port $port --map 2 --mode 0 > "$OUT/net_drive_server.log" 2>&1 &
   spid=$!
-  for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_drive_server.log" 2>/dev/null && break; sleep 0.5; done
-  sleep 3
-  timeout 40 "$G" --headless -- --smoke-join --port $port --smoke-secs=12 --smoke-drive > "$OUT/net_drive_client.log" 2>&1
+  wait_ready "$OUT/net_drive_server.log"
+  sleep 1
+  timeout $(T 40) "$G" --headless -- --smoke-join --port $port --smoke-secs=12 --smoke-drive > "$OUT/net_drive_client.log" 2>&1
   wait $spid 2>/dev/null
   e=$(( $(errs "$OUT/net_drive_server.log") + $(errs "$OUT/net_drive_client.log") ))
   line=$(grep -m1 "SMOKE-DRIVE" "$OUT/net_drive_client.log")
@@ -457,12 +565,12 @@ case " $NETSEL " in *" heli "*)
   # host_dist ~0 and host_rx > 0) and an honest pilot trips no trust check
   # (the client teleports to the pad inside the spawn grace; checked below with
   # every other case). Industrial (55), --fill=1: no bots once we're in.
-  port=$((7700 + RANDOM % 200))
-  timeout 75 "$G" --headless -- --dedicated --port $port --map 55 --mode 0 --fill=1 > "$OUT/net_heli_server.log" 2>&1 &
+  port=$(freeport udp)
+  timeout $(T 75) "$G" --headless -- --dedicated --port $port --map 55 --mode 0 --fill=1 > "$OUT/net_heli_server.log" 2>&1 &
   spid=$!
-  for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_heli_server.log" 2>/dev/null && break; sleep 0.5; done
-  sleep 3
-  timeout 50 "$G" --headless -- --smoke-join --port $port --smoke-secs=16 --smoke-heli > "$OUT/net_heli_client.log" 2>&1
+  wait_ready "$OUT/net_heli_server.log"
+  sleep 1
+  timeout $(T 50) "$G" --headless -- --smoke-join --port $port --smoke-secs=16 --smoke-heli > "$OUT/net_heli_client.log" 2>&1
   kill $spid 2>/dev/null; wait $spid 2>/dev/null
   e=$(( $(errs "$OUT/net_heli_server.log") + $(errs "$OUT/net_heli_client.log") ))
   line=$(grep -m1 "SMOKE-HELI " "$OUT/net_heli_client.log")
@@ -486,12 +594,12 @@ case " $NETSEL " in *" plane "*)
   # (jerk = frames far off the streamed velocity, turn = biggest per-frame
   # heading step). Honest pilot: no trust lines (checked with every case).
   # Industrial (55, two runways), --fill=1: no bots once we're in.
-  port=$((7700 + RANDOM % 200))
-  timeout 75 "$G" --headless -- --dedicated --port $port --map 55 --mode 0 --fill=1 > "$OUT/net_plane_server.log" 2>&1 &
+  port=$(freeport udp)
+  timeout $(T 75) "$G" --headless -- --dedicated --port $port --map 55 --mode 0 --fill=1 > "$OUT/net_plane_server.log" 2>&1 &
   spid=$!
-  for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_plane_server.log" 2>/dev/null && break; sleep 0.5; done
-  sleep 3
-  timeout 50 "$G" --headless -- --smoke-join --port $port --smoke-secs=18 --smoke-plane > "$OUT/net_plane_client.log" 2>&1
+  wait_ready "$OUT/net_plane_server.log"
+  sleep 1
+  timeout $(T 50) "$G" --headless -- --smoke-join --port $port --smoke-secs=18 --smoke-plane > "$OUT/net_plane_client.log" 2>&1
   kill $spid 2>/dev/null; wait $spid 2>/dev/null
   e=$(( $(errs "$OUT/net_plane_server.log") + $(errs "$OUT/net_plane_client.log") ))
   fly=$(grep -m1 "SMOKE-PLANE-FLY " "$OUT/net_plane_client.log")
@@ -513,12 +621,12 @@ case " $NETSEL " in *" plane "*)
 case " $NETSEL " in *" respawn "*)
   # A client kills itself at 4 s (DM, few bots near spawn): it must come back
   # as the exact same node name with no RPC errors anywhere.
-  port=$((7700 + RANDOM % 200))
-  timeout 60 "$G" --headless -- --dedicated --port $port --map 0 --mode 0 > "$OUT/net_respawn_server.log" 2>&1 &
+  port=$(freeport udp)
+  timeout $(T 60) "$G" --headless -- --dedicated --port $port --map 0 --mode 0 > "$OUT/net_respawn_server.log" 2>&1 &
   spid=$!
-  for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_respawn_server.log" 2>/dev/null && break; sleep 0.5; done
-  sleep 3
-  timeout 40 "$G" --headless -- --smoke-join --port $port --smoke-secs=12 --smoke-die > "$OUT/net_respawn_client.log" 2>&1
+  wait_ready "$OUT/net_respawn_server.log"
+  sleep 1
+  timeout $(T 40) "$G" --headless -- --smoke-join --port $port --smoke-secs=12 --smoke-die > "$OUT/net_respawn_client.log" 2>&1
   wait $spid 2>/dev/null
   e=$(( $(errs "$OUT/net_respawn_server.log") + $(errs "$OUT/net_respawn_client.log") ))
   after=$(grep -m1 -o "SMOKE-RESPAWNED.*after=[0-9.]*" "$OUT/net_respawn_client.log" | grep -o "after=[0-9.]*" | cut -d= -f2)
@@ -539,12 +647,12 @@ case " $NETSEL " in *" killcam "*)
   # A bot "kills" the client: its kill cam rewind plays (~4.3 s) and the host
   # holds the respawn until the client says it's done; a self-kill (case
   # "respawn") must still come back on the normal 2 s timer.
-  port=$((7700 + RANDOM % 200))
-  timeout 60 "$G" --headless -- --dedicated --port $port --map 0 --mode 0 > "$OUT/net_killcam_server.log" 2>&1 &
+  port=$(freeport udp)
+  timeout $(T 60) "$G" --headless -- --dedicated --port $port --map 0 --mode 0 > "$OUT/net_killcam_server.log" 2>&1 &
   spid=$!
-  for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_killcam_server.log" 2>/dev/null && break; sleep 0.5; done
-  sleep 3
-  timeout 40 "$G" --headless -- --smoke-join --port $port --smoke-secs=14 --smoke-die --smoke-die-by-bot > "$OUT/net_killcam_client.log" 2>&1
+  wait_ready "$OUT/net_killcam_server.log"
+  sleep 1
+  timeout $(T 40) "$G" --headless -- --smoke-join --port $port --smoke-secs=14 --smoke-die --smoke-die-by-bot > "$OUT/net_killcam_client.log" 2>&1
   wait $spid 2>/dev/null
   e=$(( $(errs "$OUT/net_killcam_server.log") + $(errs "$OUT/net_killcam_client.log") ))
   after=$(grep -m1 -o "SMOKE-RESPAWNED.*after=[0-9.]*" "$OUT/net_killcam_client.log" | grep -o "after=[0-9.]*" | cut -d= -f2)
@@ -556,16 +664,16 @@ case " $NETSEL " in *" killcam "*)
   fi
 ;; esac
 case " $NETSEL " in *" host "*)
-timeout 60 "$G" --headless -- --smoke-host > "$OUT/net_host.log" 2>&1
+timeout $(T 60) "$G" --headless -- --smoke-host > "$OUT/net_host.log" 2>&1
 if grep -q "SMOKE-HOST" "$OUT/net_host.log" && [ "$(errs "$OUT/net_host.log")" = "0" ]; then pass "C net listen host: $(grep -m1 SMOKE-HOST "$OUT/net_host.log")"; else fail "C net listen host ($(errs "$OUT/net_host.log") errors)"; fi
 ;; esac
 case " $NETSEL " in *" listen "*)
   # Listen host (a player hosting from the menu) + an autopiloted client.
-  port=$((7700 + RANDOM % 200))
-  timeout 60 "$G" --headless -- --smoke-host --port $port --smoke-secs=32 > "$OUT/net_listen_host.log" 2>&1 &
+  port=$(freeport udp)
+  timeout $(T 60) "$G" --headless -- --smoke-host --port $port --smoke-secs=32 > "$OUT/net_listen_host.log" 2>&1 &
   hpid=$!
   sleep 7
-  timeout 45 "$G" --headless -- --smoke-join --port $port --smoke-secs=18 --smoke-auto > "$OUT/net_listen_client.log" 2>&1
+  timeout $(T 45) "$G" --headless -- --smoke-join --port $port --smoke-secs=18 --smoke-auto > "$OUT/net_listen_client.log" 2>&1
   wait $hpid 2>/dev/null
   hl=$(grep -m1 SMOKE-HOST "$OUT/net_listen_host.log"); cl=$(grep -m1 '^SMOKE-JOIN ' "$OUT/net_listen_client.log")
   he=$(errs "$OUT/net_listen_host.log"); ce=$(errs "$OUT/net_listen_client.log")
@@ -573,18 +681,18 @@ case " $NETSEL " in *" listen "*)
 ;; esac
 case " $NETSEL " in *" soak "*)
   # Two autopiloted clients (second joins late) on a CTF server for ~50 s.
-  line=$(GODOT_BIN="$G" timeout 110 bash tools/mp_soak.sh 2 18 "$OUT/soak" 2>&1 | grep '^SOAK')
+  line=$(GODOT_BIN="$G" SOAK_PORT=$(freeport udp) timeout $(T 140) bash tools/mp_soak.sh 2 18 "$OUT/soak" 2>&1 | grep "^SOAK")
   if echo "$line" | grep -q "errors=0"; then pass "C net soak: $line"; else fail "C net soak: '${line:-no SOAK line}' (logs in $OUT/soak)"; fi
 ;; esac
 case " $NETSEL " in *" lan "*)
   # LAN discovery: a dedicated host's beacon must show up in a listener.
-  port=$((7700 + RANDOM % 200))
-  timeout 50 "$G" --headless -- --dedicated --port $port --map 12 --mode 7 > "$OUT/net_lan_server.log" 2>&1 &
+  port=$(freeport udp)
+  timeout $(T 50) "$G" --headless -- --dedicated --port $port --map 12 --mode 7 > "$OUT/net_lan_server.log" 2>&1 &
   spid=$!
-  for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_lan_server.log" 2>/dev/null && break; sleep 0.5; done
-  sleep 4   # the host is still loading the match right after it starts listening
-  timeout 20 "$G" --headless -- --smoke-lan > "$OUT/net_lan_client.log" 2>&1
-  timeout 20 "$G" --headless -- --smoke-query --port $port > "$OUT/net_query_client.log" 2>&1
+  wait_ready "$OUT/net_lan_server.log"
+  sleep 1   # the host is still loading the match right after it starts listening
+  timeout $(T 20) "$G" --headless -- --smoke-lan > "$OUT/net_lan_client.log" 2>&1
+  timeout $(T 20) "$G" --headless -- --smoke-query --port $port > "$OUT/net_query_client.log" 2>&1
   kill $spid 2>/dev/null; wait $spid 2>/dev/null
   line=$(grep -m1 SMOKE-LAN "$OUT/net_lan_client.log")
   if echo "$line" | grep -q ":$port " && [ "$(errs "$OUT/net_lan_client.log")" = "0" ]; then pass "C net LAN discovery: $line"; else fail "C net LAN discovery: '${line:-no SMOKE-LAN}'"; fi
@@ -612,7 +720,7 @@ has D && for m in $MODESEL; do
   secs=60; case $m in 2|3|4|6|7) secs=120;; esac
   # --autopilot: the human player is driven with random input so player.gd
   # (jet, weapons, nades, stances, throwing) runs in every mode too.
-  timeout 170 "$G" --headless --fixed-fps 60 -s tools/stuck_test.gd -- --secs=$secs --from=19 --to=21 --mode=$m --autopilot --sp > "$f" 2>&1
+  timeout $(T 170) "$G" --headless --fixed-fps 60 -s tools/stuck_test.gd -- --secs=$secs --from=19 --to=21 --mode=$m --autopilot --sp > "$f" 2>&1
   n=$(errs "$f"); maps=$(grep -c '^map' "$f")
   kills=$(grep '^map' "$f" | sed -n 's/.*kills=\([0-9]*\).*/\1/p' | paste -sd+ | bc)
   caps=$(grep '^map' "$f" | sed -n 's/.*caps=\([0-9]*\).*/\1/p' | paste -sd+ | bc)
@@ -635,14 +743,14 @@ fi
 if has R; then
   for fl in "--realistic" "--survival" "--advance"; do
     f="$OUT/rules${fl}.log"
-    timeout 60 "$G" --headless --fixed-fps 60 -s tools/stuck_test.gd -- --secs=40 --from=19 --to=19 --mode=1 --sp --autopilot $fl > "$f" 2>&1
+    timeout $(T 60) "$G" --headless --fixed-fps 60 -s tools/stuck_test.gd -- --secs=40 --from=19 --to=19 --mode=1 --sp --autopilot $fl > "$f" 2>&1
     n=$(errs "$f"); k=$(grep '^map' "$f" | sed -n 's/.*kills=\([0-9]*\).*/\1/p')
     if [ "$n" = "0" ] && [ "${k:-0}" -gt 0 ]; then pass "R rules ${fl#--}: kills=$k"; else fail "R rules ${fl#--}: kills=${k:-none} errors=$n"; fi
   done
   # Death screen clears on the next life (timed respawn and Survival round reset).
   for fl in "" "--survival"; do
     f="$OUT/respawn${fl:-_timed}.log"
-    timeout 90 "$G" --headless --fixed-fps 60 -s tools/respawn_test.gd -- --mode=2 $fl > "$f" 2>&1
+    timeout $(T 90) "$G" --headless --fixed-fps 60 -s tools/respawn_test.gd -- --mode=2 $fl > "$f" 2>&1
     line=$(grep -m1 RESPAWN-TEST "$f")
     if echo "$line" | grep -q "RESPAWN-TEST ok" && [ "$(errs "$f")" = "0" ]; then pass "R respawn: $line"; else fail "R respawn: '${line:-no result}' errors=$(errs "$f")"; fi
   done
@@ -653,7 +761,7 @@ if has F && fon features; then
   for spec in "19 1" "11 2" "7 7"; do
     set -- $spec
     f="$OUT/feature_$1_$2.log"
-    timeout 60 "$G" --headless --fixed-fps 60 -s tools/feature_test.gd -- --map=$1 --mode=$2 > "$f" 2>&1
+    timeout $(T 60) "$G" --headless --fixed-fps 60 -s tools/feature_test.gd -- --map=$1 --mode=$2 > "$f" 2>&1
     n=$(( $(errs "$f") + $(grep -c 'ERROR: Parameter' "$f") ))
     if grep -q "FEATURE-TEST done" "$f" && [ "$n" = "0" ]; then pass "F features map $1 mode $2"; else fail "F features map $1 mode $2: $(grep -c 'FEATURE-TEST done' "$f") done, errors=$n"; fi
   done
@@ -661,7 +769,7 @@ fi
 
 if has F && fon editor; then
   f="$OUT/editor.log"
-  timeout 60 "$G" --headless --fixed-fps 60 -s tools/editor_test.gd > "$f" 2>&1
+  timeout $(T 60) "$G" --headless --fixed-fps 60 -s tools/editor_test.gd > "$f" 2>&1
   if grep -q "EDITOR-TEST roundtrip ok" "$f" && grep -q "EDITOR-TEST undo ok" "$f" && grep -q "EDITOR-TEST playtest ok.*player=true" "$f" && [ "$(errs "$f")" = "0" ]; then
     pass "F map editor: place-all / save / reload / move / delete / undo / generate / play-test"
   else
@@ -736,10 +844,10 @@ if has F; then
     openssl genrsa -traditional -out "$ud/test-key.pem" 2048 2>/dev/null
     openssl rsa -in "$ud/test-key.pem" -pubout -out "$ud/test-key.pub.pem" 2>/dev/null
     openssl dgst -sha256 -sign "$ud/test-key.pem" -out "$ud/SoldatReborn.exe.sig" "$ud/SoldatReborn.exe"
-    uport=$((8100 + RANDOM % 400))
+    uport=$(freeport tcp)
     printf '{"tag_name":"v99.0.0","body":"test","html_url":"x","assets":[{"name":"SoldatReborn.exe","size":1048576,"browser_download_url":"http://127.0.0.1:%d/SoldatReborn.exe"},{"name":"SoldatReborn.exe.sig","size":256,"browser_download_url":"http://127.0.0.1:%d/SoldatReborn.exe.sig"}]}' $uport $uport > "$ud/latest.json"
     python3 -m http.server $uport --bind 127.0.0.1 --directory "$ud" > /dev/null 2>&1 &
-    upid=$!; sleep 1
+    upid=$!; wait_http $uport 20
   fi
   ft updater updater_test.gd 60 UPDATER-TEST "auto-updater: version compare, release check, download + signature check, swap script" "--update-url=http://127.0.0.1:${uport:-1}/latest.json --update-pubkey=$OUT/updsrv/test-key.pub.pem"
   ft achievements achievement_test.gd 60 ACH-TEST "achievements: unlock once, counters, multi-kill, streak, wins"
@@ -752,14 +860,14 @@ fi
 total=$(( $(ls assets/maps/*.json | grep -vc '/movement_course\.json$') + 3 ))
 if [ $QUICK = 0 ] && has E && [ -n "$SWEEP" ]; then
   # Piecewise: append one map range; the verdict comes from a later "--only E" run.
-  timeout 170 "$G" --headless --fixed-fps 60 -s tools/stuck_test.gd -- --secs=30 --from=${SWEEP%%:*} --to=${SWEEP##*:} --mode=2 >> "$OUT/sweep.log" 2>&1
+  timeout $(T 170) "$G" --headless --fixed-fps 60 -s tools/stuck_test.gd -- --secs=30 --from=${SWEEP%%:*} --to=${SWEEP##*:} --mode=2 >> "$OUT/sweep.log" 2>&1
   info "E sweep chunk $SWEEP: $(grep -c '^map' "$OUT/sweep.log") maps logged so far"
 elif [ $QUICK = 0 ] && has E; then
   if [ $KEEP = 0 ] || [ ! -s "$OUT/sweep.log" ]; then
     : > "$OUT/sweep.log"
     for from in $(seq 0 25 $((total - 1))); do
       to=$((from + 24))
-      timeout 400 "$G" --headless --fixed-fps 60 -s tools/stuck_test.gd -- --secs=30 --from=$from --to=$to --mode=2 >> "$OUT/sweep.log" 2>&1
+      timeout $(T 400) "$G" --headless --fixed-fps 60 -s tools/stuck_test.gd -- --secs=30 --from=$from --to=$to --mode=2 >> "$OUT/sweep.log" 2>&1
     done
   fi
   n=$(errs "$OUT/sweep.log"); maps=$(grep -c '^map' "$OUT/sweep.log")
@@ -775,7 +883,7 @@ fi
 # ── M all-map sweeps for other objective modes (opt-in) ─────────────────────
 if has M && [ -n "$MSWEEP" ]; then
   IFS=: read -r mm mf mt <<< "$MSWEEP"
-  timeout 175 "$G" --headless --fixed-fps 60 -s tools/stuck_test.gd -- --secs=30 --from=$mf --to=$mt --mode=$mm >> "$OUT/msweep_$mm.log" 2>&1
+  timeout $(T 175) "$G" --headless --fixed-fps 60 -s tools/stuck_test.gd -- --secs=30 --from=$mf --to=$mt --mode=$mm >> "$OUT/msweep_$mm.log" 2>&1
   info "M sweep mode $mm chunk $mf:$mt: $(grep -c '^map' "$OUT/msweep_$mm.log") maps logged"
 fi
 if has M && [ $MVERDICT = 1 ]; then

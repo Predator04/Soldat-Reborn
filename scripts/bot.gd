@@ -683,8 +683,13 @@ func _physics_process(delta: float) -> void:
 				# off the ground. If we arrive falling with ground just below,
 				# land first instead of burning the tank sinking (that sank bots
 				# into Triumph's pits). Over a void, jet regardless.
+				# Not while crossing spikes / lava (#293): "land first" let a bot
+				# coming down toward the strip set its feet a few px short of
+				# the edge — inside the kill box's 6 px margin (gate rtnav
+				# maker_hazards deaths). Hold the waypoints' altitude instead.
 				var falling_to_land: bool = not on_floor and velocity.y > 40.0 \
-						and not _void_below() and not _hazard_below() and _ground_within(90.0)
+						and not _void_below() and not _hazard_below() and _ground_within(90.0) \
+						and not (_gap_ahead and _gap_hazard)
 				if on_floor and jump_cd <= 0.0:
 					velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
 					jump_cd = 0.3

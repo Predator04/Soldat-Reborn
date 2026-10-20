@@ -5,7 +5,14 @@ extends SceneTree
 ## name, then a map from the editor's generator) must get a graph built in-game
 ## on a worker thread: non-empty, adopted within the time limit, every CTF leg
 ## (each team's spawn -> enemy flag -> home) routable, bots actually travel on
-## it, and the build must not stall the main thread (frame gaps stay small).
+## it, and the build must not stall the main thread (#293, load-robust; raw
+## wall gaps are only logged, under load they mostly measure other processes):
+##  - adopting the graph (main.nav_adopt_ms, capped by the own time — wall
+##    minus run-queue wait — of the frame it happened in) takes < STALL_MS;
+##  - the main thread keeps ticking while the worker builds: at least
+##    MIN_BUILD_FRAMES frames pass (a main thread waiting on the build would
+##    see ~1; main and worker are slowed alike by load, so the count isn't);
+##  - generous guard: no frame during the build over HANG_MS of own time.
 ## Then Maker maps (#286): the starter level with spikes and lava pits (no
 ## nav node on a hazard, no bot walks into one), with a buggy, a tank and a
 ## heli pad per team (a bot boards a buggy and drives it; tank / heli use is
@@ -14,7 +21,11 @@ extends SceneTree
 ## launched by it and lands on the island).
 ## Zero script errors (the gate greps the log).
 
-const LIMIT_MS := 20000
+const GL = preload("res://tools/gate_load.gd")
+const LIMIT_MS := 20000   # build + adopt deadline on a quiet box; scaled by the load (below)
+const STALL_MS := 400.0   # main-thread own time adopting the graph
+const HANG_MS := 3000.0   # any single frame's own time while the build runs
+const MIN_BUILD_FRAMES := 10
 var _st := 0
 var _n := 0
 var _t0 := 0
@@ -24,8 +35,13 @@ var _saved := []
 var _start_pos := {}
 var _last_pos := {}
 var _dist := {}
-var _max_gap := 0
-var _last_ms := 0
+var _max_gap := 0.0      # raw wall gap (logged only)
+var _max_own := 0.0      # own time of the worst frame during the build
+var _build_frames := 0   # main-thread frames while the worker built
+var _last_own := 0.0     # own time of the latest frame interval
+var _last_st := {}       # GL.stamp() at the previous frame
+var _wait_wall := 0.0    # wall / own ms summed while waiting for the graph:
+var _wait_own := 0.0     # their ratio = how much other processes slowed us
 var _case := 0
 var _cases := ["classic", "generated", "maker_hazards", "maker_vehicles", "maker_pads"]
 var _hz_kills0 := 0
@@ -95,9 +111,17 @@ func _process(_d: float) -> bool:
 	if st == null:
 		return false
 	var now := Time.get_ticks_msec()
-	if _last_ms > 0 and _st == 2:
-		_max_gap = maxi(_max_gap, now - _last_ms)
-	_last_ms = now
+	var stp := GL.stamp()
+	if not _last_st.is_empty():
+		_last_own = GL.own_ms(_last_st, stp)
+		if _st == 2:
+			var w := GL.wall_ms(_last_st, stp)
+			_max_gap = maxf(_max_gap, w)
+			_max_own = maxf(_max_own, _last_own)
+			_build_frames += 1
+			_wait_wall += w
+			_wait_own += _last_own
+	_last_st = stp
 	match _st:
 		0:
 			if _saved.is_empty():
@@ -115,22 +139,47 @@ func _process(_d: float) -> bool:
 			_n = 0
 		1:
 			var m = current_scene
-			if m == null or m.get("nav") == null or _n < 3:
+			if m == null or m.get("nav") == null:
 				return false
+			# Checked on the match's FIRST frame, before main._process ever ran,
+			# so a worker-built graph can't have been adopted yet (#293: this
+			# used to wait 3 frames, and under load the worker finished and was
+			# adopted in between — reported as a stale bake).
 			if not m.nav.is_empty():
-				_bad.append("%s: graph present before the runtime build (stale bake?)" % _cases[_case])
+				if int(m.nav_runtime_ms) >= 0 or float(m.nav_adopt_ms) >= 0.0:
+					_bad.append("%s: runtime graph adopted before the match's first frame (built on the main thread?)" % _cases[_case])
+				else:
+					_bad.append("%s: graph present before the runtime build (stale bake?)" % _cases[_case])
+			elif int(m.get("_nav_task")) < 0:
+				_bad.append("%s: no baked graph and no runtime build started" % _cases[_case])
 			_t0 = now
-			_max_gap = 0
+			_max_gap = 0.0
+			_max_own = 0.0
+			_build_frames = 0
+			_wait_wall = 0.0
+			_wait_own = 0.0
 			_st = 2
 		2:
 			var m = current_scene
 			if m.nav.is_empty():
-				if now - _t0 > LIMIT_MS:
-					return _end("%s: no runtime graph after %d ms" % [_cases[_case], LIMIT_MS])
+				# Deadline for a wait, scaled by the load: the gate's measured
+				# factor, or how much other processes slowed this very wait.
+				var slow := clampf(_wait_wall / maxf(1.0, _wait_own), 1.0, GL.MAX_FACTOR)
+				var limit := LIMIT_MS * maxf(GL.factor(), slow)
+				if now - _t0 > limit:
+					return _end("%s: no runtime graph after %d ms (limit scaled x%.1f by load)" % [_cases[_case], now - _t0, limit / LIMIT_MS])
 				return false
-			_log.append("%s graph %d ms (frame gap max %d ms)" % [_cases[_case], int(m.nav_runtime_ms), _max_gap])
-			if _max_gap > 400:
-				_bad.append("%s: main thread stalled %d ms during the build" % [_cases[_case], _max_gap])
+			# Adopted during main._process of the previous frame, i.e. inside
+			# the interval that just ended.
+			var adopt := float(m.nav_adopt_ms)
+			var stall := minf(adopt, _last_own) if adopt >= 0.0 else _last_own
+			_log.append("%s graph %d ms (adopt %.0f ms, %d frames meanwhile, frame own max %.0f ms, raw gap max %.0f ms)" % [_cases[_case], int(m.nav_runtime_ms), stall, _build_frames, _max_own, _max_gap])
+			if _build_frames < MIN_BUILD_FRAMES:
+				_bad.append("%s: only %d main-thread frames during the %d ms build (main thread blocked on it?)" % [_cases[_case], _build_frames, int(m.nav_runtime_ms)])
+			if stall > STALL_MS:
+				_bad.append("%s: main thread stalled %.0f ms adopting the graph" % [_cases[_case], stall])
+			if _max_own > HANG_MS:
+				_bad.append("%s: a frame took %.0f ms of main-thread time during the build" % [_cases[_case], _max_own])
 			# CTF legs
 			var home := {}
 			for f in m.flags:

@@ -18,7 +18,8 @@ var _feat_file := ""
 var _saved_url := ""
 var _saved_dismissed := ""
 var _log: Array = []
-const WAIT := 8000   # ms per step before giving up (headless frames are fast)
+const GL = preload("res://tools/gate_load.gd")
+var WAIT := GL.wait_ms(8000)   # ms per step before giving up (headless frames are fast; #293: x GATE_LOAD)
 
 
 func _write(path: String, s: String) -> void:

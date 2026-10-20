@@ -22,6 +22,7 @@ const HOWS := ["notif", "esc", "cancel"]
 
 var _log: Array = []
 var _bad: Array = []
+const GL = preload("res://tools/gate_load.gd")   # #293: wall deadlines scale with GATE_LOAD
 var _done := false
 var _step := "boot"
 var _st: Node = null
@@ -36,7 +37,7 @@ func _initialize() -> void:
 
 
 func _process(_d: float) -> bool:
-	if not _done and Time.get_ticks_msec() > 200000:
+	if not _done and Time.get_ticks_msec() > GL.wait_ms(200000):
 		_finish("timed out at step '%s'" % _step)
 	return false
 

@@ -4,6 +4,17 @@ All notable changes to Soldat Reborn.
 
 ## [Unreleased]
 
+### Fixed
+- **Bots no longer die on the edge of Maker spikes / lava when they come down toward the strip** (#293): a bot crossing a hazard that was falling with ground just below used to "land first" instead of holding its height, and set its feet a few pixels short of the edge — inside the kill zone's margin. It now keeps jetting across.
+
+### Dev — release gate on a busy machine (#293)
+- **No more false FAILs when several gates share the box.** Each gate run now has its own user-data folder and its own LAN discovery port (parallel runs deleted each other's replays, heard each other's servers — Quick Play joined one — and the second LAN listener couldn't bind), and picks free game / master ports instead of random ones.
+- **Timeouts and waits scale with the machine's load** (measured at the start and per step, up to 4x); dedicated servers print `Dedicated match ready` once the match is loaded and the gate starts its clients on that line; smoke-client windows, `selfcheck.py`, `mp_soak.sh` and the tests' own deadlines stretch with `GATE_LOAD`. Measured limits never stretch.
+- **F `perf` measures the main thread's CPU time per frame** (seeded, same fight every run) instead of wall-clock frame gaps, which mostly measured other processes: ~5 ms whether the box is quiet or loaded, where the wall average swung from 6 to 58 ms. `PERF_INJECT_MS=10` (10 ms of extra work per frame) still fails it.
+- **F `rtnav`**: the stall check times the graph adoption itself (`main.nav_adopt_ms`) instead of raw frame gaps (400–2000 ms under load), the build deadline scales with load, and "graph present before the runtime build" is checked on the match's first frame (it waited 3 frames, and a fast worker could finish in between).
+- **F `features`**: a bot kill right before the limbo step held the respawn for the kill-cam rewind, and the next step reset the limbo pick before it was checked ("limbo pick not stored") — the later steps now wait too. **F `radio`**: stages the flag grab after 60 s without one (a random match sometimes had no grab for 150 s). **C `fill` / `two`**: the second client starts once the host has the first.
+- `SERVER_DIR` points the master-server cases at the server checkout (default `../server/master-server`, found automatically from a git worktree).
+
 ## [1.38.0] — 2026-10-19 — Planes
 
 ### Dev

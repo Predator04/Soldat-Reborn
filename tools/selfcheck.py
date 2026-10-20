@@ -49,6 +49,13 @@ ERR_RE = re.compile(r"SCRIPT ERROR|Parse Error|Cannot load|Identifier not found|
                     r"No multiplayer peer is assigned|Lambda capture|while flushing queries")
 FIRST_RE = [re.compile(p) for p in (r"DEDICATED-START-FAILED", r"SCRIPT ERROR", r"Parse Error", r"^ERROR:")]
 KEEP_RUNS = 20
+# #293: under release_gate.sh, GATE_LOAD (1 = quiet machine, <= 4) stretches
+# the smoke clients' windows (net.gd _smoke_secs); the waits here stretch too.
+# Unset on the owner's machine -> 1.
+try:
+    LOAD = min(4.0, max(1.0, float(os.environ.get("GATE_LOAD", "1"))))
+except ValueError:
+    LOAD = 1.0
 
 _procs = []          # every Popen we started (killed in cleanup)
 
@@ -274,7 +281,7 @@ def check(godot, out, args):
             f.write(str(srv.pid))
     except Exception:
         pass
-    deadline = time.time() + args.server_timeout
+    deadline = time.time() + args.server_timeout * LOAD
     started = None
     while time.time() < deadline:
         t = read(srv_log)
@@ -291,14 +298,18 @@ def check(godot, out, args):
         t = read(srv_log)
         return "dedicated-timeout", first_meaningful(t) or "no \"listening on port %d\" line in %d s" % (
             port, args.server_timeout), logs
-    time.sleep(4)   # the server loads the match right after it starts listening
+    # The server loads the match right after it starts listening; it says
+    # "Dedicated match ready" once it has (#293; was a fixed 4 s sleep).
+    ready_by = time.time() + 40 * LOAD
+    while time.time() < ready_by and srv.poll() is None and "Dedicated match ready" not in read(srv_log):
+        time.sleep(0.25)
 
     join_log = os.path.join(out, "join.log")
     logs.append(("join", join_log))
-    run_logged([godot, "--headless", "--path", ROOT, "--", "--smoke-join", "--port", str(port)], join_log, 60, env)
+    run_logged([godot, "--headless", "--path", ROOT, "--", "--smoke-join", "--port", str(port)], join_log, int(60 * LOAD), env)
     fire_log = os.path.join(out, "botfire.log")
     logs.append(("botfire", fire_log))
-    run_logged([godot, "--headless", "--path", ROOT, "--", "--smoke-botfire", "--port", str(port)], fire_log, 90, env)
+    run_logged([godot, "--headless", "--path", ROOT, "--", "--smoke-botfire", "--port", str(port)], fire_log, int(90 * LOAD), env)
     alive = srv.poll() is None
     kill_tree(srv)
     _procs.remove(srv)
