@@ -872,7 +872,7 @@ func _reset_round() -> void:
 	# #279: a fresh clock only after a whole match; mid-match rounds keep it
 	# running. Clients take the host's clock from the match-state stream.
 	if main.match_over and (not Net.is_networked() or Net.is_host()):
-		main.time_left = main.ROUND_TIME
+		main.time_left = main.round_time
 	main.match_over = false
 	main.winner_team = -1
 	main.winner_note = ""

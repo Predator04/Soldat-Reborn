@@ -327,6 +327,7 @@ func _physics_process(delta: float) -> void:
 	else:
 		_follow(delta)
 	_place_occupants()
+	_record_hist()
 	_local_occupant_input()
 	if _is_host_side():
 		_bot_gunner(delta)
@@ -341,6 +342,79 @@ func _physics_process(delta: float) -> void:
 
 func _is_host_side() -> bool:
 	return not Net.is_networked() or Net.is_host()
+
+
+# ── Host-side lag compensation (#266) ──
+# A remote human in a seat is tested where its shooter saw it (rewound), so the
+# vehicle carrying it is too — else the hull, where the host has it now, stops
+# rounds that met the crew on the shooter's screen.
+var _hist: Array = []   # host: [ms, position]
+
+
+func _record_hist() -> void:
+	if not Net.is_networked() or not Net.is_host():
+		return
+	var now := Time.get_ticks_msec()
+	_hist.append([now, global_position])
+	while _hist.size() > 2 and now - int(_hist[0][0]) > HostHits.HIST_MS:
+		_hist.pop_front()
+
+
+## Host: where this vehicle was `ms_ago` ms ago (interpolated).
+func pos_at(ms_ago: int) -> Vector2:
+	if ms_ago <= 0 or _hist.is_empty():
+		return global_position
+	var want := Time.get_ticks_msec() - ms_ago
+	var i := _hist.size() - 1
+	while i > 0 and int(_hist[i][0]) > want:
+		i -= 1
+	if i >= _hist.size() - 1 or int(_hist[i][0]) > want:
+		return _hist[i][1]
+	var t0 := int(_hist[i][0])
+	var t1 := int(_hist[i + 1][0])
+	return (_hist[i][1] as Vector2).lerp(_hist[i + 1][1], float(want - t0) / float(maxi(1, t1 - t0)))
+
+
+## Host: a remote human is aboard (its hits are rewound, so this hull is too).
+func carries_remote_human() -> bool:
+	for o in seats:
+		if is_instance_valid(o) and HostHits.is_remote_human(o):
+			return true
+	return false
+
+
+## Where a segment a->b first enters this hull (0..1), the hull as it was
+## `ms_ago` ms ago (the collision capsule: SHAPE_LEN long, 2 SHAPE_R tall), or -1.
+func segment_t_at(a: Vector2, b: Vector2, ms_ago: int) -> float:
+	var c := pos_at(ms_ago) + Vector2(0, -SHAPE_R)
+	var half := maxf(0.0, SHAPE_LEN * 0.5 - SHAPE_R)
+	var best := -1.0
+	var core := Rect2(c.x - half, c.y - SHAPE_R, half * 2.0, SHAPE_R * 2.0)
+	var tr: float = preload("res://scripts/bullet.gd").segment_rect_t(a, b, core)
+	if tr >= 0.0:
+		best = tr
+	for cx in [c.x - half, c.x + half]:
+		var tc := _segment_circle_t(a, b, Vector2(cx, c.y), SHAPE_R)
+		if tc >= 0.0 and (best < 0.0 or tc < best):
+			best = tc
+	return best
+
+
+static func _segment_circle_t(a: Vector2, b: Vector2, c: Vector2, r: float) -> float:
+	var d := b - a
+	var f := a - c
+	var qa := d.dot(d)
+	if qa < 0.000001:
+		return 0.0 if f.length() <= r else -1.0
+	var qb := 2.0 * f.dot(d)
+	var qc := f.dot(f) - r * r
+	if qc <= 0.0:
+		return 0.0   # starts inside
+	var disc := qb * qb - 4.0 * qa * qc
+	if disc < 0.0:
+		return -1.0
+	var t := (-qb - sqrt(disc)) / (2.0 * qa)
+	return t if t >= 0.0 and t <= 1.0 else -1.0
 
 
 ## #259: abandoned or wedged vehicles don't stay that way. Runs on whichever
@@ -566,7 +640,7 @@ func _fire(me: Node2D) -> void:
 	fire_cd = GUN_RATE
 	var main := get_parent()
 	if Net.is_networked() and main != null and main.has_method("vehicle_send"):
-		main.vehicle_send("net_vehicle_fire", [vehicle_id, muzzle, dir], true)
+		main.vehicle_send("net_vehicle_fire", [vehicle_id, muzzle, dir, HostHits.game_ms()], true)
 		return
 	apply_fire(muzzle, dir)
 
@@ -586,6 +660,10 @@ func apply_fire(muzzle: Vector2, dir: Vector2) -> void:
 	b.killer_name = str(shooter.get("display_name"))
 	b.weapon_name = "Buggy MG"
 	b.ignore_bodies = [self] + seats.filter(func(o): return is_instance_valid(o))
+	# #266: the gun isn't predicted — its shooter sees the round only once the
+	# host has relayed it, against bodies one hop behind the host's, i.e. where
+	# the host has them now: no rewind.
+	b.rewind_override = 0
 	get_parent().add_child(b)
 	# Cosmetic: muzzle flash (pooled light + star), brass, the barrel kicks.
 	Gfx.muzzle(get_parent(), muzzle, false, dir)

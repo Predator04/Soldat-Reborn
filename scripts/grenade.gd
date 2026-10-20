@@ -232,7 +232,7 @@ func _explode() -> void:
 			var was_alive: bool = not bool(s.get("dead"))
 			HostHits.damage(s, gdmg, killer_name, wname, team)
 			if not is_self and was_alive:
-				preload("res://scripts/bullet.gd").local_hit_feedback(get_tree(), killer_name, s.global_position, gdmg)
+				preload("res://scripts/bullet.gd").local_hit_feedback(get_tree(), killer_name, s.global_position, gdmg, false, s)
 	if not harmless:
 		preload("res://scripts/buggy.gd").splash(get_tree(), global_position, blast_radius, damage * MatchConfig.mod_damage(), killer_name, wname, team)
 	# Lo-fi (#25): skip the CPUParticles2D flame burst. The Sfx call above still fires.

@@ -287,7 +287,7 @@ func _explode() -> void:
 		if s.has_method("take_damage"):
 			HostHits.damage(s, scaled, killer_name, weapon_name, team)
 		if not is_self and was_alive:
-			preload("res://scripts/bullet.gd").local_hit_feedback(get_tree(), killer_name, s.global_position, scaled)
+			preload("res://scripts/bullet.gd").local_hit_feedback(get_tree(), killer_name, s.global_position, scaled, false, s)
 	if not _harmless:
 		preload("res://scripts/buggy.gd").splash(get_tree(), global_position, blast_radius, damage, killer_name, weapon_name, team)
 	if not Settings.lofi:

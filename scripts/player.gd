@@ -386,7 +386,11 @@ func _physics_process(delta: float) -> void:
 
 ## Non-authority replica: state is set by net_state RPCs; just visual bookkeeping.
 func _physics_replica(delta: float) -> void:
-	_net_smooth(delta)
+	# A soldier in a vehicle seat sits where this peer's copy of the vehicle
+	# puts it (buggy._place_occupants); pulling it toward its own stream as
+	# well left it between two places.
+	if _vehicle_seat() < 0:
+		_net_smooth(delta)
 	if _trust != null:
 		# Host (#266): where this body was, for rewound hit tests; batched hits
 		# and shots waiting on an aim sample.
@@ -2041,7 +2045,7 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_
 			if not _melee_reaches(s, swing, reach, origin_h, rw):
 				continue
 			HostHits.damage(s, dmg, display_name, str(w["name"]), team)
-			preload("res://scripts/bullet.gd").local_hit_feedback(get_tree(), display_name, s.global_position, dmg, true)
+			preload("res://scripts/bullet.gd").local_hit_feedback(get_tree(), display_name, s.global_position, dmg, true, s)
 		return
 	for i in dirs.size():
 		var bdir: Vector2 = dirs[i]
@@ -2456,7 +2460,14 @@ func hitbox_now() -> Rect2:
 
 func _record_hitbox() -> void:
 	var now := Time.get_ticks_msec()
-	pos_hist.append([now, hitbox_now()])
+	var box := hitbox_now()
+	# Riding: the seat on this peer's copy of the vehicle, as every other
+	# screen shows it (#266) — whatever order the two bodies move in.
+	var seat := _vehicle_seat()
+	if seat >= 0:
+		var at: Vector2 = mounted_m2._seat_world(seat)
+		box.position = at + Vector2(-box.size.x * 0.5, -box.size.y)
+	pos_hist.append([now, box])
 	while pos_hist.size() > 2 and now - int(pos_hist[0][0]) > HostHits.HIST_MS:
 		pos_hist.pop_front()
 
@@ -2518,6 +2529,13 @@ func _owner_rtt() -> int:
 	if m == null or m.get("_net") == null or not m._net.has_method("peer_rtt_ms"):
 		return 0
 	return int(m._net.peer_rtt_ms(get_multiplayer_authority()))
+
+
+## The vehicle seat this soldier sits in (mounted_m2 is the vehicle), or -1.
+func _vehicle_seat() -> int:
+	if mounted_m2 == null or not is_instance_valid(mounted_m2) or not mounted_m2.has_method("_seat_world"):
+		return -1
+	return int(mounted_m2.seat_of(self))
 
 
 ## Seated in a buggy / tank or on an M2: the body is placed by the vehicle

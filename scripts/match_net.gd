@@ -661,10 +661,16 @@ func _tick_rtt(delta: float) -> void:
 	# isn't broken up by deaths.
 	if _medic:
 		for p in HostHits.remote_humans():
-			if is_instance_valid(p) and not bool(p.dead) and float(p.health) < 45.0 \
+			if is_instance_valid(p) and not bool(p.dead) and float(p.health) < 60.0 \
 					and (_medic_tag == "" or str(p.display_name).contains("«%s»" % _medic_tag)):
 				p.apply_kit("medkit")
 				HostHits.count("medic")
+			# (and grenade throwers in grenades: a kit once they are out)
+			if is_instance_valid(p) and not bool(p.dead) and int(p.grenades) <= 0 \
+					and Time.get_ticks_msec() - int(p.get_meta("smoke_kit_ms", -100000)) > 2000:
+				p.set_meta("smoke_kit_ms", Time.get_ticks_msec())
+				p.apply_kit("grenades")
+				HostHits.count("kits")
 	_rtt_t -= delta
 	if _rtt_t > 0.0:
 		return
@@ -692,6 +698,9 @@ func net_rtt_probe(stamp: int) -> void:
 	if Net.is_host() or main.multiplayer.get_remote_sender_id() != 1:
 		return
 	main.rpc_id(1, "net_rtt_echo", stamp)
+	# #266: also a host-clock stamp for our shots' view (relayed soldier states
+	# carry one too, but a soldier in a vehicle seat sends none).
+	HostHits.note_view(stamp)
 
 
 func net_rtt_echo(stamp: int) -> void:

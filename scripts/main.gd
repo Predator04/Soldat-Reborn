@@ -116,6 +116,9 @@ const MATCH_SYNC_HZ := 5.0           # host → clients broadcast rate for score
 
 var scores: Dictionary = {}          # team_id -> int
 var time_left := ROUND_TIME
+# Release-gate tests (#266, --smoke-round-secs=N on a host): short rounds so a
+# run sees the round end, the next-map vote and the map change.
+var round_time := ROUND_TIME
 var round_active := true
 var winner_team := -1
 # Human-readable subtitle explaining the end (draws especially — "no scores",
@@ -413,6 +416,9 @@ func _attach(h: Node, n: String) -> Node:
 
 
 func _ready() -> void:
+	if Net._smoke_arg("--smoke-round-secs") != "":
+		round_time = maxf(10.0, float(Net._smoke_arg("--smoke-round-secs")))
+		time_left = round_time
 	TrustGuard.reset_match()
 	# Dev override: `--mode=N` on the command line sets game_mode for headless smoke tests.
 	# `--map=N` forces a specific MAPS index (useful for verifying each classic).
@@ -657,8 +663,8 @@ func net_m2_state(m2_id: int, aim_dir: Vector2) -> void:
 
 
 @rpc("any_peer", "call_local", "reliable")
-func net_m2_fire(m2_id: int, muzzle: Vector2, aim_dir: Vector2, shooter_team: int, shooter_name: String) -> void:
-	_vehicles_sys.net_m2_fire(m2_id, muzzle, aim_dir, shooter_team, shooter_name)
+func net_m2_fire(m2_id: int, muzzle: Vector2, aim_dir: Vector2, shooter_team: int, shooter_name: String, stamp: int = 0) -> void:
+	_vehicles_sys.net_m2_fire(m2_id, muzzle, aim_dir, shooter_team, shooter_name, stamp)
 
 
 # ── Singleplayer spawn path ───────────────────────────
@@ -1085,6 +1091,8 @@ func _build_hud() -> void:
 	add_child(hud)
 	hud.player = player
 	hud.map_name = str(_map["name"])
+	if OS.get_cmdline_user_args().has("--hosthits-log"):
+		print("HOSTHITS-MAP %s" % str(_map["name"]))   # (tools/hosthits_test.gd: map changes)
 	kill.connect(hud._on_kill)
 	# Spectator (#75) — created alongside the HUD so it exists before any player
 	# dies. Camera stays disabled until activate() is called on local death.
@@ -1723,8 +1731,8 @@ func net_vehicle_state(vid: int, pos: Vector2, vel: Vector2, tilt: float, f: flo
 
 
 @rpc("any_peer", "call_remote", "reliable")
-func net_vehicle_fire(vid: int, muzzle: Vector2, dir: Vector2) -> void:
-	_vehicles_sys.net_vehicle_fire(vid, muzzle, dir)
+func net_vehicle_fire(vid: int, muzzle: Vector2, dir: Vector2, stamp: int = 0) -> void:
+	_vehicles_sys.net_vehicle_fire(vid, muzzle, dir, stamp)
 
 
 @rpc("any_peer", "call_remote", "reliable")
@@ -1740,8 +1748,8 @@ func net_vehicle_destroy(vid: int, at: Vector2, killer: String, killer_team: int
 # #277: a seat-specific weapon (the helicopter pilot's rockets — the gunner's
 # MG stays on net_vehicle_fire).
 @rpc("any_peer", "call_remote", "reliable")
-func net_vehicle_fire_seat(vid: int, seat: int, muzzle: Vector2, dir: Vector2) -> void:
-	_vehicles_sys.net_vehicle_fire_seat(vid, seat, muzzle, dir)
+func net_vehicle_fire_seat(vid: int, seat: int, muzzle: Vector2, dir: Vector2, stamp: int = 0) -> void:
+	_vehicles_sys.net_vehicle_fire_seat(vid, seat, muzzle, dir, stamp)
 
 
 # #277: the simulating peer reports a hard landing / wall hit / rotor strike /

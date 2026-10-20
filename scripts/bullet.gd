@@ -41,6 +41,9 @@ var hold: Dictionary = {}
 # for tests comparing them with what the host decided.
 static var predicted_hits := 0
 static var predicted_damage := 0.0
+# The same for splash / melee (local_hit_feedback): rockets, grenades, knife.
+static var predicted_other_hits := 0
+static var predicted_other_damage := 0.0
 static var _hh_log := OS.get_cmdline_user_args().has("--hosthits-log")
 
 
@@ -86,9 +89,13 @@ func _physics_process(delta: float) -> void:
 						_ray_exclude.append((ib as CollisionObject2D).get_rid())
 			var excl: Array[RID] = _ray_exclude
 			if _host_side and not HostHits.remote_humans().is_empty():
-				# Remote humans are tested rewound below, not where they are now.
+				# Remote humans (and vehicles carrying one) are tested rewound
+				# below, not where they are now.
 				excl = _ray_exclude.duplicate()
 				excl.append_array(HostHits.remote_rids())
+				if _rewind_ms > 0:
+					for v in _rewound_vehicles():
+						excl.append((v as CollisionObject2D).get_rid())
 			var q := PhysicsRayQueryParameters2D.create(global_position, global_position + step, collision_mask, excl)
 			hit = get_world_2d().direct_space_state.intersect_ray(q)
 		if _host_side and _rewound_hit(step, hit):
@@ -157,20 +164,50 @@ func _rewound_hit(step: Vector2, hit: Dictionary) -> bool:
 		if not near.intersects(s.hitbox_now()):
 			continue
 		var r := HostHits.rect_at(s, _rewind_ms)
-		var t := segment_rect_t(a, b, r.grow(3.0))
+		# (Grown a little for a rewound test: measured best agreement with the
+		# shooter's screen. A shot tested where the host has bodies now — a
+		# relayed vehicle gun — uses the bare box, as the shooter's copy does.)
+		var t := segment_rect_t(a, b, r.grow(3.0) if _rewind_ms > 0 else r)
 		if t >= 0.0 and t < best_t:
 			best_t = t
 			best = s
 			best_rect = r
-	if best == null:
+	# A vehicle carrying a remote human, as the shooter saw it too.
+	var best_v: Node = null
+	if _rewind_ms > 0:
+		for v in _rewound_vehicles():
+			if v in ignore_bodies or not near.intersects(Rect2((v as Node2D).global_position, Vector2.ZERO).grow(80.0)):
+				continue
+			var tv: float = v.segment_t_at(a, b, _rewind_ms)
+			if tv >= 0.0 and tv < best_t:
+				best_t = tv
+				best_v = v
+	if best == null and best_v == null:
 		return false
 	if not hit.is_empty():
 		var ht: float = a.distance_to(hit["position"]) / maxf(step.length(), 0.001)
 		if ht < best_t:
 			return false
 	global_position = a + step * best_t
+	if best_v != null:
+		_on_body_entered(best_v)
+		if _hit:
+			return true
+		# (A team-mate's: the round passes through, as with the ray's bodies.)
+		ignore_bodies.append(best_v)
+		global_position = a
+		return _rewound_hit(step, hit)
 	_on_body_entered(best, best_rect.end.y)
 	return _hit
+
+
+## Host: vehicles to test rewound (they carry a remote human).
+func _rewound_vehicles() -> Array:
+	var out: Array = []
+	for v in get_tree().get_nodes_in_group("vehicle"):
+		if v.has_method("carries_remote_human") and bool(v.get("alive")) and v.carries_remote_human():
+			out.append(v)
+	return out
 
 
 # First point (0..1 along a->b) where the segment enters rect, or -1.
@@ -245,7 +282,7 @@ func _on_body_entered(body: Node, feet_y: float = INF) -> void:
 			# Whoever decides this body's hits applies it (host_hits.gd); a
 			# shot held for an aim re-check parks its hits until then.
 			if _hh_log and _host_side and HostHits.is_remote_human(body):
-				print("HOSTSHOT shot=%d rewind=%d" % [shot_id, _rewind_ms])
+				print("HOSTSHOT shot=%d rewind=%d by=%s" % [shot_id, _rewind_ms, killer_name])
 			if hold.is_empty():
 				HostHits.damage(body, dmg, killer_name, wname, team)
 			elif not bool(hold["done"]):
@@ -254,10 +291,13 @@ func _on_body_entered(body: Node, feet_y: float = INF) -> void:
 				HostHits.damage(body, dmg, killer_name, wname, team)
 			# Local stats: only when the local player fired this bullet.
 			if _maybe_record_hit() and not is_self:
-				predicted_hits += 1
-				predicted_damage += dmg
-				if _hh_log:
-					print("PREDHIT shot=%d %.1f" % [shot_id, dmg])
+				# (Predictions count soldiers only: a round into a hull is no hit
+				# on its crew.)
+				if body.is_in_group("soldier"):
+					predicted_hits += 1
+					predicted_damage += dmg
+					if _hh_log:
+						print("PREDHIT shot=%d %.1f" % [shot_id, dmg])
 				_spawn_popup(minf(dmg, 100.0), dmg >= 999.0 or wname.ends_with("(headshot)"))
 			queue_free()
 			return
@@ -289,13 +329,18 @@ func _maybe_record_hit() -> bool:
 static var _last_hit_ms := 0
 
 
-static func local_hit_feedback(tree: SceneTree, killer: String, pos: Vector2, amount: float, count_hit: bool = false) -> void:
+static func local_hit_feedback(tree: SceneTree, killer: String, pos: Vector2, amount: float, count_hit: bool = false, victim: Node = null) -> void:
 	var m := tree.current_scene
 	if m == null or amount <= 0.5:
 		return
 	var pl = m.get("player")
 	if pl == null or not is_instance_valid(pl) or str(pl.get("display_name")) != killer:
 		return
+	if victim != pl:
+		predicted_other_hits += 1
+		predicted_other_damage += amount
+		if _hh_log:
+			print("PREDOTHER %s %.1f" % [str(victim.get("display_name")) if victim != null else "?", amount])
 	var now := Time.get_ticks_msec()
 	# Splash can tag several soldiers per throw/rocket; only direct hits
 	# (melee swings) count toward accuracy so it can't pass 100%.

@@ -1,22 +1,29 @@
 extends SceneTree
-## Host-decided hits (#266), gate stage F. Runs a real dedicated server, UDP
-## latency proxies (tools/udp_lag_proxy.py) and scripted smoke clients
-## (scripts/smoke_duel.gd), then reads their logs.
+## Host-decided hits (#266), gate stage F. Runs real dedicated servers, UDP
+## latency proxies (tools/udp_lag_proxy.py: delay, jitter, loss, stalls) and
+## scripted smoke clients (scripts/smoke_duel.gd), then reads their logs.
 ##   godot --headless -s tools/hosthits_test.gd -- --case=honest|cheats [--out=DIR]
+##         [--scenarios=a,b,...] [--parallel=N]
 ##
-## honest: a shooter at ~150 ms round trip fires its AK at a strafing, hopping
-##   victim at ~100 ms (the server keeps the victim alive with medikits). The
-##   host's decisions must match what the shooter's own screen showed, shot by
-##   shot (>= 85 % of its predicted hits land, extra hits <= 30 %), every hit
-##   must do exactly the AK's 22, the victim must have been told the same total,
-##   and the server must log no TRUST line.
+## honest: the SCENARIOS below, each on its own server: one scripted shooter
+##   attacks one scripted victim (kept alive with medikits) over lagging,
+##   jittery, lossy links with stalls — AK, Spas pellets, knife, LAW, M79,
+##   grenades, the buggy gun; victims strafing, jetting or driving; shooters
+##   standing, strafing or jetting; 50-250 ms round trips; a second shooter
+##   joining a match in progress after a round end + map change. Each must
+##   show: no refusal at all (every refusal counter zero, no TRUST line), the
+##   host's hits matching what the shooter's own screen showed (bullets shot by
+##   shot, splash / melee / vehicle-gun hits in total), the weapon's damage per
+##   hit, and the victim told exactly what the host applied. The first batch
+##   also checks that a pre-#266 build is refused with a readable reason.
 ## cheats: modified clients against the same kind of server. Shooters: 3x fire
 ##   rate, 10x damage in their own copy, a magazine that never empties, rounds
 ##   spawned next to the target, silent aim, infinite jet fuel — each refused /
 ##   corrected with its counter and TRUST line, the damage numbers unchanged.
 ##   Victims (no medikits): taking half of / none of the host's hits — logged,
 ##   and the host still kills them.
-## Prints HOSTHITS-TEST ok|FAIL.  (Several minutes: real-time multi-process.)
+## Prints HOSTHITS-SCENARIO lines and, last, HOSTHITS-TEST ok|FAIL.
+## (Several minutes: real-time multi-process.)
 
 const ERR_RE := "FEATURE-FAIL|No multiplayer peer is assigned|SCRIPT ERROR|Parse Error|Cannot load|Identifier not found|Invalid call|Cannot infer|Node not found|Invalid packet|Failed to get path|previously freed|Invalid access|Invalid get|Invalid set|Invalid assignment|Nonexistent function|out of bounds|Lambda capture|while flushing queries"
 # Kicked / force-killed cheaters leave packets for bodies already gone (as in
@@ -38,11 +45,17 @@ func _initialize() -> void:
 	_godot = OS.get_executable_path()
 	_proj = ProjectSettings.globalize_path("res://").rstrip("/")
 	var case := "honest"
+	var names: Array = SCENARIOS.keys()
+	var parallel := 2
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--case="):
 			case = a.substr(7)
 		elif a.begins_with("--out="):
 			_out = a.substr(6)
+		elif a.begins_with("--scenarios="):
+			names = Array(a.substr(12).split(",", false))
+		elif a.begins_with("--parallel="):
+			parallel = maxi(1, int(a.substr(11)))
 	if _out == "":
 		_out = OS.get_user_data_dir().path_join("hosthits_test")
 	elif not _out.is_absolute_path():
@@ -53,7 +66,7 @@ func _initialize() -> void:
 	if case == "cheats":
 		_cheats()
 	else:
-		_honest()
+		_honest(names, parallel)
 	_stop_all()
 	var ok := _bad.is_empty()
 	print("(host-hits test logs in %s)" % _out)
@@ -79,9 +92,9 @@ func _game(args: String, secs: int, logname: String) -> int:
 	return _spawn("exec timeout %d %s --path %s --headless -- %s > %s 2>&1" % [secs, _q(_godot), _q(_proj), args, _q(_out.path_join(logname))])
 
 
-func _proxy(listen: int, to: int, delay: int, seed: int, logname: String) -> int:
-	return _spawn("exec timeout 600 python3 %s --listen %d --to 127.0.0.1:%d --delay-ms %d --jitter-ms 6 --seed %d > %s 2>&1" % [
-		_q(_proj.path_join("tools/udp_lag_proxy.py")), listen, to, delay, seed, _q(_out.path_join(logname))])
+func _proxy(listen: int, to: int, link: String, seed: int, logname: String) -> int:
+	return _spawn("exec timeout 600 python3 %s --listen %d --to 127.0.0.1:%d %s --seed %d > %s 2>&1" % [
+		_q(_proj.path_join("tools/udp_lag_proxy.py")), listen, to, link, seed, _q(_out.path_join(logname))])
 
 
 func _stop(pid: int) -> void:
@@ -121,10 +134,10 @@ func _wait_exit(pid: int, secs: float) -> void:
 
 
 ## Dedicated server on a free-looking port; returns [pid, port] or [] on failure.
-func _host(extra: String, logname: String) -> Array:
+func _host(extra: String, logname: String, map := "Arena") -> Array:
 	for _try in 3:
 		var port := 30000 + randi() % 9000
-		var pid := _game("--dedicated --port %d --map Arena --mode dm --fill=1 --hosthits-log %s" % [port, extra], 600, logname)
+		var pid := _game("--dedicated --port %d --map %s --mode dm --fill=1 --hosthits-log %s" % [port, map, extra], 600, logname)
 		if _wait_for(logname, "listening on port %d" % port, 90.0):
 			OS.delay_msec(3000)
 			return [pid, port]
@@ -170,81 +183,273 @@ func _duel_line(logname: String) -> String:
 
 # ── honest ──
 
-func _honest() -> void:
-	var h := _host("--smoke-medic", "honest_host.log")
-	if h.is_empty():
+# Per link (s_ = the shooter's, v_ = the victim's): one-way delay ms; both get
+# `jitter` (0..N ms extra), `loss` (% dropped each way) and stalls (every
+# ~spike_every s everything is held spike_ms). damage: one hit (0 = splash,
+# any amount; a Vest halves it). match: "shot" (bullets, shot by shot) or
+# "total" (splash / melee / vehicle gun: hit counts).
+const SCENARIOS := {
+	"ak150": {"weapon": "ak", "s_ms": 75, "v_ms": 50, "jitter": 6, "damage": 22.0, "match": "shot"},
+	"ak250": {"weapon": "ak", "s_ms": 125, "v_ms": 100, "jitter": 40, "loss": 3.0, "spike_every": 6.0, "spike_ms": 250,
+		"v_move": "jet", "damage": 22.0, "match": "shot"},
+	"lowping": {"weapon": "ak", "s_ms": 25, "v_ms": 25, "jitter": 4, "s_move": "jet", "damage": 22.0, "match": "shot"},
+	"spas": {"weapon": "spas", "s_ms": 90, "v_ms": 60, "jitter": 30, "loss": 2.0, "s_move": "strafe", "damage": 9.0, "match": "shot"},
+	"knife": {"weapon": "knife", "s_ms": 100, "v_ms": 60, "jitter": 20, "loss": 1.0, "damage": 55.0, "match": "total"},
+	# (Lagrange: flat open ground by its first buggy, no other vehicle near.)
+	"law": {"secs": 52, "weapon": "law", "s_ms": 90, "v_ms": 75, "jitter": 20, "v_move": "jet", "damage": 0.0, "match": "total",
+		"map": "Lagrange", "args": "--smoke-near-vehicle --smoke-offsets=-180,120"},
+	"m79": {"secs": 52, "weapon": "m79", "s_ms": 60, "v_ms": 60, "jitter": 15, "loss": 1.0, "damage": 0.0, "match": "total",
+		"map": "Lagrange", "args": "--smoke-near-vehicle --smoke-offsets=-50,120"},
+	"grenade": {"secs": 52, "weapon": "grenade", "s_ms": 70, "v_ms": 50, "jitter": 15, "damage": 0.0, "match": "total",
+		"map": "Lagrange", "args": "--smoke-near-vehicle --smoke-offsets=-140,120"},
+	"buggy": {"weapon": "buggy", "s_ms": 75, "v_ms": 50, "jitter": 20, "loss": 1.0, "damage": 14.0, "match": "total",
+		"map": "Lagrange", "args": "--smoke-near-vehicle --smoke-offsets=-350,0"},
+	"drive": {"weapon": "ak", "s_ms": 80, "v_ms": 60, "jitter": 20, "v_move": "drive", "damage": 22.0, "match": "shot",
+		"map": "Lagrange", "args": "--smoke-near-vehicle --smoke-offsets=0,-450"},
+	"jip": {"weapon": "ak", "s_ms": 100, "v_ms": 50, "jitter": 25, "loss": 1.0, "damage": 22.0, "match": "shot", "jip": true},
+}
+
+const WEAPON_NAMES := {"ak": "AK-74", "spas": "Spas-12", "knife": "Knife", "law": "LAW", "m79": "M79", "grenade": "Grenade", "buggy": "Buggy MG"}
+
+# Counters that mean the host refused / overrode something a client said.
+const REFUSALS := ["refused_", "aim_refused", "hp_ignored"]
+
+
+func _honest(names: Array, parallel: int) -> void:
+	var first := true
+	var i := 0
+	while i < names.size():
+		var runs: Array = []
+		for n in names.slice(i, i + parallel):
+			if not SCENARIOS.has(n):
+				_bad.append("unknown scenario '%s'" % n)
+				continue
+			runs.append(_sc_start(n))
+		i += parallel
+		for r in runs:
+			_sc_join(r)
+		for r in runs:
+			_sc_play(r)
+		for r in runs:
+			_sc_wait(r)
+		if first and not runs.is_empty() and not (runs[0]["host"] as Array).is_empty():
+			first = false
+			_old_build(int(runs[0]["host"][1]))
+		OS.delay_msec(5500)   # one more HOSTHITS summary
+		for r in runs:
+			if not (r["host"] as Array).is_empty():
+				_stop(int(r["host"][0]))
+			for pid in r["proxies"]:
+				_stop(int(pid))
+		OS.delay_msec(500)
+		for r in runs:
+			_sc_judge(r)
+
+
+func _sc_start(n: String) -> Dictionary:
+	var sc: Dictionary = SCENARIOS[n]
+	var r := {"name": n, "sc": sc, "host": [], "proxies": [], "shooters": [], "victim": 0, "ps": 0}
+	var extra := "--smoke-medic=VIC"
+	if bool(sc.get("jip", false)):
+		extra += " --smoke-round-secs=34"
+	r["host"] = _host(extra, "%s_host.log" % n, str(sc.get("map", "Arena")))
+	return r
+
+
+func _link(sc: Dictionary, pre: String) -> String:
+	return "--delay-ms %d --jitter-ms %d --loss-pct %.1f --spike-every %.1f --spike-ms %d" % [
+		int(sc.get(pre + "ms", 50)), int(sc.get("jitter", 0)), float(sc.get("loss", 0.0)), float(sc.get("spike_every", 0.0)), int(sc.get("spike_ms", 0))]
+
+
+func _sc_join(r: Dictionary) -> void:
+	if (r["host"] as Array).is_empty():
 		return
-	var port: int = h[1]
-	var ps := port + 10   # (port + 1 is the server's query port)
-	var pv := port + 11
-	_proxy(ps, port, 75, 1, "honest_proxy_shooter.log")
-	_proxy(pv, port, 50, 2, "honest_proxy_victim.log")
-	if not _wait_for("honest_proxy_shooter.log", "LAGPROXY listening", 15.0) or not _wait_for("honest_proxy_victim.log", "LAGPROXY listening", 15.0):
-		_bad.append("latency proxies did not start: %s %s" % [_read("honest_proxy_shooter.log").right(200), _read("honest_proxy_victim.log").right(200)])
+	var n: String = r["name"]
+	var sc: Dictionary = r["sc"]
+	var port: int = r["host"][1]
+	r["ps"] = port + 10   # (port + 1 is the server's query port)
+	var pv: int = port + 11
+	r["proxies"].append(_proxy(int(r["ps"]), port, _link(sc, "s_"), 1, "%s_proxy_shooter.log" % n))
+	r["proxies"].append(_proxy(pv, port, _link(sc, "v_"), 2, "%s_proxy_victim.log" % n))
+	if not _wait_for("%s_proxy_shooter.log" % n, "LAGPROXY listening", 15.0) or not _wait_for("%s_proxy_victim.log" % n, "LAGPROXY listening", 15.0):
+		_bad.append("%s: latency proxies did not start" % n)
+		r["host"] = []
 		return
-	var v := _game("--smoke-join --port %d --smoke-secs=44 --smoke-role=victim --clan=vic" % pv, 120, "honest_victim.log")
-	_wait_for("honest_victim.log", "SMOKE-DUEL placed", 60.0)
-	OS.delay_msec(2000)
-	var s := _game("--smoke-join --port %d --smoke-secs=36 --smoke-role=shooter --hosthits-log --clan=sht" % ps, 120, "honest_shooter.log")
-	_wait_exit(s, 110.0)
-	_wait_exit(v, 30.0)
-	# A pre-#266 build (same game version, online protocol 1) is turned away
-	# with a readable reason instead of joining.
+	var jip := bool(sc.get("jip", false))
+	var vsecs := 84 if jip else int(sc.get("secs", 36)) + 8
+	r["victim"] = _game("--smoke-join --port %d --smoke-secs=%d --smoke-role=victim --smoke-move=%s%s --clan=vic %s" % [
+		pv, vsecs, str(sc.get("v_move", "strafe")), " --smoke-vote" if jip else "", str(sc.get("args", ""))], vsecs + 80, "%s_victim.log" % n)
+
+
+func _shooter_cmd(r: Dictionary, secs: int, clan: String) -> String:
+	var sc: Dictionary = r["sc"]
+	return "--smoke-join --port %d --smoke-secs=%d --smoke-role=shooter --smoke-target=VIC --smoke-weapon=%s --smoke-move=%s --hosthits-log --clan=%s %s" % [
+		int(r["ps"]), secs, str(sc.get("weapon", "ak")), str(sc.get("s_move", "stand")), clan, str(sc.get("args", ""))]
+
+
+func _sc_play(r: Dictionary) -> void:
+	if (r["host"] as Array).is_empty():
+		return
+	var n: String = r["name"]
+	if not _wait_for("%s_victim.log" % n, "SMOKE-DUEL placed", 60.0):
+		_bad.append("%s: the victim never got placed" % n)
+	OS.delay_msec(1000)
+	# jip: this shooter plays most of a short round; the round ends, the victim
+	# votes, the map changes, then a second shooter joins the new map.
+	var secs := 24 if bool(r["sc"].get("jip", false)) else int(r["sc"].get("secs", 36))
+	r["shooters"] = [["SHT", _game(_shooter_cmd(r, secs, "sht"), secs + 80, "%s_shooter.log" % n), "%s_shooter.log" % n]]
+
+
+func _sc_wait(r: Dictionary) -> void:
+	if (r["host"] as Array).is_empty():
+		return
+	var n: String = r["name"]
+	for sh in r["shooters"]:
+		_wait_exit(int(sh[1]), 115.0)
+	if bool(r["sc"].get("jip", false)):
+		# A second map line = the map changed (34 s round + winner screen + vote).
+		var until := Time.get_ticks_msec() + 60000
+		while Time.get_ticks_msec() < until and _lines("%s_host.log" % n, "HOSTHITS-MAP ").size() < 2:
+			OS.delay_msec(250)
+		OS.delay_msec(1500)
+		var p2 := _game(_shooter_cmd(r, 32, "shb"), 115, "%s_shooter2.log" % n)
+		r["shooters"].append(["SHB", p2, "%s_shooter2.log" % n])
+		_wait_exit(p2, 115.0)
+	_wait_exit(int(r["victim"]), 45.0)
+
+
+## A pre-#266 build (same game version, online protocol 1) is turned away with
+## a readable reason instead of joining.
+func _old_build(port: int) -> void:
 	var ver := str(ProjectSettings.get_setting("application/config/version", ""))
-	var old := _game("--smoke-join --port %d --smoke-secs=12 --smoke-net-version=%s" % [port, ver], 60, "honest_oldbuild.log")
+	var old := _game("--smoke-join --port %d --smoke-secs=12 --smoke-net-version=%s" % [port, ver], 60, "oldbuild.log")
 	_wait_exit(old, 55.0)
 	var left := ""
-	for line in _lines("honest_oldbuild.log", "NET left the match: "):
+	for line in _lines("oldbuild.log", "NET left the match: "):
 		left = line
 	_log.append("old build: '%s'" % left.substr(20))
 	if not left.contains("Version mismatch: host %s (online protocol %d), you %s (online protocol 1)" % [ver, preload("res://scripts/game_info.gd").NET_PROTOCOL, ver]):
 		_bad.append("an old-protocol client was not refused cleanly ('%s')" % left)
-	OS.delay_msec(5500)   # one more HOSTHITS summary
-	_stop(h[0])
-	# Shot by shot: what the shooter's screen predicted vs what the host decided.
-	var pred := {}
-	for line in _lines("honest_shooter.log", "PREDHIT shot="):
-		pred[int(line.split(" ")[1].substr(5))] = true
-	var host := {}
-	for line in _lines("honest_host.log", "HOSTSHOT shot="):
-		host[int(line.split(" ")[1].substr(5))] = true
-	var both := 0
-	for k in pred.keys():
-		if host.has(k):
-			both += 1
-	var extra := host.size() - both
-	_log.append("predicted=%d host=%d matched=%d extra=%d" % [pred.size(), host.size(), both, extra])
-	if pred.size() < 15:
-		_bad.append("too few predicted hits to judge (%d)" % pred.size())
-	elif float(both) < 0.85 * pred.size():
-		_bad.append("host confirmed only %d of %d predicted hits" % [both, pred.size()])
-	if pred.size() > 0 and float(extra) > 0.30 * pred.size():
-		_bad.append("host added %d hits the shooter never saw (of %d)" % [extra, pred.size()])
-	# Same damage numbers: every hit an AK hit, and the victim was told the total.
-	var total := 0.0
-	var wrong := 0
-	for line in _lines("honest_host.log", "HOSTHIT "):
-		var amt := _amount(line)
-		total += amt
-		# A Vest bonus the victim walked over halves a hit (22 -> 11).
-		if line.begins_with("HOSTHIT «SHT»") and absf(amt - AK_DMG) > 0.01 and absf(amt - AK_DMG * 0.5) > 0.01:
-			wrong += 1
-	if wrong > 0:
-		_bad.append("%d hits worth neither %.0f nor %.0f (vest)" % [wrong, AK_DMG, AK_DMG * 0.5])
-	var vd := _duel_line("honest_victim.log")
-	var told := _kv(vd, "damage_taken")
-	_log.append("host_damage=%.0f victim_told=%.0f" % [total, told])
-	if vd == "" or absf(told - total) > 0.5:
-		_bad.append("victim was told %.0f damage, host applied %.0f" % [told, total])
-	var st := _stats("honest_host.log")
-	_log.append("rewind_avg=%.0fms capped=%d" % [_kv(st, "rewind_ms") / maxf(1.0, _kv(st, "rewind_shots")), int(_kv(st, "rewind_capped"))])
-	var trust := _lines("honest_host.log", "TRUST ")
+
+
+func _sc_judge(r: Dictionary) -> void:
+	var n: String = r["name"]
+	var sc: Dictionary = r["sc"]
+	var bad: Array = []
+	var info: Array = []
+	if (r["host"] as Array).is_empty():
+		bad.append("no server")
+	var hlog := "%s_host.log" % n
+	var st := _stats(hlog)
+	# 1. Nothing an honest client did was refused or overridden.
+	var refused: Array = []
+	for part in st.split(" "):
+		var kv := part.split("=")
+		if kv.size() == 2:
+			for pre in REFUSALS:
+				if kv[0].begins_with(pre) and float(kv[1]) > 0.0:
+					refused.append(part)
+	if not refused.is_empty():
+		bad.append("refused: %s" % " ".join(refused))
+	var trust := _lines(hlog, "TRUST ")
 	if not trust.is_empty():
-		_bad.append("honest clients tripped the host: %s" % str(trust.slice(0, 3)))
-	for f in ["honest_host.log", "honest_victim.log", "honest_shooter.log"]:
-		var e := _errors(f, false)
+		bad.append("TRUST lines: %s" % str(trust.slice(0, 3)))
+	# 2. Per shooter: the host's hits vs the shooter's own screen.
+	var dmg: float = float(sc.get("damage", 0.0))
+	for sh in r["shooters"]:
+		var tag: String = sh[0]
+		var slog: String = sh[2]
+		# (This run's weapon only: a run-over or a wreck's blast is a hit too,
+		# but not one this scenario measures.)
+		var wn: String = WEAPON_NAMES.get(str(sc.get("weapon", "ak")), "")
+		var hits := _lines(hlog, "HOSTHIT «%s»" % tag).filter(func(l: String) -> bool: return l.contains("-> «VIC»") and (wn == "" or l.contains("(%s)" % wn)))
+		var wrong := 0
+		for line in hits:
+			var amt := _amount(line)
+			if dmg > 0.0 and absf(amt - dmg) > 0.01 and absf(amt - dmg * 0.5) > 0.01:
+				wrong += 1
+		if wrong > 0:
+			bad.append("%s: %d hits worth neither %.0f nor %.0f (vest)" % [tag, wrong, dmg, dmg * 0.5])
+		var duel := _duel_line(slog)
+		if duel == "":
+			bad.append("%s never reported (SMOKE-DUEL)" % tag)
+		var need := 8 if bool(sc.get("jip", false)) else 12
+		if str(sc.get("match", "shot")) == "shot":
+			var pred := {}
+			for line in _lines(slog, "PREDHIT shot="):
+				var k := int(line.split(" ")[1].substr(5))
+				pred[k] = int(pred.get(k, 0)) + 1
+			var host := {}
+			for line in _lines(hlog, "HOSTSHOT shot="):
+				if line.ends_with("by=«%s» Player" % tag) or line.contains("by=«%s»" % tag):
+					var k2 := int(line.split(" ")[1].substr(5))
+					host[k2] = int(host.get(k2, 0)) + 1
+			var np := 0
+			var nh := 0
+			var both := 0
+			for k in pred.keys():
+				np += int(pred[k])
+				both += mini(int(pred[k]), int(host.get(k, 0)))
+			for k in host.keys():
+				nh += int(host[k])
+			var extra := nh - both
+			info.append("%s pred=%d host=%d matched=%d extra=%d" % [tag, np, nh, both, extra])
+			if np < need:
+				bad.append("%s: too few predicted hits to judge (%d)" % [tag, np])
+			elif float(both) < 0.85 * np:
+				bad.append("%s: host confirmed only %d of %d predicted hits" % [tag, both, np])
+			if np > 0 and float(extra) > 0.30 * np:
+				bad.append("%s: host added %d hits the shooter never saw (of %d)" % [tag, extra, np])
+		else:
+			# Splash / melee / vehicle gun: hit counts (splash damage depends on
+			# the distance, which differs a little between the two views).
+			var np2 := int(_kv(duel, "predicted_other_hits")) + int(_kv(duel, "predicted_hits"))
+			var nh2 := hits.size()
+			info.append("%s pred=%d host=%d" % [tag, np2, nh2])
+			if np2 < need / 2:
+				bad.append("%s: too few predicted hits to judge (%d)" % [tag, np2])
+			elif float(nh2) < 0.75 * np2:
+				bad.append("%s: host landed only %d of %d predicted hits" % [tag, nh2, np2])
+			if float(nh2) > 1.4 * np2 + 2.0:
+				bad.append("%s: host landed %d hits, its screen showed %d" % [tag, nh2, np2])
+	# 3. The victim was told exactly what the host applied.
+	var total := 0.0
+	for line in _lines(hlog, "HOSTHIT "):
+		if line.contains("-> «VIC»"):
+			total += _amount(line)
+	var told := _kv(_duel_line("%s_victim.log" % n), "damage_taken")
+	info.append("host_damage=%.0f victim_told=%.0f" % [total, told])
+	# (A crew killed with its vehicle is dead on its own screen before the
+	# host's killing hit arrives: only a killing hit may go untold.)
+	var lethal := 0.0
+	for line in _lines(hlog, "HOSTHIT "):
+		if line.contains("-> «VIC»") and line.ends_with("hp 0.0"):
+			lethal += _amount(line)
+	if absf(told - total) > 0.5 and not (told <= total + 0.5 and total - told <= lethal + 0.5):
+		bad.append("victim was told %.0f damage, host applied %.0f" % [told, total])
+	info.append("rewind_avg=%.0fms" % (_kv(st, "rewind_ms") / maxf(1.0, _kv(st, "rewind_shots"))))
+	if bool(sc.get("jip", false)):
+		var maps := _lines(hlog, "HOSTHITS-MAP ")
+		info.append("maps=%s" % ",".join(maps.map(func(l: String) -> String: return l.substr(13))))
+		if maps.size() < 2:
+			bad.append("no map change")
+	var logs := [hlog, "%s_victim.log" % n]
+	for sh in r["shooters"]:
+		logs.append(sh[2])
+	for f in logs:
+		# (A map change: state packets already on their way to the old map's
+		# bodies arrive at the new map and are dropped with an engine error —
+		# as before #266; counted, not failed.)
+		var drops: bool = bool(sc.get("jip", false)) and str(f) == hlog
+		var e := _errors(f, drops)
+		if drops:
+			info.append("map-change drops=%d" % (_errors(f, false) - e))
 		if e > 0:
-			_bad.append("%d error lines in %s" % [e, f])
+			bad.append("%d error lines in %s" % [e, f])
+	print("HOSTHITS-SCENARIO %s %s %s | %s" % [n, "ok" if bad.is_empty() else "FAIL", str(bad), " ".join(info)])
+	_log.append("%s:%s" % [n, "ok" if bad.is_empty() else "FAIL"])
+	for b in bad:
+		_bad.append("%s: %s" % [n, b])
 
 
 # ── cheats ──
@@ -254,8 +459,7 @@ const TAGS := {"dmg": "DMG", "rate": "RATE", "ammo": "AMMO", "origin": "ORIG", "
 
 func _cheats() -> void:
 	# A: an honest victim (tagged VIC, kept alive with medikits) under fire from
-	# six modified shooters at once. (Each server stays well inside the 5 min
-	# round, so its counters cover the whole run.)
+	# six modified shooters at once.
 	var h := _host("--smoke-medic=VIC", "cheat_host.log")
 	if h.is_empty():
 		return
@@ -299,7 +503,7 @@ func _cheats() -> void:
 	var hits := _lines("cheat_host.log", "HOSTHIT «DMG»")
 	var wrong := 0
 	for line in hits:
-		if absf(_amount(line) - AK_DMG) > 0.01:
+		if absf(_amount(line) - AK_DMG) > 0.01 and absf(_amount(line) - AK_DMG * 0.5) > 0.01:
 			wrong += 1
 	_log.append("dmg: its screen %.0f over %d hits, host %d hits all %.0f=%s" % [_kv(dmg, "predicted_damage"), int(_kv(dmg, "predicted_hits")), hits.size(), AK_DMG, str(wrong == 0)])
 	if _kv(dmg, "predicted_hits") < 3 or _kv(dmg, "predicted_damage") < 200.0 * _kv(dmg, "predicted_hits"):

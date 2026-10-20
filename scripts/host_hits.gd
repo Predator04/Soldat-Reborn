@@ -35,7 +35,8 @@ const HIST_MS := 520             # hitbox history kept per body
 const BROAD_SPEED := 1300.0      # px/s no soldier exceeds (falls cap at 1200)
 
 ## Counters (host): what was decided and what was refused. Tests read these
-## (and the HOSTHITS / TRUST log lines); reset per match.
+## (and the HOSTHITS / TRUST log lines); they run for the whole process (map
+## changes included), like any ops counter.
 static var stats: Dictionary = {}
 ## Per shooter name: [hits, damage] the host applied to remote humans.
 static var by_shooter: Dictionary = {}
@@ -49,8 +50,6 @@ static var _rids_dirty := true
 
 
 static func reset_match() -> void:
-	stats.clear()
-	by_shooter.clear()
 	_remote = _remote.filter(func(n) -> bool: return is_instance_valid(n))
 	_rids_dirty = true
 	_view_host = 0
