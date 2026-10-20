@@ -17,6 +17,8 @@ extends Node
 ##                         (default 4200: past a fresh victim's spawn protection)
 ##   --smoke-burst         fire two rounds, then pause 2.5 s (and repeat)
 ##   --smoke-vote          vote for the first map offered at the end of a round
+##   --smoke-done-file=F   (victim) report and leave 1.5 s after file F appears
+##                         (the test writes it once every shooter has left)
 ##   --smoke-cheat=KIND    plays a modified client (AK only):
 ##       rate (3x fire rate), dmg (10x damage in its own copy), ammo (never
 ##       reloads), origin (spawns its rounds next to the target), silentaim
@@ -56,6 +58,9 @@ var _cook_want := 0.5
 var _voted := false
 var _seat_t := 0.0
 var _place_until := 0
+var _done_file := ""
+var _done_check := 0.0
+var _done_at := -1.0
 var deaths := 0
 var shots := 0
 var lives := 0
@@ -84,6 +89,8 @@ func _ready() -> void:
 			burst = true
 		elif a == "--smoke-vote":
 			vote = true
+		elif a.begins_with("--smoke-done-file="):
+			_done_file = a.substr(18)
 	if move == "":
 		move = "strafe" if role == "victim" else "stand"
 	if weapon in ["knife", "chainsaw"]:
@@ -118,6 +125,21 @@ func _release_all() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if _done_file != "":
+		_done_check -= delta
+		if _done_at < 0.0 and _done_check <= 0.0:
+			_done_check = 0.25
+			if FileAccess.file_exists(_done_file):
+				_done_at = 1.5
+		if _done_at >= 0.0:
+			_done_at -= delta
+			if _done_at < 0.0:
+				_done_file = ""
+				_release_all()
+				report()
+				Net.leave()
+				get_tree().quit()
+				return
 	var m := get_tree().current_scene
 	if vote and not _voted and m != null and m.get("next_map_choices") != null and not (m.next_map_choices as Array).is_empty() \
 			and m.has_method("vote_next_map"):

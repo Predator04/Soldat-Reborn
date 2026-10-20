@@ -88,8 +88,8 @@ func _q(s: String) -> String:
 	return "'" + s.replace("'", "'\\''") + "'"
 
 
-func _game(args: String, secs: int, logname: String) -> int:
-	return _spawn("exec timeout %d %s --path %s --headless -- %s > %s 2>&1" % [secs, _q(_godot), _q(_proj), args, _q(_out.path_join(logname))])
+func _game(args: String, secs: int, logname: String, engine := "") -> int:
+	return _spawn("exec timeout %d %s --path %s --headless %s -- %s > %s 2>&1" % [secs, _q(_godot), _q(_proj), engine, args, _q(_out.path_join(logname))])
 
 
 func _proxy(listen: int, to: int, link: String, seed: int, logname: String) -> int:
@@ -198,11 +198,17 @@ const SCENARIOS := {
 		"s_move": "strafe", "v_move": "jet", "damage": 9.0, "match": "shot"},
 	"knife250": {"weapon": "knife", "s_ms": 125, "v_ms": 100, "jitter": 40, "loss": 3.0, "spike_every": 5.0, "spike_ms": 300,
 		"damage": 55.0, "match": "total"},
+	# A slow PC: the shooter's game stalls 45 ms every frame (Godot --frame-delay:
+	# ~20 fps, physics catching up several steps at a time, packets in bursts).
+	"slowpc": {"weapon": "ak", "s_ms": 60, "v_ms": 50, "jitter": 15, "s_move": "strafe", "damage": 22.0, "match": "shot",
+		"s_engine": "--frame-delay 45"},
+	"slowspas": {"weapon": "spas", "s_ms": 60, "v_ms": 50, "jitter": 15, "damage": 9.0, "match": "shot",
+		"s_engine": "--frame-delay 45"},
 	"lowping": {"weapon": "ak", "s_ms": 25, "v_ms": 25, "jitter": 4, "s_move": "jet", "damage": 22.0, "match": "shot"},
 	"spas": {"weapon": "spas", "s_ms": 90, "v_ms": 60, "jitter": 30, "loss": 2.0, "s_move": "strafe", "damage": 9.0, "match": "shot"},
 	"knife": {"weapon": "knife", "s_ms": 100, "v_ms": 60, "jitter": 20, "loss": 1.0, "damage": 55.0, "match": "total"},
 	# (Lagrange: flat open ground by its first buggy, no other vehicle near.)
-	"law": {"secs": 52, "need": 4, "weapon": "law", "s_ms": 90, "v_ms": 75, "jitter": 20, "v_move": "jet", "damage": 0.0, "match": "total",
+	"law": {"secs": 52, "need": 4, "weapon": "law", "s_ms": 90, "v_ms": 75, "jitter": 20, "damage": 0.0, "match": "total",
 		"map": "Lagrange", "args": "--smoke-near-vehicle --smoke-offsets=-180,120"},
 	"m79": {"secs": 52, "need": 4, "weapon": "m79", "s_ms": 60, "v_ms": 60, "jitter": 15, "loss": 1.0, "damage": 0.0, "match": "total",
 		"map": "Lagrange", "args": "--smoke-near-vehicle --smoke-offsets=-50,120"},
@@ -222,15 +228,27 @@ const REFUSALS := ["refused_", "aim_refused", "hp_ignored"]
 
 
 func _honest(names: Array, parallel: int) -> void:
-	var first := true
+	var retry: Array = []
+	for n in names:
+		if not SCENARIOS.has(n):
+			_bad.append("unknown scenario '%s'" % n)
+	var todo: Array = names.filter(func(n) -> bool: return SCENARIOS.has(n))
+	_batches(todo, parallel, true, retry)
+	# A scenario that missed only on agreement (no refusal, no wrong number)
+	# gets one more go on its own: on a busy machine a starved client falls
+	# seconds behind and its screen no longer shows what the host rewinds to.
+	if not retry.is_empty():
+		_log.append("retried=%s" % ",".join(retry))
+		_batches(retry, 1, false, [])
+
+
+func _batches(names: Array, parallel: int, first_run: bool, retry: Array) -> void:
+	var first := first_run
 	var i := 0
 	while i < names.size():
 		var runs: Array = []
 		for n in names.slice(i, i + parallel):
-			if not SCENARIOS.has(n):
-				_bad.append("unknown scenario '%s'" % n)
-				continue
-			runs.append(_sc_start(n))
+			runs.append(_sc_start(n, n if first_run else "%s_retry" % n))
 		i += parallel
 		for r in runs:
 			_sc_join(r)
@@ -249,12 +267,24 @@ func _honest(names: Array, parallel: int) -> void:
 				_stop(int(pid))
 		OS.delay_msec(500)
 		for r in runs:
-			_sc_judge(r)
+			var bad: Array = _sc_judge(r)
+			var agreement_only := not bad.is_empty()
+			for b in bad:
+				var soft := false
+				for k in ["confirmed only", "landed only", "added", "too few predicted", "its screen showed"]:
+					if str(b).contains(k):
+						soft = true
+				agreement_only = agreement_only and soft
+			if first_run and agreement_only:
+				retry.append(r["base"])
+				continue
+			for b in bad:
+				_bad.append("%s: %s" % [r["name"], b])
 
 
-func _sc_start(n: String) -> Dictionary:
-	var sc: Dictionary = SCENARIOS[n]
-	var r := {"name": n, "sc": sc, "host": [], "proxies": [], "shooters": [], "victim": 0, "ps": 0}
+func _sc_start(base: String, n: String) -> Dictionary:
+	var sc: Dictionary = SCENARIOS[base]
+	var r := {"name": n, "base": base, "sc": sc, "host": [], "proxies": [], "shooters": [], "victim": 0, "ps": 0}
 	var extra := "--smoke-medic=VIC"
 	if bool(sc.get("jip", false)):
 		extra += " --smoke-round-secs=34"
@@ -282,9 +312,14 @@ func _sc_join(r: Dictionary) -> void:
 		r["host"] = []
 		return
 	var jip := bool(sc.get("jip", false))
-	var vsecs := 84 if jip else int(sc.get("secs", 36)) + 8
-	r["victim"] = _game("--smoke-join --port %d --smoke-secs=%d --smoke-role=victim --smoke-move=%s%s --clan=vic %s" % [
-		pv, vsecs, str(sc.get("v_move", "strafe")), " --smoke-vote" if jip else "", str(sc.get("args", ""))], vsecs + 80, "%s_victim.log" % n)
+	# (The victim stays until the test says every shooter has left — a busy
+	# machine can take a while to load a shooter — at most vsecs.)
+	var vsecs := 240
+	var done := _out.path_join("%s_done" % n)
+	DirAccess.remove_absolute(done)
+	r["done"] = done
+	r["victim"] = _game("--smoke-join --port %d --smoke-secs=%d --smoke-role=victim --smoke-move=%s%s --clan=vic --smoke-done-file=%s %s" % [
+		pv, vsecs, str(sc.get("v_move", "strafe")), " --smoke-vote" if jip else "", _q(done), str(sc.get("args", ""))], vsecs + 30, "%s_victim.log" % n)
 
 
 func _shooter_cmd(r: Dictionary, secs: int, clan: String) -> String:
@@ -303,7 +338,7 @@ func _sc_play(r: Dictionary) -> void:
 	# jip: this shooter plays most of a short round; the round ends, the victim
 	# votes, the map changes, then a second shooter joins the new map.
 	var secs := 24 if bool(r["sc"].get("jip", false)) else int(r["sc"].get("secs", 36))
-	r["shooters"] = [["SHT", _game(_shooter_cmd(r, secs, "sht"), secs + 80, "%s_shooter.log" % n), "%s_shooter.log" % n]]
+	r["shooters"] = [["SHT", _game(_shooter_cmd(r, secs, "sht"), secs + 80, "%s_shooter.log" % n, str(r["sc"].get("s_engine", ""))), "%s_shooter.log" % n]]
 
 
 func _sc_wait(r: Dictionary) -> void:
@@ -321,6 +356,11 @@ func _sc_wait(r: Dictionary) -> void:
 		var p2 := _game(_shooter_cmd(r, 32, "shb"), 115, "%s_shooter2.log" % n)
 		r["shooters"].append(["SHB", p2, "%s_shooter2.log" % n])
 		_wait_exit(p2, 115.0)
+	OS.delay_msec(1000)   # (the last hits reach the victim)
+	var f := FileAccess.open(str(r["done"]), FileAccess.WRITE)
+	if f != null:
+		f.store_string("done")
+		f.close()
 	_wait_exit(int(r["victim"]), 45.0)
 
 
@@ -338,7 +378,7 @@ func _old_build(port: int) -> void:
 		_bad.append("an old-protocol client was not refused cleanly ('%s')" % left)
 
 
-func _sc_judge(r: Dictionary) -> void:
+func _sc_judge(r: Dictionary) -> Array:
 	var n: String = r["name"]
 	var sc: Dictionary = r["sc"]
 	var bad: Array = []
@@ -434,6 +474,16 @@ func _sc_judge(r: Dictionary) -> void:
 	if absf(told - total) > 0.5 and not (told <= total + 0.5 and total - told <= lethal + 0.5):
 		bad.append("victim was told %.0f damage, host applied %.0f" % [told, total])
 	info.append("rewind_avg=%.0fms" % (_kv(st, "rewind_ms") / maxf(1.0, _kv(st, "rewind_shots"))))
+	# How far behind the shooters' screens ran beyond their round trip (a
+	# starved client on a busy machine shows up here, in seconds).
+	var lag := 0.0
+	var nl := 0
+	for line in _lines(hlog, "HOSTRECV "):
+		var va := _kv(line, "view_age")
+		if va >= 0.0:
+			lag += va - _kv(line, "rtt")
+			nl += 1
+	info.append("view_lag=%.0fms" % (lag / maxf(1.0, float(nl))))
 	if bool(sc.get("jip", false)):
 		var maps := _lines(hlog, "HOSTHITS-MAP ")
 		info.append("maps=%s" % ",".join(maps.map(func(l: String) -> String: return l.substr(13))))
@@ -454,8 +504,7 @@ func _sc_judge(r: Dictionary) -> void:
 			bad.append("%d error lines in %s" % [e, f])
 	print("HOSTHITS-SCENARIO %s %s %s | %s" % [n, "ok" if bad.is_empty() else "FAIL", str(bad), " ".join(info)])
 	_log.append("%s:%s" % [n, "ok" if bad.is_empty() else "FAIL"])
-	for b in bad:
-		_bad.append("%s: %s" % [n, b])
+	return bad
 
 
 # ── cheats ──

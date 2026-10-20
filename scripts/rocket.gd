@@ -41,6 +41,8 @@ var hold: Dictionary = {}
 # explosion the shooter reports hurt anyone if it happened on that path.
 const GHOST_TOL := 48.0
 const GHOST_AHEAD := 0.15     # s: the report may beat the ghost by this much
+const GHOST_AHEAD_MAX := 0.6  # s: ... or by what its reports account for, up to this
+var _g_reports := 0           # shooter's state reports received for this rocket
 var _ghost := false
 var _g_pos := Vector2.ZERO
 var _g_vel := Vector2.ZERO
@@ -155,6 +157,7 @@ func _physics_process(delta: float) -> void:
 
 @rpc("authority", "call_remote", "reliable")
 func net_projectile_state(pos: Vector2, dir: Vector2) -> void:
+	_g_reports += 1
 	_target_pos = pos
 	_target_dir = dir
 	_has_target = true
@@ -189,7 +192,7 @@ func _ghost_step(delta: float) -> void:
 	_g_vel = nv
 	_g_pos = np
 	_g_path.append(np)
-	if _g_path.size() > 40:
+	if _g_path.size() > 900:   # (15 s of flight: the whole of any rocket's)
 		_g_path.pop_front()
 
 
@@ -197,13 +200,40 @@ func _ghost_dist(p: Vector2) -> float:
 	var best := INF
 	var pts: Array = _g_path.duplicate()
 	if not _g_blocked:
-		pts.append(_g_pos + _g_vel * GHOST_AHEAD)
+		# The report may be ahead of the ghost: by GHOST_AHEAD, or by as much
+		# flight as the shooter's reports so far account for (the first 0.2 s into the flight, then 1 / BROADCAST_HZ apart in its game time, however a stall bunched
+		# them) beyond the ghost's own, at most GHOST_AHEAD_MAX.
+		var told := (0.15 + float(_g_reports) / BROADCAST_HZ) if _g_reports > 0 else 0.0
+		var ahead := clampf(told - float(_g_path.size()) / float(Engine.physics_ticks_per_second), GHOST_AHEAD, GHOST_AHEAD_MAX)
+		pts.append_array(_ghost_ahead(ahead))
 	for i in pts.size():
 		if i == 0:
 			best = minf(best, p.distance_to(pts[0]))
 		else:
 			best = minf(best, p.distance_to(Geometry2D.get_closest_point_to_segment(p, pts[i - 1], pts[i])))
 	return best
+
+
+## Where the ghost will be over the next `secs` (same integration, stops at walls).
+func _ghost_ahead(secs: float) -> Array:
+	var out: Array = []
+	var pos := _g_pos
+	var vel := _g_vel
+	var dt := 1.0 / 30.0
+	var t := 0.0
+	while t < secs:
+		var step := minf(dt, secs - t)
+		if grav > 0.0:
+			vel.y += grav * MatchConfig.mod_gravity() * step
+		var np := pos + vel * step
+		var hit := HostHits.solid_ray(get_world_2d(), pos, np)
+		if not hit.is_empty():
+			out.append(hit["position"])
+			break
+		out.append(np)
+		pos = np
+		t += step
+	return out
 
 
 func _ghost_allows(p: Vector2) -> bool:

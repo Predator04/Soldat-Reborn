@@ -629,7 +629,7 @@ if has F; then
   ft killcam killcam_test.gd 60 KILLCAM-TEST "kill cam: rewind w/ slow-mo, respawn waits, skip, live follow"
   ft lagcomp lagcomp_test.gd 60 LAGCOMP-TEST "lag compensation: hits where the shooter saw you, capped"
   # #266: real dedicated server + UDP latency proxies + scripted clients (a few minutes each).
-  ft hosthits hosthits_test.gd 420 HOSTHITS-TEST "host-decided hits (#266): honest shooter at ~150 ms vs a strafing victim at ~100 ms — the host confirms what the shooter saw, shot by shot, AK damage exact, victim told the same, no TRUST line; an old-protocol client is refused cleanly" "--case=honest --out=$OUT/hosthits"
+  ft hosthits hosthits_test.gd 1500 HOSTHITS-TEST "host-decided hits (#266): honest duels over 50-250 ms links with jitter, loss and stalls (AK, Spas, knife, LAW, M79, grenades, buggy gun; strafing / jetting / driving victims; a join after a map change) — zero refusals, the host confirms what each shooter saw, damage exact, victims told the same; an old-protocol client is refused cleanly" "--case=honest --out=$OUT/hosthits"
   ft hostcheat hosthits_test.gd 420 HOSTHITS-TEST "host-decided hits (#266): 10x damage / 3x fire rate / endless magazine / rounds spawned at the target / silent aim / infinite fuel refused or corrected (counters + TRUST lines); half-damage / godmode victims logged and still killed by the host" "--case=cheats --out=$OUT/hostcheat"
   ft quickplay quickplay_test.gd 60 QUICKPLAY-TEST "quick play: no game online -> bot match"
   ft name name_test.gd 60 NAME-TEST "name required before Training / online, easy rename"

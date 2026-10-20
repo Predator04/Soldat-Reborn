@@ -347,6 +347,29 @@ func pos_at_stamp(stamp: int) -> Variant:
 	return (e[1] as Vector2) + (e[2] as Vector2) * minf(float(stamp - int(e[0])), float(TRACK_AHEAD_MS)) / 1000.0
 
 
+## How far `at` (a muzzle) lies beyond anywhere the body could have been at
+## its moment `stamp`: per state sample within ORIGIN_WINDOW_MS of it, the
+## distance less what the body could cover in between (its speed then, plus
+## room to speed up). INF: no sample that near (nothing to go by).
+const ORIGIN_WINDOW_MS := 500
+const ORIGIN_ACCEL := 600.0        # px/s of speed change allowed in between
+
+func origin_off(at: Vector2, stamp: int) -> float:
+	var best := INF
+	if stamp <= 0:
+		return best
+	for i in range(_track.size() - 1, -1, -1):
+		var e: Array = _track[i]
+		var dt := float(absi(int(e[0]) - stamp)) / 1000.0
+		if int(e[0]) < stamp - ORIGIN_WINDOW_MS:
+			break
+		if dt * 1000.0 > float(ORIGIN_WINDOW_MS):
+			continue
+		var reach := ((e[2] as Vector2).length() * 1.25 + ORIGIN_ACCEL) * dt
+		best = minf(best, maxf(0.0, at.distance_to(e[1]) - reach))
+	return best
+
+
 ## The streamed aims just before and just after the moment `stamp`: [a0, a1]
 ## (angles; null where there is none yet / any more).
 func aims_around(stamp: int) -> Array:
@@ -516,7 +539,12 @@ static func clock_ok(peer: int, gstamp: int) -> bool:
 		clock_note(peer, gstamp)
 		return true
 	clock_note(peer, gstamp)
-	return float(gstamp - Time.get_ticks_msec()) <= float(c[0]) + CLOCK_SLACK_MS
+	var lead := float(gstamp - Time.get_ticks_msec())
+	if lead <= float(c[0]) + CLOCK_SLACK_MS:
+		return true
+	if OS.get_cmdline_user_args().has("--hosthits-log"):
+		print("HOSTCLOCK peer=%d lead=%.0f ref=%.0f learned_for=%d" % [peer, lead, float(c[0]), Time.get_ticks_msec() - int(c[2])])
+	return false
 
 
 ## One round out of `slot`'s magazine (`mag` rounds; one round of slack).
@@ -529,12 +557,14 @@ func take_round(slot: int, mag: int) -> bool:
 
 
 ## The state stream's reload flag for the active slot: a reload the host saw
-## run for most of its length refills the magazine.
-func note_reload(slot: int, reloading: bool, mag: int, reload_secs: float) -> void:
+## run for most of its length refills the magazine. Timed on the owner's game
+## clock (`gstamp`) when it says: packets a stall bunched together still show
+## how long the reload really ran.
+func note_reload(slot: int, reloading: bool, mag: int, reload_secs: float, gstamp := 0) -> void:
 	if not reloading:
 		_reload_slot = -999
 		return
-	var now := Time.get_ticks_msec()
+	var now := gstamp if gstamp > 0 else Time.get_ticks_msec()
 	if _reload_slot != slot:
 		_reload_slot = slot
 		_reload_since = now
@@ -550,8 +580,10 @@ func refill_slot(slot: int) -> void:
 	_mags.erase(slot)
 
 
-func take_grenade() -> bool:
-	var now := Time.get_ticks_msec()
+## One grenade from the belt, no sooner after the last than a throw allows
+## (by the thrower's game clock `stamp` when it says, else arrivals).
+func take_grenade(stamp := 0) -> bool:
+	var now := stamp if stamp > 0 else Time.get_ticks_msec()
 	if now - _last_gren_ms < GRENADE_GAP_MS:
 		return false
 	if grenades <= -1:

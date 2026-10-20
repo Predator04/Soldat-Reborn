@@ -356,10 +356,16 @@ func net_vehicle_state(vid: int, pos: Vector2, vel: Vector2, tilt: float, f: flo
 
 
 ## How far from a vehicle's copy here its gun's muzzle may be: the copy
-## trails the driver's own by the trip here, more the faster it moves.
-static func _gun_reach(v: Node, base: float) -> float:
+## trails the driver's own by the trip here (the shooter's measured round
+## trip on the host; half a second elsewhere), more the faster it moves.
+func _gun_reach(v: Node, base: float, shooter: Node = null) -> float:
 	var vel = v.get("velocity")
-	return base + ((vel as Vector2).length() * 0.35 if vel is Vector2 else 0.0)
+	if not vel is Vector2:
+		return base
+	var secs := 0.85
+	if Net.is_host() and shooter != null and main.get("_net") != null and main._net.has_method("peer_rtt_ms"):
+		secs = 0.35 + float(main._net.peer_rtt_ms(_peer_of(shooter))) / 1000.0
+	return base + (vel as Vector2).length() * secs
 
 
 func net_vehicle_fire(vid: int, muzzle: Vector2, dir: Vector2, stamp: int = 0) -> void:
@@ -372,14 +378,14 @@ func net_vehicle_fire(vid: int, muzzle: Vector2, dir: Vector2, stamp: int = 0) -
 	if Net.is_networked() and Net.is_host():
 		var snd := main.multiplayer.get_remote_sender_id()
 		if snd != 0 and snd != main.multiplayer.get_unique_id() and snd == _peer_of(shooter) \
-				and not _gun_ok(shooter, "%s gun" % str(v.get("kind")), float(v.get("GUN_RATE")), muzzle, (v as Node2D).global_position, _gun_reach(v, 90.0), stamp):
+				and not _gun_ok(shooter, "%s gun" % str(v.get("kind")), float(v.get("GUN_RATE")), muzzle, (v as Node2D).global_position, _gun_reach(v, 90.0, shooter), stamp):
 			return
 	if _vehicle_relay("net_vehicle_fire", [vid, muzzle, dir, stamp], _peer_of(shooter)):
 		return
 	if Net.is_networked() and not Net.is_host() and main.multiplayer.get_remote_sender_id() != 1:
 		return
 	# The muzzle must be on the buggy (no firing from across the map).
-	if muzzle.distance_to((v as Node2D).global_position) > _gun_reach(v, 90.0):
+	if muzzle.distance_to((v as Node2D).global_position) > _gun_reach(v, 90.0, shooter):
 		return
 	v.apply_fire(muzzle, dir.normalized())
 
@@ -443,7 +449,7 @@ func net_vehicle_fire_seat(vid: int, seat: int, muzzle: Vector2, dir: Vector2, s
 			# #266: spacing by the pilot's game clock when it says (a stall
 			# bunching two salvos is no reason to drop one), else arrivals.
 			if stamp > 0:
-				if not _gun_ok(shooter, "%s rockets" % str(v.get("kind")), float(v.seat_fire_rate(seat)) if v.has_method("seat_fire_rate") else 3.0, muzzle, (v as Node2D).global_position, _gun_reach(v, 120.0), stamp):
+				if not _gun_ok(shooter, "%s rockets" % str(v.get("kind")), float(v.seat_fire_rate(seat)) if v.has_method("seat_fire_rate") else 3.0, muzzle, (v as Node2D).global_position, _gun_reach(v, 120.0, shooter), stamp):
 					return
 			elif not v.fire_seat_ready(seat):
 				return
@@ -451,7 +457,7 @@ func net_vehicle_fire_seat(vid: int, seat: int, muzzle: Vector2, dir: Vector2, s
 		return
 	if Net.is_networked() and not Net.is_host() and main.multiplayer.get_remote_sender_id() != 1:
 		return
-	if muzzle.distance_to((v as Node2D).global_position) > _gun_reach(v, 120.0):
+	if muzzle.distance_to((v as Node2D).global_position) > _gun_reach(v, 120.0, shooter):
 		return
 	v.apply_fire_seat(seat, muzzle, dir.normalized())
 

@@ -32,6 +32,7 @@ var _exploded := false
 # the thrower reports — no faster than a grenade can go, never through a wall
 # — and a grenade that broke the rules explodes harmlessly (so do its frags).
 const CHECK_MAX_SPEED := 2500.0   # px/s (a long fall; throws are <= 650)
+var _chk_sum := 0.0                # host: flight time the reports so far account for
 const CHECK_WALL_PX := 20.0       # solid crossed between two reports (corners graze less)
 var harmless := false
 var _check := false
@@ -152,6 +153,13 @@ func _check_flight(p: Vector2) -> void:
 		_chk_pos = _spawn_pos
 		_chk_ms = _spawn_ms
 	var dt: float = maxf(0.0, float(now - _chk_ms) / 1000.0)
+	# The thrower sends its first report 0.2 s into the flight and the rest
+	# 1 / BROADCAST_HZ apart (its game time), however bunched they arrive —
+	# never more of that than the host's own time since the throw, + 0.5 s.
+	var cadence := 0.2 if first else 1.0 / BROADCAST_HZ
+	if _chk_sum + cadence <= float(now - _spawn_ms) / 1000.0 + 0.5:
+		dt = maxf(dt, cadence)
+	_chk_sum += dt
 	var why := ""
 	var moved := p.distance_to(_chk_pos)
 	if moved > 60.0 + CHECK_MAX_SPEED * dt:

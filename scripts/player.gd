@@ -1704,7 +1704,7 @@ func _explode_in_hand() -> void:
 	if Net.is_networked():
 		var pid := _next_proj_id
 		_next_proj_id += 1
-		_cast("net_grenade", [global_position + Vector2(0, -8), Vector2.ZERO, 0.0, _cook_cluster, pid, fuse_left])
+		_cast("net_grenade", [global_position + Vector2(0, -8), Vector2.ZERO, 0.0, _cook_cluster, pid, fuse_left, HostHits.game_ms()])
 	else:
 		net_grenade(global_position + Vector2(0, -8), Vector2.ZERO, 0.0, _cook_cluster, 0, fuse_left)
 	# A grenade going off in your fist is not survivable (the blast alone
@@ -1735,7 +1735,7 @@ func _throw_grenade(cook: float = 0.0) -> void:
 	if Net.is_networked():
 		var pid := _next_proj_id
 		_next_proj_id += 1
-		_cast("net_grenade", [g_pos, g_vel, g_ang, _cook_cluster, pid, fuse_left])
+		_cast("net_grenade", [g_pos, g_vel, g_ang, _cook_cluster, pid, fuse_left, HostHits.game_ms()])
 	else:
 		net_grenade(g_pos, g_vel, g_ang, _cook_cluster, 0, fuse_left)
 
@@ -1808,7 +1808,7 @@ func _die() -> void:
 		if Net.is_networked() and multiplayer.has_multiplayer_peer() and is_multiplayer_authority():
 			var pid := _next_proj_id
 			_next_proj_id += 1
-			_cast("net_grenade", [global_position + Vector2(0, -8), Vector2(0, -60), 0.0, _cook_cluster, pid, left])
+			_cast("net_grenade", [global_position + Vector2(0, -8), Vector2(0, -60), 0.0, _cook_cluster, pid, left, HostHits.game_ms()])
 		elif not Net.is_networked():
 			net_grenade(global_position + Vector2(0, -8), Vector2(0, -60), 0.0, _cook_cluster, 0, left)
 	Sfx.gib(global_position)
@@ -1947,7 +1947,7 @@ func net_state(pos: Vector2, vel: Vector2, aim: Vector2, face: float, jetting: b
 			var slot := (100 + sec_i) if use_sec else wi
 			var rw := _weapon_for_slot(slot)
 			if not rw.is_empty():
-				g.note_reload(slot, is_reloading, int(rw["mag"]), float(rw["reload"]))
+				g.note_reload(slot, is_reloading, int(rw["mag"]), float(rw["reload"]), gstamp)
 			if force != "":
 				_trust_force_death(force)
 				return
@@ -2103,7 +2103,7 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_
 
 
 @rpc("any_peer", "call_remote", "reliable")
-func net_grenade(g_pos: Vector2, g_vel: Vector2, g_ang: float, cluster: bool = false, proj_id: int = 0, fuse_left: float = -1.0) -> void:
+func net_grenade(g_pos: Vector2, g_vel: Vector2, g_ang: float, cluster: bool = false, proj_id: int = 0, fuse_left: float = -1.0, stamp: int = 0) -> void:
 	if _host_checks_sender():
 		# #266: no more grenades than the soldier carries, from its own hand,
 		# no harder than a full wind-up throws.
@@ -2113,14 +2113,14 @@ func net_grenade(g_pos: Vector2, g_vel: Vector2, g_ang: float, cluster: bool = f
 			why = "thrown %.0f px from its body" % off
 		elif g_vel.length() > 700.0 or not is_finite(g_vel.x) or not is_finite(g_vel.y):
 			why = "thrown at %.0f px/s" % g_vel.length()
-		elif not _trust.take_grenade():
+		elif not _trust.take_grenade(stamp):
 			why = "more grenades than it carries (or faster than it can throw)"
 		if why != "":
 			if _trust.flag("grenade", why):
 				_trust_force_death("shots (grenades)")
 			return
 		fuse_left = minf(fuse_left, maxf(GRENADE_FUSE, CLUSTER_FUSE))
-	if not _net_accept("net_grenade", [g_pos, g_vel, g_ang, cluster, proj_id, fuse_left]):
+	if not _net_accept("net_grenade", [g_pos, g_vel, g_ang, cluster, proj_id, fuse_left, stamp]):
 		return
 	_trust_note_attack()
 	var g := grenade_scene.instantiate()
@@ -2735,16 +2735,21 @@ func _host_shot_check(shot_pos: Vector2, dirs: PackedVector2Array, w: Dictionary
 	if at_shot != null:
 		base = at_shot
 	var riding := _trust_riding()
+	var origin_wait := false
 	if not riding:
-		var lim := 80.0 + _net_vel.length() * 0.1
-		var off := shot_pos.distance_to(base)
-		if off > lim:
+		# Beyond where its own timeline puts the body around that moment.
+		var off := g.origin_off(shot_pos, stamp)
+		if off == INF:
+			# No state near that moment yet (its stream is running late): the
+			# shot's hits wait for one (`hold`) unless it is at the body anyway.
+			origin_wait = shot_pos.distance_to(_net_base_pos()) > 80.0 + _net_vel.length() * 0.1
+		elif off > 80.0:
 			# Just spawned / reset: the body may have moved to a spot the host
 			# hasn't heard about yet — refuse quietly (no flag) until it has.
 			if g.placed_recently():
 				HostHits.count("refused_origin_quiet")
 				return no
-			if g.flag("origin", "%s fired %.0f px from its body (max %.0f)" % [wname, off, lim]):
+			if g.flag("origin", "%s fired %.0f px from its body (max 80)" % [wname, off]):
 				_trust_force_death("shots (origin)")
 			return no
 	var rc := g.stamp_check(get_multiplayer_authority(), wname, float(w["rate"]), stamp)
@@ -2781,6 +2786,13 @@ func _host_shot_check(shot_pos: Vector2, dirs: PackedVector2Array, w: Dictionary
 				"hits": [], "done": false, "ok": true, "weapon": wname, "stamp": stamp}
 		_aim_pending.append(hold)
 		HostHits.count("aim_held")
+	if origin_wait and not melee:
+		if hold.is_empty():
+			hold = {"ms": Time.get_ticks_msec(), "dir": nd[0], "spread": spread, "angles": [], "aim_ok": true,
+					"hits": [], "done": false, "ok": true, "weapon": wname, "stamp": stamp}
+			_aim_pending.append(hold)
+		hold["origin"] = shot_pos
+		HostHits.count("origin_held")
 	# A muzzle poking through a wall doesn't shoot through it: the host's copy
 	# starts just before the wall.
 	var pos := shot_pos
@@ -2816,17 +2828,36 @@ func _resolve_aim(new_sample: bool) -> void:
 		# The samples either side of the shot's own moment, once the one after
 		# it is in (a sample that arrived later may belong to a later moment).
 		var st := int(h.get("stamp", 0))
+		var waited := now - int(h["ms"])
+		# A muzzle with no state near its moment yet: once there is one, it
+		# must be at the body then (else, at the timeout, where it last was).
+		var origin_off := 0.0
+		if h.has("origin"):
+			origin_off = _trust.origin_off(h["origin"], st)
+			if origin_off == INF and waited < AIM_HOLD_MS:
+				keep.append(h)
+				continue
+			if origin_off == INF:
+				origin_off = maxf(0.0, (h["origin"] as Vector2).distance_to(_net_base_pos()) - _net_vel.length() * 0.1)
 		var around: Array = _trust.aims_around(st) if st > 0 else [null, null]
-		var stamped: bool = around[0] != null and around[1] != null
+		var aim_ok: bool = bool(h.get("aim_ok", false))
+		var stamped: bool = aim_ok or (around[0] != null and around[1] != null)
 		# (A stamped shot waits for the sample after its moment — a stall can
 		# hold that back a while; an unstamped one for two more arrivals.)
-		var waited := now - int(h["ms"])
 		if not stamped and ((st > 0 and waited < AIM_HOLD_MS) or (st <= 0 and angles.size() < 3 and waited < 250)):
 			keep.append(h)
 			continue
+		if origin_off > 80.0:
+			h["done"] = true
+			h["ok"] = false
+			HostHits.count("refused_origin_quiet")
+			HostHits.count("aim_refused_hits", float((h["hits"] as Array).size()))
+			continue
 		# How far outside the arc the aim swept around the shot.
 		var off := INF
-		if stamped:
+		if aim_ok:
+			off = 0.0
+		elif stamped:
 			off = TrustGuard.aim_off_arc(h["dir"], float(around[0]), float(around[1]))
 		else:
 			for i in range(angles.size() - 1):
