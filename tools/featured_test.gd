@@ -440,7 +440,13 @@ func _check_bots(slug: String) -> bool:
 			if kills[0] == 0:
 				probs.append("no kills")
 	if has_pads and launches == 0:
-		probs.append("nobody used a jump pad")
+		# Objective modes route through the pads, so a launch is expected. In
+		# free-for-all modes they're off-route detours that bots take only now
+		# and then (last_ridge br: 0-1 launches in 82 s, half the runs had none,
+		# #293) — there the graph itself must route over a pad between two
+		# spawns, i.e. bots ride them whenever that's the way.
+		if mode in ["ctf", "dom", "htf", "inf"] or not _pad_route(m, src):
+			probs.append("nobody used a jump pad")
 	var nveh: int = (src.get("vehicle_spawns", []) as Array).size() + (src.get("tank_spawns", []) as Array).size() \
 		+ (src.get("heli_spawns", []) as Array).size() + (src.get("plane_spawns", []) as Array).size()
 	if nveh > 0 and boarded == 0:
@@ -452,3 +458,22 @@ func _check_bots(slug: String) -> bool:
 		return _fail("%s %s: %s" % [slug, mode, "; ".join(probs)])
 	_log.append("%s %s ok" % [slug, mode])
 	return true
+
+
+## Some spawn -> spawn path of the runtime graph rides a jump pad.
+func _pad_route(m: Node, src: Dictionary) -> bool:
+	var nav = m.get("nav")
+	if nav == null or not nav.has_method("has_pads") or not nav.has_pads():
+		return false
+	var pts: Array = (src.get("bot_spawns", []) as Array).duplicate()
+	for t in (src.get("team_spawns", {}) as Dictionary).values():
+		pts.append_array(t)
+	for a in pts:
+		for b in pts:
+			if a == b:
+				continue
+			var pth: PackedVector2Array = nav.path(m._settle_on_ground(a), m._settle_on_ground(b))
+			for i in range(1, pth.size()):
+				if nav.pad_ride(pth[i - 1], pth[i]) >= 0:
+					return true
+	return false
