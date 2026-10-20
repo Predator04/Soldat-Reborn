@@ -15,11 +15,15 @@ var _t := 0.0
 var _planes: Array = []
 var _stat := {}
 var _kills := {}
+var _custom := ""
+var _obj := {}          # objective kind -> count (grab / capture / ...)
+var _sorties: Array = []  # seconds each finished bot sortie lasted
 
 
 func _initialize() -> void:
 	for a in OS.get_cmdline_user_args():
-		if a.begins_with("--map="): _map = int(a.substr(6))
+		if a.begins_with("--custom="): _custom = a.substr(9)
+		elif a.begins_with("--map="): _map = int(a.substr(6))
 		elif a.begins_with("--mode="): _mode = int(a.substr(7))
 		elif a.begins_with("--bots="): _bots = int(a.substr(7))
 		elif a.begins_with("--secs="): _secs = float(a.substr(7))
@@ -34,7 +38,7 @@ func _process(d: float) -> bool:
 		st.bot_count = _bots
 		st.game_mode = _mode
 		st.map_index = _map
-		st.custom_map_path = ""
+		st.custom_map_path = _custom
 		st.vehicles = true
 		root.get_node("Net").set_singleplayer()
 		change_scene_to_file("res://scenes/main.tscn")
@@ -56,6 +60,7 @@ func _process(d: float) -> bool:
 				_stat[v.get_instance_id()] = {"board": 0, "wreck": 0, "crashwreck": 0, "drv": false, "alive": true,
 					"idle_away": 0.0, "idle_max": 0.0, "first": -1.0, "crashes": 0, "crash_t": -99.0}
 		m.kill.connect(func(_k, _v, w, _kt, _vt): if str(w) in ["Plane", "Plane MG", "Crash"]: _kills[str(w)] = int(_kills.get(str(w), 0)) + 1)
+		m.objective.connect(func(kind, _tm, _who): _obj[str(kind)] = int(_obj.get(str(kind), 0)) + 1)
 		print("WATCH planes=%d" % _planes.size())
 	for v in _planes:
 		if not is_instance_valid(v):
@@ -72,8 +77,14 @@ func _process(d: float) -> bool:
 		var had := bool(s["drv"])
 		if has and not had:
 			s["board"] = int(s["board"]) + 1
+			s["board_t"] = _t
 			if float(s["first"]) < 0.0:
 				s["first"] = _t
+		if had and not has:
+			_sorties.append(_t - float(s.get("board_t", _t)))
+		if has and _n % 60 == 0 and OS.get_environment("WATCH_LABELS") != "":
+			print("WATCH fly t=%.0f %s label=%s goal=%s pos=%s v=%d" % [_t, str(drv.get("display_name")), str(drv.get("_goal_label")),
+				str(drv.get("_goal")), str((v as Node2D).global_position.round()), int((v as CharacterBody2D).velocity.length())])
 		if had and not has and bool(v.get("alive")):
 			s["bail"] = int(s.get("bail", 0)) + 1
 		s["drv"] = has
@@ -119,9 +130,19 @@ func _process(d: float) -> bool:
 			idle = maxf(idle, float(s2["idle_max"]))
 			if float(s2["first"]) >= 0.0 and (first < 0.0 or float(s2["first"]) < first):
 				first = float(s2["first"])
-		print("WATCH kills %s" % str(_kills))
-		print("WATCH SUMMARY map=%d boardings=%d bails=%d first=%.0f flown=%d crashes=%d wrecks=%d crash_wrecks=%d pilot_crashes=%d idle_away_max=%.0f kills=%d" % [_map, tb, tbl, first, int(tf), tc, tw, tcw, tpc, idle,
-			int(_kills.get("Plane", 0)) + int(_kills.get("Plane MG", 0))])
+		for v in _planes:   # still flying at the end
+			var s3: Dictionary = _stat[v.get_instance_id()]
+			if bool(s3["drv"]):
+				_sorties.append(_t - float(s3.get("board_t", _t)))
+		var smax := 0.0
+		var ssum := 0.0
+		for x in _sorties:
+			smax = maxf(smax, float(x))
+			ssum += float(x)
+		print("WATCH kills %s objectives %s scores %s sorties=%d avg=%.0fs max=%.0fs" % [str(_kills), str(_obj), str(m.get("scores")),
+			_sorties.size(), ssum / maxf(1.0, float(_sorties.size())), smax])
+		print("WATCH SUMMARY map=%d boardings=%d bails=%d first=%.0f flown=%d crashes=%d wrecks=%d crash_wrecks=%d pilot_crashes=%d idle_away_max=%.0f kills=%d sortie_max=%.0f grabs=%d caps=%d" % [_map, tb, tbl, first, int(tf), tc, tw, tcw, tpc, idle,
+			int(_kills.get("Plane", 0)) + int(_kills.get("Plane MG", 0)), smax, int(_obj.get("grab", 0)), int(_obj.get("capture", 0))])
 		quit()
 		return true
 	return false

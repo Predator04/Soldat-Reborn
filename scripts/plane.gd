@@ -108,6 +108,13 @@ var bot_claim_until := 0           # ...until this msec, so two bots don't race 
 # take-off) goes home ABANDON_RETURN s after it comes to rest away from its
 # spot, instead of after the full #259 idle timer.
 const ABANDON_RETURN := 8.0
+# #298: bot pilots with an objective goal (bot._goal_label) commit to it
+# (defenders fly home and drop in too).
+const OBJ_LABELS := ["flag", "return", "chase", "escort", "zone", "capture", "defend"]
+const OBJ_COMMIT := 20.0          # s aloft before passing over the goal means bailing out
+const OBJ_COMMIT_HARD := 35.0     # s aloft before the gun runs stop and it heads for the goal
+const OBJ_BAIL_DX := 450.0        # px either side of the goal a committed pilot bails out
+const OBJ_BAIL_SPEED := 720.0     # ...at up to this speed
 var _bot_left := false
 # Cosmetic.
 var _roll := 1.0
@@ -872,7 +879,26 @@ func _bot_pilot(delta: float) -> Vector2:
 	_bp_break = maxf(0.0, _bp_break - delta)
 	_bp_evade = maxf(0.0, _bp_evade - delta)
 	_bp_climb = maxf(0.0, _bp_climb - delta)
-	if tv and _bp_break <= 0.0:
+	# #298: an objective goal (the enemy flag, our flag to return, a carrier to
+	# chase / escort, a DOM zone, home to defend) wins over the dogfight in two
+	# steps: after OBJ_COMMIT s aloft the pilot bails out whenever it passes
+	# over the goal, enemies about or not (gun runs still go on until then);
+	# after OBJ_COMMIT_HARD s no more gun runs either (the gun still fires
+	# when the nose happens to bear) — it flies to the goal and drops in.
+	# Hunting / roaming pilots keep dogfighting.
+	var objective: bool = goal != Vector2.INF and str(d.get("_goal_label")) in OBJ_LABELS
+	var commit: bool = objective and _bp_t > OBJ_COMMIT
+	var hard: bool = objective and _bp_t > OBJ_COMMIT_HARD
+	# (Any height: soldiers take no fall damage and steer down onto the goal;
+	# a committed pilot looping over its goal rarely came through low.)
+	if commit and absf(goal.x - pos.x) < OBJ_BAIL_DX and spd < OBJ_BAIL_SPEED and alt > 60.0 and _solid_below(pos):
+		_bot_leave(d, 20.0)
+		return Vector2.ZERO
+	if hard and tv and d.get("_target_visible") == true and fire_cd <= 0.0 and not overheated and heat < 0.8:
+		var to_t: Vector2 = (t as Node2D).global_position + Vector2(0, -12) - pos
+		if to_t.length() < BOT_GUN_RANGE and absf(angle_difference(_tilt, to_t.angle())) < 0.09:
+			_fire(d)
+	if tv and _bp_break <= 0.0 and not hard:
 		var tp: Vector2 = (t as Node2D).global_position + Vector2(0, -12)
 		var to := tp - pos
 		if t is CharacterBody2D:
@@ -901,12 +927,17 @@ func _bot_pilot(delta: float) -> Vector2:
 		want_y = maxf(want_y, CEIL_Y + 160.0)
 		var climb := clampf((pos.y - want_y) / 700.0, -0.45, 0.6)
 		want = Vector2(dirx * cos(climb), -sin(climb))
-		# Over the goal with nothing to fight: slow down and bail out.
-		if goal != Vector2.INF and absf(goal.x - pos.x) < 380.0 and _bp_noenemy > 4.0 and _bp_t > 6.0:
-			if spd < 560.0 and alt > 60.0 and alt < 900.0 and _solid_below(pos):
+		# Over the goal with nothing to fight (or committed to it, #298): slow
+		# down and bail out.
+		if goal != Vector2.INF and absf(goal.x - pos.x) < (OBJ_BAIL_DX if commit else 380.0) \
+				and ((_bp_noenemy > 4.0 and _bp_t > 6.0) or commit):
+			if spd < (OBJ_BAIL_SPEED if commit else 560.0) and alt > 60.0 and alt < 900.0 and _solid_below(pos):
 				_bot_leave(d, 20.0)
 				return Vector2.ZERO
-			want = Vector2(face, -0.25)
+			# Bleed speed with a gentle climb — unless already too high to
+			# bail (#298: pilots used to climb pass after pass to the ceiling
+			# and circle up there for the rest of the 150 s).
+			want = Vector2(face, 0.45) if alt > 700.0 else Vector2(face, -0.25)
 	var desired := want.angle()
 	var thr := 1.0
 	if _bp_break > 0.0:

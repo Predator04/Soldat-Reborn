@@ -1629,7 +1629,10 @@ func _think_goal() -> void:
 	var mode: int = Settings.game_mode
 	var flags := _flags()
 	# Grabbing a close, useful pickup beats everything except flag duty.
-	if is_instance_valid(_pickup_target) and not _carrying_flag():
+	# (Not from a plane's cockpit, #298: the pilot turned back for every gun it
+	# flew over.)
+	var flying: bool = mounted_m2 != null and is_instance_valid(mounted_m2) and str(mounted_m2.get("kind")) == "plane"
+	if is_instance_valid(_pickup_target) and not _carrying_flag() and not flying:
 		_set_goal(_pickup_target.global_position, "pickup")
 		return
 	if mode == Settings.MODE_CTF and flags.size() == 2:
