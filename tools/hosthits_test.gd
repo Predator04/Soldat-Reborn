@@ -226,10 +226,11 @@ func _honest() -> void:
 	for line in _lines("honest_host.log", "HOSTHIT "):
 		var amt := _amount(line)
 		total += amt
-		if line.begins_with("HOSTHIT «SHT»") and absf(amt - AK_DMG) > 0.01:
+		# A Vest bonus the victim walked over halves a hit (22 -> 11).
+		if line.begins_with("HOSTHIT «SHT»") and absf(amt - AK_DMG) > 0.01 and absf(amt - AK_DMG * 0.5) > 0.01:
 			wrong += 1
 	if wrong > 0:
-		_bad.append("%d hits not worth exactly %.0f" % [wrong, AK_DMG])
+		_bad.append("%d hits worth neither %.0f nor %.0f (vest)" % [wrong, AK_DMG, AK_DMG * 0.5])
 	var vd := _duel_line("honest_victim.log")
 	var told := _kv(vd, "damage_taken")
 	_log.append("host_damage=%.0f victim_told=%.0f" % [total, told])

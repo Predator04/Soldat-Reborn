@@ -4,6 +4,13 @@ All notable changes to Soldat Reborn.
 
 ## [Unreleased]
 
+### Changed — online hits are decided by the host (#266)
+- **Online hits are now decided by the host** (the server), not by the game of the player being shot. Your shots, tracers, sounds and hit markers still show instantly on your screen; the host checks each shot against where its target was *on your screen* when you fired (it rewinds by your connection's delay, measured shot by shot), so at 100–200 ms ping your hits land just like before — in the release test, 98 % of the hits a shooter at ~150 ms saw on screen were confirmed, every one for the weapon's normal damage. Weapons, damage, fire rates, movement, bots and single player are unchanged.
+- **Closes the cheats that used to slip through:** a modified game can no longer take only part of the damage (or none), deal more damage than the weapon does, fire faster than the weapon or past an empty magazine, spawn its bullets next to someone or through a wall, shoot in a direction it isn't aiming, or jet on an empty tank. The host refuses or corrects each of these, logs it, and after repeated offences removes the cheater's soldier (three times in five minutes is a kick). One odd event never kicks anyone.
+- Your health on screen comes from the host: a hit shows when the host confirms it (about the same moment the old system applied it), and medikits / the Rambo bow's regeneration keep working as before. The Battle Royale ring's damage is applied by the host too.
+- Online games need the same update on both sides: an older build gets a clear "Version mismatch … online protocol" message when it tries to join (and the other way round), instead of joining and misbehaving.
+- A small fix along the way: the old fire-rate check on the host (#243) could drop real shots when the network delivered several at once; shots now carry their own timing, so a lag spike no longer eats them.
+
 ## [1.37.0] — 2026-10-19 — Maker
 
 This release also ships everything in 1.36 (Ultra HD soldiers, guns, terrain and dynamic lighting), listed under 1.36.0 below — the two went out together.
