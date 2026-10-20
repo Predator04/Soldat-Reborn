@@ -45,6 +45,9 @@ var EJECT_DMG := 30.0         # a crew member thrown clear of a gentle wreck (he
 # #277: host relay sanity cap on a client-simulated vehicle (px/s over >= 250 ms,
 # falls included — generous on purpose; honest driving never comes close).
 var RELAY_MAX_SPEED := 2000.0
+# #291: how far from the body a streamed muzzle may be (host check in
+# match_vehicles; the plane's nose gun outruns the host's smoothed copy).
+var FIRE_REACH := 90.0
 var state_rx := 0             # remote state packets applied (smoke tests)
 var respawns := 0             # apply_respawn count (host relay check resets on it)
 
@@ -97,7 +100,7 @@ var _bd_last_x := 0.0
 var _bd_stuck_t := 0.0
 var _bd_hop := false
 
-const EXPLOSIVE_WEAPONS := ["LAW", "M79", "Grenade", "Cluster", "Tank", "Buggy", "Heli"]
+const EXPLOSIVE_WEAPONS := ["LAW", "M79", "Grenade", "Cluster", "Tank", "Buggy", "Heli", "Plane"]
 const _BARREL_TEX := preload("res://assets/weapons-gfx/m2.png")
 const TouchControls = preload("res://scripts/touch_controls.gd")
 const VArt = preload("res://scripts/gfx/vehicle_art.gd")

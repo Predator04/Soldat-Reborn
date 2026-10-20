@@ -383,7 +383,12 @@ func _draw() -> void:
 		var tank := str(v[0]) == "tank"
 		var vc := Color(0.45, 0.48, 0.4) if bool(v[4]) else Color(0.2, 0.2, 0.2)
 		draw_set_transform(vp, float(v[3]), Vector2.ONE)
-		if str(v[0]) == "heli":
+		if str(v[0]) == "plane":
+			# #291: fuselage, fin, wing.
+			draw_rect(Rect2(-48, -6, 96, 13), vc)
+			draw_colored_polygon(PackedVector2Array([Vector2(-28, -6), Vector2(-42, -24), Vector2(-50, -24), Vector2(-48, -6)]), vc)
+			draw_line(Vector2(12, 2), Vector2(-28, 5), Color(0.12, 0.12, 0.12), 2.0)
+		elif str(v[0]) == "heli":
 			# #277: cabin, tail boom, rotor line, skids.
 			draw_rect(Rect2(-36, -42, 80, 30), vc)
 			draw_rect(Rect2(-96, -36, 62, 7), vc)

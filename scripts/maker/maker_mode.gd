@@ -34,7 +34,7 @@ const ZOOM_MIN := 0.08
 const ZOOM_MAX := 2.5
 const SINGLE_KEYS := ["player_spawn", "inf_flag", "htf_flag", "rambo_pos"]
 const LIST_KEYS := ["bot_spawns", "dom_points", "point_spawns", "bonus_spawns", "medkits", "grenade_kits",
-	"vehicle_spawns", "tank_spawns", "heli_spawns", "m2_mounts"]
+	"vehicle_spawns", "tank_spawns", "heli_spawns", "plane_spawns", "m2_mounts"]
 
 var ed: Node2D = null
 var active := false
