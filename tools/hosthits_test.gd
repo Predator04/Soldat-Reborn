@@ -523,7 +523,7 @@ func _sc_judge(r: Dictionary) -> Array:
 	var lossy: bool = float(sc.get("loss", 0.0)) > 0.0 or float(sc.get("spike_every", 0.0)) > 0.0
 	var dropped := 0
 	for f in logs:
-		var drops: bool = (bool(sc.get("jip", false)) and str(f) == hlog) or (lossy and str(f) != hlog)
+		var drops: bool = bool(sc.get("jip", false)) or lossy
 		var e := _errors(f, drops)
 		if drops:
 			dropped += _errors(f, false) - e
