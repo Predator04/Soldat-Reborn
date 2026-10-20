@@ -165,6 +165,11 @@ func _enter_hint() -> String:
 	return "F: PILOT" if driver() == null else "F: GUNNER"
 
 
+## #299: hovering / flying in place is normal — no wedge reset.
+func _wedge_watch() -> bool:
+	return false
+
+
 ## Bots only board it on the ground.
 func bot_board_ok() -> bool:
 	if not alive or velocity.length() > 50.0:

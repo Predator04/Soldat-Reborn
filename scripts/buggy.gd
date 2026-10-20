@@ -32,6 +32,14 @@ var RESPAWN_TIME := 25.0
 # long (occupied / damaged / entered reset the clock). Overridable for tests.
 var idle_respawn_time := 60.0
 const STUCK_UNSTICK_TIME := 3.0   # driven but motionless this long -> lift out
+# #299: a ground vehicle that hasn't moved for this long while NOT resting on a
+# floor (wedged between faces, e.g. the slot under Ascent's second hill) or
+# tilted past WEDGE_TILT goes home (crew stepped out first). Host decides.
+const WEDGE_TIME := 4.0
+const WEDGE_TILT := 1.22         # ~70 deg
+# #299: after a bot gives up on it (stuck / a drop it can't take) bots leave it
+# alone longer than the idle return, so an untouched one drives home first.
+const DRIVE_BAN_TIME := 70.0
 var EXPLODE_RADIUS := 150.0
 var EXPLODE_DAMAGE := 120.0
 var EXPLOSIVE_MUL := 1.6      # rockets / grenades hurt it more than bullets
@@ -99,6 +107,12 @@ var _bd_check := 0.0            # bot driver: stuck / progress tracking
 var _bd_last_x := 0.0
 var _bd_stuck_t := 0.0
 var _bd_hop := false
+var _bd_drop := false           # #299: bot driver: a drop ahead it can't take
+var _bd_drop_t := 0.0
+var drive_ban_t := 0.0          # #299: bot drivers skip it while > 0 (bot._think_drive)
+var _gwedge_t := 0.0             # #299: seconds wedged in place (host)
+var _gwedge_at := Vector2.INF
+var wedge_resets := 0           # #299: wedge recoveries (tests)
 
 const EXPLOSIVE_WEAPONS := ["LAW", "M79", "Grenade", "Cluster", "Tank", "Buggy", "Heli", "Plane"]
 const _BARREL_TEX := preload("res://assets/weapons-gfx/m2.png")
@@ -266,9 +280,25 @@ func clear_seat_of(s: Node2D) -> void:
 		# "throw weapon") in the soldier's own input this frame.
 		s.set("f_prev", true)
 		# Step out beside the buggy, a little above the ground.
-		s.global_position = global_position + Vector2(-face * 34.0, -26.0)
+		s.global_position = _exit_spot(s)
 		s.set("velocity", velocity * 0.5 + Vector2(0, -120))
 	_update_team()
+
+
+## Where a soldier steps out: beside the buggy, a little above the ground —
+## or (#299) the first nearby spot that isn't inside the terrain when that one
+## is (a vehicle wedged against a cliff).
+func _exit_spot(s: Node2D) -> Vector2:
+	var base := global_position + Vector2(-face * 34.0, -26.0)
+	if not (s is CharacterBody2D) or not s.is_inside_tree():
+		return base
+	var body := s as CharacterBody2D
+	for off in [Vector2(-face * 34.0, -26.0), Vector2(face * 34.0, -26.0), Vector2(0.0, -64.0),
+			Vector2(-face * 34.0, -70.0), Vector2(face * 34.0, -70.0), Vector2(0.0, -110.0)]:
+		var at: Vector2 = global_position + off
+		if not body.test_move(Transform2D(0.0, at), Vector2.ZERO, null, 0.08, true):
+			return at
+	return base
 
 
 func _update_team() -> void:
@@ -318,6 +348,7 @@ func _physics_process(delta: float) -> void:
 	_hop_cd = maxf(0.0, _hop_cd - delta)
 	_solo_fire_t = maxf(0.0, _solo_fire_t - delta)
 	heat = maxf(0.0, heat - HEAT_COOL * delta)
+	drive_ban_t = maxf(0.0, drive_ban_t - delta)
 	if overheated and heat <= 0.25:
 		overheated = false
 	if not alive:
@@ -337,6 +368,8 @@ func _physics_process(delta: float) -> void:
 		var kill_y: float = float(get_parent().get("KILL_Y")) if get_parent() != null and get_parent().get("KILL_Y") != null else INF
 		if global_position.y > kill_y:
 			_host_destroy(last_hitter, last_hitter_team)
+		elif alive:
+			_wedge_tick(delta)
 	_engine_sound()
 	_wheel_rot += velocity.x * delta / 11.0
 	_redraw()
@@ -374,6 +407,67 @@ func _touch_tick(delta: float) -> void:
 			main.vehicle_send("net_vehicle_respawn", [vehicle_id], true)
 		else:
 			apply_respawn()
+
+
+## #299: ground vehicles only — the helicopter hovers and the plane flies, so
+## "not moving and not on a floor" is normal for them.
+func _wedge_watch() -> bool:
+	return true
+
+
+## Resting on something it can stand on (a slope up to floor_max_angle). Pure
+## terrain query, so the host can judge a client-driven body from its replica.
+func floor_supported() -> bool:
+	if is_sim() and is_on_floor():
+		return true
+	var col := KinematicCollision2D.new()
+	if test_move(global_transform, Vector2(0.0, 6.0), col):
+		if not (col.get_collider() is StaticBody2D):
+			return true   # resting on a pickup etc.: not the terrain's doing
+		if absf(col.get_normal().angle_to(Vector2.UP)) <= floor_max_angle + 0.02:
+			return true
+	# One contact only: parked in a floor + wall corner it can be the wall's.
+	# Look for floor right under the wheels as well.
+	var space := get_world_2d().direct_space_state
+	var half := SHAPE_LEN * 0.5 - SHAPE_R
+	for dx in [-half, 0.0, half]:
+		var a: Vector2 = global_position + Vector2(dx, -SHAPE_R)
+		var q := PhysicsRayQueryParameters2D.create(a, a + Vector2(0.0, SHAPE_R + 10.0), collision_mask, [get_rid()])
+		var h := space.intersect_ray(q)
+		if not h.is_empty() and absf((h["normal"] as Vector2).angle_to(Vector2.UP)) <= floor_max_angle + 0.02:
+			return true
+	return false
+
+
+## #299 (host): a ground vehicle stuck in one spot (24 px) for WEDGE_TIME without a
+## floor under it (or tipped past WEDGE_TILT) — crewed or empty, the driver's
+## input can't free it — goes back to its spawn through the respawn RPC
+## (apply_respawn steps the crew out first). Vehicles that are moving, or
+## resting on a floor, are never touched.
+func _wedge_tick(delta: float) -> void:
+	if not _wedge_watch():
+		return
+	var pos := global_position
+	if _gwedge_at == Vector2.INF or pos.distance_to(_gwedge_at) > 24.0:
+		_gwedge_at = pos
+		_gwedge_t = 0.0
+		return
+	if absf(wrapf(_tilt, -PI, PI)) < WEDGE_TILT and floor_supported():
+		_gwedge_t = 0.0
+		return
+	_gwedge_t += delta
+	if _gwedge_t < WEDGE_TIME:
+		return
+	_gwedge_t = 0.0
+	_gwedge_at = Vector2.INF
+	if pos.distance_to(spawn_pos) < 24.0:
+		return   # wedged at its own spawn: a respawn would land it right back
+	wedge_resets += 1
+	var main := get_parent()
+	if main != null and main.has_method("vehicle_send"):
+		main.vehicle_send("net_vehicle_respawn", [vehicle_id], true)
+	else:
+		apply_respawn()
 
 
 func _simulate(delta: float) -> void:
@@ -618,11 +712,24 @@ func _bot_drive(delta: float) -> Vector2:
 	var dir: float = signf(dx)
 	# Don't drive off into the void.
 	var main := get_parent()
+	var hazard := false
 	if not leave and main != null and main.has_method("_geom_ground_y") and absf(velocity.x) > 20.0:
 		var ky: float = float(main.get("KILL_Y"))
 		var gy: float = main._geom_ground_y(global_position.x + dir * 70.0, global_position.y - 30.0)
 		if gy == INF or gy > ky:
 			leave = true
+			hazard = true
+	# #299: nor off a drop that lands on a face too steep to stand on (it
+	# wedges there): brake in time and get out.
+	_bd_drop_t -= delta
+	if _bd_drop_t <= 0.0:
+		_bd_drop_t = 0.1
+		_bd_drop = not leave and is_on_floor() and _bad_drop_ahead(dir)
+	if _bd_drop and not leave:
+		leave = true
+		hazard = true
+		if absf(velocity.x) >= 60.0 and signf(velocity.x) == dir:
+			return Vector2(-dir, 0.0)
 	# Stuck: not getting anywhere for a while (hop once, then give up).
 	_bd_check += delta
 	if _bd_check > 1.0:
@@ -636,8 +743,11 @@ func _bot_drive(delta: float) -> Vector2:
 			_bd_stuck_t = 0.0
 	if _bd_stuck_t >= 3.0:
 		leave = true
+		hazard = true
 	if leave and absf(velocity.x) < 60.0:
 		_bd_stuck_t = 0.0
+		if hazard:
+			drive_ban_t = DRIVE_BAN_TIME
 		if Net.is_networked() and main != null and main.has_method("net_vehicle_seat_bot"):
 			main.bcast("net_vehicle_seat_bot", [vehicle_id, 0, int(d.get("bot_id")), false], true)
 		else:
@@ -654,6 +764,59 @@ func _bot_drive(delta: float) -> Vector2:
 			if fire_cd <= 0.0 and not overheated and heat < 0.7 and absf(aim_dir.angle_to(want)) < 0.15:
 				_fire(d)
 	return Vector2(0.0 if leave else dir, hop)
+
+
+## #299: drive ahead along the ground (steps / slopes the wheels take) for the
+## braking distance; where the ground falls away, fly the body on from there at
+## the current speed. True when that flight lands — after a real drop — on a
+## face too steep to stand on (it would wedge or slide into a slot). Pure
+## terrain queries on this body's own shape.
+func _bad_drop_ahead(dir: float) -> bool:
+	if dir == 0.0:
+		return false
+	var spd := maxf(absf(velocity.x), 150.0)
+	var reach := 120.0 + spd * spd / (2.0 * BRAKE) + SHAPE_LEN * 0.5
+	var xf := global_transform
+	var col := KinematicCollision2D.new()
+	var went := 0.0
+	while went < reach:
+		var fwd := Vector2(dir * 8.0, 0.0)
+		if test_move(xf, fwd):
+			var up := Vector2(0.0, -14.0)
+			if test_move(xf, up) or test_move(xf.translated(up), fwd):
+				return false   # a wall, not a drop
+			xf = xf.translated(up + fwd)
+		else:
+			xf = xf.translated(fwd)
+		went += 8.0
+		if test_move(xf, Vector2(0.0, 24.0), col):
+			xf = xf.translated(col.get_travel())
+			continue
+		# The ground falls away: fly on from here (sliding along steep faces
+		# like move_and_slide) until it lands on a floor (fine) or stops dead
+		# without one (wedged).
+		var v := Vector2(dir * spd, 0.0)
+		var g := GRAVITY * MatchConfig.mod_gravity()
+		var mark := xf.origin
+		for i in 75:
+			var rem := v / 30.0
+			for _k in 3:
+				if not test_move(xf, rem, col):
+					xf = xf.translated(rem)
+					break
+				xf = xf.translated(col.get_travel())
+				var n := col.get_normal()
+				if absf(n.angle_to(Vector2.UP)) <= floor_max_angle + 0.02:
+					return false
+				rem = col.get_remainder().slide(n)
+				v = v.slide(n)
+			v.y = minf(v.y + g / 30.0, 1400.0)
+			if i % 10 == 9:
+				if xf.origin.distance_to(mark) < 4.0:
+					return true
+				mark = xf.origin
+		return false
+	return false
 
 
 # A bot in the gun seat (host / single-player): aim at its target with lead,
@@ -875,8 +1038,20 @@ func unstick() -> void:
 
 
 func apply_respawn() -> void:
+	# #299: a wedge reset can find a crew aboard: they step out where it was.
+	for o in seats.duplicate():
+		if is_instance_valid(o):
+			clear_seat_of(o)
+	for i in seats.size():
+		seats[i] = null
+	_update_team()
 	respawns += 1
 	alive = true
+	drive_ban_t = 0.0
+	_gwedge_t = 0.0
+	_gwedge_at = Vector2.INF
+	_bd_stuck_t = 0.0
+	_bd_drop = false
 	hp = MAX_HP
 	_last_sent_hp = MAX_HP
 	_idle_t = 0.0
