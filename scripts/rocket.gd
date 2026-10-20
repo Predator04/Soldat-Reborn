@@ -46,6 +46,7 @@ const GHOST_TOL := 48.0
 const GHOST_AHEAD := 0.15     # s: the report may beat the ghost by this much
 const GHOST_AHEAD_MAX := 0.6  # s: ... or by what its reports account for, up to this
 var _g_reports := 0           # shooter's state reports received for this rocket
+var _g_born_ms := 0           # host: when the ghost started
 var _ghost := false
 var _g_pos := Vector2.ZERO
 var _g_vel := Vector2.ZERO
@@ -65,6 +66,7 @@ func _ready() -> void:
 		_g_pos = global_position
 		_g_vel = direction * speed
 		_g_path = [global_position]
+		_g_born_ms = Time.get_ticks_msec()
 	# Terrain layer 2 = ported "only bullets collide" polys (see main.gd).
 	collision_mask = 1 | 2 | 8  # terrain, bullets-only terrain, soldiers
 	add_to_group("bullet")
@@ -207,7 +209,11 @@ func _ghost_dist(p: Vector2) -> float:
 		# flight as the shooter's reports so far account for (the first 0.2 s into the flight, then 1 / BROADCAST_HZ apart in its game time, however a stall bunched
 		# them) beyond the ghost's own, at most GHOST_AHEAD_MAX.
 		var told := (0.15 + float(_g_reports) / BROADCAST_HZ) if _g_reports > 0 else 0.0
-		var ahead := clampf(told - float(_g_path.size()) / float(Engine.physics_ticks_per_second), GHOST_AHEAD, GHOST_AHEAD_MAX)
+		# (No more than the wall-clock age + GHOST_AHEAD_MAX: spammed reports
+		# buy nothing; but a host whose own physics fell behind real time
+		# lets its ghost catch up that far.)
+		var wall := float(Time.get_ticks_msec() - _g_born_ms) / 1000.0
+		var ahead := clampf(minf(told, wall + GHOST_AHEAD_MAX) - float(_g_path.size()) / float(Engine.physics_ticks_per_second), GHOST_AHEAD, GHOST_AHEAD_MAX + 1.5)
 		pts.append_array(_ghost_ahead(ahead))
 	for i in pts.size():
 		if i == 0:

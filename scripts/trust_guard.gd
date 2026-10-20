@@ -567,6 +567,12 @@ func take_round(slot: int, mag: int, stamp := 0, reload_secs := 0.0) -> bool:
 	return true
 
 
+## For the log: the magazine shadow of `slot` at a refused round.
+func mag_note(slot: int, stamp: int) -> String:
+	return "left %d, %d ms since the last round, reload seen for %d ms" % [int(_mags.get(slot, -99)),
+		stamp - int(_last_round.get(slot, stamp)), (track_newest() - _reload_since) if _reload_slot == slot else -1]
+
+
 ## The state stream's reload flag for the active slot: a reload the host saw
 ## run for most of its length refills the magazine. Timed on the owner's game
 ## clock (`gstamp`) when it says: packets a stall bunched together still show

@@ -2758,7 +2758,7 @@ func _host_shot_check(shot_pos: Vector2, dirs: PackedVector2Array, w: Dictionary
 			_trust_force_death("shots (fire rate)")
 		return no
 	if kind != "melee" and not g.take_round(slot, int(w["mag"]), stamp, float(w["reload"])):
-		if g.flag("ammo", "%s fired past its %d-round magazine without a reload" % [wname, int(w["mag"])]):
+		if g.flag("ammo", "%s fired past its %d-round magazine without a reload (%s)" % [wname, int(w["mag"]), g.mag_note(slot, stamp)]):
 			_trust_force_death("shots (magazine)")
 		return no
 	var hold := {}
@@ -2813,6 +2813,9 @@ func _host_shot_check(shot_pos: Vector2, dirs: PackedVector2Array, w: Dictionary
 ## else the samples that arrived around it, else the one sample there is.
 ## Then its hits count or are dropped.
 const AIM_HOLD_MS := 800
+# While the owner's own stream hasn't reached the shot's moment yet (a client
+# running seconds behind on a starved machine), wait this long for it.
+const STREAM_WAIT_MS := 3000
 
 func _resolve_aim(new_sample: bool) -> void:
 	if _trust == null:
@@ -2829,12 +2832,15 @@ func _resolve_aim(new_sample: bool) -> void:
 		# it is in (a sample that arrived later may belong to a later moment).
 		var st := int(h.get("stamp", 0))
 		var waited := now - int(h["ms"])
+		# The stream still behind the shot's moment: its own samples are on
+		# the way, wait for them.
+		var behind: bool = st > 0 and _trust.track_newest() < st and waited < STREAM_WAIT_MS
 		# A muzzle with no state near its moment yet: once there is one, it
 		# must be at the body then (else, at the timeout, where it last was).
 		var origin_off := 0.0
 		if h.has("origin"):
 			origin_off = _trust.origin_off(h["origin"], st)
-			if origin_off == INF and waited < AIM_HOLD_MS:
+			if origin_off == INF and (waited < AIM_HOLD_MS or behind):
 				keep.append(h)
 				continue
 			if origin_off == INF:
@@ -2844,7 +2850,7 @@ func _resolve_aim(new_sample: bool) -> void:
 		var stamped: bool = aim_ok or (around[0] != null and around[1] != null)
 		# (A stamped shot waits for the sample after its moment — a stall can
 		# hold that back a while; an unstamped one for two more arrivals.)
-		if not stamped and ((st > 0 and waited < AIM_HOLD_MS) or (st <= 0 and angles.size() < 3 and waited < 250)):
+		if not stamped and ((st > 0 and (waited < AIM_HOLD_MS or behind)) or (st <= 0 and angles.size() < 3 and waited < 250)):
 			keep.append(h)
 			continue
 		if origin_off > 80.0:
@@ -2879,7 +2885,9 @@ func _resolve_aim(new_sample: bool) -> void:
 					HostHits.damage(e[0], float(e[1]), str(e[2]), str(e[3]), int(e[4]))
 			continue
 		HostHits.count("aim_refused_hits", float((h["hits"] as Array).size()))
-		if _aim_refuse(off, float(h["spread"]), str(h["weapon"]), stamped or angles[0] != null):
+		# (Only the owner's own samples either side of the shot can prove it
+		# off its aim; anything else is refused quietly.)
+		if _aim_refuse(off, float(h["spread"]), str(h["weapon"]), stamped and not aim_ok):
 			return
 	_aim_pending = keep
 
