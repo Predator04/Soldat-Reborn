@@ -330,6 +330,8 @@ func _run():
 	dlg.visible = false
 	(ed.find_child("LevelsButton", true, false) as Button).pressed.emit()
 	var ov: Node = ed.get_node("UI").get_node_or_null("LevelsBrowser")
+	if ov != null:
+		ov.set_tab("new")   # it opens on FEATURED (#295)
 	if ov == null or not await _until(func() -> bool: return ov.loaded > 0) or not _order(ov).contains("D"):
 		return _fail("editor LEVELS overlay: %s" % (_order(ov) if ov != null else "missing"))
 	ov.close()

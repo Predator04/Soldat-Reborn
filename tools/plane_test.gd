@@ -12,7 +12,10 @@ extends SceneTree
 ## respawn on its spot; shot down in the air ejects the pilot alive; F gets
 ## out; the air-spawn plane waits in the air, launches flying when boarded,
 ## falls when abandoned and comes back to its spot; a bot pilot takes off and
-## flies. Then a Maker map in CTF: a bot boards a plane on its own and flies it
+## flies; a plane a bot left parked down the runway goes home ~8 s after it
+## stops (#294); a bot pilot with an objective goal below and an enemy in sight
+## keeps fighting early in its sortie but bails out over the goal once it has
+## been up OBJ_COMMIT s (#298). Then a Maker map in CTF: a bot boards a plane on its own and flies it
 ## (distance flown in the air), without flying into the ground over and over.
 
 const G := 1900.0
@@ -103,7 +106,10 @@ func _process(d: float) -> bool:
 			if f.ends_with(".json") and FileAccess.get_file_as_string("res://assets/maps/" + f).contains("plane_spawns"):
 				n += 1
 		_log.append("maps_with_planes=%d" % n)
-		if n < 3:
+		# #294: Outpost's ridge runway had no route to it on foot and was
+		# dropped (tools/place_vehicles.py --plane now requires one): Fortress
+		# and Industrial.
+		if n < 2:
 			_bad.append("only %d classic maps have plane spawns" % n)
 		st.set("custom_map_path", MapIO.save_to_file("qa_plane", m))
 		st.set("game_mode", 0); st.set("bot_count", 2); st.set("vehicles", true)
@@ -544,7 +550,73 @@ func _process(d: float) -> bool:
 					_bad.append("bot pilot barely flew")
 				if int(_pg.get("crashes")) - int(_hp0) > 0:
 					_bad.append("bot pilot hit the ground")
+				_flag = false
+				_next(21)
+		21:
+			# #294: a bot pilot leaves the plane parked far down the runway:
+			# it goes home ABANDON_RETURN s after it comes to rest (not the
+			# full #259 idle minute).
+			if _pg.get("alive") != true:
+				_pg.set("_respawn_t", 0.05)
+				return false
+			if not _flag:
+				_flag = true
+				if _pg.driver() != _ba:
+					_ba.set("health", 100.0)
+					(_ba as Node2D).global_position = gn.global_position + Vector2(10, 10)
+					m._vehicles_sys.vehicle_bot_board(_pg, _ba, 0)
+				_set_flight(_pg, Vector2(_spawn_g.x + 900.0, G - 60.0), Vector2.ZERO, 0.0, 0.0)
+				_pg._bot_leave(_ba, 20.0)
 				_ba.set_physics_process(false)
+				(_ba as Node2D).global_position = Vector2(4300, G - 20)
+				_v = 0.0
+			if _v == 0.0 and gn.global_position.distance_to(_spawn_g) < 30.0:
+				_v = _st_t
+			if _v > 0.0 or _st_t > 20.0:
+				_log.append("abandoned plane home after %.1fs" % _v)
+				if _v <= 0.0 or _v < float(_pg.ABANDON_RETURN) or _v > float(_pg.ABANDON_RETURN) + 4.0:
+					_bad.append("abandoned plane didn't go home ~%ds after it stopped (%.1f s)" % [int(_pg.ABANDON_RETURN), _v])
+				if float(_pg.get("face")) != 1.0 or not bool(_pg.get("alive")):
+					_bad.append("abandoned plane came home wrong")
+				_flag = false
+				_next(22)
+		22:
+			# #298: a bot pilot with an objective goal right below and an enemy
+			# in sight keeps fighting early in the sortie, but once it has been
+			# up OBJ_COMMIT s it bails out over the goal anyway.
+			if _pg.get("alive") != true:
+				_pg.set("_respawn_t", 0.05)
+				return false
+			var goal := Vector2(2000, G - 20)
+			if not _flag:
+				_flag = true
+				_ba.set("health", 100.0)
+				_pg.set("bot_ban_t", 0.0)
+				(_ba as Node2D).global_position = gn.global_position + Vector2(10, 10)
+				m._vehicles_sys.vehicle_bot_board(_pg, _ba, 0)
+				_ba.set_physics_process(false)
+				_set_flight(_pg, Vector2(1700, G - 700), Vector2(500, 0), 0.0, 0.6)
+				_pg.set("_bp_t", 5.0)
+				_v = 0.0
+			if _pg.driver() == _ba or _v > 0.0:
+				_ba.set("_goal", goal)
+				_ba.set("_goal_label", "flag")
+				_ba.set("target", _bb)
+				_ba.set("_target_visible", true)
+				_bb.set("health", 100.0)
+				(_bb as Node2D).global_position = goal + Vector2(250, 0)
+			if _v == 0.0 and _st_t > 1.5:
+				if _pg.driver() != _ba:
+					_bad.append("objective pilot bailed in the middle of a dogfight")
+				_v = _st_t
+				_set_flight(_pg, Vector2(1950, G - 700), Vector2(500, 0), 0.0, 0.4)
+				_pg.set("_bp_t", float(_pg.OBJ_COMMIT) + 1.0)
+			if _v > 0.0 and (_pg.driver() != _ba or _st_t - _v > 2.0):
+				var out: bool = _pg.driver() != _ba
+				_log.append("objective pilot: fights early=%s, committed bail=%s after %.2fs at x=%d" % [str(_v > 0.0), str(out),
+					_st_t - _v, int((_ba as Node2D).global_position.x)])
+				if not out:
+					_bad.append("committed objective pilot didn't bail out over its goal under fire")
 				_release_all()
 				_phase = 2
 				_st = 0

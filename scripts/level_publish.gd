@@ -41,7 +41,7 @@ static func attach(ed: Node, bar: Control, ui: CanvasLayer) -> void:
 	lv.text = "Levels"
 	lv.tooltip_text = "Browse, play and like levels other players made."
 	lv.custom_minimum_size = Vector2(88, 32)
-	lv.pressed.connect(func() -> void: open_levels(ui))
+	lv.pressed.connect(func() -> void: open_levels(ui, ed))
 	bar.add_child(lv)
 
 
@@ -56,12 +56,18 @@ static func open_publish(ed: Node, ui: CanvasLayer) -> Node:
 	return d
 
 
-static func open_levels(ui: CanvasLayer) -> Node:
+static func open_levels(ui: CanvasLayer, ed: Node = null) -> Node:
 	var p: Node = ui.get_node_or_null("LevelsBrowser")
 	if p == null:
 		p = load("res://scripts/levels_panel.gd").new()
 		p.name = "LevelsBrowser"
 		p.in_menu = false
+		# FEATURED > EDIT A COPY (#295): open it right here, in Maker mode.
+		var maker: Node = ed.get("_maker") if ed != null else null
+		if maker != null:
+			p.edit_hook = func(slug: String) -> void:
+				ed.call("_set_maker", true)
+				maker.call("start_from", slug)
 		ui.add_child(p)
 	p.call("open")
 	return p

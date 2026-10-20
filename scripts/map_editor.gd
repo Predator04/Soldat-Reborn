@@ -197,6 +197,12 @@ func _ready() -> void:
 		_map = MakerBuild.starter_map()
 		_set_maker(true)
 		_maker.fit_view()
+		# LEVELS > FEATURED > EDIT A COPY from the menu (#295).
+		var FL = preload("res://scripts/featured_levels.gd")
+		if FL.pending_edit != "":
+			var slug: String = FL.pending_edit
+			FL.pending_edit = ""
+			_maker.start_from(slug)
 	queue_redraw()
 	_checkpoint()
 

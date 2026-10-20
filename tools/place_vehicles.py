@@ -66,6 +66,8 @@ PLANE_CLIMB_OUT = 1100.0 # how far past the runway the climb-out is checked
 PLANE_TOP_CLEAR = 420.0  # px of sky above the runway at least
 PLANE_AVOID = 220.0
 PLANE_MAX_MAPS = 6
+PLANE_NEAR_WALK = 2500.0  # #294: an inward runway start this far (walk) from a base is close enough
+PLANE_OUT_ROOM = 2400.0   # #294: an outward runway needs this much world ahead to climb out and turn back
 
 
 def runs(m, w=CAR_W, h=CAR_H, edge=None):
@@ -333,59 +335,152 @@ def runways(m, solid):
     return [(a, b) for a, b in out if b - a >= PLANE_MIN_RUN], top
 
 
-def plane_spots(m, solid):
-    """Plane spawns for one map: [x, ground_y] at a runway end, facing the middle."""
+class NavReach:
+    """#294: the baked bot nav graph (assets/nav/<map>.json) — which spots a
+    soldier can walk / jet to from each team base, and how far that walk is.
+    A plane on a plateau no route leads to (Outpost's ridge in 1.38) is a prop."""
+
+    def __init__(self, m, fname):
+        self.ok = False
+        f = os.path.join(MA.GAME, "assets", "nav", fname or "")
+        if not fname or not os.path.isfile(f):
+            return
+        nav = json.load(open(f, encoding="utf-8"))
+        ns = nav["nodes"]
+        self.P = [(float(ns[i]), float(ns[i + 1])) for i in range(0, len(ns) - 1, 2)]
+        self.adj = [[] for _ in self.P]
+        e = nav["edges"]
+        for i in range(0, len(e) - 1, 2):
+            a, b = int(e[i]), int(e[i + 1])
+            self.adj[a].append((b, float(np.hypot(self.P[a][0] - self.P[b][0], self.P[a][1] - self.P[b][1]))))
+        self.dist = []
+        for bx, by in bases(m):
+            s = self.near((bx, by), 400.0)
+            self.dist.append(self._dijkstra(s) if s >= 0 else {})
+        self.ok = bool(self.dist)
+
+    def near(self, p, maxd=120.0):
+        best, bd = -1, maxd
+        for i, q in enumerate(self.P):
+            d = float(np.hypot(q[0] - p[0], q[1] - p[1]))
+            if d < bd:
+                best, bd = i, d
+        return best
+
+    def _dijkstra(self, s):
+        import heapq
+        d = {s: 0.0}
+        q = [(0.0, s)]
+        while q:
+            c, u = heapq.heappop(q)
+            if c > d[u]:
+                continue
+            for v, w in self.adj[u]:
+                if c + w < d.get(v, 1e18):
+                    d[v] = c + w
+                    heapq.heappush(q, (c + w, v))
+        return d
+
+    def walks(self, p):
+        """Walk (px) from each base to the spot, None where unreachable."""
+        n = self.near(p)
+        return [dd.get(n) if n >= 0 else None for dd in self.dist]
+
+
+def _run_len(top, x, d, cap=None):
+    """Runway (px) from x in direction d with the runway slope rules."""
+    xi = int(round(x / R))
+    run, prev, y0 = 0.0, top[xi], top[xi]
+    if prev is None:
+        return 0.0
+    while cap is None or run < cap:
+        xi += d * int(40 / R)
+        if xi < 0 or xi >= len(top) or top[xi] is None or abs(top[xi] - prev) > PLANE_STEP or abs(top[xi] - y0) > PLANE_RISE:
+            break
+        prev = top[xi]
+        run += 40.0
+    return run
+
+
+def plane_spots(m, solid, fname=None):
+    """Plane spawns for one map: [x, ground_y] at a runway end.
+
+    Inward = the end away from the middle, taking off toward it (preferred).
+    Outward (#294) = the end nearer the middle, taking off away from it and
+    turning back once airborne; used for a base only when no inward spot is
+    within PLANE_NEAR_WALK of walking from it, and only where the game will
+    face it that way (the run back toward the middle is much shorter). Every
+    spot must be reachable on foot from every base (NavReach)."""
     rws, top = runways(m, solid)
     if not rws:
         return []
     W = MA.world_of(m)[0]
+    nav = NavReach(m, fname)
     avoid = [(float(a[0]), float(a[1])) for k in ("vehicle_spawns", "tank_spawns", "heli_spawns") for a in (m.get(k) or [])]
     cands = []
     for a, b in rws:
-        # Take off toward the middle: start at the end away from it.
-        x = a + 70.0 if (a + b) * 0.5 <= W * 0.5 else b - 70.0
-        y = top[int(round(x / R))]
-        if y is None:
-            continue
-        if any(np.hypot(x - ax, y - ay) < PLANE_AVOID for ax, ay in avoid):
-            continue
-        if check_runway(m, [round(x, 1), round(float(y), 1)], solid) is not None:
-            continue
-        cands.append(([round(x, 1), round(float(y), 1)], b - a))
+        inward_x = a + 70.0 if (a + b) * 0.5 <= W * 0.5 else b - 70.0
+        for x, outward in ((inward_x, False), (a + b - inward_x, True)):
+            y = top[int(round(x / R))]
+            if y is None:
+                continue
+            p = [round(x, 1), round(float(y), 1)]
+            if any(np.hypot(x - ax, y - ay) < PLANE_AVOID for ax, ay in avoid):
+                continue
+            mid = 1 if x < W * 0.5 else -1
+            d = -mid if outward else mid
+            if outward and _run_len(top, x, mid, 880.0) > min(_run_len(top, x, d, 880.0), 880.0) - 120.0:
+                continue   # the game would face it toward the middle (the longer run)
+            if outward and (x if d < 0 else W - x) < PLANE_OUT_ROOM:
+                continue   # no room to climb out and turn back before the side of the world
+            if check_runway(m, p, solid, d) is not None:
+                continue
+            walks = nav.walks(p) if nav.ok else []
+            if nav.ok and any(w is None for w in walks):
+                continue   # no route to it from some base
+            cands.append((p, b - a, outward, walks))
     if not cands:
         return []
     bs = bases(m)
     out = []
     if len(bs) == 2:
-        for bx, by in bs:
-            best = min(cands, key=lambda c: np.hypot(c[0][0] - bx, c[0][1] - by) - min(c[1], 1500.0) * 0.4)
+        for i, (bx, by) in enumerate(bs):
+            def cost(c):
+                w = c[3][i] if c[3] else float(np.hypot(c[0][0] - bx, c[0][1] - by))
+                return w - min(c[1], 1500.0) * 0.4
+            inward = [c for c in cands if not c[2]]
+            near_in = [c for c in inward if c[3] and c[3][i] <= PLANE_NEAR_WALK]
+            pool = inward if near_in or not nav.ok else cands
+            if not pool:
+                pool = cands
+            best = min(pool, key=cost)
             if best[0] not in out:
                 out.append(best[0])
         if len(out) == 2 and abs(out[0][0] - out[1][0]) < 900.0:
             out = out[:1]
     else:
-        out.append(max(cands, key=lambda c: c[1])[0])
+        inward = [c for c in cands if not c[2]] or cands
+        out.append(max(inward, key=lambda c: c[1])[0])
     return out
 
 
-def check_runway(m, p, solid):
-    """Re-check a plane spawn: on the top surface, with a runway ahead toward the middle."""
+def check_runway(m, p, solid, d=None):
+    """Re-check a plane spawn: on the top surface, with a runway ahead (toward
+    the middle unless `d` says otherwise) and room to climb out."""
     top = surface(solid, m)
     W = MA.world_of(m)[0]
     x, y = p
     xi = int(round(x / R))
     if top[xi] is None or abs(top[xi] - y) > 4.0:
         return "not on the topmost ground"
-    d = 1 if x < W * 0.5 else -1
-    run, prev, y0 = 0.0, top[xi], top[xi]
-    while run < PLANE_MIN_RUN:
-        xi += d * int(40 / R)
-        if xi < 0 or xi >= len(top) or top[xi] is None or abs(top[xi] - prev) > PLANE_STEP or abs(top[xi] - y0) > PLANE_RISE:
-            break
-        prev = top[xi]
-        run += 40.0
+    if d is None:
+        d = 1 if x < W * 0.5 else -1
+        if _run_len(top, x, d) < PLANE_MIN_RUN and _run_len(top, x, -d, 880.0) >= _run_len(top, x, d, 880.0) + 120.0:
+            d = -d   # an outward spawn (#294): the game faces it along the longer run
+    y0 = top[xi]
+    run = _run_len(top, x, d, PLANE_MIN_RUN)
     if run < PLANE_MIN_RUN:
-        return "runway toward the middle only %d px" % int(run)
+        return "runway only %d px" % int(run)
     # Climb-out: past the take-off point (~PLANE_LIFTOFF px down the runway)
     # the terrain ahead must stay under a gentle climb line.
     xi = int(round(x / R))
@@ -417,7 +512,7 @@ def main_plane(argv):
     for _, f, m, solid, sky in cands:
         if len(chosen) >= PLANE_MAX_MAPS:
             break
-        spots = plane_spots(m, solid)
+        spots = plane_spots(m, solid, os.path.basename(f))
         bad = [check_runway(m, p, solid) for p in spots]
         spots = [p for p, b in zip(spots, bad) if b is None]
         name = os.path.basename(f)[:-5]
