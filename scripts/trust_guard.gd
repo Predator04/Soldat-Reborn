@@ -347,27 +347,29 @@ func pos_at_stamp(stamp: int) -> Variant:
 	return (e[1] as Vector2) + (e[2] as Vector2) * minf(float(stamp - int(e[0])), float(TRACK_AHEAD_MS)) / 1000.0
 
 
-## How far `at` (a muzzle) lies beyond anywhere the body could have been at
-## its moment `stamp`: per state sample within ORIGIN_WINDOW_MS of it, the
-## distance less what the body could cover in between (its speed then, plus
-## room to speed up). INF: no sample that near (nothing to go by).
+## How far `at` (a muzzle) lies beyond where the body could have been at its
+## moment `stamp`, going by the state samples either side of that moment
+## (within ORIGIN_WINDOW_MS): each bounds the body to its position give or
+## take what it could cover in between (its speed then, plus room to speed
+## up), and the body had to satisfy both. INF: no sample that near.
 const ORIGIN_WINDOW_MS := 500
 const ORIGIN_ACCEL := 600.0        # px/s of speed change allowed in between
 
 func origin_off(at: Vector2, stamp: int) -> float:
-	var best := INF
-	if stamp <= 0:
-		return best
-	for i in range(_track.size() - 1, -1, -1):
-		var e: Array = _track[i]
+	if stamp <= 0 or _track.is_empty():
+		return INF
+	var i := _track_at(stamp)
+	var off := -1.0
+	for k in [i, i + 1]:
+		if k < 0 or k >= _track.size():
+			continue
+		var e: Array = _track[k]
 		var dt := float(absi(int(e[0]) - stamp)) / 1000.0
-		if int(e[0]) < stamp - ORIGIN_WINDOW_MS:
-			break
 		if dt * 1000.0 > float(ORIGIN_WINDOW_MS):
 			continue
 		var reach := ((e[2] as Vector2).length() * 1.25 + ORIGIN_ACCEL) * dt
-		best = minf(best, maxf(0.0, at.distance_to(e[1]) - reach))
-	return best
+		off = maxf(off, maxf(0.0, at.distance_to(e[1]) - reach))
+	return off if off >= 0.0 else INF
 
 
 ## The streamed aims just before and just after the moment `stamp`: [a0, a1]

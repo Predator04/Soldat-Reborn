@@ -253,8 +253,36 @@ func _place(m: Node, p: Node2D) -> void:
 			spots = mp.get("vehicle_spawns", spots)
 	if offs.x == INF:
 		offs = Vector2(40.0, 40.0 - gap)
-	# A shooter goes next to the victim, wherever that is (any map), when it can.
-	var tgt := _target(m, p) if role == "shooter" and not cheat in ["partial", "godmode"] else null
+	# The map's first open spot (both roles find the same one).
+	var spot_v := Vector2.INF
+	var spot_s := Vector2.INF
+	for s in spots:
+		var base: Vector2 = s if s is Vector2 else Vector2(float(s[0]), float(s[1]))
+		var v := _ground(p, base.x + offs.x, base.y)
+		var sh := _ground(p, base.x + offs.y, base.y)
+		if v == Vector2.INF or sh == Vector2.INF or absf(v.y - sh.y) > 40.0:
+			continue
+		if not _solid(p, v + Vector2(0, -24), sh + Vector2(0, -24), 1 | 2).is_empty():
+			continue
+		if gap > 190.0 and not _open_between(p, v, sh):
+			continue
+		spot_v = v
+		spot_s = sh
+		break
+	if role == "victim" or cheat in ["partial", "godmode"]:
+		if spot_v != Vector2.INF:
+			_put(p, spot_v)
+		else:
+			# No spot on this map: stay at the spawn (the shooter comes over).
+			_put(p, p.global_position)
+			print("SMOKE-DUEL no open spot found")
+		return
+	# A shooter takes the spot if its target is there, else goes next to the
+	# target wherever it is (any map).
+	var tgt := _target(m, p)
+	if spot_s != Vector2.INF and (tgt == null or tgt.global_position.distance_to(spot_v) < 260.0):
+		_put(p, spot_s)
+		return
 	if tgt != null:
 		var tg := _ground(p, tgt.global_position.x, tgt.global_position.y)
 		var side := signf(offs.y - offs.x) if offs.y != offs.x else -1.0
@@ -270,19 +298,6 @@ func _place(m: Node, p: Node2D) -> void:
 				continue
 			_put(p, sh2)
 			return
-	for s in spots:
-		var base: Vector2 = s if s is Vector2 else Vector2(float(s[0]), float(s[1]))
-		var v := _ground(p, base.x + offs.x, base.y)
-		var sh := _ground(p, base.x + offs.y, base.y)
-		if v == Vector2.INF or sh == Vector2.INF or absf(v.y - sh.y) > 40.0:
-			continue
-		if not _solid(p, v + Vector2(0, -24), sh + Vector2(0, -24), 1 | 2).is_empty():
-			continue
-		if gap > 190.0 and not _open_between(p, v, sh):
-			continue
-		_put(p, v if role == "victim" or cheat in ["partial", "godmode"] else sh)
-		return
-	# No spot on this map: stay at the spawn (a shooter then finds its target).
 	_put(p, p.global_position)
 	print("SMOKE-DUEL no open spot found")
 
