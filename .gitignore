@@ -19,3 +19,6 @@ claude_*.log
 
 # Python bytecode from tools/*.py
 __pycache__/
+
+# tools/make_trailer.sh writes a temporary override.cfg (Movie Maker at 1920x1080)
+/override.cfg
