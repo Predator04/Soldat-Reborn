@@ -6,9 +6,12 @@ extends SceneTree
 ## on a worker thread: non-empty, adopted within the time limit, every CTF leg
 ## (each team's spawn -> enemy flag -> home) routable, bots actually travel on
 ## it, and the build must not stall the main thread (frame gaps stay small).
-## Then two Maker maps (#286): the starter level with spikes and lava pits
-## (no nav node on a hazard, no bot walks into one) and with a buggy per team
-## (a bot boards one and drives it).
+## Then Maker maps (#286): the starter level with spikes and lava pits (no
+## nav node on a hazard, no bot walks into one), with a buggy, a tank and a
+## heli pad per team (a bot boards a buggy and drives it; tank / heli use is
+## logged), and with the red flag on a floating island ~690 px up that only a
+## big jump pad reaches (the graph routes the attack over the pad; a bot is
+## launched by it and lands on the island).
 ## Zero script errors (the gate greps the log).
 
 const LIMIT_MS := 20000
@@ -24,10 +27,19 @@ var _dist := {}
 var _max_gap := 0
 var _last_ms := 0
 var _case := 0
-var _cases := ["classic", "generated", "maker_hazards", "maker_vehicles"]
+var _cases := ["classic", "generated", "maker_hazards", "maker_vehicles", "maker_pads"]
 var _hz_kills0 := 0
+var _launch0 := 0
 var _drive := {}        # vehicle instance id -> px driven by a bot
 var _drive_last := {}
+var _drive_kind := {}   # vehicle instance id -> "buggy" / "tank" / "heli"
+var _boarded := {}      # kind -> times a bot took the driver's / pilot's seat
+var _drv_prev := {}     # vehicle instance id -> driver last frame
+var _heli_alt := 0.0    # best height over the ground a bot flew a heli
+var _pad_t := -1.0      # maker_pads: seconds until a bot first stood on the island
+var _pad_arrive := {}   # maker_pads: team -> seconds until its first bot landed there
+const PAD_ISLAND := Rect2(4140, 700, 320, 130)   # feet on the island's top (see _write_custom)
+const PAD_LIMIT_S := 60   # maker_pads: a blue attacker must make it onto the island within this
 
 
 func _write_custom(kind: String) -> String:
@@ -50,16 +62,31 @@ func _write_custom(kind: String) -> String:
 			pcs.append(B.make_piece("spikes", Vector2(3700, 1496), Vector2(160, 28)))
 			pcs.append(B.make_piece("lava", Vector2(1600, 1600), Vector2(360, 80)))
 			pcs.append(B.make_piece("lava", Vector2(3200, 1600), Vector2(360, 80)))
+		elif kind == "maker_pads":
+			# A floating island 690 px over the east ground (out of jet-link
+			# reach) carrying the red flag, a big jump pad beside it.
+			pcs.append(B.make_piece("float", Vector2(4300, 860), Vector2(320, 80)))
+			pcs.append(B.make_piece("pad_big", Vector2(4000, 1500), Vector2(64, 20)))
+			src["ctf_flags"] = [Vector2(300, 1500), Vector2(4300, 810)]
 		else:
 			src["vehicle_spawns"] = [Vector2(900, 1510), Vector2(3900, 1510)]
+			src["tank_spawns"] = [Vector2(600, 1510), Vector2(4200, 1510)]
+			src["heli_spawns"] = [Vector2(1150, 1510), Vector2(3650, 1510)]
 		m = B.compile(src)
-		m["name"] = "RTNav Maker Hazards" if kind == "maker_hazards" else "RTNav Maker Vehicles"
+		m["name"] = {"maker_hazards": "RTNav Maker Hazards", "maker_pads": "RTNav Maker Pads"}.get(kind, "RTNav Maker Vehicles")
 	return io.save_to_file(str(m["name"]), m)
 
 
 func _ok(nav, a: Vector2, b: Vector2) -> bool:
 	var p: PackedVector2Array = nav.path(a, b)
 	return p.size() > 0 and p[p.size() - 1].distance_to(b) < 260.0
+
+
+func _initialize() -> void:
+	# RTNAV_CASES=maker_pads,maker_vehicles runs just those (debugging).
+	var only := OS.get_environment("RTNAV_CASES")
+	if only != "":
+		_cases = Array(only.split(",", false))
 
 
 func _process(_d: float) -> bool:
@@ -130,7 +157,29 @@ func _process(_d: float) -> bool:
 				_log.append("maker_hazards nodes=%d on_hazard=%d" % [m.nav._pts.size(), on])
 				if on > 0:
 					_bad.append("maker_hazards: %d nav nodes sit on a hazard" % on)
+			if _cases[_case] == "maker_pads":
+				# The only route to the red flag must be a pad ride.
+				var pads: int = int(m.nav.get("_pad_ride").size()) if m.nav.has_method("has_pads") else 0
+				var sp: Array = m._team_spawn_list(1)
+				var s: Vector2 = m._settle_on_ground(sp[0] if not sp.is_empty() else Vector2(420, 1500))
+				var pth: PackedVector2Array = m.nav.path(s, home.get(2, Vector2(4300, 810)))
+				var rides := 0
+				for i in range(1, pth.size()):
+					if m.nav.pad_ride(pth[i - 1], pth[i]) >= 0:
+						rides += 1
+				_log.append("maker_pads pad_links=%d rides_on_attack_path=%d" % [pads, rides])
+				if pads == 0:
+					_bad.append("maker_pads: the runtime graph has no jump-pad links")
+				elif rides == 0:
+					_bad.append("maker_pads: the attack path to the island flag doesn't use the pad")
 			_hz_kills0 = int(m.get("_hazards").kills) if m.get("_hazards") != null else 0
+			_launch0 = int(m.get("_hazards").bot_launches) if m.get("_hazards") != null else 0
+			_pad_t = -1.0
+			_pad_arrive.clear()
+			_boarded.clear()
+			_drv_prev.clear()
+			_drive_kind.clear()
+			_heli_alt = 0.0
 			_drive.clear()
 			_drive_last.clear()
 			_start_pos.clear()
@@ -162,12 +211,36 @@ func _process(_d: float) -> bool:
 				var vid: int = v.get_instance_id()
 				var d = v.driver()
 				var vp: Vector2 = (v as Node2D).global_position
+				var kind: String = "heli" if v.has_method("bot_board_ok") else ("tank" if str(v.name).begins_with("Tank") else "buggy")
+				_drive_kind[vid] = kind
 				if d != null and d != current_scene.player:
 					var step: float = vp.distance_to(_drive_last.get(vid, vp))
 					if step < 60.0:
 						_drive[vid] = float(_drive.get(vid, 0.0)) + step
+					if _drv_prev.get(vid) != d:
+						_boarded[kind] = int(_boarded.get(kind, 0)) + 1
+					if kind == "heli":
+						var gy: float = current_scene._geom_ground_y(vp.x, vp.y)
+						if gy != INF:
+							_heli_alt = maxf(_heli_alt, gy - vp.y)
+				_drv_prev[vid] = d
 				_drive_last[vid] = vp
-			if _n < 60 * 25:
+			if _cases[_case] == "maker_pads" and _pad_arrive.size() < 2:
+				# Over the island's top, coming down (or standing) after a pad
+				# launch within the last 4 s (first arrival per team: red defends
+				# there, blue attacks from 3600 px away; red on the high ground
+				# sometimes shoots the attacker just before its feet touch down).
+				var hz = current_scene.get("_hazards")
+				for b in current_scene.get_tree().get_nodes_in_group("soldier"):
+					if is_instance_valid(b) and b != current_scene.player and not bool(b.get("dead")) \
+							and not _pad_arrive.has(int(b.get("team"))) \
+							and PAD_ISLAND.has_point(b.global_position) and (b as CharacterBody2D).velocity.y >= 0.0 \
+							and now - int(hz._pad_cd.get(b.get_instance_id(), -100000)) < 4000:
+						_pad_arrive[int(b.get("team"))] = float(_n) / 60.0
+						if _pad_t < 0.0:
+							_pad_t = float(_n) / 60.0
+			# maker_pads runs on (up to PAD_LIMIT_S) until an attacker made the trip.
+			if _n < 60 * 25 or (_cases[_case] == "maker_pads" and not _pad_arrive.has(1) and _n < 60 * PAD_LIMIT_S):
 				return false
 			var m = current_scene
 			if _cases[_case] == "maker_hazards":
@@ -176,12 +249,24 @@ func _process(_d: float) -> bool:
 				if hk > 0:
 					_bad.append("maker_hazards: bots died in spikes / lava %d times (%s)" % [hk, ", ".join(m.get("_hazards").kill_log)])
 			if _cases[_case] == "maker_vehicles":
-				var best := 0.0
+				var best := {"buggy": 0.0, "tank": 0.0, "heli": 0.0}
 				for k in _drive:
-					best = maxf(best, float(_drive[k]))
-				_log.append("maker_vehicles buggies=%d best_drive=%d px" % [m.get_tree().get_nodes_in_group("vehicle").size(), int(best)])
-				if best < 400.0:
-					_bad.append("maker_vehicles: no bot drove a buggy (best %d px)" % int(best))
+					var kk: String = _drive_kind.get(k, "buggy")
+					best[kk] = maxf(float(best[kk]), float(_drive[k]))
+				_log.append("maker_vehicles vehicles=%d buggy=%d px tank=%d px heli=%d px (alt %d) boarded=%s" % [
+					m.get_tree().get_nodes_in_group("vehicle").size(), int(best["buggy"]), int(best["tank"]),
+					int(best["heli"]), int(_heli_alt), str(_boarded)])
+				if float(best["buggy"]) < 400.0:
+					_bad.append("maker_vehicles: no bot drove a buggy (best %d px)" % int(best["buggy"]))
+			if _cases[_case] == "maker_pads":
+				var hz = m.get("_hazards")
+				var nl: int = int(hz.bot_launches) - _launch0
+				_log.append("maker_pads bot_launches=%d on_island_at=%.1f s (red %.1f s, blue %.1f s)" % [nl, _pad_t,
+					float(_pad_arrive.get(2, -1.0)), float(_pad_arrive.get(1, -1.0))])
+				if nl == 0:
+					_bad.append("maker_pads: no bot used the jump pad")
+				if not _pad_arrive.has(1):
+					_bad.append("maker_pads: no blue attacker reached the island off the pad in %d s (pad launches %d)" % [PAD_LIMIT_S, nl])
 			var moved := 0
 			var total := 0
 			for b in m.get_tree().get_nodes_in_group("soldier"):

@@ -44,7 +44,7 @@ static func map_to_json(m: Dictionary) -> String:
 		})
 	if lds.size() > 0:
 		out["ladders"] = lds
-	for list_key in ["m2_mounts", "ctf_flags", "dom_points", "medkits", "grenade_kits", "vehicle_spawns", "tank_spawns", "heli_spawns"]:
+	for list_key in ["m2_mounts", "ctf_flags", "dom_points", "medkits", "grenade_kits", "vehicle_spawns", "tank_spawns", "heli_spawns", "plane_spawns"]:
 		if m.has(list_key):
 			var arr: Array = []
 			for v in m[list_key]:
@@ -244,7 +244,7 @@ static func json_to_map(text: String) -> Dictionary:
 			"h": lh,
 		})
 	m["ladders"] = lds
-	for list_key in ["m2_mounts", "ctf_flags", "dom_points", "medkits", "grenade_kits", "vehicle_spawns", "tank_spawns", "heli_spawns"]:
+	for list_key in ["m2_mounts", "ctf_flags", "dom_points", "medkits", "grenade_kits", "vehicle_spawns", "tank_spawns", "heli_spawns", "plane_spawns"]:
 		if parsed.has(list_key):
 			var arr: Array = []
 			for b in _arr(parsed[list_key]):

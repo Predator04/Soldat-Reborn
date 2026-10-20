@@ -34,7 +34,7 @@ const ZOOM_MIN := 0.08
 const ZOOM_MAX := 2.5
 const SINGLE_KEYS := ["player_spawn", "inf_flag", "htf_flag", "rambo_pos"]
 const LIST_KEYS := ["bot_spawns", "dom_points", "point_spawns", "bonus_spawns", "medkits", "grenade_kits",
-	"vehicle_spawns", "tank_spawns", "heli_spawns", "m2_mounts"]
+	"vehicle_spawns", "tank_spawns", "heli_spawns", "plane_spawns", "m2_mounts"]
 
 var ed: Node2D = null
 var active := false
@@ -912,17 +912,8 @@ func _key(k: InputEventKey) -> void:
 				var g := float(grid())
 				var dv := {KEY_LEFT: Vector2(-g, 0), KEY_RIGHT: Vector2(g, 0), KEY_UP: Vector2(0, -g), KEY_DOWN: Vector2(0, g)}
 				move_selection(dv[k.keycode])
-		KEY_ESCAPE:
-			if _ctx.visible or _probs.visible or _load.visible:
-				_close_popups()
-			elif armed != "":
-				disarm()
-			elif not sel.is_empty():
-				sel.clear()
-				_place_selbar()
-				ed.queue_redraw()
-			else:
-				ed._exit_to_menu()
+		# Esc never gets here: the editor's go_back() takes it (BACK rule) and
+		# asks back_pressed() below before leaving.
 
 
 func _touch(t: InputEventScreenTouch) -> void:
@@ -2090,7 +2081,8 @@ func toast(msg: String, alert: bool = false) -> void:
 	UITheme.UIFx.pop(_toast)
 
 
-## Android back: close a sheet / disarm / deselect first. True = handled.
+## BACK / Esc (map_editor.go_back): close a sheet / disarm / deselect first.
+## True = handled; false = nothing left, the editor leaves.
 func back_pressed() -> bool:
 	if (_ctx != null and _ctx.visible) or (_probs != null and _probs.visible) or (_load != null and _load.visible):
 		_close_popups()

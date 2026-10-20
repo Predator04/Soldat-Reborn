@@ -20,6 +20,7 @@ const MapIO = preload("res://scripts/map_io.gd")
 const MapGen = preload("res://scripts/map_gen.gd")
 const Maker = preload("res://scripts/maker/maker_mode.gd")
 const MakerBuild = preload("res://scripts/maker/maker_build.gd")
+const UIBack = preload("res://scripts/ui_back.gd")
 
 const MAP_W := 4800.0
 const MAP_H := 2000.0
@@ -43,6 +44,7 @@ enum Tool {
 	BUGGY,   # v1.19 vehicle spawn
 	TANK,    # v1.20 tank spawn
 	HELI,    # #277 helicopter pad
+	PLANE,   # #291 plane (ground: runway start; open air: starts flying)
 }
 
 # Weapon names offered by the WEAPON_PICKUP tool. Order mirrors the Gun Game
@@ -132,6 +134,7 @@ const EDITOR_TIPS := {
 	"Dom Pt": "A Domination control point.",
 	"M2": "A mounted M2 machine gun (press F next to it in game).",
 	"Heli": "A helicopter pad (#277). Flat ground with lots of open sky above it — big, open maps only.",
+	"Plane": "A plane (#291). On the ground: the start of a long, flat runway. Placed in open air: it waits there and starts flying when someone gets in.",
 	"Tank": "A tank spawn. Wide maps only: it needs a long, flat run (1600px+) and room for its turret.",
 	"Buggy": "A buggy spawn. Put it on a long stretch of open ground (it needs room to drive).",
 	"Poly": "Click points to draw a free-form terrain shape; Enter closes it, Backspace removes the last point.",
@@ -329,6 +332,8 @@ func _draw() -> void:
 		_draw_marker(tb, Color(0.8, 0.85, 0.55), "TNK", 34.0)
 	for hb in _map.get("heli_spawns", []):
 		_draw_marker(hb, Color(0.7, 0.88, 0.8), "HEL", 34.0)
+	for pb in _map.get("plane_spawns", []):
+		_draw_marker(pb, Color(0.72, 0.8, 0.92), "PLN", 34.0)
 	# Pickups: weapon / bonus / point.
 	for wp in _map.get("weapon_pickups", []):
 		var pos_wp: Vector2 = wp.get("pos", Vector2.ZERO)
@@ -411,6 +416,11 @@ func _draw_ladder(r: Rect2, col: Color, preview: bool) -> void:
 # ── Input ─────────────────────────────────────────────
 
 func _unhandled_input(event: InputEvent) -> void:
+	# Esc / ui_cancel = the BACK rule (go_back), in both modes.
+	if UIBack.is_back_event(event):
+		get_viewport().set_input_as_handled()
+		go_back()
+		return
 	if _maker != null and _maker.active:
 		_maker.handle_input(event)
 		return
@@ -538,7 +548,6 @@ func _handle_mouse_motion(ev: InputEventMouseMotion) -> void:
 
 func _handle_key(ev: InputEventKey) -> void:
 	match ev.keycode:
-		KEY_ESCAPE: _exit_to_menu()
 		KEY_F5: _play_test()
 		KEY_1: _set_tool(Tool.PLATFORM)
 		KEY_2: _set_tool(Tool.LADDER)
@@ -616,6 +625,10 @@ func _on_lmb_press(mp: Vector2) -> void:
 			var arrh: Array = _map.get("heli_spawns", [])
 			arrh.append(_snap(mp))
 			_map["heli_spawns"] = arrh
+		Tool.PLANE:
+			var arrp: Array = _map.get("plane_spawns", [])
+			arrp.append(_snap(mp))
+			_map["plane_spawns"] = arrp
 		Tool.TERRAIN_POLY:
 			# Click adds a vertex; Enter commits, right-click deletes existing poly.
 			_poly_pts.append(_snap(mp))
@@ -765,6 +778,10 @@ func _find_at(mp: Vector2) -> Array:
 	for i in hsp.size():
 		if mp.distance_to(hsp[i]) < 40.0:
 			return ["heli_spawns", i]
+	var psp: Array = _map.get("plane_spawns", [])
+	for i in psp.size():
+		if mp.distance_to(psp[i]) < 40.0:
+			return ["plane_spawns", i]
 	var wps: Array = _map.get("weapon_pickups", [])
 	for i in wps.size():
 		var pos_wp: Vector2 = wps[i].get("pos", Vector2.ZERO)
@@ -922,6 +939,7 @@ func _build_ui() -> void:
 		["Buggy", Tool.BUGGY],
 		["Tank", Tool.TANK],
 		["Heli", Tool.HELI],
+		["Plane", Tool.PLANE],
 		# #113 additions.
 		["Poly", Tool.TERRAIN_POLY],
 		["Scenery", Tool.SCENERY],
@@ -1133,6 +1151,7 @@ func _build_load_panel(ui: CanvasLayer) -> void:
 	close.custom_minimum_size = Vector2(0, 36)
 	close.pressed.connect(func() -> void: _load_panel.visible = false)
 	vb.add_child(close)
+	UIBack.register(_load_panel, func() -> void: _load_panel.visible = false)
 
 
 # ── Menu callbacks ────────────────────────────────────
@@ -1282,6 +1301,7 @@ func _tool_name(t: int) -> String:
 		Tool.BUGGY: return "Buggy (place on long, open ground)"
 		Tool.TANK: return "Tank (wide maps: long, flat ground)"
 		Tool.HELI: return "Helicopter pad (flat ground, open sky)"
+		Tool.PLANE: return "Plane (runway start, or open air: starts flying)"
 		Tool.TERRAIN_POLY: return "Terrain Poly (click verts, Enter to close)"
 		Tool.SCENERY: return "Scenery (from palette)"
 		Tool.WEAPON_PICKUP: return "Weapon Pickup (from palette)"
@@ -1298,12 +1318,20 @@ func _set_status(s: String) -> void:
 		_status.text = s
 
 
-# Android back button / gesture: close the load list, else leave to the menu.
+# Android back button / gesture (quit_on_go_back is off) = Esc: go_back().
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST and is_inside_tree():
-		if _maker != null and _maker.active and _maker.back_pressed():
-			return
-		if _load_panel != null and _load_panel.visible:
-			_load_panel.visible = false
-		else:
-			_exit_to_menu()
+		# Deferred: the notification walks the tree and leaving changes scenes.
+		go_back.call_deferred()
+
+
+## The editor's BACK / Esc (scripts/ui_back.gd rule): an open popup list or
+## overlay first (PUBLISH, LEVELS, the load list, Maker's context menu /
+## problems / open sheets), then Maker's disarm / deselect, and only with
+## nothing open the editor's own exit (FILE > Exit to menu).
+func go_back() -> void:
+	if UIBack.dismiss(get_tree()):
+		return
+	if _maker != null and _maker.active and _maker.back_pressed():
+		return
+	_exit_to_menu()

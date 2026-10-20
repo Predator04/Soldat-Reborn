@@ -5,6 +5,7 @@ extends Node2D
 
 const SoldierArt := preload("res://scripts/soldier_art.gd")
 const Recorder := preload("res://scripts/replay_recorder.gd")
+const UIBack := preload("res://scripts/ui_back.gd")
 
 var main: Node
 var data: Dictionary = {}
@@ -216,7 +217,23 @@ func exit_replay() -> void:
 	get_tree().change_scene_to_file("res://scenes/menu.tscn")
 
 
+# Android back button / gesture = Esc: leave the replay (there is no pause
+# menu while watching; quit_on_go_back is off, so without this BACK did nothing).
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST and is_inside_tree():
+		_back.call_deferred()
+
+
+func _back() -> void:
+	if is_inside_tree() and not UIBack.dismiss(get_tree()):
+		exit_replay()
+
+
 func _unhandled_input(event: InputEvent) -> void:
+	if UIBack.is_back_event(event):
+		get_viewport().set_input_as_handled()
+		exit_replay()
+		return
 	# Drag (finger or mouse) pans the camera: free cam.
 	var drag := Vector2.ZERO
 	if event is InputEventScreenDrag:
@@ -239,7 +256,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_Q: cycle_follow(-1)
 		KEY_E: cycle_follow(1)
 		KEY_F: follow_id = -1
-		KEY_ESCAPE: exit_replay()
 		_: return
 	get_viewport().set_input_as_handled()
 
@@ -367,7 +383,12 @@ func _draw() -> void:
 		var tank := str(v[0]) == "tank"
 		var vc := Color(0.45, 0.48, 0.4) if bool(v[4]) else Color(0.2, 0.2, 0.2)
 		draw_set_transform(vp, float(v[3]), Vector2.ONE)
-		if str(v[0]) == "heli":
+		if str(v[0]) == "plane":
+			# #291: fuselage, fin, wing.
+			draw_rect(Rect2(-48, -6, 96, 13), vc)
+			draw_colored_polygon(PackedVector2Array([Vector2(-28, -6), Vector2(-42, -24), Vector2(-50, -24), Vector2(-48, -6)]), vc)
+			draw_line(Vector2(12, 2), Vector2(-28, 5), Color(0.12, 0.12, 0.12), 2.0)
+		elif str(v[0]) == "heli":
 			# #277: cabin, tail boom, rotor line, skids.
 			draw_rect(Rect2(-36, -42, 80, 30), vc)
 			draw_rect(Rect2(-96, -36, 62, 7), vc)

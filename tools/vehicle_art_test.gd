@@ -1,7 +1,7 @@
 extends SceneTree
 ## Vehicle art draw-path smoke test (gate stage F, #276).
 ##   godot --headless --fixed-fps 60 -s tools/vehicle_art_test.gd
-## Buggy, tank and helicopter parked on a flat range. For every quality (Low /
+## Buggy, tank, helicopter and plane (#291) parked on a flat range. For every quality (Low /
 ## Medium / High) in both looks (cinematic / classic) each vehicle is drawn
 ## pristine, crewed + running + firing, at four damage levels and as a burning
 ## wreck, then respawned. Checks: every vehicle's _draw ran in every state, the
@@ -44,7 +44,7 @@ func _process(d: float) -> bool:
 		var MapIO = load("res://scripts/map_io.gd")
 		var m := {"name": "qa_vart", "platforms": [], "player_spawn": Vector2(400, G - 20),
 			"bot_spawns": [Vector2(3600, G - 20)], "vehicle_spawns": [Vector2(900, G)],
-			"tank_spawns": [Vector2(1300, G)], "heli_spawns": [Vector2(1800, G)]}
+			"tank_spawns": [Vector2(1300, G)], "heli_spawns": [Vector2(1800, G)], "plane_spawns": [Vector2(2400, G)]}
 		st.set("custom_map_path", MapIO.save_to_file("qa_vart", m))
 		st.set("game_mode", 0); st.set("bot_count", 1); st.set("vehicles", true)
 		st.set("survival", false); st.set("realistic", false); st.set("advance", false)
@@ -70,8 +70,8 @@ func _process(d: float) -> bool:
 	if _phase == 1:
 		for v in get_nodes_in_group("vehicle"):
 			_veh.append(v)
-		if _veh.size() != 3:
-			return _fail("expected 3 vehicles, got %d" % _veh.size())
+		if _veh.size() != 4:
+			return _fail("expected 4 vehicles, got %d" % _veh.size())
 		for s in get_nodes_in_group("soldier"):
 			if s.get("bot_id") != null:
 				s.set_physics_process(false)

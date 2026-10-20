@@ -2206,7 +2206,7 @@ func _spawn_gibs() -> void:
 
 
 static func _gib_explosive(weapon: String) -> bool:
-	return weapon in ["LAW", "M79", "Grenade", "Cluster", "Buggy", "Tank", "Heli", "M2"] or weapon.begins_with("Grenade")
+	return weapon in ["LAW", "M79", "Grenade", "Cluster", "Buggy", "Tank", "Heli", "Plane", "M2"] or weapon.begins_with("Grenade")
 
 
 ## Compact snapshot for match replays (replay_recorder.gd).

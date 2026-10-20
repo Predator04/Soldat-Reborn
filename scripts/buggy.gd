@@ -45,6 +45,9 @@ var EJECT_DMG := 30.0         # a crew member thrown clear of a gentle wreck (he
 # #277: host relay sanity cap on a client-simulated vehicle (px/s over >= 250 ms,
 # falls included — generous on purpose; honest driving never comes close).
 var RELAY_MAX_SPEED := 2000.0
+# #291: how far from the body a streamed muzzle may be (host check in
+# match_vehicles; the plane's nose gun outruns the host's smoothed copy).
+var FIRE_REACH := 90.0
 var state_rx := 0             # remote state packets applied (smoke tests)
 var respawns := 0             # apply_respawn count (host relay check resets on it)
 
@@ -97,7 +100,7 @@ var _bd_last_x := 0.0
 var _bd_stuck_t := 0.0
 var _bd_hop := false
 
-const EXPLOSIVE_WEAPONS := ["LAW", "M79", "Grenade", "Cluster", "Tank", "Buggy", "Heli"]
+const EXPLOSIVE_WEAPONS := ["LAW", "M79", "Grenade", "Cluster", "Tank", "Buggy", "Heli", "Plane"]
 const _BARREL_TEX := preload("res://assets/weapons-gfx/m2.png")
 const TouchControls = preload("res://scripts/touch_controls.gd")
 const VArt = preload("res://scripts/gfx/vehicle_art.gd")
@@ -348,31 +351,49 @@ func _is_host_side() -> bool:
 # A remote human in a seat is tested where its shooter saw it (rewound), so the
 # vehicle carrying it is too — else the hull, where the host has it now, stops
 # rounds that met the crew on the shooter's screen.
-var _hist: Array = []   # host: [ms, position]
+var _hist: Array = []   # host: [ms, position, collision shape's global transform]
+var _hull: CollisionShape2D = null
 
 
 func _record_hist() -> void:
 	if not Net.is_networked() or not Net.is_host():
 		return
+	if _hull == null:
+		for c in get_children():
+			if c is CollisionShape2D and (c as CollisionShape2D).shape is CapsuleShape2D:
+				_hull = c
+				break
 	var now := Time.get_ticks_msec()
-	_hist.append([now, global_position])
+	_hist.append([now, global_position, _hull.global_transform if _hull != null else Transform2D()])
 	while _hist.size() > 2 and now - int(_hist[0][0]) > HostHits.HIST_MS:
 		_hist.pop_front()
 
 
-## Host: where this vehicle was `ms_ago` ms ago (interpolated).
-func pos_at(ms_ago: int) -> Vector2:
-	if ms_ago <= 0 or _hist.is_empty():
-		return global_position
+## Host: index of the newest record at or before `ms_ago` ms ago, and how far
+## toward the next one that moment lies ([i, t]); [-1, 0] with no history.
+func _hist_at(ms_ago: int) -> Array:
+	if _hist.is_empty():
+		return [-1, 0.0]
 	var want := Time.get_ticks_msec() - ms_ago
 	var i := _hist.size() - 1
 	while i > 0 and int(_hist[i][0]) > want:
 		i -= 1
 	if i >= _hist.size() - 1 or int(_hist[i][0]) > want:
-		return _hist[i][1]
+		return [i, 0.0]
 	var t0 := int(_hist[i][0])
 	var t1 := int(_hist[i + 1][0])
-	return (_hist[i][1] as Vector2).lerp(_hist[i + 1][1], float(want - t0) / float(maxi(1, t1 - t0)))
+	return [i, float(want - t0) / float(maxi(1, t1 - t0))]
+
+
+## Host: where this vehicle was `ms_ago` ms ago (interpolated).
+func pos_at(ms_ago: int) -> Vector2:
+	var h := _hist_at(ms_ago)
+	if ms_ago <= 0 or int(h[0]) < 0:
+		return global_position
+	var i: int = h[0]
+	if float(h[1]) <= 0.0:
+		return _hist[i][1]
+	return (_hist[i][1] as Vector2).lerp(_hist[i + 1][1], float(h[1]))
 
 
 ## Host: a remote human is aboard (its hits are rewound, so this hull is too).
@@ -383,18 +404,33 @@ func carries_remote_human() -> bool:
 	return false
 
 
-## Where a segment a->b first enters this hull (0..1), the hull as it was
-## `ms_ago` ms ago (the collision capsule: SHAPE_LEN long, 2 SHAPE_R tall), or -1.
+## Where a segment a->b first enters this hull (0..1) — its collision capsule
+## as it was `ms_ago` ms ago, turned as it was (a plane's follows its nose) —
+## or -1.
 func segment_t_at(a: Vector2, b: Vector2, ms_ago: int) -> float:
-	var c := pos_at(ms_ago) + Vector2(0, -SHAPE_R)
-	var half := maxf(0.0, SHAPE_LEN * 0.5 - SHAPE_R)
+	if _hull == null or not _hull.shape is CapsuleShape2D:
+		return -1.0
+	var xf: Transform2D = _hull.global_transform
+	var h := _hist_at(ms_ago)
+	if ms_ago > 0 and int(h[0]) >= 0:
+		var i: int = h[0]
+		xf = _hist[i][2]
+		if float(h[1]) > 0.0:
+			xf = xf.interpolate_with(_hist[i + 1][2], float(h[1]))
+	# In the capsule's own frame it stands upright: a core box with a cap at
+	# each end.
+	var inv := xf.affine_inverse()
+	var la := inv * a
+	var lb := inv * b
+	var cap := _hull.shape as CapsuleShape2D
+	var r := cap.radius
+	var half := maxf(0.0, cap.height * 0.5 - r)
 	var best := -1.0
-	var core := Rect2(c.x - half, c.y - SHAPE_R, half * 2.0, SHAPE_R * 2.0)
-	var tr: float = preload("res://scripts/bullet.gd").segment_rect_t(a, b, core)
+	var tr: float = preload("res://scripts/bullet.gd").segment_rect_t(la, lb, Rect2(-r, -half, r * 2.0, half * 2.0))
 	if tr >= 0.0:
 		best = tr
-	for cx in [c.x - half, c.x + half]:
-		var tc := _segment_circle_t(a, b, Vector2(cx, c.y), SHAPE_R)
+	for cy in [-half, half]:
+		var tc := _segment_circle_t(la, lb, Vector2(0.0, cy), r)
 		if tc >= 0.0 and (best < 0.0 or tc < best):
 			best = tc
 	return best

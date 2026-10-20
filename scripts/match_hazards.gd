@@ -25,6 +25,7 @@ var main: Main
 var zones: Array = []          # {kind, rect: Rect2, dir}
 var pads: Array = []           # {pos: Vector2, power: float}
 var launches := 0              # pad launches this match (tests)
+var bot_launches := 0          # ...of bots (tests)
 var kills := 0                 # hazard deaths this match (tests)
 var kill_log: Array = []       # tests: "<name> <kind> at <feet>" (last 16)
 var _pad_cd: Dictionary = {}   # soldier instance id -> msec of its last launch
@@ -108,6 +109,8 @@ func _tick(_delta: float) -> void:
 			s.set("_jump_cut_done", true)
 			s.set("_jump_hold_t", 1.0)
 			launches += 1
+			if s.get("bot_id") != null:
+				bot_launches += 1
 			if _visual != null and is_instance_valid(_visual):
 				_visual.pad_fired(i)
 			Sfx.jump(pp)

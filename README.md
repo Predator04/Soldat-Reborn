@@ -18,6 +18,19 @@ the classic had and more, with most of Soldat 2's feature list folded in.
 
 <sub>Real frames from the v1.35 build ( bot matches, 1280×720, rendered in software GL — on a GPU it looks the same, only smoother).</sub>
 
+### What's new in 1.38 — Planes
+
+- **Planes** — a fast fighter you fly by pitching the nose: take off down a runway, loop, dive and strafe with the nose gun, drop bombs, and bail out when it's going down. Slow down too much and it stalls. On Fortress, Outpost and Industrial, as a Maker piece, online, and bots fly them too.
+- **Smarter bots on your levels** — they ride jump pads up to high objectives and use tanks and helicopters on Maker maps.
+- **Discord status** — your Discord profile shows the mode, map and score you're playing (Windows / Linux desktop).
+- **Phone BACK button fixed everywhere** — it closes the top dialog first instead of throwing you out of the editor or quitting.
+- **Sturdier dedicated servers** — they start faster and say exactly why when they can't.
+- **Trailer** — [watch it](docs/media/tracerfall-trailer-720p.mp4).
+
+![Plane dogfight](docs/screenshots/trailer-plane.jpg)
+![Plane over Fortress](docs/screenshots/plane-fortress.jpg)
+![Ultra HD close-up](docs/screenshots/trailer-hd.jpg)
+
 ### What's new in 1.37 — Maker
 
 - **Maker mode** — build levels like Mario Maker: drag ready-made pieces (ground, ramps, hills, islands, bridges, walls), hazards (spikes, lava, jump pads), objectives, weapons, vehicles and scenery onto the map. Touching pieces merge into smooth terrain in the theme you pick. One button to PLAY your level and one to jump back into EDIT. Works on phones too.
