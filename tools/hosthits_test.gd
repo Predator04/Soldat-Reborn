@@ -513,16 +513,22 @@ func _sc_judge(r: Dictionary) -> Array:
 	var logs := [hlog, "%s_victim.log" % n]
 	for sh in r["shooters"]:
 		logs.append(sh[2])
+	# (Packets for a body a peer doesn't have (yet / any more) are dropped with
+	# an engine error, as before #266: state packets already on their way to
+	# the old map's bodies after a map change, and on a lossy link a relayed
+	# state that overtakes the re-sent reliable spawn of its body. Counted,
+	# not failed, in those runs only.)
+	var lossy: bool = float(sc.get("loss", 0.0)) > 0.0 or float(sc.get("spike_every", 0.0)) > 0.0
+	var dropped := 0
 	for f in logs:
-		# (A map change: state packets already on their way to the old map's
-		# bodies arrive at the new map and are dropped with an engine error —
-		# as before #266; counted, not failed.)
-		var drops: bool = bool(sc.get("jip", false)) and str(f) == hlog
+		var drops: bool = (bool(sc.get("jip", false)) and str(f) == hlog) or (lossy and str(f) != hlog)
 		var e := _errors(f, drops)
 		if drops:
-			info.append("map-change drops=%d" % (_errors(f, false) - e))
+			dropped += _errors(f, false) - e
 		if e > 0:
 			bad.append("%d error lines in %s" % [e, f])
+	if dropped > 0:
+		info.append("dropped_packet_lines=%d" % dropped)
 	print("HOSTHITS-SCENARIO %s %s %s | %s" % [n, "ok" if bad.is_empty() else "FAIL", str(bad), " ".join(info)])
 	_log.append("%s:%s" % [n, "ok" if bad.is_empty() else "FAIL"])
 	return bad
