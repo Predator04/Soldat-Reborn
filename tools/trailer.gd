@@ -47,8 +47,8 @@ const DEFAULT_URL := "github.com/Predator04/Tracerfall"
 const BEATS := {
 	"open": {"map": "Vortex", "mode": 2, "bots": 12, "seed": 2631, "warm": [7.0, 30.0], "secs": 8.0,
 		"pick": "fight", "zoom": 1.05, "push": 0.08, "loadouts": {"Minigun": 0.2, "LAW": 0.2}},
-	"jets": {"map": "Airpirates", "mode": 0, "bots": 10, "seed": 77, "warm": [6.0, 30.0], "secs": 7.0,
-		"pick": "jet", "zoom": 1.2, "loadouts": {"Minimi": 0.3, "Steyr AUG": 0.3}},
+	"jets": {"map": "Blox", "mode": 0, "bots": 10, "seed": 77, "warm": [6.0, 30.0], "secs": 7.0,
+		"pick": "jet", "zoom": 1.4, "aim_bias": 0.4, "loadouts": {"Minimi": 0.3, "Steyr AUG": 0.3}},
 	"boom": {"map": "Kampf", "mode": 0, "bots": 12, "seed": 4242, "warm": [5.0, 25.0], "secs": 8.0,
 		"pick": "boom", "zoom": 1.35, "loadouts": {"LAW": 0.5, "M79": 0.35}},
 	"multi": {"map": "Desert", "mode": 1, "bots": 14, "seed": 9001, "warm": [6.0, 25.0], "secs": 8.0,
@@ -56,8 +56,6 @@ const BEATS := {
 	"hd": {"map": "Industrial", "mode": 2, "bots": 10, "seed": 314, "warm": [8.0, 30.0], "secs": 7.0,
 		"pick": "fight", "vehicles": false, "zoom": 2.7, "omega": 4.0, "lead": 0.08, "aim_bias": 0.0, "push": 0.06,
 		"loadouts": {"Minigun": 0.3, "Spas-12": 0.2, "LAW": 0.2}},
-	"night": {"map": "Ruins", "mode": 2, "bots": 12, "seed": 5150, "warm": [7.0, 30.0], "secs": 7.0,
-		"pick": "fight", "zoom": 1.4, "loadouts": {"LAW": 0.25, "Flamethrower": 0.2, "Minigun": 0.2}},
 	"buggy": {"map": "Moonshine", "mode": 2, "bots": 10, "seed": 808, "warm": [3.0, 25.0], "secs": 6.0,
 		"pick": "vehicle", "vehicle": "buggy", "zoom": 1.2},
 	"tank": {"map": "Mayapan", "mode": 2, "bots": 10, "seed": 1944, "warm": [3.0, 25.0], "secs": 6.0,
@@ -70,7 +68,7 @@ const BEATS := {
 	"levels": {"kind": "levels", "seed": 288, "secs": 5.0},
 	"end": {"kind": "menu", "seed": 1, "secs": 7.0},
 }
-const ORDER := ["open", "jets", "boom", "multi", "hd", "night", "buggy", "tank", "heli", "ctf", "maker", "levels", "end"]
+const ORDER := ["open", "jets", "boom", "multi", "hd", "buggy", "tank", "heli", "ctf", "maker", "levels", "end"]
 
 var _beat := "open"
 var _b: Dictionary = {}
@@ -859,6 +857,9 @@ func _maker_tick() -> bool:
 			return false
 		_mk = e.get("_maker")
 		_mk.new_map()   # starter map, Grassland theme
+		var toast = _mk.get("_toast")   # no "New map." toast in the first shot
+		if toast != null:
+			(toast as CanvasItem).visible = false
 		# Strip the starter map back to its three ground strips: we build the rest.
 		var pcs: Array = _mk._pieces()
 		while pcs.size() > 3:
@@ -950,7 +951,7 @@ func _maker_tick() -> bool:
 			while not WorkerThreadPool.is_task_completed(task):
 				OS.delay_msec(2)
 		_m = m
-		_b["zoom"] = 0.82
+		_b["zoom"] = 1.0
 		_b["push"] = 0.1
 		_setup_match()
 		# Stage the fight on the new level's centre: blue on the left bridge /
@@ -987,7 +988,7 @@ func _maker_tick() -> bool:
 	var w := 2.2
 	_cam_vel += ((want - _cam.global_position) * w * w - _cam_vel * 2.0 * w) / FPS
 	_cam.global_position += _cam_vel / FPS
-	var z := 0.82 * (1.0 + 0.1 * float(_render_frames) / 240.0)
+	var z := 1.0 + 0.1 * float(_render_frames) / 240.0
 	_cam.zoom = Vector2(z, z)
 	if _render_frames == 100:
 		_save_still("maker_match")
@@ -1322,9 +1323,10 @@ func _card_defs() -> Array:
 		{"name": "ultrahd", "w": 1920, "h": 1080, "dur": 2.9, "band": 0.5, "band_y": 0.8, "band_h": 0.3, "lines": [
 			["ULTRA HD", "display", 120, txt, 0.82, 0.0],
 			["SOLDIERS  ·  WEAPONS  ·  TERRAIN  ·  DYNAMIC LIGHTING", "caps", 32, acc, 0.9, 0.25]]},
-		{"name": "maker", "w": 1920, "h": 1080, "dur": 3.0, "band": 0.5, "band_y": 0.8, "band_h": 0.3, "lines": [
-			["BUILD YOUR OWN LEVELS", "display", 104, txt, 0.82, 0.0],
-			["MAKER MODE  ·  SHARE AND PLAY THEM IN LEVELS", "caps", 32, acc, 0.9, 0.25]]},
+		# Over the editor's empty sky, clear of its top bar and palette.
+		{"name": "maker", "w": 1920, "h": 1080, "dur": 3.0, "band": 0.5, "band_y": 0.22, "band_h": 0.24, "lines": [
+			["BUILD YOUR OWN LEVELS", "display", 104, txt, 0.23, 0.0],
+			["MAKER MODE  ·  SHARE AND PLAY THEM IN LEVELS", "caps", 32, acc, 0.29, 0.25]]},
 		{"name": "online", "w": 1920, "h": 1080, "dur": 2.6, "band": 0.5, "band_y": 0.83, "band_h": 0.24, "lines": [
 			["ONLINE  ·  BOTS  ·  %d MODES  ·  %d MAPS" % [modes, maps], "display", 72, txt, 0.86, 0.0]]},
 		{"name": "end", "w": 1920, "h": 1080, "dur": 6.0, "logo": true, "logo_y": 0.37, "logo_px": 180, "fade": false, "lines": [

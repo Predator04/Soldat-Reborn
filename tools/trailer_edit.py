@@ -32,10 +32,9 @@ XFADE = 0.4
 EDIT = [
     ("open", 6.4, "title", 0.5),
     ("jets", 4.6, None, 0),
-    ("boom", 5.0, None, 0),
-    ("multi", 5.0, None, 0),
-    ("hd", 5.6, "ultrahd", 0.3),
-    ("night", 4.6, None, 0),
+    ("boom", 5.4, None, 0),
+    ("multi", 5.4, None, 0),
+    ("hd", 6.0, "ultrahd", 0.3),
     ("buggy", 4.0, None, 0),
     ("tank", 4.0, None, 0),
     ("heli", 4.6, None, 0),
@@ -54,7 +53,11 @@ MUSIC = "assets/music/necro.ogg"
 MUSIC_FROM = 18.0      # the track builds up; full band from ~29 s
 BEAT = 60.0 / 110.0    # necro.ogg runs at 110 BPM ...
 BEAT0 = 18.53          # ... with a beat at 18.53 s (onset autocorrelation)
-KEY_ART = ["open", "boom", "hd", "night", "heli", "tank", "ctf", "multi", "jets", "maker"]
+KEY_ART = ["open", "boom", "hd", "multi", "tank", "heli", "ctf", "maker", "jets"]
+# Still preference per beat (tag order): the HD close-up reads best on a kill
+# (soldiers + gibs), an explosion bloom can swallow it; the editor before PLAY.
+KEY_PREF = {"hd": ["kill", "periodic", "explosion"], "maker": ["maker_build", "maker_match"]}
+KEY_PREF_DEFAULT = ["explosion", "wreck", "flag_capture", "kill", "periodic"]
 
 
 def ffmpeg_bin():
@@ -177,126 +180,155 @@ def on_beat(edit, music_from, last_free=True):
     return out
 
 
+def render_cut(ff, work, prefix, shots, preview=False):
+    """Cut `shots` together with XFADE crossfades and return an ffconcat list
+    of lossless pieces (H.264 qp 0 + PCM). Built piece by piece - each shot
+    normalised on its own, then bodies and 0.4 s transitions - so ffmpeg never
+    holds more than two short inputs (one big filter graph with every shot
+    queues whole shots of 1080p frames in memory and gets OOM-killed).
+    shot = {src, a (first frame), n (frames), vf (picture filter or ""),
+            card: (png dir, offset s) or None}"""
+    os.makedirs(work, exist_ok=True)
+    xf = int(round(XFADE * FPS))
+    spf = 48000 // FPS                     # audio samples per frame
+    enc = ["-c:v", "libx264", "-qp", "0", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+           "-c:a", "pcm_s16le", "-ar", "48000", "-ac", "2"]
+    scale = ",scale=1280:720:flags=lanczos" if preview else ""
+    norm = []
+    for i, s in enumerate(shots):
+        dst = os.path.join(work, "%s_shot%02d.mkv" % (prefix, i))
+        inputs = ["-ss", "%.4f" % (s["a"] / float(FPS)), "-i", s["src"]]
+        fc = ["[0:v]trim=end_frame=%d,setpts=PTS-STARTPTS,fps=%d%s%s,format=yuv420p[v]" % (
+            s["n"], FPS, ("," + s["vf"]) if s.get("vf") else "", scale)]
+        fc.append("[0:a]aresample=48000,atrim=end_sample=%d,asetpts=PTS-STARTPTS[a]" % (s["n"] * spf))
+        vout = "v"
+        if s.get("card"):
+            cdir, off = s["card"]
+            inputs += ["-framerate", str(FPS), "-i", os.path.join(cdir, "f_%04d.png")]
+            cs = ",scale=1280:720" if preview else ""
+            # tpad (not a pts offset) delays the card, so its frames are pulled
+            # only when they are due instead of queuing up in memory.
+            fc.append("[1:v]format=rgba%s,tpad=start_duration=%.4f:color=black@0.0[c]" % (cs, off))
+            fc.append("[v][c]overlay=0:0:eof_action=pass:format=auto,format=yuv420p[vc]")
+            vout = "vc"
+        run([ff, "-y", "-v", "error"] + inputs + ["-filter_complex", ";".join(fc),
+             "-map", "[%s]" % vout, "-map", "[a]", "-frames:v", str(s["n"])] + enc + [dst])
+        norm.append((dst, s["n"]))
+    pieces = []
+    last = len(norm) - 1
+    for i, (path, n) in enumerate(norm):
+        b0 = xf if i > 0 else 0
+        b1 = n - (xf if i < last else 0)
+        body = os.path.join(work, "%s_body%02d.mkv" % (prefix, i))
+        run([ff, "-y", "-v", "error", "-i", path, "-filter_complex",
+             "[0:v]trim=start_frame=%d:end_frame=%d,setpts=PTS-STARTPTS[v];"
+             "[0:a]atrim=start_sample=%d:end_sample=%d,asetpts=PTS-STARTPTS[a]" % (b0, b1, b0 * spf, b1 * spf),
+             "-map", "[v]", "-map", "[a]"] + enc + [body])
+        pieces.append(body)
+        if i < last:
+            nxt = norm[i + 1][0]
+            tr = os.path.join(work, "%s_xfade%02d.mkv" % (prefix, i))
+            run([ff, "-y", "-v", "error", "-i", path, "-i", nxt, "-filter_complex",
+                 "[0:v]trim=start_frame=%d,setpts=PTS-STARTPTS[p];[1:v]trim=end_frame=%d,setpts=PTS-STARTPTS[q];"
+                 "[p][q]xfade=transition=fade:duration=%.4f:offset=0[v];"
+                 "[0:a]atrim=start_sample=%d,asetpts=PTS-STARTPTS[pa];[1:a]atrim=end_sample=%d,asetpts=PTS-STARTPTS[qa];"
+                 "[pa][qa]acrossfade=d=%.4f:c1=tri:c2=tri[a]" % (n - xf, xf, XFADE, (n - xf) * spf, xf * spf, XFADE),
+                 "-map", "[v]", "-map", "[a]", "-frames:v", str(xf)] + enc + [tr])
+            pieces.append(tr)
+    lst = os.path.join(work, "%s_list.ffconcat" % prefix)
+    with open(lst, "w") as f:
+        f.write("ffconcat version 1.0\n")
+        for p in pieces:
+            f.write("file '%s'\n" % os.path.abspath(p))
+    return lst
+
+
 def build_trailer(ff, raw, out, plan, url_note, preview=False):
-    inputs = []
     t = 0.0
     shots = []
+    cut = []
     for i, (beat, secs, card, card_at) in enumerate(on_beat(EDIT, MUSIC_FROM)):
         info = load_beat(raw, beat)
         a, n, why = pick_window(info, secs)
         dur = n / float(FPS)
-        inputs += ["-ss", "%.4f" % (a / float(FPS)), "-t", "%.4f" % dur, "-i", os.path.join(raw, beat + ".avi")]
         shots.append({"beat": beat, "start": t, "dur": dur, "map": info.get("map", ""), "src": a, "why": why,
                       "trigger": info.get("trigger", ""), "card": card, "card_at": card_at,
                       "what": describe(info, a, n)})
+        cut.append({"src": os.path.join(raw, beat + ".avi"), "a": a, "n": n,
+                    "card": (os.path.join(raw, "cards", "card_" + card), card_at) if card else None})
         t += dur - (XFADE if i < len(EDIT) - 1 else 0.0)
     total = t
     if plan:
         return shots, total
-    nb = len(EDIT)
-    scale = "scale=1280:720:flags=lanczos," if preview else ""
-    fc = []
-    for i in range(nb):
-        fc.append("[%d:v]%sfps=%d,format=yuv420p,setpts=PTS-STARTPTS[v%d]" % (i, scale, FPS, i))
-        fc.append("[%d:a]aresample=48000,asetpts=PTS-STARTPTS[a%d]" % (i, i))
-    cur_v, cur_a = "v0", "a0"
-    off = 0.0
-    for i in range(1, nb):
-        off += shots[i - 1]["dur"] - XFADE
-        fc.append("[%s][v%d]xfade=transition=fade:duration=%.3f:offset=%.4f[x%d]" % (cur_v, i, XFADE, off, i))
-        fc.append("[%s][a%d]acrossfade=d=%.3f:c1=tri:c2=tri[y%d]" % (cur_a, i, XFADE, i))
-        cur_v, cur_a = "x%d" % i, "y%d" % i
-    # Title cards.
-    k = nb
-    for s in shots:
-        if not s["card"]:
-            continue
-        cdir = os.path.join(raw, "cards", "card_" + s["card"])
-        inputs += ["-framerate", str(FPS), "-i", os.path.join(cdir, "f_%04d.png")]
-        at = s["start"] + s["card_at"]
-        cs = "scale=1280:720," if preview else ""
-        fc.append("[%d:v]%sformat=rgba,setpts=PTS-STARTPTS+%.4f/TB[c%d]" % (k, cs, at, k))
-        fc.append("[%s][c%d]overlay=0:0:eof_action=pass:format=auto[o%d]" % (cur_v, k, k))
-        cur_v = "o%d" % k
-        k += 1
+    lst = render_cut(ff, os.path.join(out, "work"), "h", cut, preview)
     # Soundtrack under the game's own sound.
-    inputs += ["-ss", "%.3f" % MUSIC_FROM, "-t", "%.3f" % (total + 0.5), "-i", MUSIC]
-    fc.append("[%d:a]aresample=48000,volume=0.62,afade=t=in:d=0.8,afade=t=out:st=%.3f:d=3.2[mus]" % (k, total - 3.4))
-    fc.append("[%s]volume=0.9,afade=t=out:st=%.3f:d=2.0[sfx]" % (cur_a, total - 2.2))
-    fc.append("[sfx][mus]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.9,"
-              "loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000[aout]")
-    fc.append("[%s]format=yuv420p[vout]" % cur_v)
+    fc = ["[1:a]aresample=48000,volume=0.62,afade=t=in:d=0.8,afade=t=out:st=%.3f:d=3.2[mus]" % (total - 3.4),
+          "[0:a]volume=0.9,afade=t=out:st=%.3f:d=2.0[sfx]" % (total - 2.2),
+          "[sfx][mus]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.9,"
+          "loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000[aout]"]
     dst = os.path.join(out, "tracerfall-trailer%s.mp4" % ("-preview" if preview else ""))
-    cmd = [ff, "-y", "-v", "error", "-stats"] + inputs + [
-        "-filter_complex", ";".join(fc), "-map", "[vout]", "-map", "[aout]",
-        "-c:v", "libx264", "-preset", "veryfast" if preview else "medium", "-crf", "26" if preview else "18",
-        "-profile:v", "high", "-pix_fmt", "yuv420p", "-r", str(FPS), "-threads", "2",
-        "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart",
-        "-metadata", "title=Tracerfall - gameplay trailer", "-metadata", "comment=" + url_note,
-        "-t", "%.3f" % total, dst]
-    run(cmd)
+    run([ff, "-y", "-v", "error", "-stats", "-f", "concat", "-safe", "0", "-i", lst,
+         "-ss", "%.3f" % MUSIC_FROM, "-t", "%.3f" % (total + 0.5), "-i", MUSIC,
+         "-filter_complex", ";".join(fc), "-map", "0:v", "-map", "[aout]",
+         "-c:v", "libx264", "-preset", "veryfast" if preview else "medium", "-crf", "26" if preview else "18",
+         "-profile:v", "high", "-pix_fmt", "yuv420p", "-r", str(FPS), "-threads", "2",
+         "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart",
+         "-metadata", "title=Tracerfall - gameplay trailer", "-metadata", "comment=" + url_note,
+         "-t", "%.3f" % total, dst])
     return shots, total
+
+
+VERTICAL_VF = ("split[s][t];[s]scale=3414:1920,crop=1080:1920,boxblur=28:2,eq=brightness=-0.16:saturation=0.8[bg];"
+               "[t]crop=1080:1080:(iw-1080)/2:0[fg];[bg][fg]overlay=0:440")
 
 
 def build_vertical(ff, raw, out):
     """30 s 1080x1920: the centre 1080x1080 of each shot (native pixels) over a
     blurred, darkened copy, the logo above and the call to action below."""
-    inputs = []
-    fc = []
     t = 0.0
-    shots = []
-    for i, (beat, secs) in enumerate(on_beat(VERTICAL, MUSIC_FROM + 10.0)):
+    cut = []
+    vert = on_beat(VERTICAL, MUSIC_FROM + 10.0)
+    full = {e[0]: e[1] for e in on_beat(EDIT, MUSIC_FROM)}
+    for i, (beat, secs) in enumerate(vert):
         info = load_beat(raw, beat)
-        a, n, _why = pick_window(info, secs)
-        # Hold the action: start the vertical cut at the same highlight but trim
-        # to its own length around the middle of the 16:9 window.
-        full_a, full_n, _ = pick_window(info, next(e[1] for e in on_beat(EDIT, MUSIC_FROM) if e[0] == beat))
-        a = full_a + max(0, (full_n - n) // 2) if beat not in ("maker", "end") else full_a + (full_n - n if beat == "maker" else 0)
-        dur = n / float(FPS)
-        inputs += ["-ss", "%.4f" % (a / float(FPS)), "-t", "%.4f" % dur, "-i", os.path.join(raw, beat + ".avi")]
-        shots.append((beat, t, dur))
-        t += dur - (XFADE if i < len(VERTICAL) - 1 else 0.0)
+        n = int(round(secs * FPS))
+        # The same highlight as the 16:9 cut, trimmed around its middle (the
+        # Maker shot keeps its end: the PLAY press and the match).
+        full_a, full_n, _ = pick_window(info, full[beat])
+        n = min(n, full_n)
+        if beat == "maker":
+            a = full_a + full_n - n
+        elif beat == "end":
+            a = full_a
+        else:
+            a = full_a + (full_n - n) // 2
+        card = None
+        if i == len(vert) - 1:
+            card = (os.path.join(raw, "cards", "card_v_end"), max(0.0, n / float(FPS) - 3.6))
+        cut.append({"src": os.path.join(raw, beat + ".avi"), "a": a, "n": n, "vf": VERTICAL_VF, "card": card})
+        t += n / float(FPS) - (XFADE if i < len(vert) - 1 else 0.0)
     total = t
-    nb = len(VERTICAL)
-    for i in range(nb):
-        fc.append("[%d:v]fps=%d,setpts=PTS-STARTPTS,split[s%d][t%d]" % (i, FPS, i, i))
-        fc.append("[s%d]scale=3414:1920,crop=1080:1920,boxblur=28:2,eq=brightness=-0.16:saturation=0.8[bg%d]" % (i, i))
-        fc.append("[t%d]crop=1080:1080:(iw-1080)/2:0[fg%d]" % (i, i))
-        fc.append("[bg%d][fg%d]overlay=0:440,format=yuv420p[v%d]" % (i, i, i))
-        fc.append("[%d:a]aresample=48000,asetpts=PTS-STARTPTS[a%d]" % (i, i))
-    cur_v, cur_a = "v0", "a0"
-    off = 0.0
-    for i in range(1, nb):
-        off += shots[i - 1][2] - XFADE
-        fc.append("[%s][v%d]xfade=transition=fade:duration=%.3f:offset=%.4f[x%d]" % (cur_v, i, XFADE, off, i))
-        fc.append("[%s][a%d]acrossfade=d=%.3f:c1=tri:c2=tri[y%d]" % (cur_a, i, XFADE, i))
-        cur_v, cur_a = "x%d" % i, "y%d" % i
-    k = nb
-    # Static header + footer for the whole cut, the vertical end card at the end.
-    for name, at, dur in (("v_head", 0.0, total - 3.4), ("v_foot", 0.6, total - 4.0), ("v_end", total - 3.6, 3.6)):
-        cdir = os.path.join(raw, "cards", "card_" + name)
-        if name == "v_end":
-            inputs += ["-framerate", str(FPS), "-i", os.path.join(cdir, "f_%04d.png")]
-            fade = ""
-        else:   # a still: loop it, fade in / out
-            inputs += ["-loop", "1", "-framerate", str(FPS), "-t", "%.3f" % dur, "-i", os.path.join(cdir, "f_0000.png")]
-            fade = ",fade=t=in:st=0:d=0.5:alpha=1,fade=t=out:st=%.3f:d=0.4:alpha=1" % (dur - 0.4)
-        fc.append("[%d:v]format=rgba%s,setpts=PTS-STARTPTS+%.4f/TB[c%d]" % (k, fade, at, k))
-        fc.append("[%s][c%d]overlay=0:0:eof_action=pass:format=auto[o%d]" % (cur_v, k, k))
-        cur_v = "o%d" % k
-        k += 1
-    inputs += ["-ss", "%.3f" % (MUSIC_FROM + 10.0), "-t", "%.3f" % (total + 0.5), "-i", MUSIC]
-    fc.append("[%d:a]aresample=48000,volume=0.62,afade=t=in:d=0.4,afade=t=out:st=%.3f:d=2.4[mus]" % (k, total - 2.6))
-    fc.append("[%s]volume=0.9,afade=t=out:st=%.3f:d=1.6[sfx]" % (cur_a, total - 1.8))
-    fc.append("[sfx][mus]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.9,"
-              "loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000[aout]")
-    fc.append("[%s]format=yuv420p[vout]" % cur_v)
+    lst = render_cut(ff, os.path.join(out, "work"), "v", cut)
+    head = os.path.join(raw, "cards", "card_v_head", "f_0000.png")
+    foot = os.path.join(raw, "cards", "card_v_foot", "f_0000.png")
+    hd = total - 3.4
+    fc = ["[1:v]format=rgba,fade=t=in:st=0:d=0.5:alpha=1,fade=t=out:st=%.3f:d=0.4:alpha=1[h]" % (hd - 0.4),
+          "[2:v]format=rgba,fade=t=in:st=0.6:d=0.5:alpha=1,fade=t=out:st=%.3f:d=0.4:alpha=1[f]" % (hd - 0.4),
+          "[0:v][h]overlay=0:0:eof_action=pass:format=auto[o1]",
+          "[o1][f]overlay=0:0:eof_action=pass:format=auto,format=yuv420p[vout]",
+          "[3:a]aresample=48000,volume=0.62,afade=t=in:d=0.4,afade=t=out:st=%.3f:d=2.4[mus]" % (total - 2.6),
+          "[0:a]volume=0.9,afade=t=out:st=%.3f:d=1.6[sfx]" % (total - 1.8),
+          "[sfx][mus]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.9,"
+          "loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000[aout]"]
     dst = os.path.join(out, "tracerfall-trailer-vertical.mp4")
-    run([ff, "-y", "-v", "error", "-stats"] + inputs + [
-        "-filter_complex", ";".join(fc), "-map", "[vout]", "-map", "[aout]",
-        "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-profile:v", "high", "-pix_fmt", "yuv420p",
-        "-r", str(FPS), "-threads", "2", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart",
-        "-t", "%.3f" % total, dst])
+    run([ff, "-y", "-v", "error", "-stats", "-f", "concat", "-safe", "0", "-i", lst,
+         "-loop", "1", "-framerate", str(FPS), "-t", "%.3f" % hd, "-i", head,
+         "-loop", "1", "-framerate", str(FPS), "-t", "%.3f" % hd, "-i", foot,
+         "-ss", "%.3f" % (MUSIC_FROM + 10.0), "-t", "%.3f" % (total + 0.5), "-i", MUSIC,
+         "-filter_complex", ";".join(fc), "-map", "[vout]", "-map", "[aout]",
+         "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-profile:v", "high", "-pix_fmt", "yuv420p",
+         "-r", str(FPS), "-threads", "2", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart",
+         "-t", "%.3f" % total, dst])
     return total
 
 
@@ -320,8 +352,9 @@ def export_art(raw, shots, shot_dir, media_dir):
             continue
         inside = [st for st in stills if a <= st["f"] - 1 < a + n] or stills
         mid = a + n * 0.5
-        pref = {"explosion": 0, "kill": 1, "wreck": 0, "flag_capture": 0, "periodic": 2}
-        inside.sort(key=lambda st: (pref.get(st["tag"].split("_")[0], 1), abs(st["f"] - 1 - mid)))
+        order = KEY_PREF.get(beat, KEY_PREF_DEFAULT)
+        rank = lambda tag: order.index(tag) if tag in order else len(order)
+        inside.sort(key=lambda st: (rank(st["tag"]), abs(st["f"] - 1 - mid)))
         src = os.path.join(raw, inside[0]["path"])
         dst = os.path.join(shot_dir, "trailer-%s.jpg" % beat)
         Image.open(src).convert("RGB").save(dst, "JPEG", quality=90, optimize=True, progressive=True)
@@ -377,9 +410,21 @@ def main():
         f.write("\n".join(lines) + "\n")
     if a.preview:
         return
+    # A 720p web copy (README / itch embed); it goes to docs/media while it
+    # stays small enough to keep in git.
+    web = os.path.join(a.out, "tracerfall-trailer-720p.mp4")
+    run([ff, "-y", "-v", "error", "-i", os.path.join(a.out, "tracerfall-trailer.mp4"),
+         "-vf", "scale=1280:720:flags=lanczos", "-c:v", "libx264", "-preset", "medium", "-crf", "24",
+         "-profile:v", "high", "-pix_fmt", "yuv420p", "-threads", "2", "-c:a", "aac", "-b:a", "128k",
+         "-movflags", "+faststart", web])
+    if os.path.getsize(web) < 25 * 1024 * 1024 and not a.no_art:
+        os.makedirs(a.media_dir, exist_ok=True)
+        shutil.copyfile(web, os.path.join(a.media_dir, "tracerfall-trailer-720p.mp4"))
+        print("web copy", os.path.join(a.media_dir, "tracerfall-trailer-720p.mp4"))
     if not a.no_vertical:
         vt = build_vertical(ff, a.raw, a.out)
         print("vertical cut %.1f s" % vt)
+    shutil.rmtree(os.path.join(a.out, "work"), ignore_errors=True)   # lossless pieces
     if not a.no_art:
         for beat, dst, _src in export_art(a.raw, shots, a.shots_dir, a.media_dir):
             print("key art", dst)
