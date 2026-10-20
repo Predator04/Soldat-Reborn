@@ -4,6 +4,8 @@ All notable changes to Soldat Reborn.
 
 ## [Unreleased]
 
+## [1.38.0] — 2026-10-19 — Planes
+
 ### Dev
 - **Trailer tool (#263):** `tools/make_trailer.sh` renders a ~66 s 1080p60 gameplay trailer (+ 720p web copy), a 30 s vertical cut, key-art screenshots and the itch.io cover from staged bot matches with Godot's Movie Maker (`tools/trailer.gd` director: highlight-picked fights, jet chases, explosions, buggy / tank / helicopter / plane, a flag capture, Maker building a level + PLAY, the LEVELS browser; `tools/trailer_edit.py` picks each shot's best window from the event log and cuts / mixes it with ffmpeg). Gate F `trailer` (TRAILER-TEST) runs the director headless.
 
