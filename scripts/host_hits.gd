@@ -30,8 +30,8 @@ extends RefCounted
 
 enum { NONE, APPLY, HOST }
 
-const REWIND_MAX_MS := 300       # never reach back further than this
-const HIST_MS := 520             # hitbox history kept per body
+const REWIND_MAX_MS := 400       # never reach back further than this
+const HIST_MS := 650             # hitbox history kept per body
 const BROAD_SPEED := 1300.0      # px/s no soldier exceeds (falls cap at 1200)
 
 ## Counters (host): what was decided and what was refused. Tests read these
@@ -196,7 +196,7 @@ static func rewind_from_view(view_ms: int, rtt: int) -> int:
 	if view_ms <= 0:
 		return clampi(rtt, 0, REWIND_MAX_MS)
 	var r := Time.get_ticks_msec() - view_ms
-	var cap := mini(REWIND_MAX_MS, maxi(rtt, 0) + 100)
+	var cap := mini(REWIND_MAX_MS, maxi(rtt, 0) + 150)
 	count("rewind_shots")
 	count("rewind_ms", float(clampi(r, 0, cap)))
 	count("rewind_over_rtt_ms", float(r - rtt))
