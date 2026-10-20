@@ -25,6 +25,7 @@ var _vi := 0                 # vehicle index
 var _frames := 0
 var _draw0 := 0
 var _nodes: Array = []       # node count at the end of each full sweep
+var _hists: Array = []       # node kinds at the end of each full sweep (growth report)
 var _home: Array = []
 var _fx0 := 0
 var _fx_by_q := {}
@@ -190,7 +191,10 @@ func _end_pass(m: Node, st) -> bool:
 		if dd > 24.0:
 			_bad.append("%s moved %dpx in pass %d" % [_veh[i].get("kind"), int(dd), _pass])
 	if _pass == 5 or _pass == _passes.size() - 1:
-		_nodes.append(int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)))
+		# Shells / bombs / bullets still in flight are transient, not growth
+		# (#293: two tank shells in the air at the second sweep = +6 nodes).
+		_nodes.append(int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)) - _in_flight(root))
+		_hists.append(_kinds(root))
 	_pass += 1
 	if _pass >= _passes.size():
 		_log.append("fx_spawned low=%d med=%d high=%d" % [int(_fx_by_q.get(0, 0)), int(_fx_by_q.get(1, 0)), int(_fx_by_q.get(2, 0))])
@@ -200,7 +204,7 @@ func _end_pass(m: Node, st) -> bool:
 		if int(_fx_by_q.get(1, 0)) < 50 or int(_fx_by_q.get(2, 0)) < 100:
 			_bad.append("vehicle effects missing on Medium / High")
 		if _nodes[1] > _nodes[0] + 4:
-			_bad.append("node count grew %d -> %d" % [_nodes[0], _nodes[1]])
+			_bad.append("node count grew %d -> %d (%s)" % [_nodes[0], _nodes[1], _kinds_diff(_hists[0], _hists[1])])
 		var draws := []
 		for v in _veh:
 			draws.append("%s=%d" % [v.get("kind"), int(v.get("draws"))])
@@ -210,3 +214,45 @@ func _end_pass(m: Node, st) -> bool:
 		return true
 	_begin_pass(st)
 	return false
+
+
+const _PROJECTILES := ["grenade.gd", "bullet.gd", "rocket.gd"]
+
+
+## Nodes in projectile subtrees (in flight, freed on impact / timeout).
+func _in_flight(n: Node) -> int:
+	if n.get_script() != null and _PROJECTILES.has((n.get_script() as Script).resource_path.get_file()):
+		return _subtree(n)
+	var t := 0
+	for c in n.get_children():
+		t += _in_flight(c)
+	return t
+
+
+func _subtree(n: Node) -> int:
+	var t := 1
+	for c in n.get_children():
+		t += _subtree(c)
+	return t
+
+
+func _kinds(n: Node, out: Dictionary = {}) -> Dictionary:
+	if n.get_script() != null and _PROJECTILES.has((n.get_script() as Script).resource_path.get_file()):
+		return out
+	var k := n.get_class() + ("/" + (n.get_script() as Script).resource_path.get_file() if n.get_script() != null else "")
+	out[k] = int(out.get(k, 0)) + 1
+	for c in n.get_children():
+		_kinds(c, out)
+	return out
+
+
+func _kinds_diff(a: Dictionary, b: Dictionary) -> String:
+	var out := []
+	for k in b:
+		var d := int(b[k]) - int(a.get(k, 0))
+		if d != 0:
+			out.append("%s%+d" % [k, d])
+	for k in a:
+		if not b.has(k):
+			out.append("%s-%d" % [k, int(a[k])])
+	return ", ".join(out)

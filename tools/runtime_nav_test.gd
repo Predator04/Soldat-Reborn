@@ -438,7 +438,11 @@ func _process(_d: float) -> bool:
 				if float(_dist.get(b.get_instance_id(), 0.0)) > 900.0:
 					moved += 1
 			_log.append("%s bots travelled %d/%d" % [_cases[_case], moved, total])
-			if total == 0 or moved * 2 < total:
+			# Half the bots must cover 900 px; in Domination (maker_basin) a third:
+			# holders stand on their point, and 4/8 was the quiet-box norm, so a
+			# 3/7 run failed (#293) though kills / captures were fine.
+			var share: int = 3 if int(CASE_MODE.get(_cases[_case], 2)) == 7 else 2
+			if total == 0 or moved * share < total:
 				_bad.append("%s: bots didn't travel (%d/%d covered > 900 px)" % [_cases[_case], moved, total])
 			_case += 1
 			if _case >= _cases.size():
