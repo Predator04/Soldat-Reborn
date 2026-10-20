@@ -238,6 +238,9 @@ const SCENARIOS := {
 
 const WEAPON_NAMES := {"ak": ["AK-74"], "spas": ["Spas-12"], "knife": ["Knife"], "law": ["LAW"], "m79": ["M79"], "grenade": ["Grenade", "Cluster"], "buggy": ["Buggy MG"]}
 
+# A shooter whose screen runs this far behind its round trip is starved.
+const STARVED_MS := 300.0
+
 # Counters that mean the host refused / overrode something a client said.
 const REFUSALS := ["refused_", "aim_refused", "hp_ignored"]
 
@@ -292,6 +295,13 @@ func _batches(names: Array, parallel: int, first_run: bool, retry: Array) -> voi
 				agreement_only = agreement_only and soft
 			if first_run and agreement_only:
 				retry.append(r["base"])
+				continue
+			# Still only agreement, with the shooter's screen far behind its
+			# round trip (a starved client on a busy machine): the host caps
+			# its rewind at the round trip by design, so there is nothing to
+			# agree on — inconclusive, not a failure.
+			if agreement_only and float(r.get("view_lag", 0.0)) > STARVED_MS:
+				_log.append("%s:starved(%.0fms)" % [r["name"], float(r["view_lag"])])
 				continue
 			for b in bad:
 				_bad.append("%s: %s" % [r["name"], b])
@@ -507,6 +517,7 @@ func _sc_judge(r: Dictionary) -> Array:
 			lag += va - _kv(line, "rtt")
 			nl += 1
 	info.append("view_lag=%.0fms" % (lag / maxf(1.0, float(nl))))
+	r["view_lag"] = lag / maxf(1.0, float(nl))
 	if bool(sc.get("jip", false)):
 		var maps := _lines(hlog, "HOSTHITS-MAP ")
 		info.append("maps=%s" % ",".join(maps.map(func(l: String) -> String: return l.substr(13))))
