@@ -6,6 +6,7 @@ All notable changes to Soldat Reborn.
 
 ### Fixed
 - **Bots no longer die on the edge of Maker spikes / lava when they come down toward the strip** (#293): a bot crossing a hazard that was falling with ground just below used to "land first" instead of holding its height, and set its feet a few pixels short of the edge — inside the kill zone's margin. It now keeps jetting across.
+- **A lagging player is no longer killed by the server's cheat checks** (#293): on a struggling server or client, a medikit heal could reach the host after its 2-second window (5 "hp clamp" strikes = forced death), and hits the host saw could arrive before the client had applied them ("ignored damage"). A granted heal now counts when it shows up (within 10 s, once), and "ignored damage" must hold for 3 s / 10 state updates before it acts — a client that really ignores damage is still caught.
 
 ### Dev — release gate on a busy machine (#293)
 - **No more false FAILs when several gates share the box.** Each gate run now has its own user-data folder and its own LAN discovery port (parallel runs deleted each other's replays, heard each other's servers — Quick Play joined one — and the second LAN listener couldn't bind), and picks free game / master ports instead of random ones.

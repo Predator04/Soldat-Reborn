@@ -26,12 +26,23 @@ extends RefCounted
 
 const SHADOW_KILL_DMG := 200.0     # host-seen damage since the last heal (two lives)...
 const SHADOW_RATIO := 0.10         # ...while the client reported at most this share of it
+# #293: ...and still so after this much host time and this many of its state
+# packets: a lagging / CPU-starved honest client reports hits late (seen in
+# the gate under load: "host saw 220, client reported 0", then it caught up);
+# a client that ignores damage stays at 0 for good.
+const IGNORED_CONFIRM_MS := 3000
+const IGNORED_CONFIRM_PACKETS := 10
 const MAX_SPEED := 4000.0          # px/s; roll 650, fall cap 1200, rocket jumps well under this
 const SPEED_SPAN_MS := 250         # measure speed over at least this much host time
 const SPAWN_GRACE_MS := 2500       # fresh bodies / round resets may jump to a spawn
 const WORLD_MARGIN := 2000.0
 const HP_EPS := 0.5
 const HEAL_WINDOW_MS := 2000       # a kit / round reset heal lands within this
+# #293: ...or, if the owner's healed report is later than that (a lagging or
+# CPU-starved client / host: seen in the gate under load, where the honest
+# client was clamped 5 times and force-killed), the first rise after a
+# granted heal still counts — one rise per grant, within this long.
+const HEAL_PENDING_MS := 10000
 const CLAMPS_PER_LIFE := 5         # HP clamps tolerated before a forced death
 const MOVES_PER_LIFE := 2          # movement violations tolerated before a forced death
 const ACTIVITY_WINDOW_MS := 10000  # kill credit needs an attack within this
@@ -87,6 +98,7 @@ static func add_strike(peer_id: int) -> int:
 var born_ms := 0
 var amnesty_until_ms := 0
 var heal_until_ms := 0
+var heal_pending_until_ms := 0   # a granted heal not yet seen in a report
 var last_hp := 100.0
 var shadow := 0.0          # damage the host saw land since the last heal
 var reported := 0.0        # damage the client reported since the last heal
@@ -99,6 +111,8 @@ var moves := 0
 var _hist: Array = []      # [ms, pos] of recent state packets
 var _last_clamp_log_ms := -100000
 var _ride_until_ms := 0   # riding (or just got in / out of) a vehicle or M2
+var _ign_since_ms := 0    # "ignored damage" condition holding since (0 = not)
+var _ign_packets := 0
 
 
 func _init() -> void:
@@ -111,11 +125,14 @@ func amnesty() -> void:
 	var now := Time.get_ticks_msec()
 	amnesty_until_ms = now + SPAWN_GRACE_MS
 	heal_until_ms = now + HEAL_WINDOW_MS
+	heal_pending_until_ms = now + HEAL_PENDING_MS
 	_hist.clear()
 
 
 func allow_heal() -> void:
-	heal_until_ms = Time.get_ticks_msec() + HEAL_WINDOW_MS
+	var now := Time.get_ticks_msec()
+	heal_until_ms = now + HEAL_WINDOW_MS
+	heal_pending_until_ms = now + HEAL_PENDING_MS
 
 
 func note_fired() -> void:
@@ -146,7 +163,8 @@ func check_state(pos: Vector2, hp: float, heal_ok_now: bool, world: Rect2, ridin
 	var force := ""
 	var h := hp
 	# ── health ──
-	if h > 100.0 + HP_EPS or (h > last_hp + HP_EPS and not heal_ok_now and now > heal_until_ms):
+	var pending := now <= heal_pending_until_ms
+	if h > 100.0 + HP_EPS or (h > last_hp + HP_EPS and not heal_ok_now and now > heal_until_ms and not pending):
 		h = minf(last_hp, 100.0)
 		clamps += 1
 		if now - _last_clamp_log_ms > 1000:
@@ -155,6 +173,7 @@ func check_state(pos: Vector2, hp: float, heal_ok_now: bool, world: Rect2, ridin
 		if clamps >= CLAMPS_PER_LIFE:
 			force = "hp"
 	elif h > last_hp + HP_EPS:
+		heal_pending_until_ms = 0   # the granted heal has been reported (#293)
 		shadow = 0.0      # a real heal starts a fresh account
 		reported = 0.0
 	elif h < last_hp:
@@ -162,7 +181,14 @@ func check_state(pos: Vector2, hp: float, heal_ok_now: bool, world: Rect2, ridin
 		if OS.get_cmdline_user_args().has("--trust-debug"):
 			print("TRUSTDBG reported %.1f shadow %.1f" % [reported, shadow])
 	last_hp = h
-	if force == "" and shadow >= SHADOW_KILL_DMG and reported <= shadow * SHADOW_RATIO:
+	var ignoring := shadow >= SHADOW_KILL_DMG and reported <= shadow * SHADOW_RATIO
+	if not ignoring:
+		_ign_since_ms = 0
+	elif _ign_since_ms == 0:
+		_ign_since_ms = now
+		_ign_packets = 0
+	_ign_packets += 1
+	if force == "" and ignoring and now - _ign_since_ms >= IGNORED_CONFIRM_MS and _ign_packets >= IGNORED_CONFIRM_PACKETS:
 		force = "ignored damage (host saw %.0f, client reported %.0f)" % [shadow, reported]
 	# ── movement ──
 	if now < amnesty_until_ms or now < _ride_until_ms:
