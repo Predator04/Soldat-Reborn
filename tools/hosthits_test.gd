@@ -475,7 +475,10 @@ func _sc_judge(r: Dictionary) -> Array:
 				bad.append("%s: too few predicted hits to judge (%d)" % [tag, np])
 			elif float(both) < 0.85 * np:
 				bad.append("%s: host confirmed only %d of %d predicted hits" % [tag, both, np])
-			if np > 0 and float(extra) > 0.30 * np:
+			# (Pellets: eight edges a shot; the host's box is grown 3 px, so a
+			# shotgun gets a few more grazing pellets than its screen showed.)
+			var extra_max := 0.40 if str(sc.get("weapon", "")) == "spas" else 0.30
+			if np > 0 and float(extra) > extra_max * np:
 				bad.append("%s: host added %d hits the shooter never saw (of %d)" % [tag, extra, np])
 		else:
 			# Splash / melee / vehicle gun: hit counts (splash damage depends on
