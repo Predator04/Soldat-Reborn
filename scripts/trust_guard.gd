@@ -138,6 +138,7 @@ var _dry_ms := 0.0
 var _aims: Array = []      # [ms, angle] of the last streamed aim directions
 var _buckets: Dictionary = {}   # weapon name -> [tokens, ms]
 var _mags: Dictionary = {}      # net_shoot slot -> rounds left (lazy: full)
+var _last_round: Dictionary = {}   # net_shoot slot -> stamp of the last round taken
 var _reload_slot := -999
 var _reload_since := 0
 var _last_gren_ms := -100000
@@ -550,11 +551,19 @@ static func clock_ok(peer: int, gstamp: int) -> bool:
 
 
 ## One round out of `slot`'s magazine (`mag` rounds; one round of slack).
-func take_round(slot: int, mag: int) -> bool:
+## `stamp` / `reload_secs`: a magazine run dry is full again once the owner
+## has gone 60 % of a reload without firing it (its game clock) — whether or
+## not the host heard its reload flag through a lossy or stalled stream.
+func take_round(slot: int, mag: int, stamp := 0, reload_secs := 0.0) -> bool:
 	var left: int = int(_mags.get(slot, mag))
+	if left <= -1 and stamp > 0 and _last_round.has(slot) \
+			and stamp - int(_last_round[slot]) >= maxi(200, int(reload_secs * 600.0)):
+		left = mag
 	if left <= -1:
 		return false
 	_mags[slot] = left - 1
+	if stamp > 0:
+		_last_round[slot] = stamp
 	return true
 
 
@@ -563,10 +572,13 @@ func take_round(slot: int, mag: int) -> bool:
 ## clock (`gstamp`) when it says: packets a stall bunched together still show
 ## how long the reload really ran.
 func note_reload(slot: int, reloading: bool, mag: int, reload_secs: float, gstamp := 0) -> void:
+	var now := gstamp if gstamp > 0 else Time.get_ticks_msec()
 	if not reloading:
+		# (The first sample after a reload ends it: it ran at least this long.)
+		if _reload_slot == slot and now - _reload_since >= maxi(200, int(reload_secs * 600.0)):
+			_mags[slot] = mag
 		_reload_slot = -999
 		return
-	var now := gstamp if gstamp > 0 else Time.get_ticks_msec()
 	if _reload_slot != slot:
 		_reload_slot = slot
 		_reload_since = now

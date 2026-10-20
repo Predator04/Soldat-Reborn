@@ -65,6 +65,21 @@ func _initialize() -> void:
 	_drop_re.compile(DROP_RE)
 	if case == "cheats":
 		_cheats()
+		# A client a busy machine kept loading past ENet's timeout loses its
+		# connection before it ever plays: that run says nothing about the
+		# host's checks, so it gets one more go (in a subfolder).
+		var lost := []
+		for k in TAGS.keys():
+			if _read("cheat_%s.log" % k).contains("Lost connection to the host"):
+				lost.append(k)
+		if not _bad.is_empty() and not lost.is_empty():
+			print("HOSTHITS-CHEATS first run inconclusive (lost connection: %s): %s" % [",".join(lost), str(_bad)])
+			_stop_all()
+			_bad.clear()
+			_log = ["retried (lost connection: %s)" % ",".join(lost)]
+			_out = _out.path_join("retry")
+			DirAccess.make_dir_recursive_absolute(_out)
+			_cheats()
 	else:
 		_honest(names, parallel)
 	_stop_all()
@@ -209,11 +224,11 @@ const SCENARIOS := {
 	"knife": {"weapon": "knife", "s_ms": 100, "v_ms": 60, "jitter": 20, "loss": 1.0, "damage": 55.0, "match": "total"},
 	# (Lagrange: flat open ground by its first buggy, no other vehicle near.)
 	"law": {"secs": 52, "need": 4, "weapon": "law", "s_ms": 90, "v_ms": 75, "jitter": 20, "damage": 0.0, "match": "total",
-		"map": "Lagrange", "args": "--smoke-near-vehicle --smoke-offsets=-180,120"},
+		"map": "Lagrange", "args": "--smoke-near-vehicle --smoke-offsets=-480,-180"},
 	"m79": {"secs": 52, "need": 4, "weapon": "m79", "s_ms": 60, "v_ms": 60, "jitter": 15, "loss": 1.0, "damage": 0.0, "match": "total",
-		"map": "Lagrange", "args": "--smoke-near-vehicle --smoke-offsets=-50,120"},
+		"map": "Lagrange", "args": "--smoke-near-vehicle --smoke-offsets=-350,-180"},
 	"grenade": {"secs": 52, "need": 4, "weapon": "grenade", "s_ms": 70, "v_ms": 50, "jitter": 15, "damage": 0.0, "match": "total",
-		"map": "Lagrange", "args": "--smoke-near-vehicle --smoke-offsets=-140,120"},
+		"map": "Lagrange", "args": "--smoke-near-vehicle --smoke-offsets=-440,-180"},
 	"buggy": {"weapon": "buggy", "s_ms": 75, "v_ms": 50, "jitter": 20, "loss": 1.0, "damage": 14.0, "match": "total",
 		"map": "Lagrange", "args": "--smoke-near-vehicle --smoke-offsets=-350,0"},
 	"drive": {"weapon": "ak", "s_ms": 80, "v_ms": 60, "jitter": 20, "v_move": "drive", "damage": 22.0, "match": "shot",
@@ -221,7 +236,7 @@ const SCENARIOS := {
 	"jip": {"weapon": "ak", "s_ms": 100, "v_ms": 50, "jitter": 25, "loss": 1.0, "damage": 22.0, "match": "shot", "jip": true},
 }
 
-const WEAPON_NAMES := {"ak": "AK-74", "spas": "Spas-12", "knife": "Knife", "law": "LAW", "m79": "M79", "grenade": "Grenade", "buggy": "Buggy MG"}
+const WEAPON_NAMES := {"ak": ["AK-74"], "spas": ["Spas-12"], "knife": ["Knife"], "law": ["LAW"], "m79": ["M79"], "grenade": ["Grenade", "Cluster"], "buggy": ["Buggy MG"]}
 
 # Counters that mean the host refused / overrode something a client said.
 const REFUSALS := ["refused_", "aim_refused", "hp_ignored"]
@@ -407,8 +422,14 @@ func _sc_judge(r: Dictionary) -> Array:
 		var slog: String = sh[2]
 		# (This run's weapon only: a run-over or a wreck's blast is a hit too,
 		# but not one this scenario measures.)
-		var wn: String = WEAPON_NAMES.get(str(sc.get("weapon", "ak")), "")
-		var hits := _lines(hlog, "HOSTHIT «%s»" % tag).filter(func(l: String) -> bool: return l.contains("-> «VIC»") and (wn == "" or l.contains("(%s)" % wn)))
+		var wn: Array = WEAPON_NAMES.get(str(sc.get("weapon", "ak")), [])
+		var hits := _lines(hlog, "HOSTHIT «%s»" % tag).filter(func(l: String) -> bool:
+			if not l.contains("-> «VIC»"):
+				return false
+			for w in wn:
+				if l.contains("(%s)" % w):
+					return true
+			return wn.is_empty())
 		var wrong := 0
 		for line in hits:
 			var amt := _amount(line)

@@ -2757,7 +2757,7 @@ func _host_shot_check(shot_pos: Vector2, dirs: PackedVector2Array, w: Dictionary
 		if rc == TrustGuard.RATE_FAST and g.flag("rate", "%s fired faster than %.3f s a shot" % [wname, float(w["rate"])]):
 			_trust_force_death("shots (fire rate)")
 		return no
-	if kind != "melee" and not g.take_round(slot, int(w["mag"])):
+	if kind != "melee" and not g.take_round(slot, int(w["mag"]), stamp, float(w["reload"])):
 		if g.flag("ammo", "%s fired past its %d-round magazine without a reload" % [wname, int(w["mag"])]):
 			_trust_force_death("shots (magazine)")
 		return no

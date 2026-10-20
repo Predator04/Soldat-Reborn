@@ -286,7 +286,13 @@ func _place(m: Node, p: Node2D) -> void:
 	if tgt != null:
 		var tg := _ground(p, tgt.global_position.x, tgt.global_position.y)
 		var side := signf(offs.y - offs.x) if offs.y != offs.x else -1.0
-		for d in [side * absf(offs.y - offs.x), -side * absf(offs.y - offs.x)]:
+		var want := absf(offs.y - offs.x)
+		# The run's distance first, then nearer ones, either side.
+		var tries: Array = []
+		for f in [1.0, 0.75, 0.55, 0.4]:
+			tries.append(side * want * f)
+			tries.append(-side * want * f)
+		for d in tries:
 			if tg == Vector2.INF:
 				break
 			var sh2 := _ground(p, tg.x + float(d), tg.y)
@@ -297,6 +303,11 @@ func _place(m: Node, p: Node2D) -> void:
 			if absf(float(d)) > 190.0 and not _open_between(p, tg, sh2):
 				continue
 			_put(p, sh2)
+			return
+		# Nowhere open near it: stand right by it.
+		if tg != Vector2.INF:
+			_put(p, tg + Vector2(-side * 40.0, 0.0))
+			print("SMOKE-DUEL placed by the target (no open spot near it)")
 			return
 	_put(p, p.global_position)
 	print("SMOKE-DUEL no open spot found")
@@ -382,15 +393,16 @@ func _aim(p: Node2D, dir: Vector2) -> void:
 
 
 ## Launch direction (unit) for a lob at `speed` under `grav` from `from` to
-## `to` (the flatter of the two arcs), or Vector2.ZERO if out of reach.
-static func _lob(from: Vector2, to: Vector2, speed: float, grav: float) -> Vector2:
+## `to` (the flatter of the two arcs, or the steeper one with `high`), or
+## Vector2.ZERO if out of reach.
+static func _lob(from: Vector2, to: Vector2, speed: float, grav: float, high := false) -> Vector2:
 	var dx := to.x - from.x
 	var dy := from.y - to.y   # up is positive
 	var v2 := speed * speed
 	var disc := v2 * v2 - grav * (grav * dx * dx + 2.0 * dy * v2)
 	if disc < 0.0 or absf(dx) < 1.0:
 		return Vector2.ZERO
-	var th := atan((v2 - sqrt(disc)) / (grav * absf(dx)))
+	var th := atan((v2 + sqrt(disc) if high else v2 - sqrt(disc)) / (grav * absf(dx)))
 	return Vector2(cos(th) * signf(dx), -sin(th))
 
 
@@ -410,7 +422,8 @@ func _shooter(m: Node, p: Node2D, delta: float) -> void:
 		_target_seen[tid] = now
 	var w := _wdict(p)
 	var kind := str(w.get("kind", "bullet"))
-	var chest := tgt.global_position + Vector2(0, -12)
+	# (Rockets go for the upper body: a low one bursts on any bump between.)
+	var chest := tgt.global_position + Vector2(0, -24 if weapon == "law" else -12)
 	var from := p.global_position + Vector2(0, -9)
 	var tvel: Vector2 = tgt.get("velocity")
 	var dir: Vector2
@@ -502,14 +515,14 @@ func _chase(p: Node2D, tgt: Node2D) -> void:
 func _grenade_aim(from: Vector2, to: Vector2, tvel: Vector2) -> Vector2:
 	var g: float = float(ProjectSettings.get_setting("physics/2d/default_gravity", 980.0))
 	var spd := 650.0
-	var toss := _lob(from, to, spd, g)
+	var toss := _lob(from, to, spd, g, true)
 	if toss == Vector2.ZERO:
 		_cook_want = 0.9
 		return (to - from).normalized()
 	var t_f := absf(to.x - from.x) / maxf(1.0, spd * absf(toss.x))
-	toss = _lob(from, to + tvel * minf(t_f, 0.5), spd, g)
+	toss = _lob(from, to + tvel * minf(t_f, 0.5), spd, g, true)
 	if toss == Vector2.ZERO:
-		toss = _lob(from, to, spd, g)
+		toss = _lob(from, to, spd, g, true)
 	_cook_want = clampf(2.2 - t_f - 0.15, 0.9, 1.9)
 	# aim + (0, -0.55) = s * toss with |aim| = 1.
 	var b := 0.55 * toss.y
