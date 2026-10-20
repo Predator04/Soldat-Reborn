@@ -422,8 +422,8 @@ func _shooter(m: Node, p: Node2D, delta: float) -> void:
 		_target_seen[tid] = now
 	var w := _wdict(p)
 	var kind := str(w.get("kind", "bullet"))
-	# (Rockets go for the upper body: a low one bursts on any bump between.)
-	var chest := tgt.global_position + Vector2(0, -24 if weapon == "law" else -12)
+	# (Rockets go for the ground at the feet: the blast gets a hopping target.)
+	var chest := tgt.global_position + Vector2(0, -2 if weapon == "law" else -12)
 	var from := p.global_position + Vector2(0, -9)
 	var tvel: Vector2 = tgt.get("velocity")
 	var dir: Vector2
@@ -445,10 +445,24 @@ func _shooter(m: Node, p: Node2D, delta: float) -> void:
 		_chase(p, tgt)
 	elif move in ["strafe", "jet"]:
 		_wander(p)
+	elif cheat == "":
+		# Standing: walk back to the spot if a blast (or the LAW's kick) moved us.
+		var home: Vector2 = get_meta("anchor", p.global_position)
+		var off_x := home.x - p.global_position.x
+		if absf(off_x) > 12.0:
+			_release("move_left" if off_x > 0.0 else "move_right")
+			_press("move_right" if off_x > 0.0 else "move_left")
+		else:
+			_release("move_left")
+			_release("move_right")
 	var ready := now - int(_target_seen[tid]) >= start_after_ms and now - _spawn_ms >= 1500 and now < _stop_ms \
 			and (from.distance_to(chest) < reach or cheat in ["rate", "ammo"])
 	if move == "chase":
 		ready = ready and (tgt.global_position - p.global_position).length() < reach
+	# (A player fires once the gun points where it wants: right after a spawn
+	# the aim is still swinging round. Cheaters fire regardless.)
+	if cheat == "" and weapon != "grenade" and absf((p.aim_dir as Vector2).angle_to(dir)) > 0.6:
+		ready = false
 	if cheat == "silentaim":
 		_aim(p, -dir)   # the aim it streams points away
 	else:

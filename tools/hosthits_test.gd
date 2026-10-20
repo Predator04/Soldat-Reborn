@@ -492,7 +492,9 @@ func _sc_judge(r: Dictionary) -> Array:
 	for line in _lines(hlog, "HOSTHIT "):
 		if line.contains("-> «VIC»") and line.ends_with("hp 0.0"):
 			lethal += _amount(line)
-	if absf(told - total) > 0.5 and not (told <= total + 0.5 and total - told <= lethal + 0.5):
+	# (HOSTHIT amounts are printed to 0.1: allow that rounding per hit.)
+	var slack := 0.5 + 0.05 * float(_lines(hlog, "HOSTHIT ").size())
+	if absf(told - total) > slack and not (told <= total + slack and total - told <= lethal + slack):
 		bad.append("victim was told %.0f damage, host applied %.0f" % [told, total])
 	info.append("rewind_avg=%.0fms" % (_kv(st, "rewind_ms") / maxf(1.0, _kv(st, "rewind_shots"))))
 	# How far behind the shooters' screens ran beyond their round trip (a
