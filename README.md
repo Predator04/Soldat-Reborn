@@ -20,7 +20,7 @@ the classic had and more, with most of Soldat 2's feature list folded in.
 
 ### What's new in 1.38 — Planes
 
-- **Planes** — a fast fighter you fly by pitching the nose: take off down a runway, loop, dive and strafe with the nose gun, drop bombs, and bail out when it's going down. Slow down too much and it stalls. On Fortress, Outpost and Industrial, as a Maker piece, online, and bots fly them too.
+- **Planes** — a fast fighter you fly by pitching the nose: take off down a runway, loop, dive and strafe with the nose gun, drop bombs, and bail out when it's going down. Slow down too much and it stalls. On Fortress and Industrial, as a Maker piece, online, and bots fly them too.
 - **Smarter bots on your levels** — they ride jump pads up to high objectives and use tanks and helicopters on Maker maps.
 - **Discord status** — your Discord profile shows the mode, map and score you're playing (Windows / Linux desktop).
 - **Phone BACK button fixed everywhere** — it closes the top dialog first instead of throwing you out of the editor or quitting.

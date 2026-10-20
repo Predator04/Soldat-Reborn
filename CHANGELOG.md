@@ -4,6 +4,12 @@ All notable changes to Soldat Reborn.
 
 ## [Unreleased]
 
+### Changed — planes and jump pads (#294)
+- **Bots fly the planes on Fortress now.** Fortress's two planes moved from the far ends of the map to the raised strips right beside the keep (they take off outward and turn back over it), and bots will walk a little further to grab a free plane: when their trip is long and the plane takes off their way, or simply to fly an attack run when nobody on their team is in the air. In three 3-minute bot CTF matches bots took off in the Fortress planes 14 times (once in nine matches before) and never flew one into the ground; Industrial plays as before. Bot pilots also stop circling over a target they can't see (inside the keep): they bail out over their goal and drop in.
+- **Outpost no longer has a plane.** Its runway sat on top of the ridge, where no route leads on foot — not for bots and not really for players either. Runways are now only placed where every team can walk to them.
+- **Abandoned planes go home.** A plane a bot pilot left (bailed out over its goal, or gave up on a take-off) and that came to rest somewhere is back on its spot about 8 seconds later instead of sitting there for a minute.
+- **Bots no longer get flung around by jump pads they're only walking past** on Maker levels: they hop over a pad that isn't on their way up, and pick routes that don't cross pads when there's a reasonable alternative. Before, a bot crossing a pad got launched — often again and again, bouncing in place.
+
 ## [1.38.0] — 2026-10-19 — Planes
 
 ### Dev

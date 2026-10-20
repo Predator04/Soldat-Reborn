@@ -19,6 +19,10 @@ var _air: Dictionary = {}    # node id -> true for mid-air waypoints (never a pa
 # landing.x, landing.y) -> steer mode (nav_builder._add_pad_links). Paths are
 # point lists, so a ride is recognised by its two consecutive points.
 var _pad_ride: Dictionary = {}
+# #294: node id -> its standing A* weight (nav_builder "pad_cross": reached by
+# walking across a jump pad); penalties expire back to it, not to 1.
+const PAD_CROSS_WEIGHT := 5.0
+var _base_w: Dictionary = {}
 
 
 static func key_for(map_name: String) -> String:
@@ -77,6 +81,12 @@ func adopt(data: Dictionary) -> void:
 		if a >= 0 and b >= 0 and a < _pts.size() and b < _pts.size():
 			_pad_ride[Vector4(_pts[a].x, _pts[a].y, _pts[b].x, _pts[b].y)] = int(pads[k + 2])
 		k += 3
+	# #294: walking across a pad launches you — those links cost more.
+	for c in data.get("pad_cross", []):
+		var id := int(c)
+		if id >= 0 and id < _pts.size():
+			astar.set_point_weight_scale(id, PAD_CROSS_WEIGHT)
+			_base_w[id] = PAD_CROSS_WEIGHT
 
 
 ## Jump pads (#286): does this graph have pad rides at all?
@@ -211,7 +221,7 @@ func _expire_penalties() -> void:
 	var now := Time.get_ticks_msec()
 	for id in _penalty.keys():
 		if now >= int(_penalty[id]):
-			astar.set_point_weight_scale(id, 1.0)
+			astar.set_point_weight_scale(id, float(_base_w.get(id, 1.0)))
 			_penalty.erase(id)
 
 

@@ -11,7 +11,9 @@ extends SceneTree
 ## heli pad per team (a bot boards a buggy and drives it; tank / heli use is
 ## logged), and with the red flag on a floating island ~690 px up that only a
 ## big jump pad reaches (the graph routes the attack over the pad; a bot is
-## launched by it and lands on the island).
+## launched by it and lands on the island), and with a small pad on the walkway
+## out of each base that nothing is worth riding to (#294: bots cross them
+## without being launched — unintended launches <= 15 % of crossings).
 ## Zero script errors (the gate greps the log).
 
 const LIMIT_MS := 20000
@@ -27,7 +29,7 @@ var _dist := {}
 var _max_gap := 0
 var _last_ms := 0
 var _case := 0
-var _cases := ["classic", "generated", "maker_hazards", "maker_vehicles", "maker_pads"]
+var _cases := ["classic", "generated", "maker_hazards", "maker_vehicles", "maker_pads", "maker_padcross"]
 var _hz_kills0 := 0
 var _launch0 := 0
 var _drive := {}        # vehicle instance id -> px driven by a bot
@@ -40,6 +42,13 @@ var _pad_t := -1.0      # maker_pads: seconds until a bot first stood on the isl
 var _pad_arrive := {}   # maker_pads: team -> seconds until its first bot landed there
 const PAD_ISLAND := Rect2(4140, 700, 320, 130)   # feet on the island's top (see _write_custom)
 const PAD_LIMIT_S := 60   # maker_pads: a blue attacker must make it onto the island within this
+var _pc_side := {}      # maker_padcross: "bot:pad" -> which side of the pad's trigger the feet were on
+var _pc_last := {}      # maker_padcross: bot -> msec of its last pad launch seen
+var _pc_cross := 0      # maker_padcross: crossings near the pad's level
+var _pc_un := 0         # ...launches of bots not riding that pad on purpose
+var _pc_int := 0        # ...launches of bots whose path rides it
+const PC_MIN_CROSS := 4
+const PC_MAX_SHARE := 0.15   # unintended launches per crossing at most
 
 
 func _write_custom(kind: String) -> String:
@@ -68,12 +77,18 @@ func _write_custom(kind: String) -> String:
 			pcs.append(B.make_piece("float", Vector2(4300, 860), Vector2(320, 80)))
 			pcs.append(B.make_piece("pad_big", Vector2(4000, 1500), Vector2(64, 20)))
 			src["ctf_flags"] = [Vector2(300, 1500), Vector2(4300, 810)]
+		elif kind == "maker_padcross":
+			# #294: a jump pad on the only walkway out of each base (nothing
+			# worth riding to within its reach): every attack crosses one.
+			pcs.append(B.make_piece("pad", Vector2(900, 1500), Vector2(64, 20)))
+			pcs.append(B.make_piece("pad", Vector2(3900, 1500), Vector2(64, 20)))
 		else:
 			src["vehicle_spawns"] = [Vector2(900, 1510), Vector2(3900, 1510)]
 			src["tank_spawns"] = [Vector2(600, 1510), Vector2(4200, 1510)]
 			src["heli_spawns"] = [Vector2(1150, 1510), Vector2(3650, 1510)]
 		m = B.compile(src)
-		m["name"] = {"maker_hazards": "RTNav Maker Hazards", "maker_pads": "RTNav Maker Pads"}.get(kind, "RTNav Maker Vehicles")
+		m["name"] = {"maker_hazards": "RTNav Maker Hazards", "maker_pads": "RTNav Maker Pads",
+			"maker_padcross": "RTNav Maker Pad Crossing"}.get(kind, "RTNav Maker Vehicles")
 	return io.save_to_file(str(m["name"]), m)
 
 
@@ -176,6 +191,11 @@ func _process(_d: float) -> bool:
 			_launch0 = int(m.get("_hazards").bot_launches) if m.get("_hazards") != null else 0
 			_pad_t = -1.0
 			_pad_arrive.clear()
+			_pc_side.clear()
+			_pc_last.clear()
+			_pc_cross = 0
+			_pc_un = 0
+			_pc_int = 0
 			_boarded.clear()
 			_drv_prev.clear()
 			_drive_kind.clear()
@@ -225,6 +245,8 @@ func _process(_d: float) -> bool:
 							_heli_alt = maxf(_heli_alt, gy - vp.y)
 				_drv_prev[vid] = d
 				_drive_last[vid] = vp
+			if _cases[_case] == "maker_padcross":
+				_padcross_tick()
 			if _cases[_case] == "maker_pads" and _pad_arrive.size() < 2:
 				# Over the island's top, coming down (or standing) after a pad
 				# launch within the last 4 s (first arrival per team: red defends
@@ -267,6 +289,13 @@ func _process(_d: float) -> bool:
 					_bad.append("maker_pads: no bot used the jump pad")
 				if not _pad_arrive.has(1):
 					_bad.append("maker_pads: no blue attacker reached the island off the pad in %d s (pad launches %d)" % [PAD_LIMIT_S, nl])
+			if _cases[_case] == "maker_padcross":
+				_log.append("maker_padcross pads=%d crossings=%d launches unintended=%d intended=%d" % [
+					m.get("_hazards").pads.size(), _pc_cross, _pc_un, _pc_int])
+				if _pc_cross < PC_MIN_CROSS:
+					_bad.append("maker_padcross: bots crossed the pads only %d times" % _pc_cross)
+				elif float(_pc_un) > maxf(1.0, float(_pc_cross) * PC_MAX_SHARE):
+					_bad.append("maker_padcross: %d of %d pad crossings launched a bot that wasn't riding it" % [_pc_un, _pc_cross])
 			var moved := 0
 			var total := 0
 			for b in m.get_tree().get_nodes_in_group("soldier"):
@@ -282,6 +311,58 @@ func _process(_d: float) -> bool:
 			if _case >= _cases.size():
 				return _end("")
 			_st = 0
+	return false
+
+
+## maker_padcross (#294): count bots crossing a pad near its level (feet go
+## from one side of its trigger to the other) and pad launches, sorted by
+## whether the bot's path meant to ride that pad.
+func _padcross_tick() -> void:
+	var m = current_scene
+	var hz = m.get("_hazards")
+	if hz == null:
+		return
+	for b in m.get_tree().get_nodes_in_group("soldier"):
+		if not is_instance_valid(b) or b == m.player or b.get("bot_id") == null or bool(b.get("dead")):
+			continue
+		var id: int = b.get_instance_id()
+		var f: Vector2 = (b as Node2D).global_position
+		var lt: int = int(hz._pad_cd.get(id, -1))
+		if lt != int(_pc_last.get(id, -1)):
+			_pc_last[id] = lt
+			if lt >= 0:
+				var near_pad := Vector2.INF
+				for pd in hz.pads:
+					if near_pad == Vector2.INF or (pd["pos"] as Vector2).distance_to(f) < near_pad.distance_to(f):
+						near_pad = pd["pos"]
+				if _rides_pad(b, m.nav, near_pad):
+					_pc_int += 1
+				else:
+					_pc_un += 1
+		for i in hz.pads.size():
+			var pp: Vector2 = hz.pads[i]["pos"]
+			var k := "%d:%d" % [id, i]
+			if f.y < pp.y - 120.0 or f.y > pp.y + 20.0:
+				_pc_side.erase(k)
+				continue
+			var side := -1 if f.x < pp.x - 28.0 else (1 if f.x > pp.x + 28.0 else 0)
+			if side == 0:
+				continue
+			if _pc_side.has(k) and int(_pc_side[k]) == -side:
+				_pc_cross += 1
+			_pc_side[k] = side
+
+
+func _rides_pad(b: Node, nav, pad: Vector2) -> bool:
+	if int(b.get("_pad_ride")) >= 0:
+		return true
+	var p: PackedVector2Array = b.get("_path")
+	var i0: int = int(b.get("_path_i"))
+	if nav == null or not nav.has_method("pad_ride") or pad == Vector2.INF:
+		return false
+	for k in range(maxi(0, i0 - 1), mini(i0 + 3, p.size() - 1)):
+		if p[k].distance_to(pad) < 40.0 and nav.pad_ride(p[k], p[k + 1]) >= 0:
+			return true
 	return false
 
 

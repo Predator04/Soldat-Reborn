@@ -91,6 +91,7 @@ var _hidden_crew: Node2D = null
 # Bot pilot (host / single player).
 var _bp_t := 0.0
 var _bp_noenemy := 0.0
+var _bp_nosight := 0.0             # #294: s since the pilot last had its target in sight
 var _bp_crash_t: Array = []
 var _bp_break := 0.0
 var _bp_evade := 0.0
@@ -101,6 +102,13 @@ var _bp_evade_over := true
 var _bp_bail := false
 var bot_ban_t := 0.0               # host: bots leave this plane alone for a while after a failed flight
 var bot_flown := 0.0               # tests: px a bot pilot flew it while airborne
+var bot_claim_id := 0              # host (#294): the bot walking over to fly it (instance id)...
+var bot_claim_until := 0           # ...until this msec, so two bots don't race for one plane
+# #294: a plane a bot pilot left (bailed out over its goal, gave up on a
+# take-off) goes home ABANDON_RETURN s after it comes to rest away from its
+# spot, instead of after the full #259 idle timer.
+const ABANDON_RETURN := 8.0
+var _bot_left := false
 # Cosmetic.
 var _roll := 1.0
 var _gear := 1.0
@@ -209,8 +217,11 @@ func bot_board_ok() -> bool:
 func set_seat(seat: int, s: Node2D) -> void:
 	super(seat, s)
 	if seat == 0 and is_instance_valid(s):
+		_bot_left = false
+		bot_claim_id = 0
 		_bp_t = 0.0
 		_bp_noenemy = 0.0
+		_bp_nosight = 0.0
 		_bp_crash_t.clear()
 		_bp_bail = false
 		_mouse_steer = false
@@ -595,6 +606,16 @@ func apply_destroy(at: Vector2, killer: String, killer_team: int, quiet := false
 	super(at, killer, killer_team, quiet, violent)
 	throttle = 0.0
 	air_parked = false
+	_bot_left = false
+
+
+## #294: see ABANDON_RETURN. The #259 idle clock (buggy._touch_tick) does the
+## actual return; this only winds it forward once the abandoned plane is at rest.
+func _touch_tick(delta: float) -> void:
+	if _bot_left and driver() == null and _is_host_side() and idle_respawn_time > ABANDON_RETURN \
+			and velocity.length() < 30.0 and global_position.distance_to(spawn_pos) > 24.0:
+		_idle_t = maxf(_idle_t, idle_respawn_time - ABANDON_RETURN)
+	super(delta)
 
 
 ## The wreck falls to the ground as a husk on every peer (same start, same
@@ -620,6 +641,7 @@ func apply_respawn() -> void:
 	bomb_cd = 0.0
 	_crash_cd = 1.0    # settling on its wheels at the spot isn't a crash
 	_bp_crash_t.clear()
+	_bot_left = false
 	_decide_spawn()
 	_grounded = not air_spawn
 
@@ -821,6 +843,12 @@ func _bot_pilot(delta: float) -> Vector2:
 	var t = d.get("target")
 	var tv: bool = t != null and is_instance_valid(t) and t.get("dead") != true
 	var goal: Vector2 = d.get("_goal") if d.get("_goal") != null else Vector2.INF
+	# #294: a target the pilot hasn't seen for a while (inside Fortress's keep)
+	# is no reason to keep circling: no gun runs at it, and it doesn't stop the
+	# bail-out over the goal.
+	_bp_nosight = 0.0 if tv and d.get("_target_visible") == true else _bp_nosight + delta
+	if _bp_nosight > 3.0:
+		tv = false
 	_bp_noenemy = 0.0 if tv else _bp_noenemy + delta
 	var now := Time.get_ticks_msec()
 	while not _bp_crash_t.is_empty() and now - int(_bp_crash_t[0]) > 20000:
@@ -999,6 +1027,7 @@ func _bomb_on_target(tp: Vector2) -> bool:
 
 func _bot_leave(d: Node, ban: float) -> void:
 	bot_ban_t = ban
+	_bot_left = true
 	var main := get_parent()
 	if Net.is_networked() and main != null and main.has_method("net_vehicle_seat_bot"):
 		main.bcast("net_vehicle_seat_bot", [vehicle_id, 0, int(d.get("bot_id")), false], true)

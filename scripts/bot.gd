@@ -638,6 +638,15 @@ func _physics_process(delta: float) -> void:
 		velocity.x = move_toward(velocity.x, dir * RUN_SPEED * MatchConfig.mod_speed(), 1300.0 * MatchConfig.mod_speed() * delta)
 		_hop_cd = maxf(0.0, _hop_cd - delta)
 
+		# #294: a jump pad just ahead that our path isn't riding: hop over it
+		# instead of being flung up (no-op on maps without pads).
+		if dir != 0.0 and on_floor and _pad_ride < 0 and _pad_hop_ahead(dir, PAD_HOP_NEAR, PAD_HOP_FAR):
+			velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
+			velocity.x = dir * maxf(RUN_SPEED * MatchConfig.mod_speed(), absf(velocity.x))
+			jump_cd = 0.4
+			_ledge_hop_cd = 0.5
+			Sfx.jump(global_position)
+
 		# #114 — preemptive ledge/wall hop. If we're walking into a wall or about
 		# to walk off a ledge, jump. Independent of the stuck-detection retry so
 		# bots skip low walls and small gaps on the first attempt instead of
@@ -695,7 +704,7 @@ func _physics_process(delta: float) -> void:
 					jet_on = true
 			elif on_floor and jump_cd <= 0.0 and _hop_cd <= 0.0 and dir != 0.0 and fuel > 90.0 \
 					and _path_i < _path.size() and absf(_path[_path_i].x - global_position.x) > 200.0 \
-					and not _hazard_ahead(dir, HOP_REACH):
+					and not _hazard_ahead(dir, HOP_REACH) and not _pad_hop_ahead(dir, 0.0, HOP_REACH + PAD_HOP_FAR):
 				# Long flat stretch: bunny-hop for speed like players do.
 				velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
 				velocity.x = dir * maxf(RUN_SPEED * MatchConfig.mod_speed(), absf(velocity.x) * 1.08)
@@ -710,7 +719,8 @@ func _physics_process(delta: float) -> void:
 				velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
 				jump_cd = 0.9
 				Sfx.jump(global_position)
-			elif on_floor and jump_cd <= 0.0 and dist_h > 260.0 and _hop_cd <= 0.0 and not _hazard_ahead(signf(dx), HOP_REACH):
+			elif on_floor and jump_cd <= 0.0 and dist_h > 260.0 and _hop_cd <= 0.0 and not _hazard_ahead(signf(dx), HOP_REACH) \
+					and not _pad_hop_ahead(signf(dx), 0.0, HOP_REACH + PAD_HOP_FAR):
 				velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
 				velocity.x = signf(dx) * maxf(RUN_SPEED * MatchConfig.mod_speed(), absf(velocity.x) * 1.08)
 				jump_cd = 0.35
@@ -2106,8 +2116,26 @@ func _think_drive() -> void:
 # #291: a plane is worth a longer walk than a buggy — a far goal and an empty
 # plane (resting / waiting to launch) within PLANE_PICKUP_RANGE that is roughly
 # on the way. The plane flies itself from there (plane._bot_pilot).
+# #294: on maps whose fights stay in the middle (Fortress: both flags inside
+# one keep) no trip is ever that long, so planes sat unused. Two more reasons
+# to walk to a plane, both measured as WALK (nav path length, throttled):
+#  - a long trip (as above) and a plane up to PLANE_SEEK_PATH px of walk away,
+#    even behind us, when that walk is at most PLANE_SEEK_SHARE of the trip and
+#    the plane takes off toward the goal;
+#  - a sortie: an attacker / hunter (goal "flag" / "hunt" / "roam") whose team
+#    has nobody flying takes a plane up to PLANE_SORTIE_WALK px of walk away to
+#    strafe its way to the goal (plane._bot_pilot gun / bomb runs, bails over
+#    the goal).
+# One bot per plane heads for it at a time (plane.bot_claim_*), and a plane a
+# bot just left is off limits for a while anyway (plane.bot_ban_t).
 const PLANE_MIN_TRIP := 1600.0
 const PLANE_PICKUP_RANGE := 900.0
+const PLANE_SEEK_PATH := 1700.0
+const PLANE_SEEK_SHARE := 0.55
+const PLANE_SORTIE_WALK := 2300.0
+const PLANE_SEEK_EVERY := 1.2       # s between path-length checks per bot
+var _fly_check_t := 0.0
+var _fly_plane: Node = null          # the plane the last path check accepted
 
 
 func _think_fly() -> void:
@@ -2116,8 +2144,13 @@ func _think_fly() -> void:
 	var m := _main()
 	if m == null or not m.has_method("vehicle_bot_board"):
 		return
-	if absf(_goal.x - global_position.x) < PLANE_MIN_TRIP:
+	var trip_ok: bool = absf(_goal.x - global_position.x) >= PLANE_MIN_TRIP
+	var sortie: bool = _goal_label in ["flag", "hunt", "roam"] and not _team_flying()
+	if not trip_ok and not sortie:
 		return
+	_fly_check_t -= THINK_INTERVAL
+	var now := Time.get_ticks_msec()
+	var my_id := get_instance_id()
 	for v in get_tree().get_nodes_in_group("vehicle"):
 		if not is_instance_valid(v) or str(v.get("kind")) != "plane" or not v.get("alive") or v.driver() != null:
 			continue
@@ -2125,15 +2158,70 @@ func _think_fly() -> void:
 			continue
 		var vpos: Vector2 = (v as Node2D).global_position
 		var dist: float = global_position.distance_to(vpos)
-		if dist > PLANE_PICKUP_RANGE or absf(vpos.y - global_position.y) > 400.0:
-			continue
-		if signf(_goal.x - vpos.x) != signf(_goal.x - global_position.x) and absf(vpos.x - global_position.x) > 300.0:
+		# Someone closer is already on the way (a claimer who got held up in
+		# a fight further off doesn't block a bot right by the plane).
+		var claim: int = int(v.get("bot_claim_id"))
+		if claim != 0 and claim != my_id and now < int(v.get("bot_claim_until")):
+			var cb = instance_from_id(claim)
+			if is_instance_valid(cb) and cb.get("dead") != true and (cb as Node2D).global_position.distance_to(vpos) <= dist:
+				continue
+		var near_ok: bool = trip_ok and dist <= PLANE_PICKUP_RANGE and absf(vpos.y - global_position.y) <= 400.0 \
+				and (signf(_goal.x - vpos.x) == signf(_goal.x - global_position.x) or absf(vpos.x - global_position.x) <= 300.0)
+		if not near_ok and not _plane_worth_walk(v, vpos, dist, trip_ok):
 			continue
 		if dist < float(v.ENTER_RADIUS) - 6.0:
+			v.set("bot_claim_id", 0)
 			m.vehicle_bot_board(v, self, 0)
 		else:
+			v.set("bot_claim_id", my_id)
+			v.set("bot_claim_until", now + 4000)
 			_set_goal(vpos, "fly")
 		return
+
+
+## #294: the far-plane rules (see PLANE_SEEK_PATH / PLANE_SORTIE_WALK). The nav
+## path query is throttled per bot; between checks the last accepted plane
+## stays accepted.
+func _plane_worth_walk(v: Node, vpos: Vector2, dist: float, trip_ok: bool) -> bool:
+	if dist > maxf(PLANE_SEEK_PATH, PLANE_SORTIE_WALK):
+		return false
+	if _fly_plane == v and _fly_check_t > 0.0:
+		return true
+	if _fly_check_t > 0.0 or not is_on_floor():
+		return false
+	_fly_check_t = PLANE_SEEK_EVERY * randf_range(0.8, 1.2)
+	_fly_plane = null
+	var nav := _nav()
+	if nav == null or nav.is_empty():
+		return false
+	var p: PackedVector2Array = nav.path(global_position, vpos)
+	if p.is_empty() or p[p.size() - 1].distance_to(vpos) > 80.0:
+		return false
+	var walk := global_position.distance_to(p[0])
+	for i in range(1, p.size()):
+		walk += p[i - 1].distance_to(p[i])
+	var ok := false
+	if trip_ok:
+		# Long trip: only if it takes off toward the goal and saves real walking.
+		var face := float(v.get("face"))
+		ok = face != 0.0 and signf(_goal.x - vpos.x) == signf(face) \
+				and walk <= PLANE_SEEK_PATH and walk <= global_position.distance_to(_goal) * PLANE_SEEK_SHARE
+	if not ok and _goal_label in ["flag", "hunt", "roam"] and not _team_flying():
+		ok = walk <= PLANE_SORTIE_WALK
+	if ok:
+		_fly_plane = v
+	return ok
+
+
+## #294: someone on our team (bot or player) is already flying a plane.
+func _team_flying() -> bool:
+	for v in get_tree().get_nodes_in_group("vehicle"):
+		if not is_instance_valid(v) or str(v.get("kind")) != "plane" or not v.get("alive"):
+			continue
+		var d: Node = v.driver()
+		if d != null and d != self and int(d.get("team")) == team:
+			return true
+	return false
 
 
 func _void_below() -> bool:
@@ -2169,6 +2257,47 @@ func _hazard_ahead(d: float, dist: float) -> bool:
 		if _hazard_under(m, global_position.x + d * x, global_position.y - 6.0):
 			return true
 		x += 16.0
+	return false
+
+
+# #294: Maker jump pads the bot ISN'T riding. A pad skips soldiers rising
+# faster than 150 px/s and feet more than 24 px over its base, so a plain jump
+# started PAD_HOP_NEAR..PAD_HOP_FAR px before the pad's centre carries a
+# running bot clear over the trigger (it lands ~100 px on, past the far edge).
+const PAD_HOP_NEAR := 30.0
+const PAD_HOP_FAR := 52.0
+
+
+## A pad on our level whose centre is `near`..`far` px ahead in `dir` and that
+## the path doesn't mean to ride.
+func _pad_hop_ahead(dir: float, near: float, far: float) -> bool:
+	if dir == 0.0:
+		return false
+	var m := _main()
+	var hz = m.get("_hazards") if m != null else null
+	if hz == null or (hz.pads as Array).is_empty():
+		return false
+	var f := global_position
+	for pd in hz.pads:
+		var pp: Vector2 = pd["pos"]
+		if absf(f.y - pp.y) > 20.0:
+			continue
+		var ahead: float = (pp.x - f.x) * dir
+		if ahead >= near and ahead <= far and not _path_rides_pad(pp):
+			return true
+	return false
+
+
+## The next few legs of our path include the ride off the pad at `pad`.
+func _path_rides_pad(pad: Vector2) -> bool:
+	if _pad_ride >= 0:
+		return true
+	var nav := _nav()
+	if nav == null or not nav.has_method("has_pads") or not nav.has_pads():
+		return false
+	for k in range(maxi(0, _path_i - 1), mini(_path_i + 4, _path.size() - 1)):
+		if _path[k].distance_to(pad) < 40.0 and nav.pad_ride(_path[k], _path[k + 1]) >= 0:
+			return true
 	return false
 
 
