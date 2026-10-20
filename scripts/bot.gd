@@ -620,8 +620,12 @@ func _physics_process(delta: float) -> void:
 		# wants to travel — close-range strafing legitimately stays in place.
 		# Standing on the goal (a DOM point being captured) isn't being stuck.
 		var at_goal: bool = _goal.x > -1.0e8 and global_position.distance_to(_goal) < 56.0
+		# Nor is standing still to refuel before a tall climb (#297): that takes
+		# ~3 s, longer than the progress window, so the escape used to fire mid-
+		# refuel — a jump + jets in a random direction that burned the fuel it was
+		# waiting for (under a platform: straight into its underside).
 		var wants_travel: bool = (navigating or not is_instance_valid(target) or absf(dx) > 160.0 \
-				or not _target_visible) and not at_goal
+				or not _target_visible) and not at_goal and not (navigating and _refuel_wait)
 		if global_position.distance_to(_progress_anchor) > 60.0 or not wants_travel:
 			_progress_anchor = global_position
 			_progress_t = 0.0
@@ -1918,6 +1922,7 @@ func _nav_step(goal: Vector2, delta: float) -> Vector3:
 	if wp != _wp_watch:
 		_wp_watch = wp
 		_wp_watch_t = 0.0
+		_off_line_wp = Vector2.INF
 	else:
 		_wp_watch_t += delta
 		if _wp_watch_t > WAYPOINT_GIVE_UP and _path_i < _path.size() - 1:
@@ -1977,7 +1982,8 @@ func _nav_step(goal: Vector2, delta: float) -> Vector3:
 	_roof_replan_t = maxf(0.0, _roof_replan_t - delta)
 	if up > 0.5 and not _gap_ahead and dy < -90.0:
 		var rise: float = minf(-dy - 8.0, 640.0)
-		if _roof_within(global_position.x - 6.0, rise) or _roof_within(global_position.x + 6.0, rise):
+		# (Body half-width 7 px + a little margin.)
+		if _roof_within(global_position.x - 9.0, rise) or _roof_within(global_position.x + 9.0, rise):
 			if absf(dx) > 12.0 and not _roof_within(wp.x, rise):
 				_under_roof = true
 				_off_line_wp = wp
