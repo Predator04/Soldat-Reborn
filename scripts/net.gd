@@ -524,7 +524,29 @@ func _smoke_join() -> void:
 						watch.queue_free()))
 	# Larger window so the client has time to complete: connect → map_received →
 	# main.tscn._ready → net_client_ready → host mirrors bots via net_spawn_bot.
+	# #293: player bodies (name + head/skin) seen at any point of the window,
+	# not just at its end: under load a botfire client in the same match is
+	# often dead / respawning right then and its body is missing.
+	var seen_names: Array = []
+	var seen_heads: Array = []
+	var sampler := Timer.new()
+	sampler.wait_time = 0.25
+	sampler.autostart = true
+	add_child(sampler)
+	sampler.timeout.connect(func() -> void:
+		var sm := get_tree().current_scene
+		if sm == null or sm.get("_players_by_id") == null:
+			return
+		for _c in sm.get_children():
+			if _c is CharacterBody2D and _c.get("loadout") == null and not _c.is_in_group("vehicle"):
+				var nm := str(_c.name)
+				var hd := str(_c.cosmetics.get("head", "?")) + "/" + str(_c.cosmetics.get("skin", "-"))
+				if not seen_names.has(nm):
+					seen_names.append(nm)
+				if not seen_heads.has(hd):
+					seen_heads.append(hd))
 	get_tree().create_timer(_smoke_secs(6.0)).timeout.connect(func() -> void:
+		sampler.stop()
 		var main := get_tree().current_scene
 		var pbi = main.get("_players_by_id") if main != null else null
 		var pcount: int = pbi.size() if pbi != null else 0
@@ -544,11 +566,17 @@ func _smoke_join() -> void:
 			for _c in _mn.get_children():
 				if _c is CharacterBody2D and _c.get("loadout") == null and not _c.is_in_group("vehicle"):
 					_names.append(str(_c.name))
+			for nm in seen_names:
+				if not _names.has(nm):
+					_names.append(nm)
 			print("SMOKE-JOIN-PLAYERS ", _names)
 			var _heads := []
 			for _c in _mn.get_children():
 				if _c is CharacterBody2D and _c.get("loadout") == null and not _c.is_in_group("vehicle"):
 					_heads.append(str(_c.cosmetics.get("head", "?")) + "/" + str(_c.cosmetics.get("skin", "-")))
+			for hd in seen_heads:
+				if not _heads.has(hd):
+					_heads.append(hd)
 			print("SMOKE-JOIN-HEADS ", _heads)
 			var _bk := -1
 			for _c in _mn.get_children():
