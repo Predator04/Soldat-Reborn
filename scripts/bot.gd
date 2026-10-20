@@ -84,6 +84,9 @@ var _blocked_t := 0.0               # pushing into something without moving
 var _safe_floor_x := -INF              # last x we stood on solid (non-void) ground
 var _gap_ahead := false             # next path link crosses a bottomless gap
 var _gap_hazard := false            # ...the gap is a Maker kill zone (spikes / lava)
+var _under_roof := false            # #297: walking out from under an overhang before a climb
+var _off_line_wp := Vector2.INF     # #297: ...for this waypoint (don't track the link's line back under it)
+var _roof_replan_t := 0.0           # #297: cooldown of the "waypoint is over the roof above us" replan
 var _pad_ride := -1                 # >= 0: following a jump-pad link (#286), its steer mode
 
 # Ammo state (#36) — bots run dry and reload like players.
@@ -233,6 +236,12 @@ const CLIMB_BODY_PAD_TOP := PlayerArt.CLIMB_BODY_PAD_TOP
 const CLIMB_BODY_PAD_BOTTOM := PlayerArt.CLIMB_BODY_PAD_BOTTOM
 const LADDER_SEEK_RANGE := 150.0   # walk to a ladder within this horizontal band
 const LADDER_SEEK_UP := -40.0      # target must be at least this many px above
+# #296: on a DOM point, keep a visible enemy at gun range instead of standing
+# inside it (a shot starts at the muzzle, ~25-35 px out, i.e. past a body
+# that close). Stay within DOM_HOLD_X of the point's centre (capture radius 44).
+const DOM_HOLD_X := 32.0
+const DOM_SPACING := 46.0          # closer than this: step back
+const DOM_SPACING_HOLD := 60.0     # closer than this: don't step back in
 
 var on_ladder := false
 var climbing := false
@@ -540,10 +549,15 @@ func _physics_process(delta: float) -> void:
 				dir = step.x
 				nav_up = step.y > 0.5
 				navigating = true
+				if _goal_label == "capture" and Settings.game_mode == Settings.MODE_DOM:
+					var hold := _dom_hold_dir(on_floor)
+					if hold != INF:
+						dir = hold
+						nav_up = false
 				# Air control: crossing sideways onto a ledge at (or above) our
 				# height after a climb — hold altitude instead of dropping back
 				# down the shaft we just jetted up.
-				if not nav_up and not is_on_floor() and _path_i < _path.size() and velocity.y > 60.0 and fuel > 8.0:
+				if not nav_up and not _under_roof and not is_on_floor() and _path_i < _path.size() and velocity.y > 60.0 and fuel > 8.0:
 					var awp: Vector2 = _path[_path_i]
 					if global_position.y > awp.y - 30.0 and absf(awp.x - global_position.x) > 16.0:
 						nav_up = true
@@ -706,7 +720,10 @@ func _physics_process(delta: float) -> void:
 			# Bunny-hop toward a distant target: on floor, target > 260 away, hop
 			# with a small horizontal boost so bots can actually close the gap.
 			var dist_h: float = absf(dx)
-			if dy < -50.0 and on_floor and jump_cd <= 0.0:
+			# #297: not straight up into a platform hanging over us (the target
+			# is on top of it) — that just bonks its underside again and again.
+			var roofed: bool = dy < -50.0 and _roof_within(global_position.x, minf(-dy, 480.0))
+			if dy < -50.0 and on_floor and jump_cd <= 0.0 and not roofed:
 				velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
 				jump_cd = 0.9
 				Sfx.jump(global_position)
@@ -716,7 +733,7 @@ func _physics_process(delta: float) -> void:
 				jump_cd = 0.35
 				_hop_cd = HOP_COOLDOWN
 				Sfx.jump(global_position)
-			elif dy < -80.0 and not on_floor and fuel > 0.0:
+			elif dy < -80.0 and not on_floor and fuel > 0.0 and not roofed:
 				velocity.y += JET_THRUST * MatchConfig.mod_jet() * MatchConfig.mod_gravity() * delta
 				fuel = maxf(0.0, fuel - (40.0 / maxf(0.1, MatchConfig.mod_jet())) * delta)
 				jet_on = true
@@ -1780,6 +1797,30 @@ func _think_dom() -> void:
 	_set_goal(best.global_position + Vector2(0, 30), "capture")
 
 
+## #296: standing on a DOM point (the goal is its ground spot) with a visible
+## enemy at point-blank range — the sideways move that keeps it at gun range,
+## 0 to hold still, or INF for "no change" (not on the point / nothing close).
+## Every bot used to walk to the point's exact centre: on a contested point
+## both teams stood inside each other, every shot started past the enemy's
+## body, nobody was ever hit and the point (and the match) froze — Magma
+## Crown's hilltop with all 8 bots on it. Each side backs away from the other
+## (by team when they overlap exactly) but never off the point.
+func _dom_hold_dir(on_floor: bool) -> float:
+	if not on_floor or not is_instance_valid(target) or not _target_visible or bool(target.get("dead")):
+		return INF
+	var off: float = global_position.x - _goal.x
+	if absf(off) > DOM_HOLD_X + 8.0 or absf(global_position.y - _goal.y) > 48.0:
+		return INF
+	var tdx: float = target.global_position.x - global_position.x
+	var sep: float = absf(tdx)
+	if sep >= DOM_SPACING_HOLD or absf(target.global_position.y - global_position.y) > 48.0:
+		return INF
+	if sep >= DOM_SPACING:
+		return 0.0
+	var away: float = -signf(tdx) if sep > 2.0 else (-1.0 if team == 1 else 1.0)
+	return away if absf(off + away * 4.0) <= DOM_HOLD_X else 0.0
+
+
 func _think_pm() -> void:
 	var best: Node2D = null
 	var best_d := INF
@@ -1903,6 +1944,10 @@ func _nav_step(goal: Vector2, delta: float) -> Vector3:
 			var t: float = clampf((pw.y - (global_position.y - 40.0)) / (pw.y - wp.y), 0.0, 1.0)
 			var lx: float = lerpf(pw.x, wp.x, t)
 			d = 0.0 if absf(lx - global_position.x) < 6.0 else signf(lx - global_position.x)
+	# (#297: not after we had to walk out from under an overhang to start this
+	# climb — the line starts under it; steer straight at the waypoint.)
+	if up > 0.5 and dy < -150.0 and _path_i > 0 and _off_line_wp == wp:
+		d = 0.0 if absf(dx) < 6.0 else signf(dx)
 	# Near-vertical climb: go straight up; a sideways drift off a lip is how
 	# bots slid into pits.
 	if up > 0.5 and absf(dx) < 24.0 and absf(dy) > 60.0:
@@ -1922,7 +1967,41 @@ func _nav_step(goal: Vector2, delta: float) -> Vector3:
 		# fall that's already fast, so they must catch it early (Triumph's
 		# lower hall ate bots that walked off the lip and jetted too late).
 		up = 1.0
+	# #297: a climb that starts UNDER an overhang (a platform hanging over us
+	# — a stale path after a fall, or a link we drifted off): jetting from
+	# here only hits its underside, again and again. When the column over the
+	# waypoint is open, walk out from under first (no jump, no jets), then
+	# climb straight at it. A waypoint right over the roof above us can't be
+	# climbed at all: no jets, plan again from here.
+	_under_roof = false
+	_roof_replan_t = maxf(0.0, _roof_replan_t - delta)
+	if up > 0.5 and not _gap_ahead and dy < -90.0:
+		var rise: float = minf(-dy - 8.0, 640.0)
+		if _roof_within(global_position.x - 6.0, rise) or _roof_within(global_position.x + 6.0, rise):
+			if absf(dx) > 12.0 and not _roof_within(wp.x, rise):
+				_under_roof = true
+				_off_line_wp = wp
+				d = signf(dx)
+				up = 0.0
+			elif absf(dx) <= 12.0:
+				up = 0.0
+				if grounded and _roof_replan_t <= 0.0:
+					_roof_replan_t = 1.0
+					_repath_t = 0.0
 	return Vector3(d, up, 1.0)
+
+
+## #297: static terrain (what soldiers collide with) straight above the head
+## at column `x`, within `h` px?
+func _roof_within(x: float, h: float) -> bool:
+	if h <= 4.0:
+		return false
+	var from := Vector2(x, global_position.y - 20.0)
+	var q := PhysicsRayQueryParameters2D.create(from, from + Vector2(0.0, -h), 1 | 4)
+	q.exclude = [get_rid()]
+	q.collide_with_areas = false
+	var hit := get_world_2d().direct_space_state.intersect_ray(q)
+	return not hit.is_empty() and hit.get("collider") is StaticBody2D
 
 
 # Jump pads (#286): the runtime graph links a pad's node to the spots its

@@ -17,6 +17,11 @@ All notable changes to Soldat Reborn.
 - **Maker: FILE > New map asks what to start from** — Empty, the Starter strip, or a copy of any featured level.
 - Gate F test FEATURED-TEST: every featured level loads, validates, passes the map audit and the bot-navigation check for all its modes, the tab works offline, PLAY / HOST ONLINE / EDIT A COPY / Start from work, the new texts are translated, and bots play each level (travel, objectives, jump pads, vehicles, no hazard deaths to speak of).
 
+### Fixed — bots on Maker maps (#296 #297)
+- **Domination no longer freezes with every bot piled on one point** (#296). Bots of both teams walked to the exact centre of a contested point and stood inside each other; a shot starts at the muzzle, past a body that close, so nobody was ever hit, the point never changed hands and the match stood still (Magma Crown's hilltop, all 8 bots). On a point, a bot now keeps a point-blank enemy at gun range — each side backs off the other but stays on the point. A lava pool's rock basin merging with the ground under it was never the cause: the merged outline gives the same collision and the same bot graph, so Magma Crown's 3 px gap between them is gone.
+- **Bots no longer jet into the underside of a platform hanging over them** (#297). A climb onto a floating island / slab 300–560 px over walkable ground was linked straight from the ground under it (the "step out past the lip, jet up beside it" detour was checked, but the link went straight through or along the platform's body), and bots under it jetted at its underside again and again. Those climbs now walk out past the lip first; a bot that finds a platform right over its head (after a fall, or chasing someone on top) walks out from under it instead of jumping or jetting into it.
+- Gate F `rtnav` gains `maker_basin` (Magma Crown with the basins merged, Domination: same graph as separate shapes, no blue and red bot standing inside each other on a point, kills) and `maker_overhang` (an island 420 px and a slab 340 px over flat ground: no climb link starts under them, no bot keeps hitting an underside, an attacker gets onto the island).
+
 ## [1.38.0] — 2026-10-19 — Planes
 
 ### Dev
