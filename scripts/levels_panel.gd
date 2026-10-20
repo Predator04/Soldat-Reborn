@@ -9,6 +9,10 @@ extends Control
 ## Opened from the main menu (menu.gd _open_levels) and from the map editor
 ## (level_publish.gd). Works offline: a friendly line, bookmarks still list,
 ## and levels played before (cached in user://levels/) still play.
+## FEATURED (#295, the first tab): the hand-built levels bundled with the game
+## (featured_levels.gd) — no server at all; their detail panel swaps the share
+## code / LIKE / BOOKMARK for a description and EDIT A COPY (the level opens in
+## the Maker as a new, unsaved map).
 
 signal closed
 signal host_requested(path: String, title: String)   # menu: Host screen with this map
@@ -20,18 +24,21 @@ const LevelThumb = preload("res://scripts/level_thumb.gd")
 const MapIO = preload("res://scripts/map_io.gd")
 const GameLists = preload("res://scripts/game_lists.gd")
 const UIBack = preload("res://scripts/ui_back.gd")
+const FeaturedLevels = preload("res://scripts/featured_levels.gd")
 
 const CACHE_DIR := "user://levels/"
 const CARD_W := 236.0
 const CARD_H := 196.0
 const DETAIL_W := 340.0
 const TABS := [
-	["hot", "HOT"], ["new", "NEW"], ["plays", "MOST PLAYED"],
+	["featured", "FEATURED"], ["hot", "HOT"], ["new", "NEW"], ["plays", "MOST PLAYED"],
 	["likes", "TOP LIKED"], ["bookmarks", "BOOKMARKED"], ["search", "SEARCH"],
 ]
 ## Mode hint key (server "modes") -> Settings mode index, in pick priority.
-const MODE_KEYS := {"ctf": 2, "dom": 7, "htf": 4, "inf": 3, "rm": 5, "tdm": 1, "dm": 0}
-const MODE_LABEL := {"dm": "DM", "tdm": "TDM", "ctf": "CTF", "inf": "INF", "htf": "HTF", "rm": "RM", "dom": "DOM"}
+const MODE_KEYS := {"ctf": 2, "dom": 7, "htf": 4, "inf": 3, "rm": 5, "br": 8, "pm": 6, "gg": 9, "tdm": 1, "dm": 0}
+const MODE_LABEL := {"dm": "DM", "tdm": "TDM", "ctf": "CTF", "inf": "INF", "htf": "HTF", "rm": "RM", "dom": "DOM",
+	"br": "BR", "pm": "PM", "gg": "GG"}
+const MODE_ORDER := ["ctf", "dom", "htf", "inf", "rm", "br", "pm", "gg", "tdm", "dm"]
 
 ## Map editor -> menu hand-off for HOST ONLINE (the editor has no Host screen).
 static var pending_host := ""
@@ -39,9 +46,10 @@ static var pending_host_title := ""
 
 var play_hook: Callable          # menu: _go_to_match (LOADING overlay); else plain scene change
 var gate: Callable               # menu: _with_name (online needs a name)
+var edit_hook: Callable          # editor overlay: open a featured level as a copy (slug); else the editor scene
 var in_menu := true              # false in the editor overlay (no MAP FILES link)
 
-var tab := "hot"
+var tab := "featured"
 var page := 0
 var levels: Array = []           # dicts of the cards on screen
 var selected: Dictionary = {}
@@ -76,6 +84,7 @@ var _d_play: Button
 var _d_host: Button
 var _d_like: Button
 var _d_mark: Button
+var _d_edit: Button
 var _d_status: Label
 var _busy_play := false
 
@@ -277,6 +286,7 @@ func _build_detail(body: HBoxContainer) -> void:
 			_d_status.text = tr("Code copied - paste it to a friend."))
 	code_row.add_child(copy)
 	_d_stats = Label.new()
+	_d_stats.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	UITheme.style_body(_d_stats, 15)
 	_d_box.add_child(_d_stats)
 	_d_modes = Label.new()
@@ -299,6 +309,11 @@ func _build_detail(body: HBoxContainer) -> void:
 	_d_host.tooltip_text = tr("Host a game on this level that friends can join.")
 	_d_host.pressed.connect(func() -> void: host_selected())
 	_d_box.add_child(_d_host)
+	_d_edit = UITheme.make_small_button("EDIT A COPY", 0, 38)
+	_d_edit.name = "EditCopy"
+	_d_edit.tooltip_text = tr("Open this level in the Map Editor as a new map you can change and save.")
+	_d_edit.pressed.connect(func() -> void: edit_copy_selected())
+	_d_box.add_child(_d_edit)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	_d_box.add_child(row)
@@ -380,6 +395,17 @@ func _load(p: int) -> void:
 	offline = false
 	_more.visible = false
 	_empty.visible = false
+	if tab == "featured":
+		# Bundled with the game: no server, works offline.
+		_show_list(FeaturedLevels.entries(), false)
+		_status.text = ""
+		if levels.is_empty():
+			_set_empty(tr("No featured levels found."))
+		elif not selected.is_empty() and not _cards.has(str(selected.get("id", ""))):
+			_show_detail({})
+		elif not selected.is_empty():
+			_mark_selected()
+		return
 	_status.text = tr("Loading levels...")
 	var ids: Array = []
 	if tab == "bookmarks":
@@ -478,7 +504,7 @@ func _fit_grid() -> void:
 static func modes_text(e: Dictionary, sep := "  ·  ", most := 0) -> String:
 	var keys := str(e.get("modes", "")).split(" ", false)
 	var out: Array = []
-	for k in ["ctf", "dom", "htf", "inf", "rm", "tdm", "dm"]:
+	for k in MODE_ORDER:
 		if k in keys and not (k in ["dm", "tdm"] and keys.size() > 2):
 			out.append(MODE_LABEL[k])
 	if most > 0 and out.size() > most:
@@ -574,6 +600,11 @@ func _draw_stats(st: Control) -> void:
 	var y := st.size.y * 0.5
 	var x := 2.0
 	var dim := UITheme.COL_TEXT_DIM
+	if bool(e.get("featured", false)):
+		# Bundled level: no plays / likes to show — a star and "Hand-built".
+		_star(st, Vector2(x + 6, y), 6.0, UITheme.COL_ACCENT)
+		st.draw_string(f, Vector2(x + 17, y + fs * 0.36), tr("Hand-built"), HORIZONTAL_ALIGNMENT_LEFT, -1, fs, UITheme.COL_TEXT)
+		return
 	# Play triangle.
 	st.draw_colored_polygon(PackedVector2Array([Vector2(x, y - 5), Vector2(x + 9, y), Vector2(x, y + 5)]), dim)
 	x += 13.0
@@ -593,6 +624,13 @@ static func _heart(ci: CanvasItem, c: Vector2, r: float, col: Color) -> void:
 	ci.draw_circle(c + Vector2(-r * 0.5, -r * 0.25), r * 0.55, col)
 	ci.draw_circle(c + Vector2(r * 0.5, -r * 0.25), r * 0.55, col)
 	ci.draw_colored_polygon(PackedVector2Array([c + Vector2(-r * 1.02, -r * 0.05), c + Vector2(r * 1.02, -r * 0.05), c + Vector2(0, r * 0.95)]), col)
+
+
+static func _star(ci: CanvasItem, c: Vector2, r: float, col: Color) -> void:
+	var pts := PackedVector2Array()
+	for i in 10:
+		pts.append(c + Vector2.from_angle(-PI * 0.5 + TAU * float(i) / 10.0) * (r if i % 2 == 0 else r * 0.45))
+	ci.draw_colored_polygon(pts, col)
 
 
 static func _ribbon(ci: CanvasItem, c: Vector2, r: float, col: Color) -> void:
@@ -643,10 +681,12 @@ func _show_detail(e: Dictionary) -> void:
 	selected = e
 	var has := not e.is_empty()
 	_d_hint.visible = not has
+	var feat := bool(e.get("featured", false))
 	for n in [_d_thumb, _d_title, _d_author, _d_code, _d_stats, _d_modes, _d_mode, _d_play, _d_host, _d_like, _d_mark]:
 		n.visible = has
-	(_d_code.get_parent() as Control).visible = has
-	(_d_like.get_parent() as Control).visible = has
+	(_d_code.get_parent() as Control).visible = has and not feat
+	(_d_like.get_parent() as Control).visible = has and not feat
+	_d_edit.visible = has and feat
 	_d_status.text = ""
 	if not has:
 		_d_thumb.call("set_thumb", {}, "")
@@ -664,8 +704,9 @@ func _show_detail(e: Dictionary) -> void:
 	if keys.is_empty():
 		keys = PackedStringArray(["dm"])
 	var pick := -1
-	for k in ["ctf", "dom", "htf", "inf", "rm", "tdm", "dm"]:
-		if k in keys:
+	# Featured levels list their modes best-first; server hints use the fixed order.
+	for k in (Array(keys) if feat else MODE_ORDER):
+		if k in keys and MODE_KEYS.has(k):
 			_d_mode.add_item(GameLists.MODE_NAMES[MODE_KEYS[k]])
 			_d_mode_keys.append(k)
 			# Your current mode when the level was built for it (DM / TDM run
@@ -677,6 +718,9 @@ func _show_detail(e: Dictionary) -> void:
 
 func _refresh_detail_stats() -> void:
 	if selected.is_empty():
+		return
+	if bool(selected.get("featured", false)):
+		_d_stats.text = tr(str(selected.get("blurb", "")))
 		return
 	_d_stats.text = tr("%s plays   ·   %s likes") % [_compact(int(selected.get("plays", 0))), _compact(int(selected.get("likes", 0)))]
 	var liked := bool(selected.get("liked", false))
@@ -825,8 +869,18 @@ static func _cache_map(id: String, m: Variant) -> String:
 
 
 ## The level's map as a local file (downloaded once, then cached), then cb(path).
+## Featured levels: a user:// copy of the bundled file, no download.
 func _with_map(lv: Dictionary, cb: Callable) -> void:
 	var id := str(lv.get("id", ""))
+	if FeaturedLevels.is_featured_id(id):
+		var fp: String = FeaturedLevels.local_copy(FeaturedLevels.slug_of(id))
+		if fp == "" or MapIO.load_from_file(fp).is_empty():
+			_busy_play = false
+			_d_status.text = tr("That level couldn't be downloaded.")
+			return
+		_d_status.text = ""
+		cb.call(fp)
+		return
 	_d_status.text = tr("Downloading the level...")
 	api.get_level(id, "", func(ok: bool, d: Dictionary, err: String) -> void:
 		var path := ""
@@ -849,7 +903,8 @@ func play_selected() -> void:
 	var lv := selected
 	var mode := selected_mode()
 	_with_map(lv, func(path: String) -> void:
-		LevelsApi.report_play(get_tree(), str(lv.get("id", "")))
+		if not FeaturedLevels.is_featured_id(str(lv.get("id", ""))):
+			LevelsApi.report_play(get_tree(), str(lv.get("id", "")))
 		Settings.game_mode = mode
 		Settings.custom_map_path = path
 		Settings.save()
@@ -885,3 +940,22 @@ func host_selected() -> void:
 		gate.call(go)
 	else:
 		go.call()
+
+
+## EDIT A COPY (featured levels): the level opens in the Maker as a new,
+## unsaved map — in place when the browser is the editor's overlay, else the
+## editor scene picks it up (FeaturedLevels.pending_edit).
+func edit_copy_selected() -> void:
+	if selected.is_empty() or not bool(selected.get("featured", false)):
+		return
+	var slug: String = FeaturedLevels.slug_of(str(selected.get("id", "")))
+	if FeaturedLevels.source(slug).is_empty():
+		_d_status.text = tr("That level couldn't be downloaded.")
+		return
+	if edit_hook.is_valid():
+		visible = false
+		edit_hook.call(slug)
+		return
+	FeaturedLevels.pending_edit = slug
+	Net.set_singleplayer()
+	get_tree().change_scene_to_file("res://scenes/map_editor.tscn")

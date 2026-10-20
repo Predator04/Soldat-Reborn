@@ -25,6 +25,9 @@ const Build = preload("res://scripts/maker/maker_build.gd")
 const Themes = preload("res://scripts/maker/maker_themes.gd")
 const HazardArt = preload("res://scripts/maker/hazard_art.gd")
 const GameLists = preload("res://scripts/game_lists.gd")
+const FeaturedLevels = preload("res://scripts/featured_levels.gd")
+const LevelThumb = preload("res://scripts/level_thumb.gd")
+const FEATURED_MODE := {"dm": 0, "tdm": 1, "ctf": 2, "inf": 3, "htf": 4, "rm": 5, "pm": 6, "dom": 7, "br": 8, "gg": 9}
 
 const GRIDS := [10, 20, 40, 80]
 const LONG_PRESS := 0.5
@@ -92,6 +95,8 @@ var _probs_title: Label = null
 var _probs_go: Button = null
 var _load: PanelContainer = null
 var _load_list: VBoxContainer = null
+var _new: PanelContainer = null        # FILE > New map: "Start from" sheet (#295)
+var _new_list: VBoxContainer = null
 var _toast: Label = null
 var _hint: Label = null
 var _file_menu: MenuButton = null
@@ -793,20 +798,50 @@ func cycle_grid() -> void:
 
 
 func new_map() -> void:
+	start_from("starter")
+
+
+## A new map from `what`: "empty" (nothing but the world), "starter" (the
+## small playable start) or a featured level's slug (#295: an unsaved copy of
+## it, every piece editable). False when that level can't be opened.
+func start_from(what: String) -> bool:
 	_close_popups()
 	var th := theme()
-	ed._map = Build.starter_map(th)
+	var nm := "My map"
+	var m: Dictionary
+	var meta: Dictionary = {}
+	if what == "empty":
+		m = {"name": nm, "platforms": [], "ladders": [], "bot_spawns": [],
+			"player_spawn": Vector2(Build.DEFAULT_W * 0.5, Build.DEFAULT_H * 0.6)}
+		m["maker"] = {"v": Build.VERSION, "theme": th, "grid": 20, "w": Build.DEFAULT_W, "h": Build.DEFAULT_H,
+			"bottom": "void", "pieces": []}
+	elif what == "starter" or what == "":
+		m = Build.starter_map(th)
+	else:
+		m = FeaturedLevels.source(what)
+		meta = FeaturedLevels.meta(what)
+		if m.is_empty() or meta.is_empty():
+			toast(tr("Couldn't open that map."), true)
+			return false
+		nm = (tr("%s copy") % str(meta["title"])).left(40)
+		m["name"] = nm
+		var first := str(meta.get("modes", "")).get_slice(" ", 0)
+		if FEATURED_MODE.has(first):
+			test_mode = int(FEATURED_MODE[first])
+	ed._map = m
 	sel.clear()
-	_name.text = "My map"
-	ed._name_edit.text = "My map"
-	commit(tr("New map."))
+	_name.text = nm
+	ed._name_edit.text = nm
+	commit(tr("New map.") if meta.is_empty() else tr("Editing a copy of %s.") % str(meta["title"]))
+	_sync_controls()
 	fit_view()
+	return true
 
 
 # ── Input ────────────────────────────────────────────────────────────────────
 
 func _over_ui(screen_p: Vector2) -> bool:
-	for c in [_top, _palette, _mini_panel, _selbar, _ctx, _probs, _load]:
+	for c in [_top, _palette, _mini_panel, _selbar, _ctx, _probs, _load, _new]:
 		var ctl := c as Control
 		if ctl != null and ctl.is_visible_in_tree() and ctl.get_global_rect().has_point(screen_p):
 			return true
@@ -1888,6 +1923,35 @@ func _build_ui() -> void:
 	_load_list.add_theme_constant_override("separation", 4)
 	lsc.add_child(_load_list)
 	lvb.add_child(_small_btn(tr("CLOSE"), bh, _close_popups, ""))
+	# ── New map sheet: Start from Empty / Starter / a featured level ──
+	_new = PanelContainer.new()
+	_new.name = "NewMap"
+	_new.add_theme_stylebox_override("panel", UITheme.panel_style())
+	_new.set_anchors_preset(Control.PRESET_CENTER)
+	_new.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_new.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_new.custom_minimum_size = Vector2(600, 460)
+	_new.visible = false
+	root.add_child(_new)
+	var nvb := VBoxContainer.new()
+	nvb.add_theme_constant_override("separation", 8)
+	_new.add_child(nvb)
+	var nt := Label.new()
+	nt.text = tr("NEW MAP")
+	UITheme.style_head(nt, UITheme.FS_H2)
+	nvb.add_child(nt)
+	nvb.add_child(UITheme.make_sub_label(tr("Start from:")))
+	nvb.add_child(UITheme.make_rule())
+	var nsc := ScrollContainer.new()
+	nsc.custom_minimum_size = Vector2(0, 300)
+	nsc.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	nsc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	nvb.add_child(nsc)
+	_new_list = VBoxContainer.new()
+	_new_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_new_list.add_theme_constant_override("separation", 6)
+	nsc.add_child(_new_list)
+	nvb.add_child(_small_btn(tr("CLOSE"), bh, _close_popups, ""))
 	# ── Toast ──
 	_toast = Label.new()
 	_toast.name = "Toast"
@@ -1906,6 +1970,7 @@ func _build_ui() -> void:
 	UITheme.UIFx.watch(_palette, Vector2.DOWN)
 	UITheme.UIFx.watch(_probs, Vector2.DOWN)
 	UITheme.UIFx.watch(_load, Vector2.DOWN)
+	UITheme.UIFx.watch(_new, Vector2.DOWN)
 	set_tab("terrain")
 	_sync_controls()
 
@@ -2053,7 +2118,7 @@ func _on_map_menu(id: int) -> void:
 
 func _on_file(id: int) -> void:
 	match id:
-		0: new_map()
+		0: open_new()
 		1: save()
 		2: _open_load()
 		3: ed._exit_to_menu()
@@ -2084,7 +2149,8 @@ func toast(msg: String, alert: bool = false) -> void:
 ## BACK / Esc (map_editor.go_back): close a sheet / disarm / deselect first.
 ## True = handled; false = nothing left, the editor leaves.
 func back_pressed() -> bool:
-	if (_ctx != null and _ctx.visible) or (_probs != null and _probs.visible) or (_load != null and _load.visible):
+	if (_ctx != null and _ctx.visible) or (_probs != null and _probs.visible) or (_load != null and _load.visible) \
+			or (_new != null and _new.visible):
 		_close_popups()
 		return true
 	if armed != "":
@@ -2105,6 +2171,8 @@ func _close_popups() -> void:
 		_probs.visible = false
 	if _load != null:
 		_load.visible = false
+	if _new != null:
+		_new.visible = false
 
 
 func _place_selbar() -> void:
@@ -2227,6 +2295,50 @@ func _open_load() -> void:
 	if shown == 0:
 		_load_list.add_child(UITheme.make_sub_label(tr("No saved maps yet — build one and Save.")))
 	_load.visible = true
+
+
+## FILE > New map (#295): "Start from" — an empty world, the starter strip or
+## a copy of one of the featured levels that ship with the game.
+func open_new() -> void:
+	_close_popups()
+	for c in _new_list.get_children():
+		c.queue_free()
+	var touch := UITheme.is_touch()
+	var starter: Variant = JSON.parse_string(MapIO.map_to_json(Build.compile(Build.starter_map(theme()))))
+	var rows: Array = [["empty", tr("Empty"), tr("Just the world: build everything yourself."), {}, ""],
+		["starter", tr("Starter"), tr("Some ground, two bases and two bridges to begin with."),
+			LevelThumb.from_map(starter) if starter is Dictionary else {}, FeaturedLevels.THUMB_THEME.get(theme(), "")]]
+	for e in FeaturedLevels.entries():
+		rows.append([FeaturedLevels.slug_of(str(e["id"])), str(e["title"]), tr(str(e["blurb"])), e["thumb"], str(e["theme"])])
+	for r in rows:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		var th: Control = LevelThumb.new()
+		th.custom_minimum_size = Vector2(120, 48)
+		th.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(th)
+		th.call("set_thumb", r[3], r[4])
+		var tv := VBoxContainer.new()
+		tv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tv.add_theme_constant_override("separation", 0)
+		var tl := Label.new()
+		tl.text = str(r[1])
+		tl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		UITheme.style_body(tl, 16)
+		tv.add_child(tl)
+		var dl := Label.new()
+		dl.text = str(r[2])
+		dl.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		dl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		UITheme.style_body(dl, 13, UITheme.COL_TEXT_DIM)
+		tv.add_child(dl)
+		row.add_child(tv)
+		var what: String = r[0]
+		var b := _small_btn(tr("START"), 40 if touch else 34, func() -> void: start_from(what), "")
+		b.name = "Start_" + what
+		row.add_child(b)
+		_new_list.add_child(row)
+	_new.visible = true
 
 
 # ── Inner widgets ────────────────────────────────────────────────────────────

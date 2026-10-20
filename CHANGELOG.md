@@ -4,6 +4,19 @@ All notable changes to Soldat Reborn.
 
 ## [Unreleased]
 
+### Added — featured levels (#295)
+- **LEVELS now opens on FEATURED: 8 hand-built levels that come with the game**, so there is always something to play — even offline, with no level server at all. Each one shows its outline, the modes it was built for, PLAY (a bot match), HOST ONLINE and **EDIT A COPY**, which opens the level in the Map Editor as a new, unsaved map with every piece editable — take one apart to see how it works, or make it your own.
+  - **Twin Forts** (grassland, CTF / HTF / TDM / DM) — a mirrored CTF arena: hilltop forts, a sky route of floating islands, a jump pad up from the valley.
+  - **Magma Crown** (desert, DOM / TDM / DM) — king of the hill between two lava pits, crossed on broken plank bridges.
+  - **Skyline Tower** (urban, HTF / TDM / DM) — jump pads launch you up a zig-zag tower to the flag on the roof.
+  - **Iron Valley** (jungle, TDM / CTF / DM) — wide-open vehicle warfare: every base has a buggy, a tank, a helicopter pad and a plane on its runway.
+  - **The Bunker** (night, DM / RM / TDM / Gun Game) — three tight decks under a concrete roof, ladders and shotguns.
+  - **Frostbite** (snow, CTF / INF / TDM / DM) — two peaks over a bottomless chasm, one ice bridge and a frozen pillar between them.
+  - **Hollow Deep** (cave, DOM / CTF / TDM / DM) — stalactites, spike pits, ladders and three points to hold.
+  - **Last Ridge** (grassland, Battle Royale / DM / Gun Game) — a big ridge with corner towers, bunkers and loot everywhere; the ring closes on the summit.
+- **Maker: FILE > New map asks what to start from** — Empty, the Starter strip, or a copy of any featured level.
+- Gate F test FEATURED-TEST: every featured level loads, validates, passes the map audit and the bot-navigation check for all its modes, the tab works offline, PLAY / HOST ONLINE / EDIT A COPY / Start from work, the new texts are translated, and bots play each level (travel, objectives, jump pads, vehicles, no hazard deaths to speak of).
+
 ## [1.38.0] — 2026-10-19 — Planes
 
 ### Dev

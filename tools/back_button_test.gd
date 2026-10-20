@@ -334,6 +334,7 @@ func _editor_cases() -> bool:
 				mk._open_context(Vector2(400, 300)), "_ctx"],
 			"problems": [func() -> void: mk._show_problems([{"lvl": "warn", "msg": "back test", "at": Vector2(100, 100)}], "play"), "_probs"],
 			"open": [func() -> void: mk._open_load(), "_load"],
+			"new": [func() -> void: mk.open_new(), "_new"],
 		}
 		for key in sheets:
 			_step = "maker %s %s" % [key, how]

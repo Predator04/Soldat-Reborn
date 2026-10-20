@@ -17,7 +17,7 @@ For every map entity (spawns, flags, M2s, pickups, DOM points) it reports:
                     zones count as pits for landing and connectivity
 
 Usage:
-    python3 tools/map_audit.py            # audit built-ins + assets/maps/*.json
+    python3 tools/map_audit.py            # audit built-ins + assets/maps/*.json + featured levels
     python3 tools/map_audit.py nuubia     # only maps whose name contains "nuubia"
     python3 tools/map_audit.py path/to/map.json   # one map file (e.g. a Maker map
                                                   # from user://maps/)
@@ -298,6 +298,16 @@ def classic_maps():
     return res
 
 
+def featured_maps():
+    # Bundled FEATURED Maker levels (#295, assets/levels/featured/).
+    res = []
+    for f in sorted(glob.glob(os.path.join(GAME, "assets", "levels", "featured", "*.json"))):
+        d = json.load(open(f, encoding="utf-8"))
+        d["_label"] = "featured:" + os.path.basename(f)
+        res.append(d)
+    return res
+
+
 def poly_mask(m):
     W, H, _, _ = world_of(m)
     img = Image.new("1", (int(W / R) + 1, int(H / R) + 1), 0)
@@ -319,6 +329,8 @@ def audit(m):
     pm = poly_mask(m)
     for i, pl in enumerate(m.get("platforms", [])):
         (px, py), (sx, sy) = pl["p"], pl["s"]
+        if px + sx / 2 <= 0 or py + sy / 2 <= 0:
+            continue  # outside the world (Maker's 8 px anchor platform, #286): nothing to bury it
         x0, x1 = int((px - sx / 2) / R), int((px + sx / 2) / R)
         y0, y1 = int((py - sy / 2) / R), max(int((py + sy / 2) / R), int((py - sy / 2) / R) + 1)
         sub = pm[max(0, y0):y1, max(0, x0):x1]
@@ -344,7 +356,7 @@ def main(argv):
         d["_label"] = os.path.basename(only)
         maps, only = [d], None
     else:
-        maps = builtin_maps() + classic_maps()
+        maps = builtin_maps() + classic_maps() + featured_maps()
     bad = 0
     for m in maps:
         if only and only.lower() not in m["_label"].lower():
