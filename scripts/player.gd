@@ -2708,13 +2708,16 @@ func _host_shot_check(shot_pos: Vector2, dirs: PackedVector2Array, w: Dictionary
 			return no
 		nd.append(d.normalized())
 	var base := _net_base_pos()
-	# (Riding, or just spawned / reset: where the host last saw the body is
-	# no measure of where it fires from.)
-	var riding := _trust_riding() or g.placed_recently()
+	var riding := _trust_riding()
 	if not riding:
 		var lim := 80.0 + _net_vel.length() * 0.1
 		var off := shot_pos.distance_to(base)
 		if off > lim:
+			# Just spawned / reset: the body may have moved to a spot the host
+			# hasn't heard about yet — refuse quietly (no flag) until it has.
+			if g.placed_recently():
+				HostHits.count("refused_origin_quiet")
+				return no
 			if g.flag("origin", "%s fired %.0f px from its body (max %.0f)" % [wname, off, lim]):
 				_trust_force_death("shots (origin)")
 			return no
@@ -2729,7 +2732,9 @@ func _host_shot_check(shot_pos: Vector2, dirs: PackedVector2Array, w: Dictionary
 		return no
 	var hold := {}
 	var spread := float(w["spread"])
-	if not g.aim_ok_now(nd[0], spread):
+	# No aim sample yet (just spawned) or one that disagrees: hold the shot's
+	# hits until the next samples show where it was really aiming.
+	if (g.last_aim() == null and not melee) or not g.aim_ok_now(nd[0], spread):
 		if melee:
 			if g.flag("aim", "%s swung %.0f° off the aim it streams" % [wname, rad_to_deg(absf(angle_difference(float(g.last_aim()), nd[0].angle())))]):
 				_trust_force_death("shots (aim)")
@@ -2776,7 +2781,11 @@ func _resolve_aim(new_sample: bool) -> void:
 					and TrustGuard.aim_ok_between(h["dir"], float(h["spread"]), float(angles[i]), float(angles[i + 1])):
 				ok = true
 				break
-		if angles.size() < 2 or angles[0] == null:
+		var pairs := 0
+		for i in range(angles.size() - 1):
+			if angles[i] != null and angles[i + 1] != null:
+				pairs += 1
+		if pairs == 0:
 			ok = true   # nothing to compare with after all
 		h["done"] = true
 		h["ok"] = ok

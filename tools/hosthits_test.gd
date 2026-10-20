@@ -224,7 +224,7 @@ func _honest() -> void:
 	var total := 0.0
 	var wrong := 0
 	for line in _lines("honest_host.log", "HOSTHIT "):
-		var amt := float(line.split(" -> ")[1].split(" ")[1]) if line.contains(" -> ") else 0.0
+		var amt := _amount(line)
 		total += amt
 		if line.begins_with("HOSTHIT «SHT»") and absf(amt - AK_DMG) > 0.01:
 			wrong += 1
@@ -298,7 +298,7 @@ func _cheats() -> void:
 	var hits := _lines("cheat_host.log", "HOSTHIT «DMG»")
 	var wrong := 0
 	for line in hits:
-		if absf(float(line.split(" -> ")[1].split(" ")[2]) - AK_DMG) > 0.01:
+		if absf(_amount(line) - AK_DMG) > 0.01:
 			wrong += 1
 	_log.append("dmg: its screen %.0f over %d hits, host %d hits all %.0f=%s" % [_kv(dmg, "predicted_damage"), int(_kv(dmg, "predicted_hits")), hits.size(), AK_DMG, str(wrong == 0)])
 	if _kv(dmg, "predicted_hits") < 3 or _kv(dmg, "predicted_damage") < 200.0 * _kv(dmg, "predicted_hits"):
@@ -340,6 +340,14 @@ func _cheats() -> void:
 		var e := _errors(f, true)
 		if e > 0:
 			_bad.append("%d error lines in %s" % [e, f])
+
+
+## The damage of one "HOSTHIT <killer> -> <victim> <amount> (<weapon>) hp <n>" line.
+func _amount(line: String) -> float:
+	var re := RegEx.new()
+	re.compile(" -> .* ([0-9.]+) \\(.*\\) hp ")
+	var m := re.search(line)
+	return float(m.get_string(1)) if m != null else 0.0
 
 
 ## Hits landed so far by the soldier tagged `tag` (HOSTHITS shooters=[...]).
