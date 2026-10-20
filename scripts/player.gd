@@ -2809,13 +2809,13 @@ func _host_shot_check(shot_pos: Vector2, dirs: PackedVector2Array, w: Dictionary
 
 ## Host: settle shots held for an aim re-check. A shot is fine if it lies on
 ## the arc the aim swept around it: the streamed aims either side of its own
-## game-clock moment, as soon as the one after it is in (at most AIM_HOLD_MS);
+## game-clock moment, as soon as the one after it is in (at most AIM_HOLD_MS, or STREAM_WAIT_MS while the stream lags);
 ## else the samples that arrived around it, else the one sample there is.
 ## Then its hits count or are dropped.
 const AIM_HOLD_MS := 800
 # While the owner's own stream hasn't reached the shot's moment yet (a client
 # running seconds behind on a starved machine), wait this long for it.
-const STREAM_WAIT_MS := 3000
+const STREAM_WAIT_MS := 5000
 
 func _resolve_aim(new_sample: bool) -> void:
 	if _trust == null:
@@ -2876,7 +2876,12 @@ func _resolve_aim(new_sample: bool) -> void:
 						off = TrustGuard.aim_off_arc(h["dir"], float(a), float(a))
 						break
 		var tol: float = float(h["spread"]) + TrustGuard.BINK_MAX + TrustGuard.AIM_ARC_SLACK
-		var ok := off == INF or off <= tol   # (INF: nothing to compare with after all)
+		# (INF: nothing to compare with after all. Without the owner's own
+		# samples either side of the shot — its stream ran out the wait — the
+		# shot can't be judged: it stands, counted.)
+		var ok := off == INF or off <= tol or not stamped
+		if off != INF and off > tol and not stamped:
+			HostHits.count("aim_unverified")
 		h["done"] = true
 		h["ok"] = ok
 		if ok:

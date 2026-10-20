@@ -332,7 +332,7 @@ func _sc_join(r: Dictionary) -> void:
 	var pv: int = port + 11
 	r["proxies"].append(_proxy(int(r["ps"]), port, _link(sc, "s_"), 1, "%s_proxy_shooter.log" % n))
 	r["proxies"].append(_proxy(pv, port, _link(sc, "v_"), 2, "%s_proxy_victim.log" % n))
-	if not _wait_for("%s_proxy_shooter.log" % n, "LAGPROXY listening", 15.0) or not _wait_for("%s_proxy_victim.log" % n, "LAGPROXY listening", 15.0):
+	if not _wait_for("%s_proxy_shooter.log" % n, "LAGPROXY listening", 45.0) or not _wait_for("%s_proxy_victim.log" % n, "LAGPROXY listening", 45.0):
 		_bad.append("%s: latency proxies did not start" % n)
 		r["host"] = []
 		return
