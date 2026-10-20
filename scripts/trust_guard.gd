@@ -343,11 +343,20 @@ func aim_ok_now(dir: Vector2, spread: float) -> bool:
 ## Second look once the next aim sample is in: the shot must lie on the arc
 ## the aim swept from `a0` (before the shot) to `a1` (after it).
 static func aim_ok_between(dir: Vector2, spread: float, a0: float, a1: float) -> bool:
-	var tol := spread + BINK_MAX + AIM_ARC_SLACK
+	return aim_off_arc(dir, a0, a1) <= spread + BINK_MAX + AIM_ARC_SLACK
+
+
+## How far (rad) `dir` lies outside the arc the aim swept from a0 to a1.
+static func aim_off_arc(dir: Vector2, a0: float, a1: float) -> float:
 	var span := angle_difference(a0, a1)
 	var rel := angle_difference(a0, dir.angle())
 	var near := clampf(rel, minf(0.0, span), maxf(0.0, span))
-	return absf(rel - near) <= tol
+	return absf(rel - near)
+
+
+## Refusals this far off the swept arc are flagged; nearer ones (odd but
+## possible input) are refused quietly. Silent aim / spin-bots shoot far off.
+const AIM_FLAG_RAD := 1.2
 
 
 # ── fire rate, magazines, grenades ──

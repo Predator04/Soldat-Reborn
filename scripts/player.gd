@@ -2736,7 +2736,10 @@ func _host_shot_check(shot_pos: Vector2, dirs: PackedVector2Array, w: Dictionary
 	# hits until the next samples show where it was really aiming.
 	if (g.last_aim() == null and not melee) or not g.aim_ok_now(nd[0], spread):
 		if melee:
-			if g.flag("aim", "%s swung %.0f° off the aim it streams" % [wname, rad_to_deg(absf(angle_difference(float(g.last_aim()), nd[0].angle())))]):
+			var moff := absf(angle_difference(float(g.last_aim()), nd[0].angle()))
+			if moff < TrustGuard.AIM_FLAG_RAD:
+				HostHits.count("aim_refused_quiet")
+			elif g.flag("aim", "%s swung %.0f° off the aim it streams" % [wname, rad_to_deg(moff)]):
 				_trust_force_death("shots (aim)")
 			return no
 		# Maybe a flick between two aim samples: its hits wait for the next ones.
@@ -2775,29 +2778,28 @@ func _resolve_aim(new_sample: bool) -> void:
 		if angles.size() < 3 and now - int(h["ms"]) < 250:
 			keep.append(h)
 			continue
-		var ok := false
-		for i in range(angles.size() - 1):
-			if angles[i] != null and angles[i + 1] != null \
-					and TrustGuard.aim_ok_between(h["dir"], float(h["spread"]), float(angles[i]), float(angles[i + 1])):
-				ok = true
-				break
-		var pairs := 0
+		# How far outside the arc the aim swept around the shot (nearest pair).
+		var off := INF
 		for i in range(angles.size() - 1):
 			if angles[i] != null and angles[i + 1] != null:
-				pairs += 1
-		if pairs == 0:
-			ok = true   # nothing to compare with after all
+				off = minf(off, TrustGuard.aim_off_arc(h["dir"], float(angles[i]), float(angles[i + 1])))
+		var tol: float = float(h["spread"]) + TrustGuard.BINK_MAX + TrustGuard.AIM_ARC_SLACK
+		var ok := off == INF or off <= tol   # (INF: nothing to compare with after all)
 		h["done"] = true
 		h["ok"] = ok
 		if ok:
 			for e in h["hits"]:
 				if is_instance_valid(e[0]):
 					HostHits.damage(e[0], float(e[1]), str(e[2]), str(e[3]), int(e[4]))
-		else:
-			HostHits.count("aim_refused_hits", float((h["hits"] as Array).size()))
-			if _trust.flag("aim", "%s shot %.0f° off the aim it streams" % [str(h["weapon"]), rad_to_deg(absf(angle_difference(float(angles[-1]), (h["dir"] as Vector2).angle())))]):
-				_trust_force_death("shots (aim)")
-				return
+			continue
+		HostHits.count("aim_refused_hits", float((h["hits"] as Array).size()))
+		if angles[0] == null or off < tol + TrustGuard.AIM_FLAG_RAD:
+			# Fired before any aim sample (just spawned), or only somewhat
+			# off: its hits don't count, but that's no proof of a cheat.
+			HostHits.count("aim_refused_quiet")
+		elif _trust.flag("aim", "%s shot %.0f° off the aim it streams" % [str(h["weapon"]), rad_to_deg(off)]):
+			_trust_force_death("shots (aim)")
+			return
 	_aim_pending = keep
 
 
