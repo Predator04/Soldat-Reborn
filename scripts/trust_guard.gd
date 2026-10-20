@@ -334,7 +334,9 @@ func aim_ok_now(dir: Vector2, spread: float) -> bool:
 	if _aims.size() >= 2:
 		var prev: Array = _aims[-2]
 		omega = absf(angle_difference(float(prev[1]), float(last[1]))) / maxf(0.016, float(int(last[0]) - int(prev[0])) / 1000.0)
-	var tol := spread + BINK_MAX + AIM_SLACK + minf(omega, 40.0) * 0.05
+	# (A fast-swinging aim widens this a little; a bigger flick is held and
+	# settled on the swept arc instead — a spinning aim must not open it up.)
+	var tol := spread + BINK_MAX + AIM_SLACK + minf(omega * 0.05, 0.5)
 	if absf(angle_difference(float(last[1]), a)) <= tol:
 		return true
 	return _aims.size() >= 2 and absf(angle_difference(float(_aims[-2][1]), a)) <= tol

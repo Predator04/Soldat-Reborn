@@ -214,7 +214,9 @@ func _shooter(m: Node, p: Node2D, delta: float) -> void:
 		"origin":
 			_release("fire")
 			_cheat_t -= delta
-			if _cheat_t <= 0.0:
+			# (Only at a target well beyond any muzzle: a round spawned right
+			# at a soldier standing next to you is within the host's tolerance.)
+			if _cheat_t <= 0.0 and from.distance_to(chest) > 160.0:
 				_cheat_t = 0.15
 				_raw_shot(p, chest - dir * 14.0, dir)
 		"silentaim":
