@@ -11,7 +11,9 @@ extends SceneTree
 ## heli pad per team (a bot boards a buggy and drives it; tank / heli use is
 ## logged), and with the red flag on a floating island ~690 px up that only a
 ## big jump pad reaches (the graph routes the attack over the pad; a bot is
-## launched by it and lands on the island).
+## launched by it and lands on the island), and with a small pad on the walkway
+## out of each base that nothing is worth riding to (#294: bots cross them
+## without being launched — unintended launches <= 15 % of crossings).
 ## #296 maker_basin: Magma Crown with each lava pool's rock basin merged into
 ## the rock under it (one outline, no designer gap) in Domination — the merged
 ## outline must give the same nav graph as separate shapes, and bots on a
@@ -36,7 +38,7 @@ var _dist := {}
 var _max_gap := 0
 var _last_ms := 0
 var _case := 0
-var _cases := ["classic", "generated", "maker_hazards", "maker_vehicles", "maker_pads", "maker_basin", "maker_overhang"]
+var _cases := ["classic", "generated", "maker_hazards", "maker_vehicles", "maker_pads", "maker_padcross", "maker_basin", "maker_overhang"]
 var _hz_kills0 := 0
 var _launch0 := 0
 var _drive := {}        # vehicle instance id -> px driven by a bot
@@ -65,6 +67,14 @@ var _stack_max := 0.0
 var _bonk := {}         # maker_overhang: bot instance id -> underside hits
 var _bonk_on := {}
 var _top_t := -1.0      # maker_overhang: seconds until a blue bot made it up to the island
+var _pc_side := {}      # maker_padcross: "bot:pad" -> which side of the pad's trigger the feet were on
+var _pc_last := {}      # maker_padcross: bot -> msec of its last pad launch seen
+var _pc_cross := 0      # maker_padcross: crossings near the pad's level
+var _pc_un := 0         # ...launches of bots not riding that pad on purpose
+var _pc_int := 0        # ...launches of bots whose path rides it
+var _pc_prev := {}      # RTNAV_PADDBG: bot -> its state last frame
+const PC_MIN_CROSS := 4
+const PC_MAX_SHARE := 0.15   # unintended launches per crossing at most
 
 
 func _write_custom(kind: String) -> String:
@@ -97,6 +107,11 @@ func _write_custom(kind: String) -> String:
 			pcs.append(B.make_piece("float", Vector2(4300, 860), Vector2(320, 80)))
 			pcs.append(B.make_piece("pad_big", Vector2(4000, 1500), Vector2(64, 20)))
 			src["ctf_flags"] = [Vector2(300, 1500), Vector2(4300, 810)]
+		elif kind == "maker_padcross":
+			# #294: a jump pad on the only walkway out of each base (nothing
+			# worth riding to within its reach): every attack crosses one.
+			pcs.append(B.make_piece("pad", Vector2(900, 1500), Vector2(64, 20)))
+			pcs.append(B.make_piece("pad", Vector2(3900, 1500), Vector2(64, 20)))
 		else:
 			src["vehicle_spawns"] = [Vector2(900, 1510), Vector2(3900, 1510)]
 			src["tank_spawns"] = [Vector2(600, 1510), Vector2(4200, 1510)]
@@ -106,7 +121,7 @@ func _write_custom(kind: String) -> String:
 			_check_basin_geometry(src, m)
 		m.erase("_mk_outlines")
 		m["name"] = {"maker_hazards": "RTNav Maker Hazards", "maker_pads": "RTNav Maker Pads", "maker_basin": "RTNav Maker Basin",
-			"maker_overhang": "RTNav Maker Overhang"}.get(kind, "RTNav Maker Vehicles")
+			"maker_overhang": "RTNav Maker Overhang", "maker_padcross": "RTNav Maker Pad Crossing"}.get(kind, "RTNav Maker Vehicles")
 	return io.save_to_file(str(m["name"]), m)
 
 
@@ -237,6 +252,11 @@ func _process(_d: float) -> bool:
 			_launch0 = int(m.get("_hazards").bot_launches) if m.get("_hazards") != null else 0
 			_pad_t = -1.0
 			_pad_arrive.clear()
+			_pc_side.clear()
+			_pc_last.clear()
+			_pc_cross = 0
+			_pc_un = 0
+			_pc_int = 0
 			_boarded.clear()
 			_drv_prev.clear()
 			_drive_kind.clear()
@@ -286,6 +306,8 @@ func _process(_d: float) -> bool:
 							_heli_alt = maxf(_heli_alt, gy - vp.y)
 				_drv_prev[vid] = d
 				_drive_last[vid] = vp
+			if _cases[_case] == "maker_padcross":
+				_padcross_tick()
 			if _cases[_case] == "maker_pads" and _pad_arrive.size() < 2:
 				# Over the island's top, coming down (or standing) after a pad
 				# launch within the last 4 s (first arrival per team: red defends
@@ -353,6 +375,13 @@ func _process(_d: float) -> bool:
 					_bad.append("maker_overhang: a bot hit a platform's underside %d times" % worst)
 				if _top_t < 0.0:
 					_bad.append("maker_overhang: no blue attacker made it up to the island in %d s" % OVERHANG_LIMIT_S)
+			if _cases[_case] == "maker_padcross":
+				_log.append("maker_padcross pads=%d crossings=%d launches unintended=%d intended=%d" % [
+					m.get("_hazards").pads.size(), _pc_cross, _pc_un, _pc_int])
+				if _pc_cross < PC_MIN_CROSS:
+					_bad.append("maker_padcross: bots crossed the pads only %d times" % _pc_cross)
+				elif float(_pc_un) > maxf(1.0, float(_pc_cross) * PC_MAX_SHARE):
+					_bad.append("maker_padcross: %d of %d pad crossings launched a bot that wasn't riding it" % [_pc_un, _pc_cross])
 			var moved := 0
 			var total := 0
 			for b in m.get_tree().get_nodes_in_group("soldier"):
@@ -546,6 +575,60 @@ func _track_bonks(m: Node) -> void:
 		if _top_t < 0.0 and int(b.get("team")) == 1 and gp.x > OVERHANG_ISLAND.position.x - 40.0 and gp.x < OVERHANG_ISLAND.end.x + 40.0 \
 				and gp.y < OVERHANG_ISLAND.position.y + 4.0 and gp.y > OVERHANG_ISLAND.position.y - 60.0:
 			_top_t = float(_n) / 60.0
+## maker_padcross (#294): count bots crossing a pad near its level (feet go
+## from one side of its trigger to the other) and pad launches, sorted by
+## whether the bot's path meant to ride that pad.
+func _padcross_tick() -> void:
+	var m = current_scene
+	var hz = m.get("_hazards")
+	if hz == null:
+		return
+	for b in m.get_tree().get_nodes_in_group("soldier"):
+		if not is_instance_valid(b) or b == m.player or b.get("bot_id") == null or bool(b.get("dead")):
+			continue
+		var id: int = b.get_instance_id()
+		var f: Vector2 = (b as Node2D).global_position
+		var lt: int = int(hz._pad_cd.get(id, -1))
+		if lt != int(_pc_last.get(id, -1)):
+			_pc_last[id] = lt
+			if lt >= 0:
+				var near_pad := Vector2.INF
+				for pd in hz.pads:
+					if near_pad == Vector2.INF or (pd["pos"] as Vector2).distance_to(f) < near_pad.distance_to(f):
+						near_pad = pd["pos"]
+				if _rides_pad(b, m.nav, near_pad):
+					_pc_int += 1
+				else:
+					_pc_un += 1
+					if OS.get_environment("RTNAV_PADDBG") != "":
+						print("PADDBG unintended %s pad=%s before=%s" % [str(b.get("display_name")), str(near_pad), str(_pc_prev.get(id, []))])
+		_pc_prev[id] = [f.round(), (b as CharacterBody2D).velocity.round(), (b as CharacterBody2D).is_on_floor(), str(b.get("_goal_label")),
+			snappedf(float(b.get("jump_cd")), 0.01), snappedf(float(b.get("_escape_t")), 0.01), str(b.get("target") != null and b.get("_target_visible") == true)]
+		for i in hz.pads.size():
+			var pp: Vector2 = hz.pads[i]["pos"]
+			var k := "%d:%d" % [id, i]
+			if f.y < pp.y - 120.0 or f.y > pp.y + 20.0:
+				_pc_side.erase(k)
+				continue
+			var side := -1 if f.x < pp.x - 28.0 else (1 if f.x > pp.x + 28.0 else 0)
+			if side == 0:
+				continue
+			if _pc_side.has(k) and int(_pc_side[k]) == -side:
+				_pc_cross += 1
+			_pc_side[k] = side
+
+
+func _rides_pad(b: Node, nav, pad: Vector2) -> bool:
+	if int(b.get("_pad_ride")) >= 0:
+		return true
+	var p: PackedVector2Array = b.get("_path")
+	var i0: int = int(b.get("_path_i"))
+	if nav == null or not nav.has_method("pad_ride") or pad == Vector2.INF:
+		return false
+	for k in range(maxi(0, i0 - 1), mini(i0 + 3, p.size() - 1)):
+		if p[k].distance_to(pad) < 40.0 and nav.pad_ride(p[k], p[k + 1]) >= 0:
+			return true
+	return false
 
 
 func _end(fail: String) -> bool:
