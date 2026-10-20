@@ -435,6 +435,16 @@ func _clear(a: Vector2, b: Vector2) -> bool:
 	return false
 
 
+## #297: a standing soldier fits all the way straight up from `p` to height
+## `top_y` (nothing overhead to start a climb under).
+func _rise_clear(p: Vector2, top_y: float) -> bool:
+	var cx := int(round(p.x / R))
+	for y in range(int(round(p.y / R)), int(round(top_y / R)) - 1, -1):
+		if not _stand_at(cx, y):
+			return false
+	return true
+
+
 func _has_floor_below(x: float, y: float) -> bool:
 	var cx := int(round(x / R))
 	if cx < 0 or cx >= nx:
@@ -501,6 +511,7 @@ func _link(pts: Array) -> Array:
 		have[e] = true
 	var pts_l: Array = pts.duplicate()
 	var air := {}
+	var steps := {}
 	var per_src := {}
 	for e in climb:
 		var i: int = e.x
@@ -527,7 +538,24 @@ func _link(pts: Array) -> Array:
 					bi = pts_l.size()
 					pts_l.append(bb)
 					air[key] = bi
-				edges.append(Vector2i(i, bi))
+				if _clear(p, bb) and _rise_clear(p, bb.y):
+					edges.append(Vector2i(i, bi))
+				else:
+					# #297: p stands UNDER the platform (a slab hanging 300-560 px
+					# over walkable ground): the straight line p -> bb runs through
+					# its body or along its underside, and a bot follows a link's
+					# line (it can't build up the sideways speed under it either)
+					# — it jetted into the underside again and again. Route over
+					# the step-out point the detour was checked with: walk out
+					# to `a`, then jet straight up beside the lip.
+					var ak := Vector2i(int(a.x / 16.0), int(a.y / 16.0))
+					var ai: int = int(steps.get(ak, -1))
+					if ai < 0:
+						ai = pts_l.size()
+						pts_l.append(a)
+						steps[ak] = ai
+					edges.append(Vector2i(i, ai))
+					edges.append(Vector2i(ai, bi))
 				edges.append(Vector2i(bi, j))
 				per_src[i] = int(per_src.get(i, 0)) + 1
 				done = true

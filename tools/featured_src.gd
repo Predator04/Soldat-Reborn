@@ -175,7 +175,7 @@ static func src_magma_crown() -> Dictionary:
 	L.ramp(800, 1400, 1040, 1480)
 	L.ground(800, 1640, 1480, 400)                # point A ground
 	L.lava(1640, 2000, 1540)                      # lava pit
-	L.ground(1600, 2040, 1683, 197)               # rock under its basin (kept 3 px apart: a separate outline)
+	L.ground(1600, 2040, 1680, 200)               # rock under its basin (merges with it, #296)
 	L.ledge(1640, 1804, 1480, "bridge")           # broken plank bridge over it: hop the gap
 	L.ledge(1836, 2000, 1480, "bridge")
 	L.island(1820, 1150, 260)                     # hot rock over the lava
