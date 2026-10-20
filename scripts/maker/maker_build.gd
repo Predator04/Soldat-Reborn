@@ -630,7 +630,7 @@ static func entities(m: Dictionary) -> Array:
 		if m.has(pair[0]) and not auto.has(pair[0]):
 			out.append([_tr(pair[1]), m[pair[0]]])
 	for pair in [["dom_points", "DOM point"], ["point_spawns", "Point"], ["bonus_spawns", "Bonus box"], ["medkits", "Medikit"],
-			["grenade_kits", "Grenade kit"], ["vehicle_spawns", "Buggy"], ["tank_spawns", "Tank"], ["heli_spawns", "Heli pad"], ["m2_mounts", "M2 gun"]]:
+			["grenade_kits", "Grenade kit"], ["vehicle_spawns", "Buggy"], ["tank_spawns", "Tank"], ["heli_spawns", "Heli pad"], ["plane_spawns", "Plane"], ["m2_mounts", "M2 gun"]]:
 		if auto.has(pair[0]):
 			continue
 		for v in m.get(pair[0], []):

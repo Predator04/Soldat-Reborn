@@ -4,7 +4,9 @@ extends SceneTree
 ## on a flat stretch and saves real renders of a scripted sequence, so the same
 ## run makes before / after pairs on an older build.
 ##   xvfb-run -a -s "-screen 0 1280x720x24" godot --rendering-driver opengl3 --resolution 1280x720 \
-##     -s tools/vehicle_stage.gd -- --out=DIR --shot=parked|damage|wreck|drive|tank|heli [--style=classic] [--q=2] [--noheli] [--zoom=1.6]
+##     -s tools/vehicle_stage.gd -- --out=DIR --shot=parked|damage|wreck|drive|tank|heli|plane [--style=classic] [--q=2] [--noheli] [--zoom=1.6]
+## --shot=plane (#291): the plane parked, taking off, flying with the gun + a
+## bomb, damaged, wrecked (needs a long flat stretch: --map=<wide map>).
 ## Uses only the vehicle API both builds share (seats, request_enter, take_damage,
 ## apply_hp, _host_destroy, _fire, _make_vehicle).
 var _out := "."
@@ -92,6 +94,9 @@ func _setup(m: Node) -> void:
 	var vs: Array = []
 	for v in get_nodes_in_group("vehicle"):
 		vs.append(v)
+	if _shot == "plane":
+		_setup_plane(m, vs)
+		return
 	var buggy = null
 	var tank = null
 	for v in vs:
@@ -207,6 +212,8 @@ func _run(m: Node, p: Node) -> void:
 				_done = true
 		"heli":
 			_run_heli(m, p)
+		"plane":
+			_run_plane(m, p)
 		_:
 			_done = true
 
@@ -256,4 +263,90 @@ func _run_heli(m: Node, p: Node) -> void:
 		_save("g_wreck")
 	if get_meta("dead_t", -1) != -1 and _t == int(get_meta("dead_t")) + 200:
 		_save("h_husk")
+		_done = true
+
+
+## --shot=plane: the map's own runway plane (the map needs plane_spawns), the
+## other vehicles parked out of the way.
+func _setup_plane(m: Node, vs: Array) -> void:
+	for v in vs:
+		if str(v.get("kind")) == "plane" and not bool(v.get("air_spawn")) and _veh.is_empty():
+			_veh.append(v)
+		else:
+			(v as Node2D).global_position = Vector2(60.0, -4000.0)
+			v.set_physics_process(false)
+			(v as Node2D).visible = false
+	if _veh.is_empty():
+		print("VSTAGE no runway plane on this map")
+		_done = true
+		_veh.append(null)
+		return
+	var pn := _veh[0] as Node2D
+	m.player.global_position = pn.global_position + Vector2(-120.0, 0.0)
+	_cam = Camera2D.new()
+	_cam.zoom = Vector2(_zoom, _zoom)
+	m.add_child(_cam)
+	_cam.global_position = pn.global_position + Vector2(40, -40)
+	_cam.make_current()
+	var hud = m.get("hud")
+	if hud != null:
+		hud.visible = false
+
+
+func _run_plane(m: Node, p: Node) -> void:
+	var h = _veh[0]
+	if h == null:
+		_done = true
+		return
+	var hn := h as Node2D
+	if _t == 30:
+		_save("a_parked")
+		set_meta("y0", hn.global_position.y)
+	if _t == 35:
+		_enter(p, h)
+	if _t == 60:
+		_save("b_pilot")
+		Input.action_press("jump")
+	if _t > 60:
+		_cam.global_position = hn.global_position + Vector2(float(h.get("face")) * 90.0, -20)
+	if _t == 125:
+		_save("c_takeoff_run")
+	# Nose up from the take-off run until it has climbed 260 px, then level
+	# out (steer the nose with A / D toward the horizon in the flight direction).
+	var climbed: float = float(get_meta("y0", hn.global_position.y)) - hn.global_position.y
+	var want: float = -0.45 if climbed < 260.0 else 0.0
+	if _t > 60 and _t < 420:
+		var fdir: float = float(h.get("face"))
+		var target: float = Vector2(fdir, 0.0).rotated(want * fdir).angle()
+		var diff: float = angle_difference(float(h.get("_tilt")), target)
+		Input.action_release("move_left")
+		Input.action_release("move_right")
+		if absf(diff) > 0.04:
+			Input.action_press("move_right" if diff > 0.0 else "move_left")
+	if _t == 200:
+		_save("d_climb")
+	if _t >= 260 and _t <= 300:
+		Input.action_press("fire")
+	if _t == 285:
+		_save("e_gun")
+	if _t == 301:
+		Input.action_release("fire")
+		Input.action_press("grenade")
+	if _t == 305:
+		Input.action_release("grenade")
+	if _t == 318:
+		_save("f_bomb")
+	if _t == 330:
+		h.apply_hp(float(h.get("MAX_HP")) * 0.15)
+	if _t == 400:
+		_save("g_damaged")
+	if _t == 420:
+		Input.action_release("move_left")
+		Input.action_release("move_right")
+		Input.action_release("jump")
+		h.take_damage(99999.0, "QA", "LAW", 77)
+	if _t == 428:
+		_save("h_shot_down")
+	if _t == 540:
+		_save("i_wreck")
 		_done = true

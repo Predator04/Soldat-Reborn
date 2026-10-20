@@ -687,7 +687,7 @@ func _throw_label() -> String:
 		var n = p._find_nearby_m2()
 		if n != null:
 			if n.is_in_group("vehicle"):
-				_throw_lbl = ("PILOT" if str(n.get("kind")) == "heli" else "DRIVE") if n.driver() == null else "GUNNER"
+				_throw_lbl = ("PILOT" if str(n.get("kind")) in ["heli", "plane"] else "DRIVE") if n.driver() == null else "GUNNER"
 			else:
 				_throw_lbl = "MOUNT"
 	return _throw_lbl

@@ -10,6 +10,7 @@ const LevelsApi = preload("res://scripts/levels_api.gd")
 const LevelThumb = preload("res://scripts/level_thumb.gd")
 const NameFilter = preload("res://scripts/name_filter.gd")
 const MapIO = preload("res://scripts/map_io.gd")
+const UIBack = preload("res://scripts/ui_back.gd")
 const TITLE_MAX := 32
 
 var editor: Node
@@ -138,12 +139,8 @@ func _ready() -> void:
 	_publish.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_publish.pressed.connect(publish)
 	row.add_child(_publish)
-
-
-func _unhandled_input(event: InputEvent) -> void:
-	if visible and event is InputEventKey and event.pressed and (event as InputEventKey).keycode == KEY_ESCAPE:
-		visible = false
-		get_viewport().set_input_as_handled()
+	# BACK / Esc = CLOSE, via the editor's dispatcher (scripts/ui_back.gd).
+	UIBack.register(self, func() -> void: visible = false)
 
 
 ## The editor's current map as plain JSON (what gets uploaded).

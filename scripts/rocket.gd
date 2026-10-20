@@ -15,6 +15,9 @@ var grav := 0.0
 # explodes on its own contact; damage still lands only on bodies this peer owns.
 var local_only := false
 var ignore_bodies: Array = []
+# #291: a plane's bomb — same flight / blast code, drawn as a bomb (no motor
+# trail, no motor light). Cosmetic only.
+var bomb_look := false
 
 var _life := 4.0
 var _smoke: CPUParticles2D
@@ -54,7 +57,7 @@ func _ready() -> void:
 	_smoke.amount = 22
 	_smoke.lifetime = 0.55
 	_smoke.one_shot = false
-	_smoke.emitting = not Settings.lofi
+	_smoke.emitting = not Settings.lofi and not bomb_look
 	_smoke.direction = Vector2(-1, 0)
 	_smoke.spread = 22.0
 	_smoke.gravity = Vector2(0, -40)
@@ -65,7 +68,7 @@ func _ready() -> void:
 	_smoke.color = Color(0.9, 0.6, 0.35, 0.85)
 	add_child(_smoke)
 	var G = preload("res://scripts/gfx.gd")
-	if G.on(G.MEDIUM):
+	if G.on(G.MEDIUM) and not bomb_look:
 		# Soft grey smoke trail + a hot glow on the motor.
 		_smoke.texture = G.soft_tex()
 		_smoke.scale_amount_min = 0.12
@@ -231,6 +234,9 @@ func _explode() -> void:
 
 func _draw() -> void:
 	# #282: the motor lights up what it passes (pooled light, High + cinematic).
+	if bomb_look:
+		_draw_bomb()
+		return
 	if not _exploded:
 		Atmosphere.light_keep(get_instance_id(), global_position - direction * 10.0, Color(1.0, 0.62, 0.3), 95.0, 0.95)
 	# Warhead + fins + plume
@@ -251,6 +257,18 @@ func _draw() -> void:
 	draw_line(back * 6.0 + side * 4.0, back * 12.0 + side * 7.0, Color(0.4, 0.42, 0.5), 2.0)
 	draw_line(back * 6.0 - side * 4.0, back * 12.0 - side * 7.0, Color(0.4, 0.42, 0.5), 2.0)
 	draw_circle(back * 14.0, 3.5, Color(1.0, 0.85, 0.35, 0.9))
+
+
+func _draw_bomb() -> void:
+	var fwd := direction
+	var side := Vector2(-fwd.y, fwd.x)
+	var body := PackedVector2Array([fwd * 9.0, fwd * 6.0 + side * 3.2, -fwd * 5.0 + side * 3.2, -fwd * 7.0,
+		-fwd * 5.0 - side * 3.2, fwd * 6.0 - side * 3.2])
+	draw_colored_polygon(body, Color(0.2, 0.22, 0.2))
+	draw_line(fwd * 6.0 + side * 2.0, -fwd * 4.0 + side * 2.0, Color(0.45, 0.48, 0.42), 1.0)
+	draw_line(-fwd * 6.0, -fwd * 11.0 + side * 4.0, Color(0.14, 0.14, 0.14), 1.6)
+	draw_line(-fwd * 6.0, -fwd * 11.0 - side * 4.0, Color(0.14, 0.14, 0.14), 1.6)
+	draw_line(fwd * 4.0 + side * 3.2, fwd * 4.0 - side * 3.2, Color(0.75, 0.6, 0.15), 1.2)
 
 
 # Host-authority sends go only to the peers that were ACKED when this

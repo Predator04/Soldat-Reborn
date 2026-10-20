@@ -697,8 +697,14 @@ func _tick_vehicle_label() -> void:
 		return
 	var hp_frac: float = float(v.hp) / float(v.MAX_HP)
 	var gun := "GUN OVERHEATED" if v.overheated else "GUN %d%%" % int(round(float(v.heat) * 100.0))
-	var heli := str(v.kind) == "heli"
-	if str(v.kind) == "tank":
+	var heli := str(v.kind) == "heli" or str(v.kind) == "plane"
+	if str(v.kind) == "plane":
+		# #291: gun heat, bomb, throttle lever, stall warning.
+		gun += "  ·  " + ("BOMB READY" if float(v.bomb_cd) <= 0.0 else "BOMB %.1fs" % float(v.bomb_cd))
+		gun += "  ·  THR %d%%" % int(round(float(v.throttle) * 100.0))
+		if v.stalled():
+			gun += "  ·  STALL"
+	elif str(v.kind) == "tank":
 		gun = "SHELL READY" if float(v.fire_cd) <= 0.0 else "RELOADING %.1fs" % float(v.fire_cd)
 	elif heli and v.driver() == player:
 		# #277: the pilot's rockets, and the rotor while it spins up.

@@ -13,6 +13,7 @@ const BonusPickup = preload("res://scripts/bonus_pickup.gd")
 const TouchControls = preload("res://scripts/touch_controls.gd")
 const NavGraph = preload("res://scripts/nav_graph.gd")
 const NavBuilder = preload("res://scripts/nav_builder.gd")   # #287 runtime graphs
+const Bot = preload("res://scripts/bot.gd")                  # physics numbers for the pad rides (#286)
 
 signal kill(killer_name: String, victim_name: String, weapon_name: String, killer_team: int, victim_team: int)
 signal objective(kind: String, team: int, who: String)   # grab/drop/return/capture/dom/point
@@ -1346,7 +1347,14 @@ func net_pings(table: Dictionary) -> void:
 func _start_runtime_nav() -> void:
 	if _nav_task >= 0:
 		return
-	_nav_builder = NavBuilder.new()
+	var nb := NavBuilder.new()
+	# Jump-pad rides (#286) are simulated with the bots' physics as this
+	# match's modifiers scale it (bot.gd: gravity, run speed + acceleration).
+	nb.pad_gravity = Bot.BASE_GRAVITY * MatchConfig.mod_gravity()
+	nb.pad_run = Bot.RUN_SPEED * MatchConfig.mod_speed()
+	nb.pad_accel = 1300.0 * MatchConfig.mod_speed()
+	nb.pad_max_fall = Bot.MAX_FALL
+	_nav_builder = nb
 	var m: Dictionary = _map.duplicate(true)
 	var b: RefCounted = _nav_builder
 	_nav_task = WorkerThreadPool.add_task(func() -> void: _nav_data = b._build(m), false, "bot nav build")
@@ -1666,7 +1674,8 @@ func net_bot_state(arr: Array) -> void:
 
 # ── Vehicles (v1.19) ──────────────────────────────────
 # Buggies spawn at the map's "vehicle_spawns", tanks at "tank_spawns",
-# helicopters at "heli_spawns" (tools/place_vehicles.py). The
+# helicopters at "heli_spawns", planes at "plane_spawns" (#291)
+# (tools/place_vehicles.py). The
 # host owns them (damage, wrecks, respawns, who sits where); the driver's peer
 # simulates movement and streams it. Every message goes through vehicle_send:
 # single-player applies it directly, the host broadcasts it (and runs it), a

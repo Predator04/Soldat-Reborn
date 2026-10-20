@@ -178,6 +178,10 @@ func _maybe_run_dedicated() -> void:
 	fill_target = maxi(0, fill_arg)
 	if stats_url == "":
 		stats_url = register_url
+	# First line a supervisor / self-check sees, printed before anything else
+	# loads, so a log that stops here says how far the boot got.
+	print("Dedicated server starting: %s %s, port %d" % [preload("res://scripts/game_info.gd").TITLE,
+		str(ProjectSettings.get_setting("application/config/version", "dev")), port])
 	if wants_smoke:
 		call_deferred("_smoke_dedicated", port, map_index, mode_index)
 	else:
@@ -245,7 +249,12 @@ func _start_dedicated(port: int, map_index: int, mode_index: int) -> void:
 	Settings.game_mode = mode_index
 	Settings.custom_map_path = ""
 	if not host_game(port, map_index):
-		push_error("Dedicated host failed on port %d" % port)
+		# Say why on stdout too (an engine "ERROR:" line goes to stderr only and
+		# is not a SCRIPT ERROR, so log scrapers looking for one saw nothing):
+		# by far the usual cause is another server already on this UDP port.
+		var why := "Dedicated host failed on port %d (%s) — is another server already using UDP %d?" % [port, status, port]
+		print("DEDICATED-START-FAILED " + why)
+		push_error(why)
 		get_tree().quit(1)
 		return
 	var map_name: String = MAP_NAMES[map_index] if map_index >= 0 and map_index < MAP_NAMES.size() else "map#%d" % map_index
@@ -460,6 +469,11 @@ func _smoke_join() -> void:
 	# once out, the host simulates it and streams its own position back.
 	if "--smoke-heli" in OS.get_cmdline_user_args():
 		get_tree().create_timer(0.5).timeout.connect(_smoke_heli.bind(0))
+	# --smoke-plane (#291): get into a plane (the host grants the seat), take
+	# off down its runway with real input, climb, fire the gun + a bomb, bail
+	# out; then watch the empty plane the host now simulates move smoothly.
+	if "--smoke-plane" in OS.get_cmdline_user_args():
+		get_tree().create_timer(0.5).timeout.connect(_smoke_plane.bind(0))
 	if "--smoke-die" in OS.get_cmdline_user_args():
 		get_tree().create_timer(4.0).timeout.connect(func() -> void:
 			var mn = get_tree().current_scene
@@ -1336,6 +1350,123 @@ func _smoke_heli(tries: int) -> void:
 		print("SMOKE-HELI seat=%d climbed=%d moved=%d host_dist=%d host_rx=%d out=%s hp=%d" % [int(st["seat"]), int(float(st["y0"]) - float(st["top"])),
 			int(land.x - float(st["x0"])), int((h as Node2D).global_position.distance_to(land)), int(h.state_rx) - int(st.get("rx", 0)),
 			str(p != null and h.seat_of(p) < 0), int(h.hp)]))
+
+
+# (--smoke-plane, #291) Teleports next to the nearest plane as soon as our body
+# exists (inside the host's spawn grace), then flies it with real input: the
+# throttle (jump) the whole way, nose up from the take-off run until it has
+# climbed. SMOKE-PLANE-FLY = what this (the simulating) peer saw; then it
+# bails out and samples the replica the HOST streams for 2.5 s: `jerk` counts
+# frames whose step is far off the streamed velocity, `turn` is the largest
+# per-frame heading change (a smooth replica: no jerks, small turns).
+func _smoke_plane(tries: int) -> void:
+	var mn = get_tree().current_scene
+	var plane: Node = null
+	for v in get_tree().get_nodes_in_group("vehicle"):
+		if str(v.get("kind")) == "plane" and bool(v.get("alive")) and not bool(v.get("air_parked")):
+			if plane == null or (mn != null and mn.get("player") != null and is_instance_valid(mn.player) \
+					and (v as Node2D).global_position.distance_to(mn.player.global_position) < (plane as Node2D).global_position.distance_to(mn.player.global_position)):
+				plane = v
+	if mn == null or mn.get("player") == null or not is_instance_valid(mn.player) or plane == null:
+		if tries < 80:
+			get_tree().create_timer(0.1).timeout.connect(_smoke_plane.bind(tries + 1))
+		else:
+			print("SMOKE-PLANE none")
+		return
+	var pl = mn.player
+	pl.global_position = (plane as Node2D).global_position + Vector2(-16, 10)
+	pl.velocity = Vector2.ZERO
+	_smoke_plane_st = {"vid": plane.get_instance_id(), "pid": pl.get_instance_id(), "t": 0.0, "ph": 0,
+		"y0": (plane as Node2D).global_position.y, "x0": (plane as Node2D).global_position.x, "seat": -1, "top": 0.0,
+		"lift": -1.0, "up": "", "fire": false, "rx": 0, "jerk": 0, "turn": 0.0, "prev": Vector2.INF, "ptilt": 0.0,
+		"moved": 0.0, "out": false}
+	get_tree().process_frame.connect(_smoke_plane_tick)
+
+
+var _smoke_plane_st: Dictionary = {}
+
+
+func _smoke_plane_end(msg: String) -> void:
+	if msg != "":
+		print(msg)
+	for a in ["jump", "move_left", "move_right", "fire", "grenade"]:
+		Input.action_release(a)
+	if get_tree().process_frame.is_connected(_smoke_plane_tick):
+		get_tree().process_frame.disconnect(_smoke_plane_tick)
+
+
+func _smoke_plane_tick() -> void:
+	var st := _smoke_plane_st
+	var h = instance_from_id(int(st["vid"]))
+	var p = instance_from_id(int(st["pid"]))
+	var dt := get_process_delta_time()
+	st["t"] = float(st["t"]) + dt
+	var t: float = st["t"]
+	if h == null or p == null:
+		_smoke_plane_end("SMOKE-PLANE lost (killed?) ph=%d" % int(st["ph"]))
+		return
+	var hn := h as Node2D
+	match int(st["ph"]):
+		0:
+			if t > 0.3:
+				h.request_enter(p)
+				st["ph"] = 1
+		1:
+			if h.seat_of(p) == 0:
+				st["seat"] = 0
+				st["up"] = "move_left" if float(h.get("face")) > 0.0 else "move_right"
+				Input.action_press("jump")
+				Input.action_press(str(st["up"]))
+				st["ph"] = 2
+				st["t"] = 0.0
+			elif t > 2.5:
+				_smoke_plane_end("SMOKE-PLANE seat=-1 (not granted)")
+		2:
+			# Take-off run, nose held up until it has climbed 120 px.
+			if float(st["y0"]) - hn.global_position.y > 120.0 or t > 7.0:
+				Input.action_release(str(st["up"]))
+				st["lift"] = t
+				st["ph"] = 3
+				st["t"] = 0.0
+		3:
+			if t > 0.8 and not bool(st["fire"]):
+				st["fire"] = true
+				Input.action_press("fire")
+				Input.action_press("grenade")
+			if bool(st["fire"]):
+				st["heat"] = maxf(float(st.get("heat", 0.0)), float(h.heat))
+			if t > 1.1:
+				Input.action_release("fire")
+				Input.action_release("grenade")
+			if t > 2.4:
+				st["top"] = hn.global_position.y
+				print("SMOKE-PLANE-FLY seat=%d from=%d climbed=%d moved=%d lift=%.1fs v=%d hp=%d heat=%.2f bombs=%d" % [int(st["seat"]), int(st["x0"]),
+					int(float(st["y0"]) - hn.global_position.y), int(absf(hn.global_position.x - float(st["x0"]))), float(st["lift"]),
+					int((h as CharacterBody2D).velocity.length()), int(h.hp), float(st.get("heat", 0.0)), int(h.bombs_dropped)])
+				Input.action_release("jump")
+				h.request_exit(p)
+				st["rx"] = int(h.state_rx)
+				st["ph"] = 4
+				st["t"] = 0.0
+		4:
+			# Bailed out: the host simulates the empty plane; sample its replica.
+			if h.seat_of(p) < 0:
+				st["out"] = true
+			if t > 0.4 and bool(h.get("alive")):
+				var pos := hn.global_position
+				if st["prev"] != Vector2.INF:
+					var stepv: float = pos.distance_to(st["prev"])
+					var exp_v: float = (h as CharacterBody2D).velocity.length() * dt
+					if stepv > exp_v * 2.5 + 6.0:
+						st["jerk"] = int(st["jerk"]) + 1
+					st["turn"] = maxf(float(st["turn"]), absf(angle_difference(float(st["ptilt"]), float(h.get("_tilt")))))
+					st["moved"] = float(st["moved"]) + stepv
+				st["prev"] = pos
+				st["ptilt"] = float(h.get("_tilt"))
+			if t > 2.9:
+				_smoke_plane_end("SMOKE-PLANE seat=%d climbed=%d host_rx=%d out=%s moved_replica=%d jerk=%d turn=%.2f hp=%d" % [int(st["seat"]),
+					int(float(st["y0"]) - float(st["top"])), int(h.state_rx) - int(st["rx"]), str(bool(st["out"])), int(st["moved"]),
+					int(st["jerk"]), float(st["turn"]), int(h.hp)])
 
 
 # ── Server query (ping + live info) ─────────────────────────────────────────

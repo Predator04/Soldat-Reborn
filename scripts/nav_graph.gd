@@ -15,6 +15,10 @@ var _pts: PackedVector2Array = PackedVector2Array()
 var _grid: Dictionary = {}   # Vector2i cell -> Array[int]
 var _comp: PackedInt32Array = PackedInt32Array()   # island id per node (undirected)
 var _air: Dictionary = {}    # node id -> true for mid-air waypoints (never a patrol/roam spot)
+# Maker jump pads (#286, runtime graphs only): Vector4(pad.x, pad.y,
+# landing.x, landing.y) -> steer mode (nav_builder._add_pad_links). Paths are
+# point lists, so a ride is recognised by its two consecutive points.
+var _pad_ride: Dictionary = {}
 
 
 static func key_for(map_name: String) -> String:
@@ -65,6 +69,27 @@ func adopt(data: Dictionary) -> void:
 	_build(data.get("nodes", []), data.get("edges", []))
 	for a in data.get("air", []):
 		_air[int(a)] = true
+	var pads: Array = data.get("pads", [])
+	var k := 0
+	while k + 2 < pads.size():
+		var a := int(pads[k])
+		var b := int(pads[k + 1])
+		if a >= 0 and b >= 0 and a < _pts.size() and b < _pts.size():
+			_pad_ride[Vector4(_pts[a].x, _pts[a].y, _pts[b].x, _pts[b].y)] = int(pads[k + 2])
+		k += 3
+
+
+## Jump pads (#286): does this graph have pad rides at all?
+func has_pads() -> bool:
+	return not _pad_ride.is_empty()
+
+
+## The steer mode of the pad ride from point `a` (on the pad) to `b` (its
+## landing), or -1 when a -> b is not a pad ride.
+func pad_ride(a: Vector2, b: Vector2) -> int:
+	if _pad_ride.is_empty():
+		return -1
+	return int(_pad_ride.get(Vector4(a.x, a.y, b.x, b.y), -1))
 
 
 func _build(nodes: Array, edges: Array) -> void:

@@ -5,7 +5,8 @@
 #   A static   map audit (0 problems), nav graph per map, version strings agree
 #   B boot     main / menu / map editor scenes load with zero script errors
 #   C net      dedicated server + client smoke (CTF + DM), listen-host smoke,
-#              zero RPC/node errors on either side
+#              zero RPC/node errors on either side; dedboot = dedicated boot
+#              from a never-imported checkout + busy-port failure (#278)
 #   D modes    every game mode (DM..GG) on 3 maps with bots-vs-bots: kills,
 #              objective scoring where the mode has one, no script errors
 #   R rules    Realistic / Survival / Advance toggles (autopilot, menu path)
@@ -27,7 +28,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 G="${GODOT_BIN:-$HOME/godot/Godot_v4.7.2-stable_linux.x86_64}"
 QUICK=0; OUT="build/gate"; ONLY="A B N C D R F E"; MODESEL="0 1 2 3 4 5 6 7 8 9"
-NETSEL="ctf dm two trust fill ranked friends news featured respawn killcam drive heli rejoin relay host listen lan soak m3 m7 m9 m2"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
+NETSEL="ctf dm dedboot selfcheck two trust fill ranked friends news featured respawn killcam drive heli plane rejoin relay host listen lan soak m3 m7 m9 m2"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --quick) QUICK=1;; --out) OUT="$2"; shift;; --only) ONLY="$2"; shift;;
@@ -83,6 +84,9 @@ WV=$(sed -n 's/^application\/file_version="\(.*\)"/\1/p' export_presets.cfg)
 CV=$(grep -m1 -oE '^## \[[0-9.]+\]' CHANGELOG.md | tr -d '#[] ')
 if [ "$V" = "$AV" ] && [ "$WV" = "$V.0" ] && [ "$CV" = "$V" ]; then pass "A versions agree: $V (android $AV, windows $WV, changelog $CV)"; else fail "A versions: project=$V android=$AV windows=$WV changelog=$CV"; fi
 if [ "$(grep -c 'include_filter="\*.poa, \*.json' export_presets.cfg)" -ge 2 ]; then pass "A exports ship map JSON (Windows + Android)"; else fail "A export include_filter missing *.json"; fi
+# #224 itch.io upload script: butler command lines (fake butler), skips cleanly without a key / target.
+il=$(python3 tools/itch/push.py --self-test 2>&1 | tail -1)
+if echo "$il" | grep -q "ITCH-SELFTEST ok"; then pass "A itch push: ${il#ITCH-SELFTEST ok }"; else fail "A itch push self-test: $il"; fi
 
 fi
 
@@ -163,6 +167,68 @@ case " $NETSEL " in *" ctf "*) netcase ctf_arena 18 2;; esac
 case " $NETSEL " in *" dm "*) netcase dm_ascent 0 0;; esac
 # Opt-in per-mode cases: --net "m3 m7" = dedicated server on map 19 in mode N.
 for tok in $NETSEL; do case "$tok" in m[0-9]) netcase "mode${tok#m}" 19 "${tok#m}" --smoke-auto;; esac; done
+case " $NETSEL " in *" dedboot "*)
+  # #278 #285 #289 #290: dedicated server boot the way a supervisor / the
+  # external self-check sees it. (1) This (imported) checkout: the first line
+  # is "Dedicated server starting", "listening on port" follows within 20 s,
+  # and no error line at all while it loads the match (menu.tscn is skipped
+  # on a server). (2) A second server on a busy port must exit 1 within
+  # seconds and say why on stdout. (3) A clean, NEVER-imported checkout of
+  # HEAD (git archive: tracked files only, incl. the class cache — what a
+  # pull-and-run checker has) must still START and say so; its match then
+  # can't load unimported assets (preload parse errors), so those are only
+  # counted: a checker must run --import after every pull.
+  port=$((7700 + RANDOM % 200)); t0=$(date +%s)
+  timeout 60 "$G" --headless -- --dedicated --port $port --mode ctf > "$OUT/net_dedboot_server.log" 2>&1 &
+  spid=$!
+  for _ in $(seq 1 60); do grep -q "listening on port" "$OUT/net_dedboot_server.log" 2>/dev/null && break; sleep 0.5; done
+  secs=$(( $(date +%s) - t0 ))
+  sleep 5   # the match loads right after the line
+  timeout 20 "$G" --headless -- --dedicated --port $port --mode ctf > "$OUT/net_dedboot_busy.log" 2>&1
+  brc=$?
+  kill $spid 2>/dev/null; wait $spid 2>/dev/null
+  first=$(grep -v -e '^Godot Engine' -e '^$' "$OUT/net_dedboot_server.log" | head -1)
+  se=$(errs "$OUT/net_dedboot_server.log")
+  if echo "$first" | grep -q "^Dedicated server starting: " && grep -q "listening on port $port" "$OUT/net_dedboot_server.log" \
+      && [ "$secs" -le 20 ] && [ "$se" = "0" ]; then
+    pass "C net dedicated boot: listening after ${secs}s, no errors ($(echo "$first" | cut -c1-60))"
+  else
+    fail "C net dedicated boot: first='$first' '$(grep -m1 -E 'listening|DEDICATED-START' "$OUT/net_dedboot_server.log")' after ${secs}s errors=$se"
+  fi
+  if [ "$brc" = "1" ] && grep -q "^DEDICATED-START-FAILED .*port $port" "$OUT/net_dedboot_busy.log" && ! grep -q "listening on port" "$OUT/net_dedboot_busy.log"; then
+    pass "C net dedicated on a busy port fails fast and says so: $(grep -m1 '^DEDICATED-START-FAILED' "$OUT/net_dedboot_busy.log" | cut -c1-110)"
+  else
+    fail "C net dedicated on a busy port: rc=$brc '$(grep -m1 -E 'DEDICATED-START|listening' "$OUT/net_dedboot_busy.log")'"
+  fi
+  FT="$OUT/dedboot_tree"; rm -rf "$FT"; mkdir -p "$FT"
+  git archive HEAD | tar -x -C "$FT"
+  port=$((7700 + RANDOM % 200)); t0=$(date +%s)
+  timeout 40 "$G" --headless --path "$FT" -- --dedicated --port $port --mode ctf > "$OUT/net_dedboot_fresh.log" 2>&1 &
+  spid=$!
+  for _ in $(seq 1 60); do grep -q "listening on port" "$OUT/net_dedboot_fresh.log" 2>/dev/null && break; sleep 0.5; done
+  secs=$(( $(date +%s) - t0 ))
+  kill $spid 2>/dev/null; wait $spid 2>/dev/null
+  rm -rf "$FT"
+  pe=$(grep -c "Parse Error" "$OUT/net_dedboot_fresh.log" || true)
+  if grep -q "listening on port $port" "$OUT/net_dedboot_fresh.log" && [ "$secs" -le 20 ]; then
+    pass "C net dedicated boot from a never-imported checkout: listening after ${secs}s (unimported-asset parse errors: $pe; checkers must --import)"
+  else
+    fail "C net dedicated boot from a never-imported checkout: no listening line after ${secs}s ($(grep -m1 -E 'SCRIPT ERROR|ERROR' "$OUT/net_dedboot_fresh.log"))"
+  fi
+;; esac
+case " $NETSEL " in *" selfcheck "*)
+  # The unattended self-check the owner's machine runs every 6 h
+  # (tools/selfcheck.py: import, dedicated server, --smoke-join, --smoke-botfire,
+  # process-tree cleanup) must pass here too — no --pull, no GitHub.
+  timeout 400 python3 tools/selfcheck.py --godot "$REAL_G" --out "$OUT/selfcheck" > "$OUT/net_selfcheck.log" 2>&1
+  src=$?
+  line=$(grep -m1 "^SELFCHECK " "$OUT/net_selfcheck.log")
+  if [ "$src" = "0" ] && echo "$line" | grep -q "^SELFCHECK PASS "; then
+    pass "C net selfcheck (tools/selfcheck.py): $line"
+  else
+    fail "C net selfcheck: exit=$src '${line:-no SELFCHECK line}' $(grep -v '^selfcheck: log' "$OUT/net_selfcheck.log" | head -1 | cut -c1-160)"
+  fi
+;; esac
 case " $NETSEL " in *" two "*)
   # Two clients on one dedicated server: the second joins mid-match; every
   # body must keep its exact node name and no RPC may miss its node.
@@ -412,6 +478,38 @@ case " $NETSEL " in *" heli "*)
     fail "C net heli: '${line:-no result}' errors=$e trust_lines=${tr:-0}"
   fi
 ;; esac
+case " $NETSEL " in *" plane "*)
+  # #291: a client gets into a plane on a classic runway (the host grants the
+  # seat), takes off with real input (throttle + nose up), climbs, fires the
+  # gun and drops a bomb (relayed by the host), bails out; then the host
+  # simulates the empty plane and the client's replica must move smoothly
+  # (jerk = frames far off the streamed velocity, turn = biggest per-frame
+  # heading step). Honest pilot: no trust lines (checked with every case).
+  # Industrial (55, two runways), --fill=1: no bots once we're in.
+  port=$((7700 + RANDOM % 200))
+  timeout 75 "$G" --headless -- --dedicated --port $port --map 55 --mode 0 --fill=1 > "$OUT/net_plane_server.log" 2>&1 &
+  spid=$!
+  for _ in $(seq 1 40); do grep -q "listening on port" "$OUT/net_plane_server.log" 2>/dev/null && break; sleep 0.5; done
+  sleep 3
+  timeout 50 "$G" --headless -- --smoke-join --port $port --smoke-secs=18 --smoke-plane > "$OUT/net_plane_client.log" 2>&1
+  kill $spid 2>/dev/null; wait $spid 2>/dev/null
+  e=$(( $(errs "$OUT/net_plane_server.log") + $(errs "$OUT/net_plane_client.log") ))
+  fly=$(grep -m1 "SMOKE-PLANE-FLY " "$OUT/net_plane_client.log")
+  line=$(grep -m1 "SMOKE-PLANE seat" "$OUT/net_plane_client.log")
+  cl=$(echo "$fly" | sed -n 's/.*climbed=\(-\?[0-9]*\).*/\1/p')
+  mv=$(echo "$fly" | sed -n 's/.* moved=\([0-9]*\).*/\1/p')
+  bo=$(echo "$fly" | sed -n 's/.*bombs=\([0-9]*\).*/\1/p')
+  ht=$(echo "$fly" | sed -n 's/.*heat=\([0-9.]*\).*/\1/p')
+  rx=$(echo "$line" | sed -n 's/.*host_rx=\([0-9]*\).*/\1/p')
+  rmv=$(echo "$line" | sed -n 's/.*moved_replica=\([0-9]*\).*/\1/p')
+  jk=$(echo "$line" | sed -n 's/.*jerk=\([0-9]*\).*/\1/p')
+  if echo "$fly" | grep -q "seat=0" && echo "$line" | grep -q "out=true" && [ "${cl:-0}" -gt 150 ] && [ "${mv:-0}" -gt 600 ] \
+      && [ "${bo:-0}" -ge 1 ] && [ "${ht:-0}" != "0.00" ] && [ "${rx:-0}" -gt 10 ] && [ "${rmv:-0}" -gt 200 ] && [ "${jk:-99}" -le 2 ] && [ "$e" = "0" ]; then
+    pass "C net plane: $fly | $line"
+  else
+    fail "C net plane: '${fly:-no flight}' '${line:-no result}' errors=$e"
+  fi
+;; esac
 case " $NETSEL " in *" respawn "*)
   # A client kills itself at 4 s (DM, few bots near spawn): it must come back
   # as the exact same node name with no RPC errors anywhere.
@@ -582,6 +680,7 @@ ft() {  # key script timeout TAG label
 }
 if has F; then
   ft grenade grenade_test.gd 90 GRENADE-TEST "grenade cooking"
+  ft back back_button_test.gd 180 BACK-TEST "BACK rule (Android BACK / Esc / ui_cancel): top-most overlay first on every main-menu screen, editor (Maker sheets / popups, ADVANCED PUBLISH / LEVELS / load list), play-test (pause steps -> EDIT), match pause toggle, replay viewer; never leaves or quits under a dialog"
   ft maker maker_test.gd 120 MAKER-TEST "Maker mode (#286): place / merge / select / resize / undo / redo, hazards + pads, validation, save-load round trip, PLAY at the camera + EDIT back unchanged, pad launches, spikes kill, flat node count over 3 cycles"
   ft ppickup persistent_pickup_test.gd 120 PPICKUP-TEST "map weapon pickups persist + regenerate in place (#241/#254)"
   ft community community_test.gd 90 COMMUNITY-TEST "host weapon bans (#256) + host chat commands (#257)"
@@ -602,9 +701,10 @@ if has F; then
   ft perf perf_test.gd 90 PERF-TEST "performance: 16 bots on Abel CTF, frame time and hitches"
   ft crew vehicle_crew_test.gd 100 CREW-TEST "buggy crew: solo-fire slowdown / bot gunner boards, shoots, leaves"
   ft tank tank_test.gd 100 TANK-TEST "tank: drive / lobbed shell / armor / wreck / respawn / wide-map spawns"
+  ft plane plane_test.gd 200 PLANE-TEST "plane (#291): map_io round trip / classic runways / F seats a hidden pilot / nose gun hits / take-off run (no lift below rotate speed) / level flight / loop / stall drops the nose + falls, throttle recovers / bomb (cooldown) hits a bot / soft vs hard touchdown by impact speed / nose-dive wreck kills the pilot / respawn / shot down ejects alive / exit / air spawn waits, launches, abandoned plane falls / bot pilot takes off + flies / Maker map: a bot boards and flies a plane"
   ft heli heli_test.gd 150 HELI-TEST "helicopter (#277): spin-up gate / climb / hover / fly / soft landing / rockets hit a bot / bullet 0.5x vs explosive / door gunner (human + bot) / spin-out crash kills pilot / respawn on pad / idle return / gentle wreck ejects crew / bot pilot takes off / big-map pads"
-  ft vart vehicle_art_test.gd 200 VART-TEST "vehicle art (#276): every vehicle drawn pristine / crewed + firing / 4 damage levels / wreck / respawn at Low / Medium / High in both looks, pooled FX only on Medium+, no node growth, parked bodies unmoved"
-  ft rtnav runtime_nav_test.gd 240 RTNAV-TEST "runtime bot nav (#287): maps without a bake get a graph built on a worker thread (no main-thread stall), CTF legs routable, bots travel on it (classic copy + generated map); Maker maps: no node on spikes / lava and no bot dies in them, bots board and drive the buggies"
+  ft vart vehicle_art_test.gd 200 VART-TEST "vehicle art (#276 / #291): every vehicle (buggy, tank, heli, plane) drawn pristine / crewed + firing / 4 damage levels / wreck / respawn at Low / Medium / High in both looks, pooled FX only on Medium+, no node growth, parked bodies unmoved"
+  ft rtnav runtime_nav_test.gd 240 RTNAV-TEST "runtime bot nav (#287): maps without a bake get a graph built on a worker thread (no main-thread stall), CTF legs routable, bots travel on it (classic copy + generated map); Maker maps: no node on spikes / lava and no bot dies in them, bots board and drive the buggies (tanks / helis logged); jump pads: the graph routes over a big pad to an island flag and a blue attacker rides it there"
   ft sart soldier_art_test.gd 60 SOLDIER-ART-TEST "Operator soldier art (#280/#281): every rig part in both facings with normal maps + mipmaps, layer mirrors, every head / vest / pose drawn, jet flame from the pack, classic setting wins"
   ft wart weapons_gfx_test.gd 60 WEAPONS-ART-TEST "HD weapon art (#284): every weapon + belt grenade at 6x its classic sprite with mipmaps + normal map, drawn HD in hand / slung / as a pickup, bullet spawn identical in both looks, drawn barrel scales with the 78% gun, classic asks for no HD"
   ft joincode join_code_test.gd 60 JOINCODE-TEST "join codes: round trip, typos, garbage, host shows its code"
@@ -622,6 +722,7 @@ if has F; then
   ft ui ui_test.gd 90 UI-TEST "graphics Phase C (#272): menu transitions + Reduce motion, button hover / press scale, D-pad focus, settings preview lifetime, no node growth over 3 passes of every screen, HUD vitals / strip / toast / death band / UI scale"
   ft trailer trailer.gd 120 TRAILER-TEST "trailer director (#263): staged bot beats pick their highlight (rocket in flight near a crowd, crewed helicopter airborne) and log kills / explosions while filming" "--smoke"
   ft levels levels_test.gd 90 LEVELS-TEST "level sharing (#288): Hot / New / Most played / Top liked order, search by title + share code, course-code box, like on / off, bookmark saved + listed (also offline), offline message, flat node count over open / close, editor Publish round trip + title filter, editor LEVELS overlay, PLAY -> bot match on the level + play counted (in-process fake level server)"
+  ft discord discord_test.gd 90 DISCORD-TEST "Discord Rich Presence (#223): desktop only (Android / headless / dedicated never start it), silent without an app id, handshake + SET_ACTIVITY for menu / LEVELS / CTF match / Maker editor over a fake pipe, PING/PONG, dedupe + throttle, toggle closes / reconnects, refused id stops, Linux Unix-socket transport"
   ft fxbench fx_bench.gd 90 FX-BENCH "graphics Phase B (#271): FX benchmark, 8 gibbings + minigun + 4 explosions, node count flat, FX ms / frame"
   ft killcam killcam_test.gd 60 KILLCAM-TEST "kill cam: rewind w/ slow-mo, respawn waits, skip, live follow"
   ft lagcomp lagcomp_test.gd 60 LAGCOMP-TEST "lag compensation: hits where the shooter saw you, capped"
