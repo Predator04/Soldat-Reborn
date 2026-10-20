@@ -1080,6 +1080,14 @@ func _components(pts_l: Array, edges: Array) -> Dictionary:
 			if idx.has(pl.x) and idx.has(pl.y):
 				pads.append_array([idx[pl.x], idx[pl.y], pl.z])
 		out["pads"] = pads
+	if not _pad_nodes.is_empty():
+		# #294: the pad nodes themselves (walk-in only): never a path's start.
+		var pn: Array = []
+		for c in _pad_nodes:
+			if idx.has(c):
+				pn.append(idx[c])
+		pn.sort()
+		out["pad_nodes"] = pn
 	if not _pad_cross.is_empty():
 		# #294: nodes reached by walking across a pad (NavGraph weights them).
 		var pc: Array = []

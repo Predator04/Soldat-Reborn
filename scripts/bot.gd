@@ -601,6 +601,12 @@ func _physics_process(delta: float) -> void:
 			var ex: float = _hazard_exit_dir()
 			if ex != 0.0 and (dir == 0.0 or not navigating or velocity.y > 120.0):
 				dir = ex
+		# #294: coming down onto a jump pad we aren't riding: land beside it
+		# (else it throws us up again, and again).
+		if not on_floor and velocity.y > 0.0 and _pad_ride < 0:
+			var px: float = _pad_exit_dir()
+			if px != 0.0:
+				dir = px
 
 		# Escape manoeuvre (see _progress_anchor). Only when the bot actually
 		# wants to travel — close-range strafing legitimately stays in place.
@@ -663,7 +669,8 @@ func _physics_process(delta: float) -> void:
 		if dodge_cd <= 0.0:
 			dodge_cd = 0.1  # scan bullets at 10 Hz, not every tick
 			if not _refuel_wait and _pad_ride < 0 and _bullet_incoming():
-				if on_floor:
+				# (#294: not next to a jump pad — the dodge would come down on it.)
+				if on_floor and not _pad_hop_ahead(1.0, -150.0, 150.0):
 					velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
 					Sfx.jump(global_position)
 				dodge_cd = 0.5
@@ -715,7 +722,7 @@ func _physics_process(delta: float) -> void:
 			# Bunny-hop toward a distant target: on floor, target > 260 away, hop
 			# with a small horizontal boost so bots can actually close the gap.
 			var dist_h: float = absf(dx)
-			if dy < -50.0 and on_floor and jump_cd <= 0.0:
+			if dy < -50.0 and on_floor and jump_cd <= 0.0 and not _pad_hop_ahead(1.0, -150.0, 150.0):
 				velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
 				jump_cd = 0.9
 				Sfx.jump(global_position)
@@ -2289,6 +2296,22 @@ func _pad_hop_ahead(dir: float, near: float, far: float) -> bool:
 		if ahead >= near and ahead <= far and not _path_rides_pad(pp):
 			return true
 	return false
+
+
+## Falling toward an unridden pad's trigger (feet within its width + a bit, up
+## to 300 px above it): which way off it is shorter (-1 / +1), 0 = none.
+func _pad_exit_dir() -> float:
+	var m := _main()
+	var hz = m.get("_hazards") if m != null else null
+	if hz == null or (hz.pads as Array).is_empty():
+		return 0.0
+	var f := global_position
+	for pd in hz.pads:
+		var pp: Vector2 = pd["pos"]
+		var dx: float = f.x - pp.x
+		if absf(dx) < 40.0 and pp.y - f.y > -6.0 and pp.y - f.y < 300.0 and not _path_rides_pad(pp):
+			return 1.0 if dx >= 0.0 else -1.0
+	return 0.0
 
 
 ## The next few legs of our path include the ride off the pad at `pad`.

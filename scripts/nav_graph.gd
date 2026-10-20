@@ -23,6 +23,11 @@ var _pad_ride: Dictionary = {}
 # walking across a jump pad); penalties expire back to it, not to 1.
 const PAD_CROSS_WEIGHT := 5.0
 var _base_w: Dictionary = {}
+# #294: pad nodes (walk-in only). A bot standing / bouncing on a pad it isn't
+# riding is nearest to the pad's node, which has no way out but its rides — no
+# path, so it stood still and was launched again and again. Paths never start
+# there (path(): the nearest other node instead).
+var _pad_node: Dictionary = {}
 
 
 static func key_for(map_name: String) -> String:
@@ -81,6 +86,8 @@ func adopt(data: Dictionary) -> void:
 		if a >= 0 and b >= 0 and a < _pts.size() and b < _pts.size():
 			_pad_ride[Vector4(_pts[a].x, _pts[a].y, _pts[b].x, _pts[b].y)] = int(pads[k + 2])
 		k += 3
+	for c in data.get("pad_nodes", []):
+		_pad_node[int(c)] = true
 	# #294: walking across a pad launches you — those links cost more.
 	for c in data.get("pad_cross", []):
 		var id := int(c)
@@ -147,7 +154,7 @@ func point(id: int) -> Vector2:
 	return _pts[id]
 
 
-func nearest(pos: Vector2, max_dist: float = 480.0) -> int:
+func nearest(pos: Vector2, max_dist: float = 480.0, skip: Dictionary = {}) -> int:
 	# Nearest node, biased toward nodes at/below the feet (the surface we're
 	# standing on or will fall to) over ones overhead behind a ceiling.
 	var best := -1
@@ -160,6 +167,8 @@ func nearest(pos: Vector2, max_dist: float = 480.0) -> int:
 			if ids == null:
 				continue
 			for id in ids:
+				if skip.has(id):
+					continue
 				var d: Vector2 = _pts[id] - pos
 				var cost := d.length() + (maxf(0.0, -d.y) * 0.6)
 				if cost < best_d:
@@ -229,7 +238,7 @@ func path(from: Vector2, to: Vector2) -> PackedVector2Array:
 	if _pts.is_empty():
 		return PackedVector2Array()
 	_expire_penalties()
-	var a := nearest(from)
+	var a := nearest(from, 480.0, _pad_node)
 	var b := nearest(to, 900.0)
 	if a < 0 or b < 0:
 		return PackedVector2Array()

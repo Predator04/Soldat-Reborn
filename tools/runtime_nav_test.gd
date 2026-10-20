@@ -47,6 +47,7 @@ var _pc_last := {}      # maker_padcross: bot -> msec of its last pad launch see
 var _pc_cross := 0      # maker_padcross: crossings near the pad's level
 var _pc_un := 0         # ...launches of bots not riding that pad on purpose
 var _pc_int := 0        # ...launches of bots whose path rides it
+var _pc_prev := {}      # RTNAV_PADDBG: bot -> its state last frame
 const PC_MIN_CROSS := 4
 const PC_MAX_SHARE := 0.15   # unintended launches per crossing at most
 
@@ -339,6 +340,10 @@ func _padcross_tick() -> void:
 					_pc_int += 1
 				else:
 					_pc_un += 1
+					if OS.get_environment("RTNAV_PADDBG") != "":
+						print("PADDBG unintended %s pad=%s before=%s" % [str(b.get("display_name")), str(near_pad), str(_pc_prev.get(id, []))])
+		_pc_prev[id] = [f.round(), (b as CharacterBody2D).velocity.round(), (b as CharacterBody2D).is_on_floor(), str(b.get("_goal_label")),
+			snappedf(float(b.get("jump_cd")), 0.01), snappedf(float(b.get("_escape_t")), 0.01), str(b.get("target") != null and b.get("_target_visible") == true)]
 		for i in hz.pads.size():
 			var pp: Vector2 = hz.pads[i]["pos"]
 			var k := "%d:%d" % [id, i]
