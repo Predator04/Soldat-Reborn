@@ -21,7 +21,7 @@ cd "$(dirname "$0")/.."
 G="${GODOT:-$HOME/godot/Godot_v4.7.2-stable_linux.x86_64}"
 OUT=build/trailer
 RAW=$OUT/raw
-ALL="open jets boom multi hd buggy tank heli ctf maker levels end"
+ALL="open jets boom multi hd buggy tank heli plane ctf maker levels end"
 BEATS="$ALL"
 EDIT_ONLY=0
 CARDS=1

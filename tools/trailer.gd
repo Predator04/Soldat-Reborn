@@ -48,13 +48,13 @@ const BEATS := {
 	"open": {"map": "Vortex", "mode": 2, "bots": 12, "seed": 2631, "warm": [7.0, 30.0], "secs": 8.0,
 		"pick": "fight", "zoom": 1.05, "push": 0.08, "loadouts": {"Minigun": 0.2, "LAW": 0.2}},
 	"jets": {"map": "Blox", "mode": 0, "bots": 10, "seed": 77, "warm": [6.0, 30.0], "secs": 7.0,
-		"pick": "jet", "zoom": 1.4, "aim_bias": 0.4, "loadouts": {"Minimi": 0.3, "Steyr AUG": 0.3}},
+		"pick": "jet", "zoom": 2.5, "omega": 5.5, "lead": 0.12, "aim_bias": 0.35, "loadouts": {"Minimi": 0.3, "Steyr AUG": 0.3}},
 	"boom": {"map": "Kampf", "mode": 0, "bots": 12, "seed": 4242, "warm": [5.0, 25.0], "secs": 8.0,
-		"pick": "boom", "zoom": 1.35, "loadouts": {"LAW": 0.5, "M79": 0.35}},
+		"pick": "boom", "zoom": 2.3, "omega": 5.0, "lead": 0.12, "aim_bias": 0.42, "loadouts": {"LAW": 0.5, "M79": 0.35}},
 	"multi": {"map": "Desert", "mode": 1, "bots": 14, "seed": 9001, "warm": [6.0, 25.0], "secs": 8.0,
-		"pick": "boom", "zoom": 1.3, "loadouts": {"LAW": 0.3, "M79": 0.2, "Minigun": 0.25}},
+		"pick": "boom", "zoom": 2.3, "omega": 5.0, "lead": 0.12, "aim_bias": 0.42, "loadouts": {"LAW": 0.3, "M79": 0.2, "Minigun": 0.25}},
 	"hd": {"map": "Industrial", "mode": 2, "bots": 10, "seed": 314, "warm": [8.0, 30.0], "secs": 7.0,
-		"pick": "fight", "vehicles": false, "zoom": 2.7, "omega": 4.0, "lead": 0.08, "aim_bias": 0.0, "push": 0.06,
+		"pick": "fight", "vehicles": false, "zoom": 3.4, "omega": 4.5, "lead": 0.08, "aim_bias": 0.0, "push": 0.06,
 		"loadouts": {"Minigun": 0.3, "Spas-12": 0.2, "LAW": 0.2}},
 	"buggy": {"map": "Moonshine", "mode": 2, "bots": 10, "seed": 808, "warm": [3.0, 25.0], "secs": 6.0,
 		"pick": "vehicle", "vehicle": "buggy", "zoom": 1.2},
@@ -63,12 +63,15 @@ const BEATS := {
 	"heli": {"map": "Outpost", "mode": 2, "bots": 10, "seed": 1977, "warm": [4.0, 30.0], "secs": 7.0,
 		"pick": "vehicle", "vehicle": "heli", "zoom": 1.0},
 	"ctf": {"map": "Niall", "mode": 2, "bots": 12, "seed": 1212, "warm": [4.0, 150.0], "secs": 9.0,
-		"pick": "carrier", "zoom": 1.15, "after_capture": 1.6},
+		"pick": "carrier", "zoom": 1.7, "omega": 5.0, "after_capture": 1.6},
+	"plane": {"map": "Industrial", "mode": 2, "bots": 10, "seed": 2291, "warm": [4.0, 40.0], "secs": 7.0,
+		"pick": "vehicle", "vehicle": "plane", "zoom": 0.9, "omega": 6.0, "lead": 0.25, "lead_cap": 300.0,
+		"driver_bias": true, "aim_bias": 0.45, "bias_range": 1100.0},
 	"maker": {"kind": "maker", "seed": 286, "bots": 6, "secs": 11.0},
 	"levels": {"kind": "levels", "seed": 288, "secs": 5.0},
 	"end": {"kind": "menu", "seed": 1, "secs": 7.0},
 }
-const ORDER := ["open", "jets", "boom", "multi", "hd", "buggy", "tank", "heli", "ctf", "maker", "levels", "end"]
+const ORDER := ["open", "jets", "boom", "multi", "hd", "buggy", "tank", "heli", "plane", "ctf", "maker", "levels", "end"]
 
 var _beat := "open"
 var _b: Dictionary = {}
@@ -276,6 +279,13 @@ func _match_tick() -> bool:
 		var sp := _screen_of(_subject.global_position)
 		_track.append([_f, snappedf(sp.x, 0.001), snappedf(sp.y, 0.001)])
 	var n := int(float(_b["secs"]) * FPS)
+	# Vehicle beats: two vehicles in one shot (a dogfight, a duel) is the moment.
+	if str(_b.get("pick", "")) == "vehicle" and _render_frames % 20 == 0 and not _subject_gone():
+		for v in get_nodes_in_group("vehicle"):
+			if v != _subject and is_instance_valid(v) and bool(v.get("alive")) and _on_screen((v as Node2D).global_position) \
+					and (v as Node2D).global_position.distance_to(_subject.global_position) < 900.0:
+				_log_event("duel", (v as Node2D).global_position, {"vehicle": str(v.get("kind"))})
+				break
 	_periodic_still(_render_frames, n)
 	if _capture_f > 0 and _f - _capture_f >= int(float(_b.get("after_capture", 99.0)) * FPS) and _render_frames >= 5 * FPS:
 		return _finish("done")
@@ -534,6 +544,14 @@ func _pick(kind: String) -> Node2D:
 			if v == null or not is_instance_valid(v) or v.driver() == null:
 				return null
 			var vel: Vector2 = v.get("velocity") if v.get("velocity") != null else Vector2.ZERO
+			if str(v.get("kind")) == "plane":
+				# In the air and fast: a strafing run, not the take-off roll.
+				var pt = v.driver().get("target")
+				var hunting: bool = pt != null and is_instance_valid(pt) \
+					and (pt as Node2D).global_position.distance_to(v.global_position) < 1100.0
+				if not (v as CharacterBody2D).is_on_floor() and vel.length() > 380.0 and hunting:
+					return v
+				return null
 			if str(v.get("kind")) == "heli":
 				# Airborne and on its way (the take-off itself is slow).
 				if not (v as CharacterBody2D).is_on_floor() and vel.length() > 140.0:
@@ -563,10 +581,12 @@ func _cam_target() -> Vector2:
 	var vel := Vector2.ZERO
 	if _subject is CharacterBody2D:
 		vel = (_subject as CharacterBody2D).velocity
-	p += (vel * float(_b.get("lead", 0.22))).limit_length(170.0)
+	p += (vel * float(_b.get("lead", 0.22))).limit_length(float(_b.get("lead_cap", 170.0)))
 	var t = _subject.get("target")
+	if t == null and _b.get("driver_bias", false) and _subject.has_method("driver") and _subject.driver() != null:
+		t = _subject.driver().get("target")   # a vehicle: frame what its driver is after
 	var bias := float(_b.get("aim_bias", 0.28))
-	if bias > 0.0 and t != null and is_instance_valid(t) and (t as Node2D).global_position.distance_to(_subject.global_position) < 700.0:
+	if bias > 0.0 and t != null and is_instance_valid(t) and (t as Node2D).global_position.distance_to(_subject.global_position) < float(_b.get("bias_range", 700.0)):
 		p = p.lerp((t as Node2D).global_position, bias)
 	return p
 

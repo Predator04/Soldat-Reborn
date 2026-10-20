@@ -37,7 +37,8 @@ EDIT = [
     ("hd", 6.0, "ultrahd", 0.3),
     ("buggy", 4.0, None, 0),
     ("tank", 4.0, None, 0),
-    ("heli", 4.6, None, 0),
+    ("heli", 4.4, None, 0),
+    ("plane", 4.2, None, 0),
     ("ctf", 5.4, "online", 2.2),
     ("maker", 10.4, "maker", 0.2),
     ("levels", 4.6, None, 0),
@@ -46,14 +47,14 @@ EDIT = [
 
 VERTICAL = [
     ("open", 3.4), ("jets", 3.0), ("boom", 3.4), ("multi", 3.0), ("hd", 3.2),
-    ("buggy", 2.6), ("heli", 3.0), ("ctf", 3.0), ("maker", 4.2), ("end", 3.6),
+    ("heli", 2.8), ("plane", 2.8), ("ctf", 3.0), ("maker", 4.2), ("end", 3.6),
 ]
 
 MUSIC = "assets/music/necro.ogg"
 MUSIC_FROM = 18.0      # the track builds up; full band from ~29 s
 BEAT = 60.0 / 110.0    # necro.ogg runs at 110 BPM ...
 BEAT0 = 18.53          # ... with a beat at 18.53 s (onset autocorrelation)
-KEY_ART = ["open", "boom", "hd", "multi", "tank", "heli", "ctf", "maker", "jets"]
+KEY_ART = ["open", "boom", "hd", "multi", "plane", "heli", "ctf", "maker", "tank", "jets"]
 # Still preference per beat (tag order): the HD close-up reads best on a kill
 # (soldiers + gibs), an explosion bloom can swallow it; the editor before PLAY.
 KEY_PREF = {"hd": ["kill", "periodic", "explosion"], "maker": ["maker_build", "maker_match"]}
@@ -114,6 +115,8 @@ def score_window(events, a, n, multi):
             w = 3.0 if on else 0.5
         elif k == "wreck":
             w = 7.0 if on else 1.0
+        elif k == "duel":
+            w = 2.0 if on else 0.0
         s += w * mid
     return s
 
@@ -338,6 +341,9 @@ def export_art(raw, shots, shot_dir, media_dir):
     from PIL import Image
     os.makedirs(shot_dir, exist_ok=True)
     os.makedirs(media_dir, exist_ok=True)
+    for old in os.listdir(shot_dir):     # a beat that left the list leaves no stale art
+        if old.startswith("trailer-") and old.endswith(".jpg"):
+            os.remove(os.path.join(shot_dir, old))
     chosen = []
     by_beat = {s["beat"]: s for s in shots}
     for beat in KEY_ART:
