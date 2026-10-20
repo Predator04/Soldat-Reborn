@@ -406,6 +406,13 @@ func _check_bots(slug: String) -> bool:
 				if d != null and d != m.player and drv.get(v.get_instance_id()) != d:
 					boarded += 1
 				drv[v.get_instance_id()] = d
+	# Pads off the objective route (free-for-all levels) see use only now and
+	# then: give them up to 60 s more to see one launch.
+	var has_pads := not (src.get("jump_pads", []) as Array).is_empty()
+	var extra := 0
+	while has_pads and hz != null and int(hz.bot_launches) == l0 and extra < 3600 and not _done:
+		await process_frame
+		extra += 1
 	var moved := 0
 	for id in dist:
 		if float(dist[id]) > 600.0:
@@ -431,7 +438,7 @@ func _check_bots(slug: String) -> bool:
 		"dm", "tdm", "gg":
 			if kills[0] == 0:
 				probs.append("no kills")
-	if not (src.get("jump_pads", []) as Array).is_empty() and launches == 0:
+	if has_pads and launches == 0:
 		probs.append("nobody used a jump pad")
 	var nveh: int = (src.get("vehicle_spawns", []) as Array).size() + (src.get("tank_spawns", []) as Array).size() \
 		+ (src.get("heli_spawns", []) as Array).size() + (src.get("plane_spawns", []) as Array).size()
