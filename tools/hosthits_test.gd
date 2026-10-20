@@ -21,7 +21,7 @@ extends SceneTree
 const ERR_RE := "FEATURE-FAIL|No multiplayer peer is assigned|SCRIPT ERROR|Parse Error|Cannot load|Identifier not found|Invalid call|Cannot infer|Node not found|Invalid packet|Failed to get path|previously freed|Invalid access|Invalid get|Invalid set|Invalid assignment|Nonexistent function|out of bounds|Lambda capture|while flushing queries"
 # Kicked / force-killed cheaters leave packets for bodies already gone (as in
 # the gate's C trust cases); only allowed in the cheat sessions.
-const DROP_RE := "Node not found: \"Main/Player_|Failed to get cached node from peer|Invalid packet received. Requested node was not found|Unable to send packet on channel"
+const DROP_RE := "Node not found: \"Main/Player_|Failed to get cached node from peer|Invalid packet received. Requested node was not found|Unable to send packet on channel|Failed to get path from RPC: Main/Player_"
 const AK_DMG := 22.0
 
 var _godot := ""
@@ -56,8 +56,9 @@ func _initialize() -> void:
 		_honest()
 	_stop_all()
 	var ok := _bad.is_empty()
+	print("(host-hits test logs in %s)" % _out)
+	# (Last line carrying the tag: the gate's ft reads the last one.)
 	print("HOSTHITS-TEST %s case=%s %s | %s" % ["ok" if ok else "FAIL", case, str(_bad), " ".join(_log)])
-	print("HOSTHITS-TEST logs in %s" % _out)
 	quit(0 if ok else 1)
 
 
@@ -181,10 +182,10 @@ func _honest() -> void:
 	if not _wait_for("honest_proxy_shooter.log", "LAGPROXY listening", 15.0) or not _wait_for("honest_proxy_victim.log", "LAGPROXY listening", 15.0):
 		_bad.append("latency proxies did not start: %s %s" % [_read("honest_proxy_shooter.log").right(200), _read("honest_proxy_victim.log").right(200)])
 		return
-	var v := _game("--smoke-join --port %d --smoke-secs=44 --smoke-role=victim" % pv, 120, "honest_victim.log")
+	var v := _game("--smoke-join --port %d --smoke-secs=44 --smoke-role=victim --clan=vic" % pv, 120, "honest_victim.log")
 	_wait_for("honest_victim.log", "SMOKE-DUEL placed", 60.0)
 	OS.delay_msec(2000)
-	var s := _game("--smoke-join --port %d --smoke-secs=36 --smoke-role=shooter --hosthits-log" % ps, 120, "honest_shooter.log")
+	var s := _game("--smoke-join --port %d --smoke-secs=36 --smoke-role=shooter --hosthits-log --clan=sht" % ps, 120, "honest_shooter.log")
 	_wait_exit(s, 110.0)
 	_wait_exit(v, 30.0)
 	# A pre-#266 build (same game version, online protocol 1) is turned away
@@ -225,7 +226,7 @@ func _honest() -> void:
 	for line in _lines("honest_host.log", "HOSTHIT "):
 		var amt := float(line.split(" -> ")[1].split(" ")[1]) if line.contains(" -> ") else 0.0
 		total += amt
-		if line.begins_with("HOSTHIT You (") and absf(amt - AK_DMG) > 0.01:
+		if line.begins_with("HOSTHIT «SHT»") and absf(amt - AK_DMG) > 0.01:
 			wrong += 1
 	if wrong > 0:
 		_bad.append("%d hits not worth exactly %.0f" % [wrong, AK_DMG])
@@ -258,13 +259,13 @@ func _cheats() -> void:
 	if h.is_empty():
 		return
 	var port: int = h[1]
-	var v := _game("--smoke-join --port %d --smoke-secs=200 --smoke-role=victim --clan=vic" % port, 260, "cheat_victim.log")
+	var v := _game("--smoke-join --port %d --smoke-secs=260 --smoke-role=victim --clan=vic" % port, 320, "cheat_victim.log")
 	if not _wait_for("cheat_victim.log", "SMOKE-DUEL placed", 90.0):
 		_bad.append("the victim never joined")
 		return
 	var pids: Array = []
 	for kind in TAGS.keys():
-		pids.append(_game("--smoke-join --port %d --smoke-secs=16 --smoke-role=shooter --smoke-target=VIC --smoke-start-ms=500 --smoke-cheat=%s --clan=%s" % [
+		pids.append(_game("--smoke-join --port %d --smoke-secs=40 --smoke-role=shooter --smoke-target=VIC --smoke-start-ms=500 --smoke-cheat=%s --clan=%s" % [
 			port, kind, TAGS[kind]], 120, "cheat_%s.log" % kind))
 	for pid in pids:
 		_wait_exit(pid, 115.0)
@@ -278,12 +279,12 @@ func _cheats() -> void:
 	var port2: int = h2[1]
 	var vps: Array = []
 	for pr in [["partial", "VP"], ["godmode", "VG"]]:
-		vps.append(_game("--smoke-join --port %d --smoke-secs=40 --smoke-role=victim --smoke-cheat=%s --clan=%s" % [port2, pr[0], pr[1]], 120, "cheat_%s.log" % pr[0]))
+		vps.append(_game("--smoke-join --port %d --smoke-secs=56 --smoke-role=victim --smoke-cheat=%s --clan=%s" % [port2, pr[0], pr[1]], 150, "cheat_%s.log" % pr[0]))
 	_wait_for("cheat_partial.log", "SMOKE-DUEL placed", 90.0)
 	_wait_for("cheat_godmode.log", "SMOKE-DUEL placed", 30.0)
 	var shs: Array = []
 	for pr in [["VP", "S1"], ["VG", "S2"]]:
-		shs.append(_game("--smoke-join --port %d --smoke-secs=24 --smoke-role=shooter --smoke-target=%s --smoke-start-ms=500 --smoke-burst --clan=%s" % [port2, pr[0], pr[1]], 120, "cheat_shooter_%s.log" % pr[0].to_lower()))
+		shs.append(_game("--smoke-join --port %d --smoke-secs=36 --smoke-role=shooter --smoke-target=%s --smoke-start-ms=500 --smoke-burst --clan=%s" % [port2, pr[0], pr[1]], 120, "cheat_shooter_%s.log" % pr[0].to_lower()))
 	for pid in shs + vps:
 		_wait_exit(pid, 115.0)
 	OS.delay_msec(5500)

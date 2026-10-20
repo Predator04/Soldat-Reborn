@@ -18,6 +18,8 @@
 #   M modes    (opt-in: --only M --msweep MODE:FROM:TO, then --only M --mode-verdict)
 #              every map in INF / HTF / DOM: errors, falls, objective activity
 # --quick skips E (CI-sized). Logs + summary land in build/gate/ (or --out).
+# SERVER_DIR=<dir holding master-server/> overrides ../server (e.g. when the
+# game is checked out as a git worktree, away from the server checkout).
 # Piecewise runs (each piece fits a short shell budget; summary accumulates):
 #   --only "A B"   run just these stages      --modes "0 1 2"  subset for D
 #   --net "ctf dm host"  subset for C          --sweep FROM:TO  map range for E
@@ -210,7 +212,7 @@ case " $NETSEL " in *" fill "*)
 ;; esac
 case " $NETSEL " in *" ranked "*)
   # Leaderboard: the host's ranked reporter -> master /report -> /leaderboard.
-  RB="../server/master-server/dist/soldat-master-linux-amd64"
+  RB="${SERVER_DIR:-../server}/master-server/dist/soldat-master-linux-amd64"
   rport=$((8300 + RANDOM % 400)); rdir=$(mktemp -d)
   SOLDAT_DATA_DIR="$rdir" timeout 150 "$RB" -port $rport > "$OUT/net_ranked_master.log" 2>&1 &
   rpid=$!; sleep 1
@@ -263,7 +265,7 @@ case " $NETSEL " in *" m2 "*)
 case " $NETSEL " in *" friends "*)
   # Clan tag + friends: a tagged player shows up by name in the master's game
   # list, and another player who meets them has them on their recent list.
-  RB="../server/master-server/dist/soldat-master-linux-amd64"
+  RB="${SERVER_DIR:-../server}/master-server/dist/soldat-master-linux-amd64"
   fport=$((8300 + RANDOM % 400)); port=$((7700 + RANDOM % 200))
   SOLDAT_DATA_DIR="$(mktemp -d)" timeout 80 "$RB" -port $fport > "$OUT/net_friends_master.log" 2>&1 &
   fpid=$!; sleep 1
@@ -289,7 +291,7 @@ case " $NETSEL " in *" news "*)
   # #261 menu news line (+ #264 featured fallback) against a real master
   # serving news.json: shown under the version button, x hides it for good,
   # a new message shows again, expired / missing / unreachable show nothing.
-  RB="../server/master-server/dist/soldat-master-linux-amd64"
+  RB="${SERVER_DIR:-../server}/master-server/dist/soldat-master-linux-amd64"
   nport=$((8300 + RANDOM % 400)); ndir=$(mktemp -d)
   SOLDAT_DATA_DIR="$ndir" SOLDAT_FEATURED_FILE="$ndir/featured.json" timeout 100 "$RB" -port $nport > "$OUT/net_news_master.log" 2>&1 &
   npid=$!; sleep 1
@@ -302,7 +304,7 @@ case " $NETSEL " in *" featured "*)
   # #264 weekly featured server: the deploy script turns featured.json into
   # the unit's ExecStart; the dedicated server starts in that mode / map with
   # the bans; a bad entry falls back to the defaults with a log line.
-  FT="../server/master-server/deploy/featured_test.sh"
+  FT="${SERVER_DIR:-../server}/master-server/deploy/featured_test.sh"
   line=$(bash "$FT" 2>&1 | tail -3 | tr '\n' ' ')
   if echo "$line" | grep -q "FEATURED-SCRIPT-TEST ok"; then pass "C net featured: deploy ExecStart generator + weekly rotation"; else fail "C net featured script: $line"; fi
   port=$((7700 + RANDOM % 200))
@@ -333,7 +335,7 @@ case " $NETSEL " in *" featured "*)
 ;; esac
 case " $NETSEL " in *" relay "*)
   # Host and client both go through the WebSocket relay on the master server.
-  RB="../server/master-server/dist/soldat-master-linux-amd64"
+  RB="${SERVER_DIR:-../server}/master-server/dist/soldat-master-linux-amd64"
   if [ -x "$RB" ]; then
     rport=$((8300 + RANDOM % 400))
     SOLDAT_DATA_DIR="$(mktemp -d)" timeout 70 "$RB" -port $rport > "$OUT/net_relay_server.log" 2>&1 &
