@@ -2734,14 +2734,13 @@ func _host_shot_check(shot_pos: Vector2, dirs: PackedVector2Array, w: Dictionary
 	var spread := float(w["spread"])
 	# No aim sample yet (just spawned) or one that disagrees: hold the shot's
 	# hits until the next samples show where it was really aiming.
-	if (g.last_aim() == null and not melee) or not g.aim_ok_now(nd[0], spread):
-		if melee:
-			var moff := absf(angle_difference(float(g.last_aim()), nd[0].angle()))
-			if moff < TrustGuard.AIM_FLAG_RAD:
-				HostHits.count("aim_refused_quiet")
-			elif g.flag("aim", "%s swung %.0f° off the aim it streams" % [wname, rad_to_deg(moff)]):
-				_trust_force_death("shots (aim)")
-			return no
+	if melee:
+		# A swing lands at once and reaches ~34 px, and an aim can reverse in
+		# one frame (stick, flick past the body), so a swing is never refused
+		# on aim — only counted.
+		if g.last_aim() != null and not g.aim_ok_now(nd[0], spread):
+			HostHits.count("melee_aim_off")
+	elif g.last_aim() == null or not g.aim_ok_now(nd[0], spread):
 		# Maybe a flick between two aim samples: its hits wait for the next ones.
 		hold = {"ms": Time.get_ticks_msec(), "dir": nd[0], "spread": spread, "angles": [g.last_aim()],
 				"hits": [], "done": false, "ok": true, "weapon": wname}
