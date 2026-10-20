@@ -193,15 +193,27 @@ func _wdict(p: Node) -> Dictionary:
 
 ## Feet on the ground near `x` (raycast down), or INF.
 func _ground(p: Node2D, x: float, y: float) -> Vector2:
-	var q := PhysicsRayQueryParameters2D.create(Vector2(x, y - 300.0), Vector2(x, y + 600.0), 1 | 4)
-	var hit := p.get_world_2d().direct_space_state.intersect_ray(q)
+	var hit := _solid(p, Vector2(x, y - 300.0), Vector2(x, y + 600.0), 1 | 4)
 	return (hit["position"] as Vector2) + Vector2(0, -1) if not hit.is_empty() else Vector2.INF
+
+
+## First hit of the level itself (pickups, bonus boxes and dropped weapons
+## lie in different places from run to run: they don't count).
+func _solid(p: Node2D, a: Vector2, b: Vector2, mask: int) -> Dictionary:
+	var space := p.get_world_2d().direct_space_state
+	var ex: Array[RID] = []
+	for _i in 6:
+		var q := PhysicsRayQueryParameters2D.create(a, b, mask, ex)
+		var hit := space.intersect_ray(q)
+		if hit.is_empty() or hit.get("collider") is StaticBody2D:
+			return hit
+		ex.append(hit["rid"])
+	return {}
 
 
 func _place(m: Node, p: Node2D) -> void:
 	var mp: Dictionary = m.get("_map") if m.get("_map") != null else {}
 	var spots: Array = mp.get("bot_spawns", [])
-	var space := p.get_world_2d().direct_space_state
 	# (--smoke-gap: both roles must pass the same one, they pick the spot
 	# independently. Wider gaps also want flat ground and open sky between.)
 	# --smoke-near-vehicle: around the buggy spawns instead, the victim at
@@ -230,8 +242,7 @@ func _place(m: Node, p: Node2D) -> void:
 			var sh2 := _ground(p, tg.x + float(d), tg.y)
 			if sh2 == Vector2.INF or absf(sh2.y - tg.y) > 40.0:
 				continue
-			var q2 := PhysicsRayQueryParameters2D.create(tg + Vector2(0, -14), sh2 + Vector2(0, -14), 1 | 2)
-			if not space.intersect_ray(q2).is_empty():
+			if not _solid(p, tg + Vector2(0, -24), sh2 + Vector2(0, -24), 1 | 2).is_empty():
 				continue
 			if absf(float(d)) > 190.0 and not _open_between(p, tg, sh2):
 				continue
@@ -243,8 +254,7 @@ func _place(m: Node, p: Node2D) -> void:
 		var sh := _ground(p, base.x + offs.y, base.y)
 		if v == Vector2.INF or sh == Vector2.INF or absf(v.y - sh.y) > 40.0:
 			continue
-		var q := PhysicsRayQueryParameters2D.create(v + Vector2(0, -14), sh + Vector2(0, -14), 1 | 2)
-		if not space.intersect_ray(q).is_empty():
+		if not _solid(p, v + Vector2(0, -24), sh + Vector2(0, -24), 1 | 2).is_empty():
 			continue
 		if gap > 190.0 and not _open_between(p, v, sh):
 			continue
@@ -265,14 +275,12 @@ func _put(p: Node2D, at: Vector2) -> void:
 ## Flat ground (+-30 px) and 90 px of open air above it all the way between
 ## (full-power frags / LAW rockets fly low and flat over these distances).
 func _open_between(p: Node2D, a: Vector2, b: Vector2) -> bool:
-	var space := p.get_world_2d().direct_space_state
 	var x := minf(a.x, b.x) - 60.0
 	while x <= maxf(a.x, b.x) + 60.0:
 		var gy := _ground(p, x, a.y)
 		if gy == Vector2.INF or absf(gy.y - a.y) > 30.0:
 			return false
-		var up := PhysicsRayQueryParameters2D.create(gy + Vector2(0, -4), gy + Vector2(0, -90), 1 | 2)
-		if not space.intersect_ray(up).is_empty():
+		if not _solid(p, gy + Vector2(0, -4), gy + Vector2(0, -90), 1 | 2).is_empty():
 			return false
 		x += 30.0
 	return true

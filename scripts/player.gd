@@ -1942,6 +1942,7 @@ func net_state(pos: Vector2, vel: Vector2, aim: Vector2, face: float, jetting: b
 			if force == "":
 				force = str(fv["force"])
 			g.note_aim(aim)
+			g.note_track(gstamp, pos, vel, aim)
 			# A reload the host saw refills that magazine (shot checks, #266).
 			var slot := (100 + sec_i) if use_sec else wi
 			var rw := _weapon_for_slot(slot)
@@ -2006,7 +2007,7 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_
 		hold = chk["hold"]
 		rw_shot = HostHits.rewind_from_view(view_ms, _owner_rtt())
 		if OS.get_cmdline_user_args().has("--hosthits-log"):
-			print("HOSTRECV shot=%d rewind=%d" % [base_proj_id, rw_shot])
+			print("HOSTRECV shot=%d rewind=%d by=%s view_age=%d rtt=%d" % [base_proj_id, rw_shot, display_name, Time.get_ticks_msec() - view_ms if view_ms > 0 else -1, _owner_rtt()])
 	if not _net_accept("net_shoot", [shot_pos, dirs, weapon_i, base_proj_id, view_ms, stamp]):
 		return
 	_trust_note_attack()
@@ -2032,6 +2033,9 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_
 		# #266: on the host, a remote swinger's reach is measured from where it
 		# says it is, against remote humans as the swinger saw them (rewound).
 		var origin_h := _net_base_pos() if _trust != null else global_position
+		var at_swing = _trust.pos_at_stamp(stamp) if _trust != null else null
+		if at_swing != null:
+			origin_h = at_swing
 		var rw := maxi(0, rw_shot)
 		for s in get_tree().get_nodes_in_group("soldier"):
 			if s == self or not is_instance_valid(s):
@@ -2725,7 +2729,11 @@ func _host_shot_check(shot_pos: Vector2, dirs: PackedVector2Array, w: Dictionary
 				_trust_force_death("shots (malformed)")
 			return no
 		nd.append(d.normalized())
+	# Where it was when it fired, by its own clock (else where it last said).
 	var base := _net_base_pos()
+	var at_shot = g.pos_at_stamp(stamp)
+	if at_shot != null:
+		base = at_shot
 	var riding := _trust_riding()
 	if not riding:
 		var lim := 80.0 + _net_vel.length() * 0.1
@@ -2750,6 +2758,8 @@ func _host_shot_check(shot_pos: Vector2, dirs: PackedVector2Array, w: Dictionary
 		return no
 	var hold := {}
 	var spread := float(w["spread"])
+	# The streamed aims either side of the shot's own moment (its game clock).
+	var around: Array = g.aims_around(stamp)
 	# No aim sample yet (just spawned) or one that disagrees: hold the shot's
 	# hits until the next samples show where it was really aiming.
 	if melee:
@@ -2758,10 +2768,17 @@ func _host_shot_check(shot_pos: Vector2, dirs: PackedVector2Array, w: Dictionary
 		# on aim — only counted.
 		if g.last_aim() != null and not g.aim_ok_now(nd[0], spread):
 			HostHits.count("melee_aim_off")
+	elif around[0] != null and around[1] != null:
+		# Both samples either side of its own moment are in: it must lie on
+		# the arc they span.
+		var off := TrustGuard.aim_off_arc(nd[0], float(around[0]), float(around[1]))
+		if off > spread + TrustGuard.BINK_MAX + TrustGuard.AIM_ARC_SLACK:
+			_aim_refuse(off, spread, wname, true)
+			return no
 	elif g.last_aim() == null or not g.aim_ok_now(nd[0], spread):
 		# Maybe a flick between two aim samples: its hits wait for the next ones.
-		hold = {"ms": Time.get_ticks_msec(), "dir": nd[0], "spread": spread, "angles": [g.last_aim()],
-				"hits": [], "done": false, "ok": true, "weapon": wname}
+		hold = {"ms": Time.get_ticks_msec(), "dir": nd[0], "spread": spread, "angles": [around[0] if around[0] != null else g.last_aim()],
+				"hits": [], "done": false, "ok": true, "weapon": wname, "stamp": stamp}
 		_aim_pending.append(hold)
 		HostHits.count("aim_held")
 	# A muzzle poking through a wall doesn't shoot through it: the host's copy
@@ -2778,9 +2795,13 @@ func _host_shot_check(shot_pos: Vector2, dirs: PackedVector2Array, w: Dictionary
 	return {"ok": true, "dirs": nd, "pos": pos, "hold": hold}
 
 
-## Host: settle shots held for an aim re-check. With a new sample in, a shot
-## is fine if it lies on the arc the aim swept around it; after two samples (or
-## 250 ms) its hits count or are dropped.
+## Host: settle shots held for an aim re-check. A shot is fine if it lies on
+## the arc the aim swept around it: the streamed aims either side of its own
+## game-clock moment, as soon as the one after it is in (at most AIM_HOLD_MS);
+## else the samples that arrived around it, else the one sample there is.
+## Then its hits count or are dropped.
+const AIM_HOLD_MS := 800
+
 func _resolve_aim(new_sample: bool) -> void:
 	if _trust == null:
 		_aim_pending.clear()
@@ -2792,14 +2813,31 @@ func _resolve_aim(new_sample: bool) -> void:
 		var angles: Array = h["angles"]
 		if new_sample and a1 != null:
 			angles.append(a1)
-		if angles.size() < 3 and now - int(h["ms"]) < 250:
+		# The samples either side of the shot's own moment, once the one after
+		# it is in (a sample that arrived later may belong to a later moment).
+		var st := int(h.get("stamp", 0))
+		var around: Array = _trust.aims_around(st) if st > 0 else [null, null]
+		var stamped: bool = around[0] != null and around[1] != null
+		# (A stamped shot waits for the sample after its moment — a stall can
+		# hold that back a while; an unstamped one for two more arrivals.)
+		var waited := now - int(h["ms"])
+		if not stamped and ((st > 0 and waited < AIM_HOLD_MS) or (st <= 0 and angles.size() < 3 and waited < 250)):
 			keep.append(h)
 			continue
-		# How far outside the arc the aim swept around the shot (nearest pair).
+		# How far outside the arc the aim swept around the shot.
 		var off := INF
-		for i in range(angles.size() - 1):
-			if angles[i] != null and angles[i + 1] != null:
-				off = minf(off, TrustGuard.aim_off_arc(h["dir"], float(angles[i]), float(angles[i + 1])))
+		if stamped:
+			off = TrustGuard.aim_off_arc(h["dir"], float(around[0]), float(around[1]))
+		else:
+			for i in range(angles.size() - 1):
+				if angles[i] != null and angles[i + 1] != null:
+					off = minf(off, TrustGuard.aim_off_arc(h["dir"], float(angles[i]), float(angles[i + 1])))
+			# Still nothing either side: the one sample there is, if any.
+			if off == INF:
+				for a in [around[0], around[1]] + angles:
+					if a != null:
+						off = TrustGuard.aim_off_arc(h["dir"], float(a), float(a))
+						break
 		var tol: float = float(h["spread"]) + TrustGuard.BINK_MAX + TrustGuard.AIM_ARC_SLACK
 		var ok := off == INF or off <= tol   # (INF: nothing to compare with after all)
 		h["done"] = true
@@ -2810,14 +2848,24 @@ func _resolve_aim(new_sample: bool) -> void:
 					HostHits.damage(e[0], float(e[1]), str(e[2]), str(e[3]), int(e[4]))
 			continue
 		HostHits.count("aim_refused_hits", float((h["hits"] as Array).size()))
-		if angles[0] == null or off < tol + TrustGuard.AIM_FLAG_RAD:
-			# Fired before any aim sample (just spawned), or only somewhat
-			# off: its hits don't count, but that's no proof of a cheat.
-			HostHits.count("aim_refused_quiet")
-		elif _trust.flag("aim", "%s shot %.0f° off the aim it streams" % [str(h["weapon"]), rad_to_deg(off)]):
-			_trust_force_death("shots (aim)")
+		if _aim_refuse(off, float(h["spread"]), str(h["weapon"]), stamped or angles[0] != null):
 			return
 	_aim_pending = keep
+
+
+## Count / log a shot refused for lying `off` rad outside the aim arc around
+## it. Only far off is a flag; nearer (odd but possible input), or fired
+## before any aim sample (just spawned), it is refused quietly — no proof of a
+## cheat. Returns true when the refusal ended this life (a forced death).
+func _aim_refuse(off: float, spread: float, wname: String, had_sample: bool) -> bool:
+	var tol: float = spread + TrustGuard.BINK_MAX + TrustGuard.AIM_ARC_SLACK
+	if not had_sample or off < tol + TrustGuard.AIM_FLAG_RAD:
+		HostHits.count("aim_refused_quiet")
+		return false
+	if _trust.flag("aim", "%s shot %.0f° off the aim it streams" % [wname, rad_to_deg(off)]):
+		_trust_force_death("shots (aim)")
+		return true
+	return false
 
 
 ## Host: the host routed a weapon pickup to this body's owner (full magazine).

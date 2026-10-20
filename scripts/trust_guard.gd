@@ -159,6 +159,7 @@ func amnesty(protect_ms: int = 3000, rtt_ms: int = 0) -> void:
 	protect_until_ms = now + protect_ms + clampi(rtt_ms, 0, HostHits.REWIND_MAX_MS) + PROTECT_SLACK_MS
 	fired = false
 	_hist.clear()
+	_track.clear()
 	refill_all()
 	grenades = 3
 	fuel_shadow = 100.0
@@ -305,6 +306,64 @@ func check_fuel(jetting: bool, reported: float, drain: float, regen: float, cap:
 		fuel_shadow = minf(cap, fuel_shadow + regen * dt)
 		_dry_ms = 0.0
 	return {"fuel": clampf(minf(reported, maxf(0.0, fuel_shadow + FUEL_SLACK)), 0.0, 100.0), "force": force}
+
+
+# ── the owner's own timeline (its game clock) ──
+# Every state packet carries the client's game clock (`gstamp`) and so does
+# every shot, so where the body was and where it aimed when it fired are read
+# off this timeline by the shot's own stamp: a shot the network delayed (a lost
+# reliable packet re-sent a round trip later, a stall) is checked against its
+# own moment, not against whatever arrived since.
+const TRACK_MS := 1500
+const TRACK_AHEAD_MS := 150        # a shot newer than the newest state: extrapolate this far
+var _track: Array = []   # [gstamp, pos, vel, aim angle or INF], oldest first
+
+
+func note_track(gstamp: int, pos: Vector2, vel: Vector2, aim: Vector2) -> void:
+	if gstamp <= 0 or (not _track.is_empty() and gstamp <= int(_track[-1][0])):
+		return
+	_track.append([gstamp, pos, vel, aim.angle() if aim.length_squared() > 0.0001 else INF])
+	while _track.size() > 2 and gstamp - int(_track[0][0]) > TRACK_MS:
+		_track.pop_front()
+
+
+## Index of the newest sample at or before `stamp` (-1: none kept).
+func _track_at(stamp: int) -> int:
+	var i := _track.size() - 1
+	while i >= 0 and int(_track[i][0]) > stamp:
+		i -= 1
+	return i
+
+
+## Where the owner said it was at its game-clock moment `stamp` (null: unknown).
+func pos_at_stamp(stamp: int) -> Variant:
+	var i := _track_at(stamp)
+	if stamp <= 0 or i < 0:
+		return null
+	var e: Array = _track[i]
+	if i + 1 < _track.size():
+		var n: Array = _track[i + 1]
+		return (e[1] as Vector2).lerp(n[1], float(stamp - int(e[0])) / float(maxi(1, int(n[0]) - int(e[0]))))
+	return (e[1] as Vector2) + (e[2] as Vector2) * minf(float(stamp - int(e[0])), float(TRACK_AHEAD_MS)) / 1000.0
+
+
+## The streamed aims just before and just after the moment `stamp`: [a0, a1]
+## (angles; null where there is none yet / any more).
+func aims_around(stamp: int) -> Array:
+	var i := _track_at(stamp)
+	var a0 = null
+	var a1 = null
+	if i >= 0 and float(_track[i][3]) != INF:
+		a0 = float(_track[i][3])
+		if int(_track[i][0]) == stamp:
+			a1 = a0
+	if a1 == null and i + 1 < _track.size() and float(_track[i + 1][3]) != INF:
+		a1 = float(_track[i + 1][3])
+	return [a0, a1]
+
+
+func track_newest() -> int:
+	return int(_track[-1][0]) if not _track.is_empty() else 0
 
 
 # ── aim ──

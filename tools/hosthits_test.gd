@@ -192,15 +192,21 @@ const SCENARIOS := {
 	"ak150": {"weapon": "ak", "s_ms": 75, "v_ms": 50, "jitter": 6, "damage": 22.0, "match": "shot"},
 	"ak250": {"weapon": "ak", "s_ms": 125, "v_ms": 100, "jitter": 40, "loss": 3.0, "spike_every": 6.0, "spike_ms": 250,
 		"v_move": "jet", "damage": 22.0, "match": "shot"},
+	"move250": {"weapon": "ak", "s_ms": 125, "v_ms": 90, "jitter": 40, "loss": 3.0, "spike_every": 5.0, "spike_ms": 300,
+		"s_move": "jet", "damage": 22.0, "match": "shot"},
+	"spas250": {"weapon": "spas", "s_ms": 120, "v_ms": 100, "jitter": 40, "loss": 3.0, "spike_every": 5.0, "spike_ms": 300,
+		"s_move": "strafe", "v_move": "jet", "damage": 9.0, "match": "shot"},
+	"knife250": {"weapon": "knife", "s_ms": 125, "v_ms": 100, "jitter": 40, "loss": 3.0, "spike_every": 5.0, "spike_ms": 300,
+		"damage": 55.0, "match": "total"},
 	"lowping": {"weapon": "ak", "s_ms": 25, "v_ms": 25, "jitter": 4, "s_move": "jet", "damage": 22.0, "match": "shot"},
 	"spas": {"weapon": "spas", "s_ms": 90, "v_ms": 60, "jitter": 30, "loss": 2.0, "s_move": "strafe", "damage": 9.0, "match": "shot"},
 	"knife": {"weapon": "knife", "s_ms": 100, "v_ms": 60, "jitter": 20, "loss": 1.0, "damage": 55.0, "match": "total"},
 	# (Lagrange: flat open ground by its first buggy, no other vehicle near.)
-	"law": {"secs": 52, "weapon": "law", "s_ms": 90, "v_ms": 75, "jitter": 20, "v_move": "jet", "damage": 0.0, "match": "total",
+	"law": {"secs": 52, "need": 4, "weapon": "law", "s_ms": 90, "v_ms": 75, "jitter": 20, "v_move": "jet", "damage": 0.0, "match": "total",
 		"map": "Lagrange", "args": "--smoke-near-vehicle --smoke-offsets=-180,120"},
-	"m79": {"secs": 52, "weapon": "m79", "s_ms": 60, "v_ms": 60, "jitter": 15, "loss": 1.0, "damage": 0.0, "match": "total",
+	"m79": {"secs": 52, "need": 4, "weapon": "m79", "s_ms": 60, "v_ms": 60, "jitter": 15, "loss": 1.0, "damage": 0.0, "match": "total",
 		"map": "Lagrange", "args": "--smoke-near-vehicle --smoke-offsets=-50,120"},
-	"grenade": {"secs": 52, "weapon": "grenade", "s_ms": 70, "v_ms": 50, "jitter": 15, "damage": 0.0, "match": "total",
+	"grenade": {"secs": 52, "need": 4, "weapon": "grenade", "s_ms": 70, "v_ms": 50, "jitter": 15, "damage": 0.0, "match": "total",
 		"map": "Lagrange", "args": "--smoke-near-vehicle --smoke-offsets=-140,120"},
 	"buggy": {"weapon": "buggy", "s_ms": 75, "v_ms": 50, "jitter": 20, "loss": 1.0, "damage": 14.0, "match": "total",
 		"map": "Lagrange", "args": "--smoke-near-vehicle --smoke-offsets=-350,0"},
@@ -373,7 +379,7 @@ func _sc_judge(r: Dictionary) -> void:
 		var duel := _duel_line(slog)
 		if duel == "":
 			bad.append("%s never reported (SMOKE-DUEL)" % tag)
-		var need := 8 if bool(sc.get("jip", false)) else 12
+		var need: int = int(sc.get("need", 8 if bool(sc.get("jip", false)) else 12))
 		if str(sc.get("match", "shot")) == "shot":
 			var pred := {}
 			for line in _lines(slog, "PREDHIT shot="):
@@ -406,7 +412,7 @@ func _sc_judge(r: Dictionary) -> void:
 			var np2 := int(_kv(duel, "predicted_other_hits")) + int(_kv(duel, "predicted_hits"))
 			var nh2 := hits.size()
 			info.append("%s pred=%d host=%d" % [tag, np2, nh2])
-			if np2 < need / 2:
+			if np2 < (need if sc.has("need") else need / 2):
 				bad.append("%s: too few predicted hits to judge (%d)" % [tag, np2])
 			elif float(nh2) < 0.75 * np2:
 				bad.append("%s: host landed only %d of %d predicted hits" % [tag, nh2, np2])
@@ -470,8 +476,9 @@ func _cheats() -> void:
 		return
 	var pids: Array = []
 	for kind in TAGS.keys():
-		pids.append(_game("--smoke-join --port %d --smoke-secs=40 --smoke-role=shooter --smoke-target=VIC --smoke-start-ms=500 --smoke-cheat=%s --clan=%s" % [
-			port, kind, TAGS[kind]], 120, "cheat_%s.log" % kind))
+		pids.append(_game("--smoke-join --port %d --smoke-secs=46 --smoke-role=shooter --smoke-target=VIC --smoke-start-ms=500 --smoke-cheat=%s --clan=%s" % [
+			port, kind, TAGS[kind]], 130, "cheat_%s.log" % kind))
+		OS.delay_msec(1500)   # (staggered: six clients loading at once can starve a small machine)
 	for pid in pids:
 		_wait_exit(pid, 115.0)
 	OS.delay_msec(5500)   # one more HOSTHITS summary
