@@ -24,6 +24,7 @@ the classic had and more, with most of Soldat 2's feature list folded in.
 - **Vehicles never get stuck** — every map with vehicles was swept with bot matches: wedged buggies / tanks go home on their own, grenades and dropped guns can't fling vehicles out of the map anymore, and bot helicopters stay out of caves and from under overhangs.
 - **Smarter bots** — they fly the planes on Fortress, land for the flag instead of dogfighting forever, ride jump pads on purpose (and don't get flung by ones they walk past), fight properly on contested Domination points and stop jetting into platforms above them.
 - **Movement course prone drop fixed** — forgiving timing, a PRESS X / PRONE cue, and messages that say exactly what went wrong. Going prone mid-air now works even while holding jump.
+- **Laggy players no longer get killed by the cheat checks** — a slow medikit heal or a hit that arrived late used to count as cheating online.
 
 ![Featured levels](docs/screenshots/levels-featured.jpg)
 

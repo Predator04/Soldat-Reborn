@@ -4,7 +4,9 @@ All notable changes to Soldat Reborn.
 
 ## [Unreleased]
 
-### Fixed
+## [1.39.0] — 2026-10-21 — Featured levels
+
+### Fixed — online + bots (#293)
 - **Bots no longer die on the edge of Maker spikes / lava when they come down toward the strip** (#293): a bot crossing a hazard that was falling with ground just below used to "land first" instead of holding its height, and set its feet a few pixels short of the edge — inside the kill zone's margin. It now keeps jetting across.
 - **A lagging player is no longer killed by the server's cheat checks** (#293): on a struggling server or client, a medikit heal could reach the host after its 2-second window (5 "hp clamp" strikes = forced death), and hits the host saw could arrive before the client had applied them ("ignored damage"). A granted heal now counts when it shows up (within 10 s, once), and "ignored damage" must hold for 3 s / 10 state updates before it acts — a client that really ignores damage is still caught.
 
@@ -16,8 +18,6 @@ All notable changes to Soldat Reborn.
 - **F `features`**: a bot kill right before the limbo step held the respawn for the kill-cam rewind, and the next step reset the limbo pick before it was checked ("limbo pick not stored") — the later steps now wait too. **F `radio`**: stages the flag grab after 60 s without one (a random match sometimes had no grab for 150 s). **C `fill` / `two`**: the second client starts once the host has the first.
 - More flakes fixed at the root: F `grenade` (the player sometimes spawned on a cluster bonus box — cluster fuse 1.9 vs frag 2.2 read as "0.3 s short"; the expected fuse now follows the grenade thrown), F `vart` (shells / bombs in flight and a respawned bot counted as node growth; the test's own rockets and wreck blasts shoved the parked plane, which rolled on — parked vehicles now start every state at rest, and none may move in a non-firing state), F `featured` (CTF pad routes are spawn -> enemy flag; bot-planned pad rides count), C `relay` (the smoke client retries an unreachable relay and the FAIL line says why), F `unlock` (the switch to the test gun can be refused mid-reload; the trigger is held until an own bullet appears), C `two` (the botfire client was often dead at the second client's final look; bodies seen during the whole window count), C `news` (the menu's single news fetch hit a master not yet listening; the gate waits for masters over HTTP), F `rtnav` `maker_basin` (Domination holders stand still: a third of the bots must travel).
 - `SERVER_DIR` points the master-server cases at the server checkout (default `../server/master-server`, found automatically from a git worktree).
-
-## [1.39.0] — 2026-10-21 — Featured levels
 
 ### Added — featured levels (#295)
 - **LEVELS now opens on FEATURED: 8 hand-built levels that come with the game**, so there is always something to play — even offline, with no level server at all. Each one shows its outline, the modes it was built for, PLAY (a bot match), HOST ONLINE and **EDIT A COPY**, which opens the level in the Map Editor as a new, unsaved map with every piece editable — take one apart to see how it works, or make it your own.
