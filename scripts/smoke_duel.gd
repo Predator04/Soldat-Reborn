@@ -59,6 +59,8 @@ var _voted := false
 var _seat_t := 0.0
 var _place_until := 0
 var _place_tries := 0
+var _ready_frames := 0     # frames the shooter wanted to fire
+var _blocked_frames := 0   # ...with level geometry between its gun and the target
 var _done_file := ""
 var _done_check := 0.0
 var _done_at := -1.0
@@ -101,9 +103,9 @@ func _ready() -> void:
 
 func report() -> void:
 	var hh: Dictionary = HostHits.stats
-	print("SMOKE-DUEL role=%s cheat=%s weapon=%s move=%s predicted_hits=%d predicted_damage=%.1f predicted_other_hits=%d predicted_other_damage=%.1f hits_taken=%d damage_taken=%.1f shots=%d throws=%d lives=%d" % [
+	print("SMOKE-DUEL role=%s cheat=%s weapon=%s move=%s predicted_hits=%d predicted_damage=%.1f predicted_other_hits=%d predicted_other_damage=%.1f hits_taken=%d damage_taken=%.1f shots=%d throws=%d lives=%d ready_frames=%d blocked_frames=%d" % [
 		role, cheat, weapon, move, Bullet.predicted_hits, Bullet.predicted_damage, Bullet.predicted_other_hits, Bullet.predicted_other_damage,
-		int(hh.get("hits_taken", 0.0)), float(hh.get("damage_taken", 0.0)), shots, throws, lives])
+		int(hh.get("hits_taken", 0.0)), float(hh.get("damage_taken", 0.0)), shots, throws, lives, _ready_frames, _blocked_frames])
 
 
 func _press(a: String, strength := 1.0) -> void:
@@ -268,7 +270,7 @@ func _place(m: Node, p: Node2D) -> bool:
 		var sh := _ground(p, base.x + offs.y, base.y)
 		if v == Vector2.INF or sh == Vector2.INF or absf(v.y - sh.y) > 40.0:
 			continue
-		if not _solid(p, v + Vector2(0, -24), sh + Vector2(0, -24), 1 | 2).is_empty():
+		if not _los(p, v, sh):
 			continue
 		if gap > 190.0 and not _open_between(p, v, sh):
 			continue
@@ -307,7 +309,7 @@ func _place(m: Node, p: Node2D) -> bool:
 			var sh2 := _ground(p, tg.x + float(d), tg.y)
 			if sh2 == Vector2.INF or absf(sh2.y - tg.y) > 40.0:
 				continue
-			if not _solid(p, tg + Vector2(0, -24), sh2 + Vector2(0, -24), 1 | 2).is_empty():
+			if not _los(p, tg, sh2):
 				continue
 			if absf(float(d)) > 190.0 and not _open_between(p, tg, sh2):
 				continue
@@ -320,6 +322,16 @@ func _place(m: Node, p: Node2D) -> bool:
 			return true
 	_put(p, p.global_position)
 	print("SMOKE-DUEL no open spot found")
+	return true
+
+
+## Clear shots between two soldiers standing at feet `a` and `b`: at chest
+## and at muzzle height (a low lip between them stops rounds fired at the
+## chest even when a ray at mid-body passes over it).
+func _los(p: Node2D, a: Vector2, b: Vector2) -> bool:
+	for h in [-9.0, -12.0, -24.0]:
+		if not _solid(p, a + Vector2(0, h), b + Vector2(0, h), 1 | 2).is_empty():
+			return false
 	return true
 
 
@@ -473,6 +485,10 @@ func _shooter(m: Node, p: Node2D, delta: float) -> void:
 	# the aim is still swinging round. Cheaters fire regardless.)
 	if cheat == "" and weapon != "grenade" and absf((p.aim_dir as Vector2).angle_to(dir)) > 0.6:
 		ready = false
+	if ready:
+		_ready_frames += 1
+		if not _solid(p, from, chest, 1).is_empty():
+			_blocked_frames += 1
 	if cheat == "silentaim":
 		_aim(p, -dir)   # the aim it streams points away
 	else:
