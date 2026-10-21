@@ -49,9 +49,11 @@ const HP_LAG_PAD_MS := 300         # beyond the measured round trip
 const HP_FIX_AFTER_MS := 400       # off for this long -> send the host's number
 const HP_FIX_GAP_MS := 500
 # Still too high this long and over this many state updates after 2+ fixes
-# -> log "host hits ignored" (#293's bar for "ignored damage": a lagging
-# client's late reports never trip it).
-const HP_IGNORED_MS := 3000
+# -> log "host hits ignored". Only a log: nothing acts on it (the ledger
+# decides deaths), so #293's 3 s bar for acting on "ignored damage" has
+# nothing to guard here; the update count keeps one stalled burst of late
+# reports from logging it.
+const HP_IGNORED_MS := 1500
 const HP_IGNORED_UPDATES := 10
 # Spawn protection mirrors Player.CEASEFIRE_SECS; the host sees the body one
 # trip late, so it protects a round trip (+ this) longer.
