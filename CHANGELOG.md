@@ -4,6 +4,8 @@ All notable changes to Soldat Reborn.
 
 ## [Unreleased]
 
+## [1.39.0] — 2026-10-21 — Featured levels
+
 ### Added — featured levels (#295)
 - **LEVELS now opens on FEATURED: 8 hand-built levels that come with the game**, so there is always something to play — even offline, with no level server at all. Each one shows its outline, the modes it was built for, PLAY (a bot match), HOST ONLINE and **EDIT A COPY**, which opens the level in the Map Editor as a new, unsaved map with every piece editable — take one apart to see how it works, or make it your own.
   - **Twin Forts** (grassland, CTF / HTF / TDM / DM) — a mirrored CTF arena: hilltop forts, a sky route of floating islands, a jump pad up from the valley.
