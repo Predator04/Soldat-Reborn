@@ -216,7 +216,7 @@ func _resolve_mode_arg(v: String, fallback: int = -1) -> int:
 		if String(MODE_NAMES[i]).to_lower() == needle:
 			return i
 	# Common shorthand aliases (dm/tdm/ctf/inf/htf/rm/pm/dom/br) → mode index.
-	var aliases := {"dm": 0, "tdm": 1, "ctf": 2, "inf": 3, "htf": 4, "rm": 5, "pm": 6, "dom": 7, "br": 8, "gg": 9}
+	var aliases := {"dm": 0, "tdm": 1, "ctf": 2, "inf": 3, "htf": 4, "rm": 5, "pm": 6, "dom": 7, "br": 8, "gg": 9, "bomb": 10, "bd": 10}
 	if aliases.has(needle):
 		return int(aliases[needle])
 	print("Dedicated: unknown mode '%s', keeping %s" % [v, str(MODE_NAMES[clampi(fallback, 0, MODE_NAMES.size() - 1)])])

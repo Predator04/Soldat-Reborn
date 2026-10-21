@@ -327,7 +327,21 @@ const OBJECTIVE_SOUNDS := {
 	"capture": ["capture", -2.0, 1.0],
 	"dom": ["infilt-point", -4.0, 1.0],
 	"point": ["takemedikit", -10.0, 1.2],
+	# Bomb Defusal (#304)
+	"bomb_start": ["signal", -8.0, 1.0],
+	"bomb_pick": ["pickupgun", -8.0, 0.9],
+	"bomb_drop": ["flag2", -6.0, 0.85],
+	"bomb_plant": ["m2use", -2.0, 0.9],
+	"bomb_defuse": ["infilt-point", -2.0, 1.15],
+	"bomb_boom": ["law-end", -1.0, 0.6],
+	"bomb_round": ["capture", -3.0, 1.0],
+	"bomb_half": ["match", -4.0, 1.0],
 }
+
+
+## Planted bomb beep (#304): a short high click from the bomb.
+func bomb_beep(at: Vector2, urgent := false) -> void:
+	_play_key("menuclick", -3.0 if urgent else -6.0, 2.2 if urgent else 1.8, at)
 
 
 func objective(kind: String) -> void:

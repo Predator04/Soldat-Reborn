@@ -109,7 +109,14 @@ func announce(kind: String, team: int, who: String) -> void:
 			text = "%s CAPTURED POINT %s" % [str(info2["name"]), who]
 			col = info2["color"]
 		_:
-			return  # "point" pickups: sound + feed only
+			# Bomb Defusal (#304) banners come from match_bomb.gd.
+			if not kind.begins_with("bomb_") or main.get("_bomb") == null:
+				return  # "point" pickups: sound + feed only
+			var bt: Array = main._bomb.banner(kind, team, who)
+			if str(bt[0]) == "":
+				return
+			text = str(bt[0])
+			col = bt[1]
 	_banner.text = text
 	_banner.add_theme_color_override("font_color", col)
 	_banner.visible = true
@@ -179,6 +186,10 @@ func _status_text() -> String:
 				chip += " %d%%" % int(float(a.get_meta("progress")) * 100.0)
 			chips.append("[color=#%s][b]%s[/b][/color]" % [col.to_html(false), chip])
 		parts.append("POINTS  " + "  ".join(chips))
+	if Settings.game_mode == Settings.MODE_BOMB and main.get("_bomb") != null:
+		var bs: String = main._bomb.status_bbcode(p)
+		if bs != "":
+			parts.append(bs)
 	if Settings.game_mode == Settings.MODE_BR and main.has_method("br_zone") and p != null:
 		var z: Dictionary = main.br_zone()
 		var d: float = p.global_position.distance_to(z.get("center", p.global_position))
@@ -216,6 +227,8 @@ func _draw() -> void:
 			var owner: int = int(a.get_meta("owner_team"))
 			var col := Color(0.85, 0.85, 0.85) if owner == 0 else (_team_info(owner)["color"] as Color)
 			targets.append([a.global_position, col, str(a.get_meta("label"))])
+	if Settings.game_mode == Settings.MODE_BOMB and main.get("_bomb") != null:
+		targets.append_array(main._bomb.hud_targets(p))
 	if Settings.game_mode == Settings.MODE_BR and main.has_method("br_zone") and p != null:
 		var z: Dictionary = main.br_zone()
 		if p.global_position.distance_to(z.get("center", p.global_position)) > float(z.get("radius", 1e9)):

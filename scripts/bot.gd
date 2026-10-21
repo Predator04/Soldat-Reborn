@@ -540,7 +540,7 @@ func _physics_process(delta: float) -> void:
 		# Objective goals (grab / return / deliver / capture) keep the bot moving
 		# even mid-fight — it shoots on the way. Hunting/patrol goals yield to
 		# close-range strafing.
-		var objective: bool = _goal_label in ["flag", "return", "capture", "zone"]
+		var objective: bool = _goal_label in ["flag", "return", "capture", "zone", "plant", "defuse"]
 		_pad_ride = -1
 		if _goal != Vector2.INF and seek_lad == null and (not busy_retreat or objective) \
 				and (not close_fight or objective or _carrying_flag()):
@@ -597,6 +597,13 @@ func _physics_process(delta: float) -> void:
 				nav_up = _goal.y < global_position.y - 40.0
 				navigating = true
 
+		# #304 Bomb Defusal: standing still in a site / on the bomb, holding
+		# Use to plant / defuse (match_bomb.gd reads bomb_use).
+		var bomb_busy := _bomb_hold(on_floor)
+		if bomb_busy:
+			dir = 0.0
+			nav_up = false
+			navigating = false
 		# Pit guard: never run off an edge into a bottomless drop (below the
 		# map's kill line) — unless the path is deliberately jetting across a
 		# gap with a full tank. Strafing / retreating / wandering turn around.
@@ -631,7 +638,7 @@ func _physics_process(delta: float) -> void:
 		# refuel — a jump + jets in a random direction that burned the fuel it was
 		# waiting for (under a platform: straight into its underside).
 		var wants_travel: bool = (navigating or not is_instance_valid(target) or absf(dx) > 160.0 \
-				or not _target_visible) and not at_goal and not (navigating and _refuel_wait)
+				or not _target_visible) and not at_goal and not (navigating and _refuel_wait) and not bomb_busy
 		if global_position.distance_to(_progress_anchor) > 60.0 or not wants_travel:
 			_progress_anchor = global_position
 			_progress_t = 0.0
@@ -686,7 +693,7 @@ func _physics_process(delta: float) -> void:
 		dodge_cd -= delta
 		if dodge_cd <= 0.0:
 			dodge_cd = 0.1  # scan bullets at 10 Hz, not every tick
-			if not _refuel_wait and _pad_ride < 0 and _bullet_incoming():
+			if not _refuel_wait and _pad_ride < 0 and not bomb_busy and _bullet_incoming():
 				# (#294: not next to a jump pad — the dodge would come down on it.)
 				if on_floor and not _pad_hop_ahead(1.0, -150.0, 150.0):
 					velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
@@ -741,7 +748,7 @@ func _physics_process(delta: float) -> void:
 				jump_cd = 0.35
 				_hop_cd = HOP_COOLDOWN
 				Sfx.jump(global_position)
-		elif is_instance_valid(target) and seek_lad == null:
+		elif is_instance_valid(target) and seek_lad == null and not bomb_busy:
 			# Bunny-hop toward a distant target: on floor, target > 260 away, hop
 			# with a small horizontal boost so bots can actually close the gap.
 			var dist_h: float = absf(dx)
@@ -1665,7 +1672,7 @@ func _think_goal() -> void:
 	# (Not from a plane's cockpit, #298: the pilot turned back for every gun it
 	# flew over.)
 	var flying: bool = mounted_m2 != null and is_instance_valid(mounted_m2) and str(mounted_m2.get("kind")) == "plane"
-	if is_instance_valid(_pickup_target) and not _carrying_flag() and not flying:
+	if is_instance_valid(_pickup_target) and not _carrying_flag() and not flying and not _bomb_duty():
 		_set_goal(_pickup_target.global_position, "pickup")
 		return
 	if mode == Settings.MODE_CTF and flags.size() == 2:
@@ -1682,6 +1689,8 @@ func _think_goal() -> void:
 		_think_rambo()
 	elif mode == Settings.MODE_BR:
 		_think_br()
+	elif mode == Settings.MODE_BOMB:
+		_think_bomb()
 	if _goal == Vector2.INF:
 		_think_hunt()
 
@@ -1888,6 +1897,95 @@ func _think_br() -> void:
 	var r: float = float(z.get("radius", 99999.0))
 	if global_position.distance_to(c) > r * 0.8:
 		_set_goal(c, "zone")
+
+
+# ── Bomb Defusal (#304) ───────────────────────────────
+# Attackers: the carrier takes the bomb to this round's site and plants;
+# the rest escort it / push the site, then guard the planted bomb; anyone
+# close (and the attack-role bots) fetch a dropped bomb. Defenders: hold a
+# site each (stable by name), chase a carrier who comes close, guard a
+# dropped bomb, and all go to defuse a planted one.
+var bomb_use := false          # holding Use right now (match_bomb.gd reads it)
+var _bomb_round := -1
+var _bomb_site := "A"
+
+
+## Carrying the bomb / defusing: no detours for weapon pickups.
+func _bomb_duty() -> bool:
+	if Settings.game_mode != Settings.MODE_BOMB:
+		return false
+	var b = _bomb_helper()
+	return b != null and (b.carrier == self or (str(b.phase) == "planted" and team == int(b.defend_team())))
+
+
+func _bomb_helper() -> Node:
+	var m := _main()
+	if m == null or m.get("_bomb") == null:
+		return null
+	var b = m.get("_bomb")
+	return b if b.active() else null
+
+
+func _think_bomb() -> void:
+	var b = _bomb_helper()
+	if b == null or str(b.phase) == "post":
+		return
+	_pick_role()
+	if int(b.round_no) != _bomb_round:
+		_bomb_round = int(b.round_no)
+		# One site per round for the whole attacking team (they push together).
+		_bomb_site = "A" if absi(hash("%d:%d:%s" % [int(b.round_no), team, str(_main()._map.get("name", ""))])) % 2 == 0 else "B"
+	var st := str(b.bomb_state)
+	var carrier: Node = b.carrier if b.carrier != null and is_instance_valid(b.carrier) else null
+	var bpos: Vector2 = b.bomb_pos
+	if team == int(b.attack_team()):
+		if st == "carried" and carrier == self:
+			_set_goal(b.site_spot(_bomb_site), "plant")
+		elif st == "dropped":
+			if _role == "attack" or global_position.distance_to(bpos) < 900.0:
+				_set_goal(bpos, "flag")
+			else:
+				_set_goal(b.site_spot(_bomb_site), "push")
+		elif st == "planted":
+			if is_instance_valid(target) and _target_visible and target.global_position.distance_to(bpos) < 600.0:
+				return
+			_set_goal(_patrol(bpos, 220.0), "defend")
+		elif carrier != null:
+			if _role == "attack" and global_position.distance_to(carrier.global_position) > 160.0:
+				_set_goal(carrier.global_position, "escort")
+			else:
+				_set_goal(b.site_spot(_bomb_site), "push")
+	else:
+		if st == "planted":
+			_set_goal(bpos, "defuse")
+		elif st == "dropped" and (_role == "defend" or global_position.distance_to(bpos) < 700.0):
+			_set_goal(_patrol(bpos, 180.0), "defend")
+		elif carrier != null and global_position.distance_to(carrier.global_position) < 700.0:
+			_set_goal(carrier.global_position, "chase")
+		else:
+			var site := "A" if absi(hash(display_name)) % 2 == 0 else "B"
+			if is_instance_valid(target) and _target_visible \
+					and target.global_position.distance_to(b.site_spot(site)) < 700.0:
+				return
+			_set_goal(_patrol(b.site_spot(site), 220.0), "defend")
+
+
+## True while standing in the site with the bomb (or on the planted bomb as a
+## defender) with that as the goal: the bot stops and holds Use.
+func _bomb_hold(on_floor: bool) -> bool:
+	bomb_use = false
+	if Settings.game_mode != Settings.MODE_BOMB or (_goal_label != "plant" and _goal_label != "defuse") or not on_floor:
+		return false
+	var b = _bomb_helper()
+	if b == null:
+		return false
+	if _goal_label == "plant":
+		if b.carrier != self or str(b.site_at(global_position)) == "":
+			return false
+	elif global_position.distance_to(b.bomb_pos) > float(b.USE_RADIUS) - 12.0:
+		return false
+	bomb_use = true
+	return true
 
 
 func _nav_step(goal: Vector2, delta: float) -> Vector3:

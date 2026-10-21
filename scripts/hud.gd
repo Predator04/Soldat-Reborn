@@ -395,6 +395,14 @@ func _ready() -> void:
 	objective_hud.main = get_parent()
 	objective_hud.player_ref = func() -> Node2D: return player
 	_add(objective_hud)
+	# Bomb Defusal (#304): fuse, plant / defuse bar, Use hint, wave clock.
+	if Settings.game_mode == Settings.MODE_BOMB:
+		var bh := Control.new()
+		bh.name = "BombHud"
+		bh.set_script(preload("res://scripts/bomb_hud.gd"))
+		bh.set("main", get_parent())
+		bh.set("player_ref", func() -> Node2D: return player)
+		_add(bh)
 
 
 ## Adds a HUD element under the UI-scaled root.
@@ -462,7 +470,13 @@ func announce_objective(kind: String, team: int, who: String) -> void:
 		"capture": txt = "%s scored for %s" % [who, str(_team_display_info(team)["name"])]
 		"dom": txt = "%s captured point %s" % [str(_team_display_info(team)["name"]), who]
 		"point": txt = "%s +1 point" % who
-		_: return
+		_:
+			# Bomb Defusal (#304)
+			var m := get_parent()
+			if kind.begins_with("bomb_") and m != null and m.get("_bomb") != null:
+				txt = m._bomb.feed_text(kind, team, who)
+			if txt == "":
+				return
 	feed.add_text(txt, _team_display_info(team).get("color", Color(1, 0.85, 0.35)))
 
 

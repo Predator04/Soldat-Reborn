@@ -182,6 +182,15 @@ static func map_to_json(m: Dictionary) -> String:
 			var jp: Vector2 = j.get("pos", Vector2.ZERO)
 			jp_out.append({"pos": [jp.x, jp.y], "power": float(j.get("power", 1150.0))})
 		out["jump_pads"] = jp_out
+	# Bomb Defusal (#304): [{name: "A" | "B", rect: [x, y, w, h]}].
+	if m.has("bomb_sites") and typeof(m["bomb_sites"]) == TYPE_ARRAY:
+		var bs_out: Array = []
+		for b in m["bomb_sites"]:
+			if typeof(b) != TYPE_DICTIONARY or not (b.get("rect") is Rect2):
+				continue
+			var br: Rect2 = b["rect"]
+			bs_out.append({"name": str(b.get("name", "A")), "rect": [br.position.x, br.position.y, br.size.x, br.size.y]})
+		out["bomb_sites"] = bs_out
 	if m.has("maker") and typeof(m["maker"]) == TYPE_DICTIONARY:
 		out["maker"] = m["maker"]
 	return JSON.stringify(out, "  ")
@@ -421,6 +430,21 @@ static func json_to_map(text: String) -> Dictionary:
 				continue
 			jps.append({"pos": _v2(j.get("pos")), "power": clampf(_num_or(j.get("power", 1150.0), 1150.0), 300.0, 2400.0)})
 		m["jump_pads"] = jps
+	# Bomb Defusal (#304): two named site rects (more are ignored).
+	if parsed.has("bomb_sites"):
+		var sites: Array = []
+		for b in _arr(parsed["bomb_sites"]):
+			if typeof(b) != TYPE_DICTIONARY or sites.size() >= 4:
+				continue
+			var ba: Array = _arr(b.get("rect"))
+			if ba.size() < 4:
+				continue
+			var nm := str(b.get("name", "A")).to_upper().left(1)
+			if nm != "A" and nm != "B":
+				nm = "A" if sites.is_empty() else "B"
+			sites.append({"name": nm, "rect": Rect2(_num_or(ba[0], 0.0), _num_or(ba[1], 0.0),
+				clampf(_num_or(ba[2], 0.0), 40.0, 2000.0), clampf(_num_or(ba[3], 0.0), 40.0, 2000.0))})
+		m["bomb_sites"] = sites
 	if parsed.has("maker") and typeof(parsed["maker"]) == TYPE_DICTIONARY:
 		m["maker"] = parsed["maker"]
 	if parsed.has("ctf_ground_y"):

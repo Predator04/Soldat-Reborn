@@ -421,6 +421,9 @@ func net_spawn_ack() -> void:
 			mp["br"] = {"c": main._br_zone_center, "r": main._br_zone_radius}
 		if not mp.is_empty():
 			main.rpc_id(sender, "net_mode_state", mp)
+	# #304: the whole bomb state, reliably (a planted bomb, its fuse, the sites).
+	if mode == Settings.MODE_BOMB and main._bomb.active():
+		main.rpc_id(sender, "net_bomb_sync", main._bomb.net_payload(true))
 
 
 func net_match_config_apply(cfg: Dictionary) -> void:
@@ -694,6 +697,8 @@ func _broadcast_mode_state() -> void:
 		payload["pm"] = pm
 	elif mode == Settings.MODE_BR:
 		payload["br"] = {"c": main._br_zone_center, "r": main._br_zone_radius}
+	elif mode == Settings.MODE_BOMB and main._bomb.active():
+		payload["bomb"] = main._bomb.net_payload(false)
 	if payload.is_empty():
 		return
 	for pid in main._ready_peers.keys():
@@ -734,6 +739,8 @@ func net_mode_state(payload: Dictionary) -> void:
 		for pos in alive:
 			if not have_set.has(str(pos)):
 				main._modes._spawn_point_pickup(pos)
+	if payload.has("bomb") and typeof(payload["bomb"]) == TYPE_DICTIONARY:
+		main._bomb.apply_payload(payload["bomb"])
 	if payload.has("br"):
 		var br: Dictionary = payload["br"]
 		main._br_zone_center = br.get("c", main._br_zone_center)

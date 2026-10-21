@@ -416,6 +416,7 @@ func _physics_replica(delta: float) -> void:
 
 ## Mounted on an M2 — the turret drives position, aim, and firing.
 func _physics_mounted(delta: float) -> void:
+	_bomb_use(false)   # #304: no planting from a seat
 	velocity = Vector2.ZERO
 	if was_jet:
 		Sfx.jet(false)
@@ -453,6 +454,7 @@ func _physics_mounted(delta: float) -> void:
 ## If the HUD command/chat line is open, freeze inputs: drop x-velocity, apply
 ## gravity so we still fall to ground, and skip all movement/shooting handling.
 func _physics_input_locked(delta: float) -> void:
+	_bomb_use(false)   # #304: chat line open = Use released
 	velocity.x = move_toward(velocity.x, 0.0, (GROUND_FRICTION if is_on_floor() else AIR_FRICTION) * delta)
 	if not is_on_floor():
 		velocity.y += GRAVITY * MatchConfig.mod_gravity() * delta
@@ -493,6 +495,7 @@ func _physics_live(delta: float) -> void:
 	_live_weapon_keys()
 	_live_grenade(delta)
 	_live_trigger(delta)
+	_bomb_use(Input.is_action_pressed("use"))
 	_live_timers(delta)
 	_live_fx(delta)
 	queue_redraw()
@@ -2633,3 +2636,18 @@ func _net_accept(method: StringName, args: Array) -> bool:
 	if Net.is_host() and sender == auth and auth != 1:
 		_fanout(method, args, auth)
 	return true
+
+
+# ── Bomb Defusal Use (#304) ───────────────────────────
+var _use_prev := false
+
+
+## Report Use presses / releases to Main (host decides what they do: plant
+## in a site with the bomb, defuse a planted bomb). Bomb Defusal only.
+func _bomb_use(held: bool) -> void:
+	if Settings.game_mode != Settings.MODE_BOMB or held == _use_prev:
+		return
+	_use_prev = held
+	var m := get_parent()
+	if m != null and m.has_method("bomb_use_input"):
+		m.bomb_use_input(self, held)
