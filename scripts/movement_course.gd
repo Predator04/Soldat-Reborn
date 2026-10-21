@@ -38,11 +38,19 @@ extends Object
 ##   So "tap" = released within ~9 frames (0.15 s), "hold" = 12+ (0.2 s);
 ##   10-11 frames is the grey zone that both spikes you and falls short.
 ## Drop from the ledge (420 px), running off at RUN_SPEED holding →:
-##   no prone: lands 278 px past the edge (0.70 s in the air)
-##   prone 0.10 s after leaving: 244 px (0.62 s), 0.20 s: 258, 0.30 s: 265
+##   no prone: lands 277 px past the edge (0.70 s in the air)
+##   prone at the edge: 236 px, 0.10 s after: 243, 0.20 s: 256, 0.30 s: 263,
+##   0.40-0.45 s: 270, 0.50 s+: 277 (no gain — he is about to land)
 ##   letting go of → instead: 142 px (prone 127-136), holding ←: ~10 px.
+##   A hop / jump off the ledge carries 300-440 px even prone, so the step
+##   says "don't jump" (training.gd names it when that is what happened).
 ##   Air steering is strong (950 px/s²), so the ring also only counts a
 ##   landing made prone (the gate checks the stance at touchdown).
+##   #301: the ring reaches 274 px so a prone press up to ~0.45 s after the
+##   edge passes (a human reacts to "I'm falling" 0.2-0.4 s late; at 268 px
+##   only presses within 0.37 s did), and training.gd buffers a press made
+##   up to 0.25 s BEFORE the edge (prone on the deck would slow the soldier
+##   to a crawl: he dribbled off and landed ~192 px, "too short").
 ## Bunny lane 1400 px: running 6.83 s; chained hops (held jump, or a tap
 ## within the jump buffer / on the landing frame) 3.37 s at ~415 px/s with
 ## ~95% of the time airborne; spamming the roll 4.23 s but never airborne.
@@ -74,7 +82,7 @@ const SPIKE_CLEAR := 74.0
 const SPIKE_LEN := 12.0
 const SPIKE_BLOCK := 30.0
 # Target ring on the floor, as feet x past LEDGE_X.
-const RING := Vector2(196.0, 268.0)
+const RING := Vector2(196.0, 274.0)
 # Bunny-hop lane on the floor.
 const LANE := Vector2(3050.0, 4450.0)
 const MARKER_STEP := 200.0

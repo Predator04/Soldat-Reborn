@@ -2196,6 +2196,9 @@ func _think_drive() -> void:
 			continue
 		if v.has_method("bot_board_ok") and not v.bot_board_ok():
 			continue
+		# #299: one a bot just gave up on (stuck / a drop it can't take).
+		if float(v.get("drive_ban_t")) > 0.0:
+			continue
 		var vg = v.gunner()
 		if vg != null and int(vg.get("team")) != team:
 			continue

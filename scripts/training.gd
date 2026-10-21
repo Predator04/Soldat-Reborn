@@ -46,11 +46,29 @@ var _body_id := 0             # player node we last saw (respawn -> back to the 
 var _resets := 0
 var _drop_air := false
 var _drop_prone := false
+# Prone drop (#301): what happened on this attempt, for the indicator and a
+# failure message that says what went wrong.
+var _drop_edge_t := 0.0       # _t when the soldier went over the edge
+var _drop_prone_t := 0.0      # seconds after the edge he was first prone in the air
+var _drop_left_prone := false # already prone (crawling) when he went over
+var _drop_jumped := false     # jumped off instead of running off
+var _drop_lost := false       # was prone in the air, then stood up again
+var _drop_x_air := 0          # prone presses seen in the air
+var _xbuf := -1.0             # buffered prone press (s since), -1 = none
+var _flash: Label             # big "PRONE" / "PRESS X" cue in the air
 var _lane_t0 := -1.0
 var _lane_speed: PackedFloat32Array = PackedFloat32Array()   # |vx| history across the lane
 var _lane_air: Array = []
 
 const PHASE2_DELAY := 4.0
+# Prone drop (#301): X pressed this long before leaving the ledge counts as
+# X at the edge (a human presses "as I run off" a little early, and prone on
+# the deck would slow him to a crawl). Applied once the 28 px prone box is
+# clear of the deck, or after PRONE_BUFFER_MAX if he never goes over.
+const PRONE_BUFFER := 0.25
+const PRONE_BUFFER_MAX := 0.4
+const PRONE_HALF_W := 14.0    # player.gd shape_prone half width
+const STAND_HALF_W := 7.0     # player.gd shape_stand half width
 
 const STEPS := [
 	["MOVE", "Run left and right with %s / %s.", ["move_left", "move_right"]],
@@ -71,7 +89,7 @@ const COURSE_STEPS := [
 	["SHORT HOP", "Tap {jump} to hop the gap under the spikes. A quick tap is a short hop; holding jump makes a full jump, straight into them. (Jets are off on this course.)", "Tap = short hop."],
 	["WIDER HOP", "Run and tap {jump} again: a hop clears this wider gap too. Jump close to the edge.", "A hop carries further than it looks."],
 	["FULL JUMP", "Too far for a hop. Hold {jump} through the whole jump for full height and distance, and take off near the edge.", "Hold = full jump."],
-	["PRONE DROP", "Run off the ledge holding {right}, then press {prone} in mid-air. Going prone drops you faster, so you land in the yellow ring instead of past it.", "Prone in the air = drop short."],
+	["PRONE DROP", "Run off the ledge holding {right} (don't jump) and press {prone} as you go over the edge. Going prone drops you faster, so you land in the yellow ring instead of past it.", "Prone in the air = drop short."],
 	["BUNNY HOP", "Cross the lane, green post to yellow, in {limit} s. Running is too slow: jump again the moment you land ({jump}) and keep holding {right} to carry your speed.", "Chained hops keep your speed."],
 ]
 
@@ -143,6 +161,17 @@ func _ready() -> void:
 	if _course:
 		_steps = COURSE_STEPS
 		_body.custom_minimum_size = Vector2(380, 0)
+		_flash = Label.new()
+		_flash.name = "DropCue"
+		_flash.top_level = true   # not laid out by the panel; viewport coords
+		_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_flash.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_flash.add_theme_font_override("font", UITheme.font("head"))
+		_flash.add_theme_font_size_override("font_size", 34)
+		_flash.add_theme_constant_override("outline_size", 6)
+		_flash.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.75))
+		_flash.visible = false
+		add_child(_flash)
 	_show_step()
 
 
@@ -262,6 +291,40 @@ func _physics_process(_delta: float) -> void:
 		var p = _player()
 		if p != null:
 			p.fuel = 0.0
+			_prone_buffer(p, _delta)
+
+
+## Prone drop (#301): a prone press in the last PRONE_BUFFER s before the
+## edge (at his speed), or while the prone box would still overlap the deck,
+## is held back from the soldier and applied the moment he is clear of the
+## ledge — so "X as I run off" works instead of laying him down on the deck.
+## Runs before the soldier's own tick (see above), so hiding the press is
+## just marking it as already seen (x_prev).
+func _prone_buffer(p: Node, delta: float) -> void:
+	if _step != Course.S_DROP or _done_t >= 0.0 or _c_end >= 0.0 or p.get("x_prev") == null:
+		_xbuf = -1.0
+		return
+	var b := p as CharacterBody2D
+	var pos := b.global_position
+	var rising := Input.is_action_pressed("prone") and not bool(p.get("x_prev"))
+	var clear_x := Course.LEDGE_X + PRONE_HALF_W + 0.5
+	if _xbuf >= 0.0:
+		_xbuf += delta
+		if rising:
+			p.set("x_prev", true)   # a second press while buffered: still one prone
+		if (not b.is_on_floor() and pos.x > clear_x) or _xbuf > PRONE_BUFFER_MAX:
+			_xbuf = -1.0
+			if not bool(p.get("prone")):
+				p.set("prone", true)
+				p.set("crouching", false)
+				Sfx.prone(pos, true)
+		return
+	if not rising or bool(p.get("prone")) or b.velocity.x < 60.0 or pos.y > Course.TOP_Y + 8.0:
+		return
+	var vx := maxf(b.velocity.x, Course.run_speed())
+	if pos.x >= Course.LEDGE_X + STAND_HALF_W - vx * PRONE_BUFFER and pos.x <= clear_x:
+		p.set("x_prev", true)
+		_xbuf = 0.0
 
 
 func _process(delta: float) -> void:
@@ -364,8 +427,8 @@ func _cur() -> int:
 
 
 func _reset_step_state() -> void:
-	_drop_air = false
-	_drop_prone = false
+	_reset_drop()
+	_xbuf = -1.0
 	_lane_t0 = -1.0
 	_lane_speed = PackedFloat32Array()
 	_lane_air = []
@@ -396,10 +459,12 @@ func _fail(step: int, title: String, desc: String) -> void:
 		_teleport(p, Course.step_start(step))
 	_reset_step_state()
 	_last_fail = title
-	_toast(tr(title), _fmt(desc), Color(1.0, 0.45, 0.35))
+	_last_fail_desc = _fmt(desc)
+	_toast(tr(title), _last_fail_desc, Color(1.0, 0.45, 0.35))
 
 
 var _last_fail := ""   # for tools/movement_course_test.gd
+var _last_fail_desc := ""
 
 
 func _toast(title: String, desc: String, col: Color) -> void:
@@ -420,6 +485,37 @@ func _check_section(p: Node) -> void:
 		off = pos.y < Course.TOP_Y + Course.PIT_DROP or pos.x > Course.LANE.x - 20.0
 	if off:
 		_teleport(p, Course.step_start(s))
+
+
+func _reset_drop() -> void:
+	_drop_air = false
+	_drop_prone = false
+	_drop_prone_t = 0.0
+	_drop_left_prone = false
+	_drop_jumped = false
+	_drop_lost = false
+	_drop_x_air = 0
+
+
+## The big cue over the soldier while he falls on the prone drop (#301).
+func _drop_cue(b: CharacterBody2D) -> void:
+	if _flash == null:
+		return
+	var show := _step == Course.S_DROP and _done_t < 0.0 and _drop_air and not b.is_on_floor()
+	_flash.visible = show
+	if not show:
+		return
+	if bool(b.get("prone")) and _drop_prone:
+		_flash.text = tr("PRONE  %.2f s") % _drop_prone_t
+		_flash.add_theme_color_override("font_color", UITheme.COL_GOOD)
+	else:
+		_flash.text = _fmt("PRESS {prone}")
+		_flash.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
+	_flash.reset_size()
+	# Just right of the screen centre, where the camera keeps the soldier:
+	# beside him for the whole fall, clear of the match banner.
+	var vp := get_viewport_rect().size
+	_flash.position = Vector2(roundf(vp.x * 0.5 + 48.0), roundf(vp.y * 0.42))
 
 
 ## Runs every frame on the course, also while a step's ✓ shows: clock,
@@ -459,6 +555,7 @@ func _course_tick(_delta: float) -> void:
 			else:
 				_fail(s, "MISSED", "Tap {jump} close to the edge.")
 			return
+	_drop_cue(b)
 	if s == Course.S_BUNNY:
 		_live.visible = true
 		var el := (_t - _lane_t0) if _lane_t0 >= 0.0 else 0.0
@@ -477,25 +574,48 @@ func _course_gate(p: Node) -> bool:
 			var deck: Vector2 = Course.landing_deck(_step)
 			return on_floor and absf(pos.y - Course.TOP_Y) < 6.0 and pos.x > deck.x + 8.0 and pos.x < deck.y
 		Course.S_DROP:
+			var prone := bool(p.get("prone"))
+			var x_press := _pressed("prone")
 			if on_floor and pos.y < Course.TOP_Y + 6.0:
-				_drop_air = false   # still (or back) on the ledge
-				_drop_prone = false
-			if not on_floor and pos.x > Course.LEDGE_X - 10.0:
+				_reset_drop()   # still (or back) on the ledge
+			if not on_floor and b.velocity.y < -60.0 and pos.y < Course.TOP_Y + 4.0 and pos.x > Course.LEDGE_X - 80.0:
+				_drop_jumped = true
+			if not on_floor and pos.x > Course.LEDGE_X - 10.0 and not _drop_air:
 				_drop_air = true
-			if _drop_air and not on_floor and bool(p.get("prone")):
-				_drop_prone = true
+				_drop_edge_t = _t
+				_drop_left_prone = prone
+			if _drop_air and not on_floor:
+				if x_press:
+					_drop_x_air += 1
+				if prone and not _drop_prone:
+					_drop_prone = true
+					_drop_prone_t = maxf(0.0, _t - _drop_edge_t)
+				elif not prone and _drop_prone:
+					_drop_lost = true
 			if _drop_air and on_floor and pos.y > Course.GROUND_Y - 6.0:
 				var dx := pos.x - Course.LEDGE_X
 				_last_drop_dx = dx
 				if dx < Course.RING.x:
-					_fail(_step, "TOO SHORT", "Keep holding {right} as you run off, then go prone.")
+					if _drop_left_prone:
+						_fail(_step, "TOO EARLY", "You went prone on the ledge, so you crawled off it. Press {prone} as you go over the edge, not before.")
+					else:
+						_fail(_step, "TOO SHORT", "Keep holding {right} as you run off, then go prone.")
 				elif dx > Course.RING.y:
-					if _drop_prone:
-						_fail(_step, "TOO LONG", "Go prone sooner, right after you leave the ledge.")
+					if _drop_jumped:
+						_fail(_step, "DON'T JUMP", "You jumped off, and a jump carries you past the ring even prone. Just run off holding {right}, then press {prone}.")
+					elif _drop_lost and not prone:
+						_fail(_step, "STOOD UP", "You went prone, then pressed {prone} or {jump} again and stood up. Press {prone} once.")
+					elif _drop_prone:
+						_fail(_step, "TOO LONG", tr("You went prone %.2f s after the edge. Press {prone} right as you leave the ledge.") % _drop_prone_t)
+					elif _drop_x_air > 0:
+						_fail(_step, "TOO LONG", "{prone} didn't register in the air. Press it once, right as you leave the ledge.")
 					else:
 						_fail(_step, "TOO LONG", "Press {prone} in mid-air: prone drops you faster.")
-				elif not _drop_prone or not bool(p.get("prone")):
-					_fail(_step, "NOT PRONE", "Press {prone} in mid-air before you land.")
+				elif not _drop_prone or not prone:
+					if _drop_lost:
+						_fail(_step, "STOOD UP", "You went prone, then pressed {prone} or {jump} again and stood up. Press {prone} once.")
+					else:
+						_fail(_step, "NOT PRONE", "Press {prone} in mid-air before you land.")
 				else:
 					return true
 		Course.S_BUNNY:

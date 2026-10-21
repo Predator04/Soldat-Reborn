@@ -112,6 +112,7 @@ var pos_hist: Array = []
 const LAG_COMP_MAX_MS := 200
 var q_prev := false     # prev-frame Q — swap on rising edge only, not every physics tick
 var x_prev := false     # prev-frame X — prone toggle on rising edge
+var _stance_jump_prev := false   # prev-tick jump in _live_stance (#301)
 var s_prev := false     # prev-frame S — roll on rising edge with lateral momentum
 var f_prev := false     # prev-frame F — throw current weapon on rising edge
 # #87: weapons the player has thrown (name -> true). Thrown weapons are removed
@@ -508,8 +509,13 @@ func _live_stance(jump_pressed: bool) -> void:
 		if prone:
 			crouching = false
 	x_prev = x_now
-	if prone and jump_pressed:
+	# Jump stands you up: held on the ground (the jump is about to fire), but
+	# in the air only a fresh press — holding jump through a hop used to undo
+	# every prone press mid-air, so the prone-cancel never worked out of a
+	# held jump (#301).
+	if prone and jump_pressed and (is_on_floor() or not _stance_jump_prev):
 		prone = false
+	_stance_jump_prev = jump_pressed
 	var s_now := Input.is_action_pressed("crouch") and not prone
 	# Roll: press S with lateral momentum → brief burst, skokdolobrot anim, no crouch shape.
 	# Suppressed while climbing so S = climb-down doesn't fire a roll on step-off.

@@ -681,12 +681,19 @@ func _mark_pad_crossings(m: Dictionary, pts_l: Array, edges: Array) -> void:
 	var pads := _jump_pads(m)
 	if pads.is_empty():
 		return
+	# Nodes that walk INTO a pad node are its approach: weighting them would
+	# make riding the pad cost as much as crossing it, and routes stopped
+	# using the pads at all (Twin Forts, #295). Only crossings are weighted.
+	var approach := {}
+	for e: Vector2i in edges:
+		if _pad_nodes.has(e.y) and not _pad_nodes.has(e.x):
+			approach[e.x] = true
 	for pad: Dictionary in pads:
 		var pp: Vector2 = pad["pos"]
 		var x0 := pp.x - PAD_TRIGGER_HALF - PAD_CROSS_SLOP
 		var x1 := pp.x + PAD_TRIGGER_HALF + PAD_CROSS_SLOP
 		for e: Vector2i in edges:
-			if _pad_nodes.has(e.x) or _pad_nodes.has(e.y):
+			if _pad_nodes.has(e.x) or _pad_nodes.has(e.y) or approach.has(e.y):
 				continue
 			var a: Vector2 = pts_l[e.x]
 			var b: Vector2 = pts_l[e.y]

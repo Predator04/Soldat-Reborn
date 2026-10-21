@@ -13,6 +13,7 @@ var _slot := 0
 var _stage := 0
 var _stage_t := 0.0
 var _mag0 := 0
+var _mag_min := 0   # lowest mag seen in the window: a fast reload (Rambo Bow) refills before the check
 var _log: Array = []
 var _bad: Array = []
 
@@ -47,9 +48,17 @@ func _process(d: float) -> bool:
 			p.call("_set_active_mag", int(p.weapons[_slot]["mag"]))
 			p.set("fire_cd", 0.0)
 			_mag0 = int(p.call("_active_mag"))
+			_mag_min = _mag0
 			_stage = 1
 			_stage_t = 0.0
 		1:
+			# The switch can be refused while the previous gun is still busy
+			# (flamethrower burst, reload): then the mag set above went to the
+			# OLD gun and its refill read as -99 for the bow. Wait for it.
+			if int(p.get("weapon_index")) != _slot:
+				if _stage_t > 0.3:
+					_stage = 0
+				return false
 			if _stage_t > 0.3:   # weapon switch cooldown
 				Input.action_press("fire")
 				_stage = 2
@@ -59,11 +68,12 @@ func _process(d: float) -> bool:
 			# window; everything else: a short tap.
 			var hold: bool = float(p.weapons[_slot].get("startup", 0.0)) > 0.0
 			var semi: bool = not bool(p.weapons[_slot].get("auto", false))
+			_mag_min = mini(_mag_min, int(p.call("_active_mag")))
 			if not hold and _stage_t > FRAMES_HELD / 60.0:
 				Input.action_release("fire")
 			if _stage_t > 1.2:
 				Input.action_release("fire")
-				var used: int = _mag0 - int(p.call("_active_mag"))
+				var used: int = _mag0 - _mag_min
 				var wn: String = str(p.weapons[_slot]["name"])
 				_log.append("%s=%d" % [wn, used])
 				var ok: bool = used >= 1 and (not (hold and semi) or used == 1)
