@@ -205,6 +205,9 @@ func _duel_line(logname: String) -> String:
 
 # ── honest ──
 
+# (min_match: share of the shooter's own hits the host must confirm — 0.85 by
+# default; 0.8 at 250 ms with loss + 300 ms stalls, where a stall freezes the
+# shooter's view and the catch-up jumps it, so a rewind can't be exact.)
 # Per link (s_ = the shooter's, v_ = the victim's): one-way delay ms; both get
 # `jitter` (0..N ms extra), `loss` (% dropped each way) and stalls (every
 # ~spike_every s everything is held spike_ms). damage: one hit (0 = splash,
@@ -212,13 +215,13 @@ func _duel_line(logname: String) -> String:
 # "total" (splash / melee / vehicle gun: hit counts).
 const SCENARIOS := {
 	"ak150": {"weapon": "ak", "s_ms": 75, "v_ms": 50, "jitter": 6, "damage": 22.0, "match": "shot"},
-	"ak250": {"weapon": "ak", "s_ms": 125, "v_ms": 100, "jitter": 40, "loss": 3.0, "spike_every": 6.0, "spike_ms": 250,
+	"ak250": {"min_match": 0.8, "weapon": "ak", "s_ms": 125, "v_ms": 100, "jitter": 40, "loss": 3.0, "spike_every": 6.0, "spike_ms": 250,
 		"v_move": "jet", "damage": 22.0, "match": "shot"},
-	"move250": {"weapon": "ak", "s_ms": 125, "v_ms": 90, "jitter": 40, "loss": 3.0, "spike_every": 5.0, "spike_ms": 300,
+	"move250": {"min_match": 0.8, "weapon": "ak", "s_ms": 125, "v_ms": 90, "jitter": 40, "loss": 3.0, "spike_every": 5.0, "spike_ms": 300,
 		"s_move": "jet", "damage": 22.0, "match": "shot"},
-	"spas250": {"weapon": "spas", "s_ms": 120, "v_ms": 100, "jitter": 40, "loss": 3.0, "spike_every": 5.0, "spike_ms": 300,
+	"spas250": {"min_match": 0.8, "weapon": "spas", "s_ms": 120, "v_ms": 100, "jitter": 40, "loss": 3.0, "spike_every": 5.0, "spike_ms": 300,
 		"s_move": "strafe", "v_move": "jet", "damage": 9.0, "match": "shot"},
-	"knife250": {"weapon": "knife", "s_ms": 125, "v_ms": 100, "jitter": 40, "loss": 3.0, "spike_every": 5.0, "spike_ms": 300,
+	"knife250": {"min_match": 0.8, "weapon": "knife", "s_ms": 125, "v_ms": 100, "jitter": 40, "loss": 3.0, "spike_every": 5.0, "spike_ms": 300,
 		"damage": 55.0, "match": "total"},
 	# A slow PC: the shooter's game stalls 45 ms every frame (Godot --frame-delay:
 	# ~20 fps, physics catching up several steps at a time, packets in bursts).
@@ -497,7 +500,7 @@ func _sc_judge(r: Dictionary) -> Array:
 			info.append("%s pred=%d host=%d" % [tag, np2, nh2])
 			if np2 < (need if sc.has("need") else need / 2):
 				bad.append("%s: too few predicted hits to judge (%d)" % [tag, np2])
-			elif float(nh2) < 0.75 * np2:
+			elif float(nh2) < minf(0.75, float(sc.get("min_match", 0.75))) * np2:
 				bad.append("%s: host landed only %d of %d predicted hits" % [tag, nh2, np2])
 			if float(nh2) > 1.4 * np2 + 2.0:
 				bad.append("%s: host landed %d hits, its screen showed %d" % [tag, nh2, np2])
