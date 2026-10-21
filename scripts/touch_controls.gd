@@ -12,7 +12,8 @@ extends Control
 ##
 ## Six edge buttons cover the remaining actions without overlapping the zones:
 ##   move-side edge : JET (hold), GRENADE (tap), RELOAD (tap)
-##   aim-side edge  : SWAP (tap), THROW (tap), PRONE (tap)
+##   aim-side edge  : SWAP (tap), THROW (tap), PRONE (tap), and a smaller
+##                    DROP (tap, #303) shown only while a power-up is active
 ##
 ## Each of those buttons can be dragged to a custom position via edit mode
 ## (Settings → Controls → "Customize touch layout"). Positions persist in
@@ -42,6 +43,7 @@ const BTN_R := 44.0
 const BTN_SPACING := 22.0
 const BTN_MARGIN := 22.0
 const AIM_DEADBAND_PX := 14.0
+const BonusPickupScript = preload("res://scripts/bonus_pickup.gd")
 # Edit-mode controls (DONE / RESET pills at the top of the screen).
 const EDIT_PILL_W := 160.0
 const EDIT_PILL_H := 44.0
@@ -73,8 +75,10 @@ var _buttons: Array = [
 	{"action": "secondary_swap",  "hold": false, "label": "SWAP",    "side": "aim"},
 	{"action": "weapon_throw",    "hold": false, "label": "THROW",   "side": "aim"},
 	{"action": "prone",           "hold": false, "label": "PRONE",   "side": "aim"},
+	# #303: only shown while the player carries a power-up (always in edit mode).
+	{"action": "drop_powerup",    "hold": false, "label": "DROP",    "side": "aim", "bonus_only": true, "r": 34.0},
 ]
-var _btn_touch: Array = [-1, -1, -1, -1, -1, -1]
+var _btn_touch: Array = [-1, -1, -1, -1, -1, -1, -1]
 
 # Actions we're currently virtually pressing. Guards against double-press /
 # leak on exit — cleared on _exit_tree.
@@ -212,14 +216,25 @@ func _btn_center(i: int) -> Vector2:
 
 func _btn_rect(i: int) -> Rect2:
 	var c: Vector2 = _btn_center(i)
-	return Rect2(c.x - BTN_R, c.y - BTN_R, BTN_R * 2.0, BTN_R * 2.0)
+	var br: float = float((_buttons[i] as Dictionary).get("r", BTN_R))
+	return Rect2(c.x - br, c.y - br, br * 2.0, br * 2.0)
 
 
 func _button_at(p: Vector2) -> int:
 	for i in range(_buttons.size()):
-		if _btn_rect(i).has_point(p):
+		if _btn_shown(i) and _btn_rect(i).has_point(p):
 			return i
 	return -1
+
+
+## A "bonus_only" button (DROP, #303) is there only while the local player has
+## a power-up; edit mode shows every button so it can be placed.
+func _btn_shown(i: int) -> bool:
+	if edit_mode or not bool((_buttons[i] as Dictionary).get("bonus_only", false)):
+		return true
+	var mn := get_tree().current_scene if is_inside_tree() else null
+	var p = mn.get("player") if mn != null else null
+	return p != null and is_instance_valid(p) and p.get("dead") != true and str(p.get("bonus_kind")) != ""
 
 
 func _edit_pill_rect(which: String) -> Rect2:
@@ -584,6 +599,14 @@ func _draw_button(i: int) -> void:
 	var lbl: String = str(b["label"])
 	if str(b["action"]) == "weapon_throw" and not edit_mode:
 		lbl = _throw_label()
+	elif bool(b.get("bonus_only", false)):
+		lbl = TranslationServer.translate(lbl)
+		# Ring in the carried power-up's colour so it reads as "that one".
+		var mn := get_tree().current_scene
+		var p = mn.get("player") if mn != null else null
+		if p != null and is_instance_valid(p) and str(p.get("bonus_kind")) != "":
+			draw_arc(r.position + r.size * 0.5, r.size.x * 0.5 - 2.0, 0.0, TAU, 32,
+				BonusPickupScript.kind_color(str(p.get("bonus_kind"))), 2.5, true)
 	var sz: Vector2 = f.get_string_size(lbl, HORIZONTAL_ALIGNMENT_CENTER, -1, fs)
 	var c: Vector2 = r.position + r.size * 0.5
 	draw_string(f, c + Vector2(-sz.x * 0.5, sz.y * 0.30), lbl,
@@ -645,7 +668,8 @@ func _draw() -> void:
 			draw_line(Vector2(vp.x * 0.5, 0.0), Vector2(vp.x * 0.5, vp.y), Color(1, 1, 1, 0.06 * k), 1.0)
 	# Buttons
 	for i in range(_buttons.size()):
-		_draw_button(i)
+		if _btn_shown(i):
+			_draw_button(i)
 	# Joystick (only when active, and only in gameplay mode)
 	if not edit_mode and _joy_touch >= 0:
 		draw_arc(_joy_center, JOY_RADIUS, 0.0, TAU, 40, Color(1, 1, 1, 0.28), 2.0, true)

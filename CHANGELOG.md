@@ -4,6 +4,10 @@ All notable changes to Soldat Reborn.
 
 ## [Unreleased]
 
+### Added — drop your power-up (#303)
+- **You can now drop the power-up you're carrying (#303).** Press **B** (gamepad: the **Share** button; Android: the small **DROP** button that shows up next to PRONE while you have one). Dropping simply ends it — nothing is left on the ground, so nobody (you included) can pick it back up for a fresh 30 s. Predator and Berserker stop at once (no more see-through look or knife lock, your previous weapon comes back), the Bulletproof Vest stops halving damage, and Cluster Grenades go back to the grenade type you had before. The box you took it from still comes back on its usual timer. You carry one power-up at a time, so drop ends that one; with none active the key does nothing. A short "PREDATOR dropped" toast confirms it and the power-up timer disappears. Rebind it under Settings → Controls (Combat); it's also listed in the in-match controls help (H).
+- Online it's the server's call, like picking one up: it checks the request is for your own soldier and only while you have a power-up, then ends it for everyone.
+
 ## [1.39.0] — 2026-10-21 — Featured levels
 
 ### Fixed — vehicles (#302)

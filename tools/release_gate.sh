@@ -42,7 +42,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 G="${GODOT_BIN:-$HOME/godot/Godot_v4.7.2-stable_linux.x86_64}"
 QUICK=0; OUT="build/gate"; ONLY="A B N C D R F E"; MODESEL="0 1 2 3 4 5 6 7 8 9"
-NETSEL="ctf dm dedboot selfcheck two trust fill ranked friends news featured respawn killcam drive heli plane rejoin relay host listen lan soak m3 m7 m9 m2"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
+NETSEL="ctf dm dedboot selfcheck two trust drop fill ranked friends news featured respawn killcam drive heli plane rejoin relay host listen lan soak m3 m7 m9 m2"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --quick) QUICK=1;; --out) OUT="$2"; shift;; --only) ONLY="$2"; shift;;
@@ -647,6 +647,36 @@ case " $NETSEL " in *" trust "*)
   trustcase credit 18 2 20 "^TRUST kill credit stripped: Nobody_Fake"
   trustcase godmode 18 0 90 "^TRUST forced death: .*ignored damage"
 ;; esac
+case " $NETSEL " in *" drop "*)
+  # Drop the power-up (#303): the host (--smoke-bonus) gives both clients a
+  # Predator; the dropper forges a drop for the watcher's soldier (ignored),
+  # then drops its own with the drop_powerup key. Host + watcher must see it
+  # end (with time left, so not the 30 s expiry); the watcher keeps its own.
+  port=$(freeport udp)
+  timeout $(T 110) "$G" --headless -- --dedicated --fill=1 --smoke-bonus=predator --port $port --map 0 --mode 0 > "$OUT/net_drop_server.log" 2>&1 &
+  spid=$!
+  wait_ready "$OUT/net_drop_server.log"
+  sleep 1
+  timeout $(T 80) "$G" --headless -- --smoke-join --port $port --smoke-secs=34 --smoke-drop=dropper > "$OUT/net_drop_c1.log" 2>&1 &
+  c1=$!
+  wait_log "$OUT/net_drop_server.log" "FILL humans=1" 40
+  timeout $(T 70) "$G" --headless -- --smoke-join --port $port --smoke-secs=26 --smoke-drop=watcher > "$OUT/net_drop_c2.log" 2>&1
+  wait $c1 2>/dev/null; kill $spid 2>/dev/null; wait $spid 2>/dev/null
+  e=$(( $(errs "$OUT/net_drop_server.log") + $(errs "$OUT/net_drop_c1.log") + $(errs "$OUT/net_drop_c2.log") ))
+  hd=$(grep -m1 "^DROP-POWERUP peer .* dropped predator (host replica now '')" "$OUT/net_drop_server.log")
+  hf=$(grep -m1 "^DROP-POWERUP ignored: peer" "$OUT/net_drop_server.log")
+  nd=$(grep -c "^DROP-POWERUP peer" "$OUT/net_drop_server.log" || true)
+  fr=$(grep -m1 "SMOKE-DROP forged-result other_kind=predator" "$OUT/net_drop_c1.log")
+  dr=$(grep -m1 "SMOKE-DROP dropped .*toast='PREDATOR dropped' other_kind=predator" "$OUT/net_drop_c1.log")
+  we=$(grep -m1 "SMOKE-DROP-WATCH ended" "$OUT/net_drop_c2.log")
+  wl=$(echo "$we" | sed -n 's/.*left=\([0-9.]*\).*/\1/p')
+  if [ -n "$hd" ] && [ -n "$hf" ] && [ "${nd:-0}" = "1" ] && [ -n "$fr" ] && [ -n "$dr" ] && echo "$we" | grep -q "own=predator" \
+      && [ -n "$wl" ] && awk "BEGIN{exit !($wl >= 5)}" && [ "$e" = "0" ]; then
+    pass "C net drop power-up: $hd | forged ignored | $we"
+  else
+    fail "C net drop power-up: host='$hd' forged='$hf' drops=$nd c1='$(grep -h 'SMOKE-DROP' "$OUT/net_drop_c1.log" | tr '\n' ' ')' c2='$we' errors=$e"
+  fi
+;; esac
 case " $NETSEL " in *" killcam "*)
   # A bot "kills" the client: its kill cam rewind plays (~4.3 s) and the host
   # holds the respawn until the client says it's done; a self-kill (case
@@ -806,6 +836,7 @@ if has F; then
   ft weapons weapon_test.gd 175 WEAPON-TEST "every weapon hits (player + bots)"
   ft labels label_test.gd 100 LABEL-TEST "labels / explanations"
   ft kits kit_test.gd 100 KIT-TEST "medikits / grenade kits"
+  ft droppu drop_powerup_test.gd 110 DROP-POWERUP-TEST "drop the power-up (#303): every kind ends at once on the drop key (state restored, HUD pill gone, toast), nothing spawns, the box keeps its respawn timer, no-op with nothing active, touch DROP only while active, controls + strings"
   ft radio radio_test.gd 170 RADIO-TEST "team radio"
   ft vehicles vehicle_test.gd 100 VEHICLE-TEST "buggy: enter / drive / run over / gun / exit / wreck / respawn"
   ft botdrive vehicle_drive_test.gd 100 DRIVE-TEST "bots drive buggies to far-off goals"
