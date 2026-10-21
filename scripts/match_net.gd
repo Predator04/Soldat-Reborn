@@ -541,6 +541,8 @@ func net_objective_event(kind: String, team: int, who: String) -> void:
 	main.objective.emit(kind, team, who)
 	if kind == "capture" or kind == "point":
 		main._modes._stat_add(who, "c", 1)
+	elif kind == "bomb_plant" or kind == "bomb_defuse":
+		main._modes._stat_add(who.get_slice("@", 0), "c", 1)   # #304: plants / defuses count as captures
 	if kind == "capture" and is_instance_valid(main.player) and who == str(main.player.display_name):
 		Stats.record_event("capture")
 	if main.hud != null and main.hud.has_method("announce_objective"):

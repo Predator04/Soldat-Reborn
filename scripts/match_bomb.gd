@@ -143,15 +143,15 @@ func _auto_sites() -> Array:
 	var spots: Array = []
 	var nav = main.nav
 	if nav != null and not nav.is_empty():
-		# Along the bots' own route from the defenders' spawn to the
-		# attackers': A a quarter of the way, B about half way (on another
-		# level if there is one nearby), both on walkable nav nodes.
-		var route: PackedVector2Array = nav.path(blue, red)
+		# Along the attackers' own route from their spawn to the defenders'
+		# (so they can get there: routes may drop down one way): B 60 % and A
+		# 82 % of the way — the defenders' half — both on walkable nav nodes.
+		var route: PackedVector2Array = nav.path(red, blue)
 		if route.size() >= 4:
 			var total := 0.0
 			for i in range(1, route.size()):
 				total += route[i].distance_to(route[i - 1])
-			for frac in [0.24, 0.5]:
+			for frac in [0.82, 0.6]:
 				var want: float = total * frac
 				var acc := 0.0
 				var at: Vector2 = route[route.size() - 1]
@@ -177,31 +177,49 @@ func _auto_sites() -> Array:
 
 
 ## The standable nav node nearest to `at` that is at least 420 px from the
-## spots already taken (INF if none within 700 px).
+## spots already taken and that both sides' spawns can walk / jet to (the
+## route there may drop down one way). INF if none within 700 px.
 func _site_node(nav, at: Vector2, taken: Array) -> Vector2:
-	var best := Vector2.INF
-	var best_d := INF
 	var air: Dictionary = nav.get("_air") if nav.get("_air") != null else {}
 	var pts: PackedVector2Array = nav.get("_pts")
+	var cands: Array = []
 	for id in pts.size():
 		if air.has(id):
 			continue
 		var p: Vector2 = pts[id]
 		var d := p.distance_to(at)
-		if d > 700.0 or d >= best_d:
+		if d > 700.0:
 			continue
 		var far := true
 		for t in taken:
 			if p.distance_to(t) < 420.0:
 				far = false
-		if not far or p.x < SITE_W * 0.5 or p.x > main.MAP_W - SITE_W * 0.5:
-			continue
+		if far and p.x >= SITE_W * 0.5 and p.x <= main.MAP_W - SITE_W * 0.5:
+			cands.append([d, p])
+	cands.sort_custom(func(a, b) -> bool: return a[0] < b[0])
+	var froms: Array = []
+	for t in [main.TEAM_BLUE, main.TEAM_RED]:
+		var sl: Array = main._team_spawn_list(t)
+		if not sl.is_empty():
+			froms.append(sl[0])
+	var tries := 0
+	for c in cands:
+		var p: Vector2 = c[1]
 		var g := _ground_spot(p + Vector2(0, -10))
 		if g == Vector2.INF or absf(g.y - p.y) > 24.0:
 			continue
-		best = g
-		best_d = d
-	return best
+		tries += 1
+		if tries > 16:
+			break
+		var ok := true
+		for f in froms:
+			var path: PackedVector2Array = nav.path(f, p)
+			if path.size() == 0 or path[path.size() - 1].distance_to(p) > 60.0:
+				ok = false
+				break
+		if ok:
+			return g
+	return Vector2.INF
 
 
 ## First open, standable ground under `p` (scanning down from it), or INF.

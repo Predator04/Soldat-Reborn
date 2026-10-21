@@ -79,7 +79,7 @@ func _draw() -> void:
 	var num_font := UITheme.font("hud")
 	var rows := _rows()
 	var team_mode: bool = Settings.is_team_mode()
-	var show_caps: bool = Settings.game_mode in [Settings.MODE_CTF, Settings.MODE_INF, Settings.MODE_PM]
+	var show_caps: bool = Settings.game_mode in [Settings.MODE_CTF, Settings.MODE_INF, Settings.MODE_PM, Settings.MODE_BOMB]
 	var groups: Array = []
 	if team_mode:
 		for t in [1, 2]:

@@ -1981,12 +1981,13 @@ func _bomb_hold(on_floor: bool) -> bool:
 	if b == null:
 		return false
 	if _goal_label == "plant":
-		if b.carrier != self or str(b.site_at(global_position)) == "":
+		# Only in this round's site: the way to A may cross B.
+		if b.carrier != self or str(b.site_at(global_position)) != _bomb_site:
 			return false
 	elif global_position.distance_to(b.bomb_pos) > float(b.USE_RADIUS) - 12.0:
 		return false
-	elif float(b.fuse_t) > 12.0 and is_instance_valid(target) and _target_visible and not bool(target.get("dead")) \
-			and target.global_position.distance_to(global_position) < 360.0:
+	elif float(b.fuse_t) > 10.0 and is_instance_valid(target) and _target_visible and not bool(target.get("dead")) \
+			and target.global_position.distance_to(global_position) < 480.0:
 		return false   # clear the site first (unless the fuse is nearly out)
 	bomb_use = true
 	return true

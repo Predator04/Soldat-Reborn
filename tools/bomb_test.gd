@@ -81,6 +81,8 @@ func _run() -> void:
 	for k in ["game_mode", "custom_map_path", "bot_count", "vehicles", "map_index"]:
 		_saved[k] = _st.get(k)
 	if _only == "" or _only == "rules":
+		if not _i18n():
+			return
 		if not await _rules():
 			return
 	if _only == "" or _only == "bots":
@@ -143,6 +145,32 @@ func _kind_seen(kind: String) -> bool:
 		if str(e[0]) == kind:
 			return true
 	return false
+
+
+# ── strings ────────────────────────────────────────────────────────────────
+
+const KEYS := ["Bomb Defusal", "BOMB DEFUSAL", "Use / Plant / Defuse", "Bomb site A", "Bomb site B", "BOMB PLANTED AT %s",
+	"BOMB DETONATED", "HALFTIME — SIDES SWAP", "%s WIN THE ROUND — %s", "HOLD %s TO PLANT", "HOLD %s TO DEFUSE",
+	"NEXT WAVE %d", "PLANTING", "DEFUSING", "USE", "Bomb Defusal needs Bomb site %s (Objectives)."]
+
+
+func _i18n() -> bool:
+	var GI = load("res://scripts/game_info.gd")
+	var keys: Array = KEYS.duplicate()
+	keys.append(str(GI.mode_goal(10)))
+	keys.append(str(GI.mode_detail(10)))
+	for loc in ["es", "pt_BR", "de", "fr"]:
+		TranslationServer.set_locale(loc)
+		for k in keys:
+			if TranslationServer.translate(k) == k:
+				TranslationServer.set_locale("en")
+				return _fail("'%s' has no %s translation" % [k, loc])
+			if TranslationServer.translate(k) == "":
+				TranslationServer.set_locale("en")
+				return _fail("'%s' translates to nothing in %s" % [k, loc])
+	TranslationServer.set_locale("en")
+	_log.append("strings translate (es / pt_BR / de / fr)")
+	return true
 
 
 # ── rules ──────────────────────────────────────────────────────────────────

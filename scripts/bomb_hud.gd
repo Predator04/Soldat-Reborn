@@ -98,7 +98,7 @@ func _draw() -> void:
 		var urgent := ft < 10.0
 		var a := 1.0 if not urgent else 0.6 + 0.4 * sin(_t * 12.0)
 		var col := Color(UITheme.COL_ALERT, a)
-		_text_c(head, cx, 168.0, tr("BOMB %s  %d") % [str(b.planted_site), int(ceil(ft))], 26, col, 6)
+		_text_c(head, cx, 236.0, tr("BOMB %s  %d") % [str(b.planted_site), int(ceil(ft))], 26, col, 6)
 	# Between rounds: next round countdown.
 	elif str(b.phase) == "post":
 		var res: Dictionary = b.last_result
@@ -106,12 +106,12 @@ func _draw() -> void:
 		if not main.round_active:
 			nxt = ""
 		if nxt != "":
-			_text_c(caps, cx, 168.0, nxt, 16, UITheme.COL_TEXT_DIM, 3)
+			_text_c(caps, cx, 236.0, nxt, 16, UITheme.COL_TEXT_DIM, 3)
 		if res.has("team") and b.round_no == b.HALF_ROUNDS and not b.swapped:
-			_text_c(caps, cx, 188.0, tr("Sides swap at halftime"), 14, UITheme.COL_ACCENT_HI, 3)
+			_text_c(caps, cx, 256.0, tr("Sides swap at halftime"), 14, UITheme.COL_ACCENT_HI, 3)
 	# Respawn wave clock (alive; the death band has its own countdown).
 	if p != null and str(b.phase) != "post":
-		_text_c(caps, cx, 190.0 if str(b.phase) == "planted" else 168.0,
+		_text_c(caps, cx, 258.0 if str(b.phase) == "planted" else 236.0,
 			tr("NEXT WAVE %d") % maxi(1, int(ceil(float(b.wave_t)))), 12, Color(UITheme.COL_TEXT_DIM, 0.8), 3)
 	# Plant / defuse progress (yours, or a teammate's you're spectating near).
 	var prog := -1.0
