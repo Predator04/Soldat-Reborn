@@ -573,7 +573,8 @@ static func src_dust_yard() -> Dictionary:
 	_site(L, "site_b", 2140, 2560, 1900)
 	L.pad(1960, 1900)                             # yard -> warehouse roof
 	L.pad(2740, 1900)
-	L.p("block", 3250, 1820, 160, 160)            # the silo (jet onto it)
+	L.p("block", 3250, 1520, 160, 200)            # the silo top (jet onto it; walk under it)
+	L.prop("sandbags", 3250, 1900)
 	L.prop("crate_big", 3600, 1900)               # a container
 	L.prop("crate", 3800, 1900)
 	L.ground(4300, 4800, 1760, 140)               # red deck
@@ -586,7 +587,7 @@ static func src_dust_yard() -> Dictionary:
 	L.m["dom_points"] = [Vector2(1360, 1700), Vector2(2900, 1880), Vector2(4550, 1740)]
 	L.weapon("Steyr AUG", 1360, 1720)
 	L.weapon("Minimi", 2350, 1880)
-	L.weapon("Barrett", 3250, 1700)
+	L.weapon("Barrett", 3250, 1380)
 	L.weapon("LAW", 2350, 1580)
 	L.weapon("Spas-12", 3800, 1840)
 	L.add("medkits", 900, 1880)
