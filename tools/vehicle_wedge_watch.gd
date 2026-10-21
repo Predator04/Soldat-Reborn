@@ -336,14 +336,13 @@ func _sample_all(m: Node) -> void:
 			var dban: bool = float(v.get("drive_ban_t")) > 0.0
 			if dban and not bool(tr.get("dban", false)):
 				tr["bails"] = int(tr.get("bails", 0)) + 1
-				var why := "stuck"
-				if bool(v.get("_bd_drop")):
-					why = "drop"
-				else:
-					var gy: float = m._geom_ground_y(pos.x + signf(v.face) * 70.0, pos.y - 30.0)
-					if gy == INF or gy > ky:
-						why = "void"
-				_event("BAIL", v, "bot driver gave up here (drive ban, %s)" % why)
+				# (Stuck and bad-drop bails look alike by now: _bd_drop is
+				# cleared on the bail frame. Only the void ahead is told apart.)
+				var why := ""
+				var gy: float = m._geom_ground_y(pos.x + signf(v.face) * 70.0, pos.y - 30.0)
+				if gy == INF or gy > ky:
+					why = ", void ahead"
+				_event("BAIL", v, "bot driver gave up here (drive ban%s)" % why)
 			tr["dban"] = dban
 			var sup := supported(v)
 			if float(tr["t"]) >= 8.0 and int(tr["rep"]) == 0 and (not sup or absf(wrapf(tilt, -PI, PI)) > 1.22):
@@ -409,7 +408,13 @@ func _sample_all(m: Node) -> void:
 			_event("EMBED", v, "body inside terrain for 2 s crew=%s" % who)
 		tr["ev"] = ev
 		if _trace and d != null and (fmod(_t, 1.0) < 0.26 or OS.get_environment("VTRACE_ALL") != ""):
-			print("  t=%.1f #%d pos=%s v=%s tilt=%.2f drv=%s goal=%s ph=%s tgt=%s" % [_t, int(v.get("vehicle_id")), Vector2i(pos), Vector2i(v.velocity), tilt, who, str(d.get("_goal")), str(v.get("_bp_phase")), str(d.get("target").global_position) if d.get("target") != null and is_instance_valid(d.get("target")) else "-"])
+			var cb := v as CharacterBody2D
+			var cols := ""
+			for ci in cb.get_slide_collision_count():
+				var c := cb.get_slide_collision(ci)
+				cols += "%s@%s/%s " % [c.get_collider().get_class() if c.get_collider() != null else "?", Vector2i(c.get_position()), str(c.get_normal().snapped(Vector2(0.01, 0.01)))]
+			print("    floor=%s wall=%s ceil=%s cols=%s" % [cb.is_on_floor(), cb.is_on_wall(), cb.is_on_ceiling(), cols])
+			print("  t=%.1f #%d pos=%s v=%s tilt=%.2f drv=%s goal=%s ph=%s blk=%s vis=%s tgt=%s" % [_t, int(v.get("vehicle_id")), Vector2i(pos), Vector2i(v.velocity), tilt, who, str(d.get("_goal")), str(v.get("_bp_phase")), str(v.get("_bp_blocked")), str(d.get("_target_visible")), str(d.get("target").global_position) if d.get("target") != null and is_instance_valid(d.get("target")) else "-"])
 		_track[id] = tr
 
 

@@ -82,6 +82,7 @@ var _bp_backoff := 0.0             # bot pilot: backing away from such a wall (s
 var _bp_backoff_dir := 0.0
 var _bp_over_y := 0.0              # bot pilot: altitude to come back over that wall at
 var _bp_over_t := 0.0
+var _bp_land_here := false         # bot pilot: no way home from here, land in place
 # Cosmetic.
 var _rotor_ang := 0.0
 var _blink_t := 0.0
@@ -473,6 +474,7 @@ func set_seat(seat: int, s: Node2D) -> void:
 		_bp_blocked = 0.0
 		_bp_backoff = 0.0
 		_bp_over_t = 0.0
+		_bp_land_here = false
 
 
 func _eject(s: Node2D, i: int) -> void:
@@ -645,8 +647,14 @@ func _bot_pilot(delta: float) -> Vector2:
 	var mw: float = float(get_parent().get("MAP_W")) if get_parent() != null and get_parent().get("MAP_W") != null else 4800.0
 	var tx := pos.x
 	var want_y := (gy if gy != INF else pos.y + CRUISE_ALT) - CRUISE_ALT
+	var roof := _roof_above(pos)
+	# #300: a target out of sight above the roof over us (it sits on top of
+	# the rock we're under) can't be reached from here — hovering under the
+	# ceiling for it got nowhere; carry on toward the goal instead.
+	var cut_off: bool = tv and roof != -INF and goal != Vector2.INF and d.get("_target_visible") != true \
+			and roof + ROOF_CLEAR > (t as Node2D).global_position.y + 20.0
 	if _bp_phase == 1:
-		if tv:
+		if tv and not cut_off:
 			var tp: Vector2 = (t as Node2D).global_position
 			var sd := signf(pos.x - tp.x)
 			if sd == 0.0:
@@ -669,7 +677,7 @@ func _bot_pilot(delta: float) -> Vector2:
 				face = signf(tx - pos.x)
 	else:
 		# Landing: hurt -> back toward the pad first; otherwise right here.
-		if low_hp and absf(spawn_pos.x - pos.x) > 200.0:
+		if low_hp and absf(spawn_pos.x - pos.x) > 200.0 and not _bp_land_here:
 			tx = spawn_pos.x
 			face = signf(tx - pos.x) if absf(tx - pos.x) > 1.0 else face
 		else:
@@ -680,7 +688,7 @@ func _bot_pilot(delta: float) -> Vector2:
 	tx = clampf(tx, 160.0, mw - 160.0)
 	# Terrain ahead: stay well above the highest ground on the way.
 	var look := clampf(velocity.x * 0.9, -420.0, 420.0) + signf(tx - pos.x) * 90.0
-	var ahead := _ground_below(Vector2(pos.x + look, maxf(CEIL_Y, pos.y - 500.0)), 2200.0)
+	var ahead := _bot_ground(Vector2(pos.x + look, maxf(CEIL_Y, pos.y - 500.0)), 2200.0)
 	if ahead != INF and (_bp_phase == 1 or absf(tx - pos.x) > 120.0):
 		want_y = minf(want_y, ahead - 190.0)
 	want_y = maxf(want_y, CEIL_Y + 50.0)
@@ -694,7 +702,7 @@ func _bot_pilot(delta: float) -> Vector2:
 	if absf(look) > 1.0:
 		var reach := 150.0 + pow(maxf(0.0, velocity.x * wdir), 2.0) / (2.0 * H_ACCEL)
 		for hy in [-12.0, -30.0, -57.0]:
-			if not _ray_hit(pos + Vector2(0, hy), pos + Vector2(wdir * reach, hy)).is_empty():
+			if not _bot_hit(pos + Vector2(0, hy), pos + Vector2(wdir * reach, hy)).is_empty():
 				walled = true
 				break
 		if walled:
@@ -703,22 +711,25 @@ func _bot_pilot(delta: float) -> Vector2:
 	# #300: terrain overhead (caves, overhangs, shafts) caps the
 	# climb so the rotor stays clear of it — it used to climb into a cave
 	# ceiling chasing "above the ground ahead" and rotor-strike itself to death.
-	var roof := _roof_above(pos)
 	if roof != -INF:
 		want_y = maxf(want_y, roof + ROOF_CLEAR)
 	# A wall ahead it can't climb over from here. Under an overhang with open
 	# sky behind: back out for a moment, climb in the open and come round over
 	# the top. In a cave (a roof behind too) or when that keeps failing: set
 	# down and get out instead of hovering against the wall.
+	# #300: limping home and walled in under a roof — it hovered there for
+	# good; set down right here instead.
+	if walled and want_y > pos.y - 30.0 and _bp_phase == 2:
+		_bp_land_here = true
 	if walled and want_y > pos.y - 30.0 and _bp_phase == 1:
 		_bp_blocked += delta
 		if _bp_backoff <= 0.0 and _bp_blocked > 0.6:
 			var back := pos + Vector2(-wdir * 320.0, 0.0)
-			if _roof_above(back) == -INF and _ray_hit(pos + Vector2(0, -30), back + Vector2(0, -30)).is_empty():
+			if _roof_above(back) == -INF and _bot_hit(pos + Vector2(0, -30), back + Vector2(0, -30)).is_empty():
 				_bp_backoff = 1.6
 				_bp_backoff_dir = -wdir
 				# Come back over the top: the topmost surface just ahead.
-				var top := _ground_below(Vector2(pos.x + wdir * 160.0, CEIL_Y), 6000.0)
+				var top := _bot_ground(Vector2(pos.x + wdir * 160.0, CEIL_Y), 6000.0)
 				_bp_over_y = maxf((top if top != INF else pos.y) - 190.0, CEIL_Y + 50.0)
 				_bp_over_t = 7.0
 			else:
@@ -740,12 +751,17 @@ func _bot_pilot(delta: float) -> Vector2:
 		# way too: no way round from here, set down instead.
 		x_in = _bp_backoff_dir * 0.6
 		for hy in [-12.0, -30.0, -57.0]:
-			if not _ray_hit(pos + Vector2(0, hy), pos + Vector2(_bp_backoff_dir * 170.0, hy)).is_empty():
+			if not _bot_hit(pos + Vector2(0, hy), pos + Vector2(_bp_backoff_dir * 170.0, hy)).is_empty():
 				_bp_backoff = 0.0
 				_bp_over_t = 0.0
 				_bp_blocked = 99.0
 				x_in = 0.0
 				break
+	# #300: set down under a roof too low to lift off from (want_y capped at
+	# its own height): no flight from here — give up instead of idling on
+	# the ground with the rotor running.
+	if _bp_phase == 1 and is_on_floor() and want_y > pos.y - 25.0:
+		_bp_blocked += delta * 2.0
 	if _bp_blocked > 6.0 and _bp_phase == 1:
 		_bp_phase = 2
 		_bp_t = 0.0
@@ -766,15 +782,34 @@ func _bot_pilot(delta: float) -> Vector2:
 
 ## Bot pilot: the lowest terrain over the rotor disc (rays up from just past
 ## either blade tip, mid-blade and the hub — a shaft narrower than the disc
-## counts as a roof), -INF when the sky above is open.
+## counts as a roof), -INF when the sky above is open. The rays start at skid
+## height: one starting inside a roof the rotor already touches finds nothing.
 func _roof_above(pos: Vector2) -> float:
 	var roof := -INF
 	for dx in [-ROTOR_R - 26.0, -ROTOR_R * 0.5, 0.0, ROTOR_R * 0.5, ROTOR_R + 26.0]:
-		var a: Vector2 = pos + Vector2(dx, -40.0)
-		var h := _ray_hit(a, a + Vector2(0.0, -ROOF_LOOK))
+		var a: Vector2 = pos + Vector2(dx, -8.0)
+		var h := _bot_hit(a, a + Vector2(0.0, -ROOF_LOOK))
 		if not h.is_empty():
 			roof = maxf(roof, float((h.position as Vector2).y))
 	return roof
+
+
+## #300: bot-pilot terrain queries see everything the body collides with —
+## players-only terrain (layer 3) too: on Cobra the heli hovered for good
+## under a players-only slab its wall / roof rays (terrain mask 1) missed.
+## Gameplay rays (rotor strikes, landing, boarding) keep mask 1.
+func _bot_hit(a: Vector2, b: Vector2) -> Dictionary:
+	_ray.collision_mask = collision_mask
+	var h := _ray_hit(a, b)
+	_ray.collision_mask = 1
+	return h
+
+
+func _bot_ground(from: Vector2, depth: float) -> float:
+	_ray.collision_mask = collision_mask
+	var g := _ground_below(from, depth)
+	_ray.collision_mask = 1
+	return g
 
 
 func _bot_leave(d: Node) -> void:
