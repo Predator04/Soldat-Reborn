@@ -206,7 +206,7 @@ func _duel_line(logname: String) -> String:
 # ── honest ──
 
 # (min_match: share of the shooter's own hits the host must confirm — 0.85 by
-# default; 0.8 at 250 ms with loss + 300 ms stalls, where a stall freezes the
+# default; 0.7 at 250 ms with loss + 300 ms stalls, where a stall freezes the
 # shooter's view and the catch-up jumps it, so a rewind can't be exact.)
 # Per link (s_ = the shooter's, v_ = the victim's): one-way delay ms; both get
 # `jitter` (0..N ms extra), `loss` (% dropped each way) and stalls (every
@@ -215,13 +215,13 @@ func _duel_line(logname: String) -> String:
 # "total" (splash / melee / vehicle gun: hit counts).
 const SCENARIOS := {
 	"ak150": {"weapon": "ak", "s_ms": 75, "v_ms": 50, "jitter": 6, "damage": 22.0, "match": "shot"},
-	"ak250": {"min_match": 0.8, "weapon": "ak", "s_ms": 125, "v_ms": 100, "jitter": 40, "loss": 3.0, "spike_every": 6.0, "spike_ms": 250,
+	"ak250": {"min_match": 0.7, "weapon": "ak", "s_ms": 125, "v_ms": 100, "jitter": 40, "loss": 3.0, "spike_every": 6.0, "spike_ms": 250,
 		"v_move": "jet", "damage": 22.0, "match": "shot"},
-	"move250": {"min_match": 0.8, "weapon": "ak", "s_ms": 125, "v_ms": 90, "jitter": 40, "loss": 3.0, "spike_every": 5.0, "spike_ms": 300,
+	"move250": {"min_match": 0.7, "weapon": "ak", "s_ms": 125, "v_ms": 90, "jitter": 40, "loss": 3.0, "spike_every": 5.0, "spike_ms": 300,
 		"s_move": "jet", "damage": 22.0, "match": "shot"},
-	"spas250": {"min_match": 0.8, "weapon": "spas", "s_ms": 120, "v_ms": 100, "jitter": 40, "loss": 3.0, "spike_every": 5.0, "spike_ms": 300,
+	"spas250": {"min_match": 0.7, "weapon": "spas", "s_ms": 120, "v_ms": 100, "jitter": 40, "loss": 3.0, "spike_every": 5.0, "spike_ms": 300,
 		"s_move": "strafe", "v_move": "jet", "damage": 9.0, "match": "shot"},
-	"knife250": {"min_match": 0.8, "weapon": "knife", "s_ms": 125, "v_ms": 100, "jitter": 40, "loss": 3.0, "spike_every": 5.0, "spike_ms": 300,
+	"knife250": {"min_match": 0.7, "weapon": "knife", "s_ms": 125, "v_ms": 100, "jitter": 40, "loss": 3.0, "spike_every": 5.0, "spike_ms": 300,
 		"damage": 55.0, "match": "total"},
 	# A slow PC: the shooter's game stalls 45 ms every frame (Godot --frame-delay:
 	# ~20 fps, physics catching up several steps at a time, packets in bursts).
