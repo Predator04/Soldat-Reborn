@@ -29,6 +29,8 @@ All notable changes to Soldat Reborn.
 - **Abandoned planes go home.** A plane a bot pilot left (bailed out over its goal, or gave up on a take-off) and that came to rest somewhere is back on its spot about 8 seconds later instead of sitting there for a minute.
 - **Bots no longer get flung around by jump pads they're only walking past** on Maker levels: they hop over a pad that isn't on their way up, and pick routes that don't cross pads when there's a reasonable alternative. Before, a bot crossing a pad got launched — often again and again, bouncing in place (a bot that lands on a pad it doesn't want now steps off it).
 
+## [1.38.1] — 2026-10-20 — Hotfix
+
 ### Fixed
 - **Buggies no longer get wedged at the Ascent tunnel mouth (#299).** Bots drove the blue buggy off the second hill's plateau into the narrow slot between its cliff and the tunnel mountain, where it hung nose-up against the rock every match (and bots kept climbing back into it, so it never went home); the red buggy ran into the tunnel's dead end right under it. Now any buggy or tank that is stuck in one spot for 4 seconds without a floor under it (or tipped over) is sent back to its spawn, crewed or empty — anyone inside steps out first, clear of the rock. Bot drivers brake before a drop that would land them on a face too steep to stand on and get out, and bots leave a vehicle they gave up on (stuck, or at a drop like that) alone until it has driven home. Helicopters and planes are not affected; vehicles that are moving or parked on the ground are never touched.
 
