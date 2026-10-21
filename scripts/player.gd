@@ -2013,7 +2013,7 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_
 		hold = chk["hold"]
 		rw_shot = HostHits.rewind_from_view(view_ms, _owner_rtt())
 		if OS.get_cmdline_user_args().has("--hosthits-log"):
-			print("HOSTRECV shot=%d rewind=%d by=%s view_age=%d rtt=%d" % [base_proj_id, rw_shot, display_name, Time.get_ticks_msec() - view_ms if view_ms > 0 else -1, _owner_rtt()])
+			print("HOSTRECV shot=%d rewind=%d by=%s view_age=%d rtt=%d origin=%s" % [base_proj_id, rw_shot, display_name, Time.get_ticks_msec() - view_ms if view_ms > 0 else -1, _owner_rtt(), _origin_note])
 	if not _net_accept("net_shoot", [shot_pos, dirs, weapon_i, base_proj_id, view_ms, stamp]):
 		return
 	_trust_note_attack()
@@ -2742,9 +2742,11 @@ func _host_shot_check(shot_pos: Vector2, dirs: PackedVector2Array, w: Dictionary
 		base = at_shot
 	var riding := _trust_riding()
 	var origin_wait := false
+	_origin_note = "riding"
 	if not riding:
 		# Beyond where its own timeline puts the body around that moment.
 		var off := g.origin_off(shot_pos, stamp)
+		_origin_note = "%.0f" % off if off != INF else "none, %.0f px from the body" % shot_pos.distance_to(_net_base_pos())
 		if off == INF:
 			# No state near that moment yet (its stream is running late): the
 			# shot's hits wait for one (`hold`) unless it is at the body anyway.
@@ -2753,6 +2755,8 @@ func _host_shot_check(shot_pos: Vector2, dirs: PackedVector2Array, w: Dictionary
 			# Just spawned / reset: the body may have moved to a spot the host
 			# hasn't heard about yet — refuse quietly (no flag) until it has.
 			if g.placed_recently():
+				if _hosthits_log():
+					print("HOSTORIGIN placed %s %.0f px off (%s)" % [wname, off, g.track_note(stamp)])
 				HostHits.count("refused_origin_quiet")
 				return no
 			if g.flag("origin", "%s fired %.0f px from its body (max 80)" % [wname, off]):
@@ -2823,6 +2827,13 @@ const AIM_HOLD_MS := 800
 # running seconds behind on a starved machine), wait this long for it.
 const STREAM_WAIT_MS := 5000
 
+
+var _origin_note := ""   # --hosthits-log: the last shot's origin check
+
+
+static func _hosthits_log() -> bool:
+	return OS.get_cmdline_user_args().has("--hosthits-log")
+
 func _resolve_aim(new_sample: bool) -> void:
 	if _trust == null:
 		_aim_pending.clear()
@@ -2842,13 +2853,18 @@ func _resolve_aim(new_sample: bool) -> void:
 		# the way, wait for them.
 		var behind: bool = st > 0 and _trust.track_newest() < st and waited < STREAM_WAIT_MS
 		# A muzzle with no state near its moment yet: once there is one, it
-		# must be at the body then (else, at the timeout, where it last was).
+		# must be at the body then — bounded across a gap in the stream by what
+		# the body could cover over it (else, at the timeout, where it last was).
 		var origin_off := 0.0
 		if h.has("origin"):
 			origin_off = _trust.origin_off(h["origin"], st)
 			if origin_off == INF and (waited < AIM_HOLD_MS or behind):
 				keep.append(h)
 				continue
+			if origin_off == INF:
+				origin_off = _trust.origin_off(h["origin"], st, TrustGuard.ORIGIN_GAP_MS)
+				if origin_off != INF:
+					HostHits.count("origin_gap")
 			if origin_off == INF:
 				origin_off = maxf(0.0, (h["origin"] as Vector2).distance_to(_net_base_pos()) - _net_vel.length() * 0.1)
 		var around: Array = _trust.aims_around(st) if st > 0 else [null, null]
@@ -2862,6 +2878,8 @@ func _resolve_aim(new_sample: bool) -> void:
 		if origin_off > 80.0:
 			h["done"] = true
 			h["ok"] = false
+			if _hosthits_log():
+				print("HOSTORIGIN held %s %.0f px off after %d ms (%s)" % [str(h["weapon"]), origin_off, waited, _trust.track_note(st)])
 			HostHits.count("refused_origin_quiet")
 			HostHits.count("aim_refused_hits", float((h["hits"] as Array).size()))
 			continue

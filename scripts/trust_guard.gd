@@ -315,7 +315,7 @@ func check_fuel(jetting: bool, reported: float, drain: float, regen: float, cap:
 # off this timeline by the shot's own stamp: a shot the network delayed (a lost
 # reliable packet re-sent a round trip later, a stall) is checked against its
 # own moment, not against whatever arrived since.
-const TRACK_MS := 1500
+const TRACK_MS := 3000
 const TRACK_AHEAD_MS := 150        # a shot newer than the newest state: extrapolate this far
 var _track: Array = []   # [gstamp, pos, vel, aim angle or INF], oldest first
 
@@ -353,10 +353,13 @@ func pos_at_stamp(stamp: int) -> Variant:
 ## (within ORIGIN_WINDOW_MS): each bounds the body to its position give or
 ## take what it could cover in between (its speed then, plus room to speed
 ## up), and the body had to satisfy both. INF: no sample that near.
+## `window`: a held shot settled after a gap in the stream (a stall, lost
+## packets) looks further either side — the bound just grows with the gap.
 const ORIGIN_WINDOW_MS := 500
+const ORIGIN_GAP_MS := 2500
 const ORIGIN_ACCEL := 600.0        # px/s of speed change allowed in between
 
-func origin_off(at: Vector2, stamp: int) -> float:
+func origin_off(at: Vector2, stamp: int, window := ORIGIN_WINDOW_MS) -> float:
 	if stamp <= 0 or _track.is_empty():
 		return INF
 	var i := _track_at(stamp)
@@ -366,7 +369,7 @@ func origin_off(at: Vector2, stamp: int) -> float:
 			continue
 		var e: Array = _track[k]
 		var dt := float(absi(int(e[0]) - stamp)) / 1000.0
-		if dt * 1000.0 > float(ORIGIN_WINDOW_MS):
+		if dt * 1000.0 > float(window):
 			continue
 		var reach := ((e[2] as Vector2).length() * 1.25 + ORIGIN_ACCEL) * dt
 		off = maxf(off, maxf(0.0, at.distance_to(e[1]) - reach))
@@ -390,6 +393,16 @@ func aims_around(stamp: int) -> Array:
 
 func track_newest() -> int:
 	return int(_track[-1][0]) if not _track.is_empty() else 0
+
+
+## For --hosthits-log: the kept timeline's span around `stamp`.
+func track_note(stamp: int) -> String:
+	if _track.is_empty():
+		return "track empty"
+	var i := _track_at(stamp)
+	var prev := int(_track[i][0]) - stamp if i >= 0 else 0
+	var nxt := int(_track[i + 1][0]) - stamp if i + 1 < _track.size() else 0
+	return "track %d..%d (%+d ms / %+d ms around the shot)" % [int(_track[0][0]) - stamp, int(_track[-1][0]) - stamp, prev, nxt]
 
 
 # ── aim ──
