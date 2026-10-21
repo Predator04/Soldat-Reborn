@@ -168,6 +168,8 @@ func amnesty(protect_ms: int = 3000, rtt_ms: int = 0) -> void:
 	fired = false
 	_hist.clear()
 	_track.clear()
+	for w in _stamps.keys():
+		_rate_reset[w] = true
 	refill_all()
 	grenades = 3
 	fuel_shadow = 100.0
@@ -507,6 +509,7 @@ func rate_check(wname: String, rate: float) -> int:
 ## (RATE_BUNCHED: quiet) — see clock_note.
 const FRAME_SLACK_MS := 18        # one physics frame of rounding
 var _stamps: Dictionary = {}      # weapon name -> stamp of the last accepted shot
+var _rate_reset: Dictionary = {}  # weapon name -> true: may fire once early (round reset)
 
 
 func stamp_check(peer: int, wname: String, rate: float, stamp: int) -> int:
@@ -514,9 +517,11 @@ func stamp_check(peer: int, wname: String, rate: float, stamp: int) -> int:
 		return RATE_FAST
 	if _stamps.has(wname) and stamp - int(_stamps[wname]) < int(rate * 1000.0) - FRAME_SLACK_MS:
 		# (A round reset zeroes the owner's cooldown — `restore_for_round` —
-		# so a trigger held through it fires again at once: not a cheat.)
-		if Time.get_ticks_msec() >= amnesty_until_ms:
+		# so a trigger held through it fires again at once: one early shot
+		# per weapon, inside the reset's grace, is not a cheat.)
+		if Time.get_ticks_msec() >= amnesty_until_ms or not _rate_reset.has(wname):
 			return RATE_FAST
+		_rate_reset.erase(wname)
 		HostHits.count("rate_reset")
 	if not clock_ok(peer, stamp):
 		HostHits.count("refused_clock")
