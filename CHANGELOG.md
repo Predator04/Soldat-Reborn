@@ -4,11 +4,11 @@ All notable changes to Soldat Reborn.
 
 ## [Unreleased]
 
+## [1.39.0] — 2026-10-21 — Featured levels
+
 ### Added — drop your power-up (#303)
 - **You can now drop the power-up you're carrying (#303).** Press **B** (gamepad: the **Share** button; Android: the small **DROP** button that shows up next to PRONE while you have one). Dropping simply ends it — nothing is left on the ground, so nobody (you included) can pick it back up for a fresh 30 s. Predator and Berserker stop at once (no more see-through look or knife lock, your previous weapon comes back), the Bulletproof Vest stops halving damage, and Cluster Grenades go back to the grenade type you had before. The box you took it from still comes back on its usual timer. You carry one power-up at a time, so drop ends that one; with none active the key does nothing. A short "PREDATOR dropped" toast confirms it and the power-up timer disappears. Rebind it under Settings → Controls (Combat); it's also listed in the in-match controls help (H).
 - Online it's the server's call, like picking one up: it checks the request is for your own soldier and only while you have a power-up, then ends it for everyone.
-
-## [1.39.0] — 2026-10-21 — Featured levels
 
 ### Fixed — vehicles (#302)
 - **Bot drivers stop at the end of the road instead of driving into the trap there (#302).** A bot at the wheel now looks ahead along the ground for a slope too steep for the wheels, a crack the wheels would drop into, a drop the vehicle would wedge in or couldn't drive back up from, or the void, brakes in time and gets out to carry on on foot — the vehicle stays parked there, ready for someone heading the other way. Bots also only take a vehicle that has a real stretch of road toward where they are going. Before, they drove into the same spots on Viet, Warehouse, Laos, Lanubya, Shau, Star, Triumph and Outpost every life, got stuck, gave up and the vehicle was sent home.
