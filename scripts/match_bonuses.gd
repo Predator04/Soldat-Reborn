@@ -76,6 +76,11 @@ func _spawn_bonus_boxes_init() -> void:
 		else (main._map.get("bot_spawns", []) as Array).duplicate()
 	spots.shuffle()
 	var count: int = mini(BONUS_MAX_SLOTS, spots.size())
+	# Test hosts (--smoke-no-bonus, tools/hosthits_test.gd): no random bonus
+	# crates — a Berserker knife or Predator speed would change the scripted
+	# duel's numbers. Kits stay.
+	if OS.get_cmdline_user_args().has("--smoke-no-bonus"):
+		count = 0
 	for i in count:
 		# Lift each slot a bit above the ground so the crate reads floating and
 		# isn't clipped by the terrain body.
