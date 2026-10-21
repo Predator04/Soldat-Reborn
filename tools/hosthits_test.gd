@@ -238,7 +238,9 @@ const SCENARIOS := {
 		"map": "Lagrange", "args": "--smoke-near-vehicle --smoke-offsets=-440,-180"},
 	"buggy": {"weapon": "buggy", "s_ms": 75, "v_ms": 50, "jitter": 20, "loss": 1.0, "damage": 14.0, "match": "total",
 		"map": "Lagrange", "args": "--smoke-near-vehicle --smoke-offsets=-350,0"},
-	"drive": {"weapon": "ak", "s_ms": 80, "v_ms": 60, "jitter": 20, "v_move": "drive", "damage": 22.0, "match": "shot",
+	# (A driven target: its copies extrapolate a 20 Hz vehicle stream, so the
+	# shooter's screen and the host's rewind agree a little less closely.)
+	"drive": {"weapon": "ak", "s_ms": 80, "v_ms": 60, "jitter": 20, "v_move": "drive", "damage": 22.0, "match": "shot", "min_match": 0.75,
 		"map": "Lagrange", "args": "--smoke-near-vehicle --smoke-offsets=0,-450"},
 	"jip": {"weapon": "ak", "s_ms": 100, "v_ms": 50, "jitter": 25, "loss": 1.0, "damage": 22.0, "match": "shot", "jip": true},
 }
@@ -480,7 +482,7 @@ func _sc_judge(r: Dictionary) -> Array:
 			info.append("%s pred=%d host=%d matched=%d extra=%d" % [tag, np, nh, both, extra])
 			if np < need:
 				bad.append("%s: too few predicted hits to judge (%d)" % [tag, np])
-			elif float(both) < 0.85 * np:
+			elif float(both) < float(sc.get("min_match", 0.85)) * np:
 				bad.append("%s: host confirmed only %d of %d predicted hits" % [tag, both, np])
 			# (Pellets: eight edges a shot; the host's box is grown 3 px, so a
 			# shotgun gets a few more grazing pellets than its screen showed.)
