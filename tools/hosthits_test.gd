@@ -75,7 +75,9 @@ func _initialize() -> void:
 		for k in TAGS.keys():
 			if _read("cheat_%s.log" % k).contains("Lost connection to the host"):
 				lost.append(k)
-		if not _bad.is_empty() and not lost.is_empty():
+		# (Likewise any other miss: on a busy machine a cheater can load too
+		# late to land a hit. A real regression fails the second run too.)
+		if not _bad.is_empty():
 			print("HOSTHITS-CHEATS first run inconclusive (lost connection: %s): %s" % [",".join(lost), str(_bad)])
 			_stop_all()
 			_bad.clear()

@@ -157,12 +157,18 @@ func net_m2_fire(m2_id: int, muzzle: Vector2, aim_dir: Vector2, shooter_team: in
 ## no faster than the gun fires — by the shooter's game clock (`stamp`, as for
 ## personal weapons: a clump the network delivered at once still shows its
 ## real spacing), else a token bucket. Refusals are counted on the shooter.
-func _gun_ok(shooter: Node, gun: String, rate: float, muzzle: Vector2, at: Vector2, reach: float, stamp := 0) -> bool:
+## `v`: the vehicle — its muzzle may be by anywhere its copy here has been
+## over the last round trip + 0.6 s (a copy pulled back to the stream after a
+## reset or a dropped packet is no reason to refuse the driver's rounds).
+func _gun_ok(shooter: Node, gun: String, rate: float, muzzle: Vector2, at: Vector2, reach: float, stamp := 0, v: Node = null) -> bool:
 	var g = shooter.get("_trust")
 	if g == null:
 		return true
-	if muzzle.distance_to(at) > reach:
-		if g.flag("origin", "%s fired %.0f px from the gun" % [gun, muzzle.distance_to(at)]):
+	var off := muzzle.distance_to(at)
+	if off > reach and v != null and v.has_method("min_dist_recent"):
+		off = minf(off, float(v.min_dist_recent(muzzle, 600 + int(main._net.peer_rtt_ms(_peer_of(shooter))))))
+	if off > reach:
+		if g.flag("origin", "%s fired %.0f px from the gun (max %.0f; muzzle (%.0f, %.0f), gun (%.0f, %.0f))" % [gun, off, reach, muzzle.x, muzzle.y, at.x, at.y]):
 			shooter._trust_force_death("shots (%s)" % gun)
 		return false
 	var rc: int = g.stamp_check(int(shooter.get_multiplayer_authority()), gun, rate, stamp) if stamp > 0 else g.rate_check(gun, rate)
@@ -379,7 +385,7 @@ func net_vehicle_fire(vid: int, muzzle: Vector2, dir: Vector2, stamp: int = 0) -
 	if Net.is_networked() and Net.is_host():
 		var snd := main.multiplayer.get_remote_sender_id()
 		if snd != 0 and snd != main.multiplayer.get_unique_id() and snd == _peer_of(shooter) \
-				and not _gun_ok(shooter, "%s gun" % str(v.get("kind")), float(v.get("GUN_RATE")), muzzle, (v as Node2D).global_position, _gun_reach(v, float(v.get("FIRE_REACH")), shooter), stamp):
+				and not _gun_ok(shooter, "%s gun" % str(v.get("kind")), float(v.get("GUN_RATE")), muzzle, (v as Node2D).global_position, _gun_reach(v, float(v.get("FIRE_REACH")), shooter), stamp, v):
 			return
 	if _vehicle_relay("net_vehicle_fire", [vid, muzzle, dir, stamp], _peer_of(shooter)):
 		return
@@ -450,7 +456,7 @@ func net_vehicle_fire_seat(vid: int, seat: int, muzzle: Vector2, dir: Vector2, s
 			# #266: spacing by the pilot's game clock when it says (a stall
 			# bunching two salvos is no reason to drop one), else arrivals.
 			if stamp > 0:
-				if not _gun_ok(shooter, "%s rockets" % str(v.get("kind")), float(v.seat_fire_rate(seat)) if v.has_method("seat_fire_rate") else 3.0, muzzle, (v as Node2D).global_position, _gun_reach(v, maxf(120.0, float(v.get("FIRE_REACH"))), shooter), stamp):
+				if not _gun_ok(shooter, "%s rockets" % str(v.get("kind")), float(v.seat_fire_rate(seat)) if v.has_method("seat_fire_rate") else 3.0, muzzle, (v as Node2D).global_position, _gun_reach(v, maxf(120.0, float(v.get("FIRE_REACH"))), shooter), stamp, v):
 					return
 			elif not v.fire_seat_ready(seat):
 				return

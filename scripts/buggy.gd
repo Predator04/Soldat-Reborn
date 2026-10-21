@@ -406,7 +406,7 @@ func _record_hist() -> void:
 				break
 	var now := Time.get_ticks_msec()
 	_hist.append([now, global_position, _hull.global_transform if _hull != null else Transform2D()])
-	while _hist.size() > 2 and now - int(_hist[0][0]) > HostHits.HIST_MS:
+	while _hist.size() > 2 and now - int(_hist[0][0]) > maxi(HostHits.HIST_MS, 1600):
 		_hist.pop_front()
 
 
@@ -435,6 +435,17 @@ func pos_at(ms_ago: int) -> Vector2:
 	if float(h[1]) <= 0.0:
 		return _hist[i][1]
 	return (_hist[i][1] as Vector2).lerp(_hist[i + 1][1], float(h[1]))
+
+
+## Host: the nearest this vehicle's copy came to `p` over the last `ms` ms.
+func min_dist_recent(p: Vector2, ms: int) -> float:
+	var best := p.distance_to(global_position)
+	var since := Time.get_ticks_msec() - ms
+	for i in range(_hist.size() - 1, -1, -1):
+		if int(_hist[i][0]) < since:
+			break
+		best = minf(best, p.distance_to(_hist[i][1]))
+	return best
 
 
 ## Host: a remote human is aboard (its hits are rewound, so this hull is too).
