@@ -113,6 +113,14 @@ func _step(m: Node, p: Node, st) -> bool:
 	var state: String = STATES[_si]
 	if _frames == 0:
 		_draw0 = int(v.get("draws"))
+		# #293: the other vehicles start each state at rest on their spot —
+		# the test's own rockets / shells / wreck blasts legitimately shove
+		# a parked plane, which then rolled on through later states (seen:
+		# "tank moved 333px", the plane 1100 px). Cosmetics are judged below.
+		for i in _veh.size():
+			if _veh[i] != v and _veh[i].get("alive") == true:
+				(_veh[i] as Node2D).global_position = _home[i]
+				(_veh[i] as CharacterBody2D).velocity = Vector2.ZERO
 		_enter_state(m, p, v, state)
 	# Keep the camera (it follows the player) on this vehicle: off-screen
 	# vehicles skip their redraw.
@@ -133,6 +141,15 @@ func _step(m: Node, p: Node, st) -> bool:
 		return false
 	if int(v.get("draws")) <= _draw0:
 		_bad.append("%s %s q%d %s: never drawn" % [v.get("kind"), state, _passes[_pass][0], _passes[_pass][1]])
+	# Nothing but cosmetics ran in a non-firing state: no parked body may
+	# have been nudged in it (the vehicle under test: end of pass, as before).
+	if state in ["pristine", "dmg60", "dmg40", "dmg20", "dmg8"]:
+		for i in _veh.size():
+			if _veh[i] == v:
+				continue
+			var dd: float = (_veh[i] as Node2D).global_position.distance_to(_home[i])
+			if dd > 24.0:
+				_bad.append("%s moved %dpx while the %s was %s (pass %d)" % [_veh[i].get("kind"), int(dd), v.get("kind"), state, _pass])
 	_leave_state(m, p, v, state)
 	_frames = 0
 	_si += 1
@@ -173,6 +190,10 @@ func _leave_state(m: Node, p: Node, v: Node, state: String) -> void:
 			var i := _veh.find(v)
 			(v as Node2D).global_position = _home[i]
 			(v as CharacterBody2D).velocity = Vector2.ZERO
+			# ...with the engine off: a plane left with its lever open
+			# taxied on through the damage states (#293, "plane moved 63px").
+			if v.get("throttle") != null:
+				v.set("throttle", 0.0)
 		"respawn":
 			if v.get("alive") != true:
 				_bad.append("%s did not respawn" % v.get("kind"))
@@ -216,7 +237,9 @@ func _end_pass(m: Node, st) -> bool:
 	return false
 
 
-const _PROJECTILES := ["grenade.gd", "bullet.gd", "rocket.gd"]
+# Transient at a sweep's end: projectiles in flight, and the bot's body (the
+# test's live fire can kill it: dying husk + respawned body = +1 bot subtree).
+const _PROJECTILES := ["grenade.gd", "bullet.gd", "rocket.gd", "bot.gd"]
 
 
 ## Nodes in projectile subtrees (in flight, freed on impact / timeout).

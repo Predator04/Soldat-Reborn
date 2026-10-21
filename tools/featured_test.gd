@@ -378,6 +378,7 @@ func _check_bots(slug: String) -> bool:
 	var htf: Vector2 = src.get("htf_flag", Vector2.INF)
 	var htf_near := false
 	var boarded := 0
+	var planned := [0]   # bots whose current path rode a pad (#293)
 	var drv := {}
 	var frames := int(_secs * 60.0)
 	for _i in frames:
@@ -401,6 +402,8 @@ func _check_bots(slug: String) -> bool:
 				best[t] = minf(float(best[t]), gp.distance_to(enemy))
 			if htf != Vector2.INF and gp.distance_to(htf) < 140.0:
 				htf_near = true
+		if _i % 10 == 0:
+			_count_pad_plans(m, planned)
 		for v in get_nodes_in_group("vehicle"):
 			if is_instance_valid(v) and v.has_method("driver"):
 				var d = v.driver()
@@ -413,6 +416,8 @@ func _check_bots(slug: String) -> bool:
 	var extra := 0
 	while has_pads and hz != null and int(hz.bot_launches) == l0 and extra < 3600 and not _done:
 		await process_frame
+		if extra % 10 == 0:
+			_count_pad_plans(m, planned)
 		extra += 1
 	var moved := 0
 	for id in dist:
@@ -443,14 +448,18 @@ func _check_bots(slug: String) -> bool:
 	# one: since #294 bots no longer get launched just walking across a pad,
 	# so a pad that's a shortcut for humans (Twin Forts' valley pad up to the
 	# sky route) may rightly see no bot launches.
-	if has_pads and launches == 0 and _pad_on_route(m, src):
+	# #293: ...and a route that rides one is often fought over before anyone
+	# gets there (twin_forts ctf: 0-1 launches, half the runs none). Bots
+	# that steered along a planned pad ride count too; pad execution itself
+	# is gate F rtnav maker_pads / maker_padcross.
+	if has_pads and launches == 0 and planned[0] == 0 and _pad_on_route(m, src, mode):
 		probs.append("nobody used a jump pad")
 	var nveh: int = (src.get("vehicle_spawns", []) as Array).size() + (src.get("tank_spawns", []) as Array).size() \
 		+ (src.get("heli_spawns", []) as Array).size() + (src.get("plane_spawns", []) as Array).size()
 	if nveh > 0 and boarded == 0:
 		probs.append("no bot boarded a vehicle")
 	var line := "%s %s: moved %d/%d, kills %d, events %s, hazard deaths %d, pads %d, boarded %d" % [slug, mode, moved, dist.size(),
-		kills[0], str(events), hk, launches, boarded]
+		kills[0], str(events), hk, launches, boarded] + (" (pad rides planned %d)" % planned[0])
 	print("FEATURED-BOTS " + line)
 	if not probs.is_empty():
 		return _fail("%s %s: %s" % [slug, mode, "; ".join(probs)])
@@ -459,9 +468,25 @@ func _check_bots(slug: String) -> bool:
 
 
 ## Does any spawn -> objective route on this level's nav graph ride a pad?
-func _pad_on_route(m, src: Dictionary) -> bool:
+func _pad_on_route(m, src: Dictionary, mode := "") -> bool:
 	var nav = m.get("nav")
 	if nav == null or nav.is_empty() or not nav.has_pads():
+		return false
+	# CTF (#293): the objective routes are each team's spawns -> the ENEMY
+	# flag (twin_forts: own spawn -> own flag rode the valley pad, which no
+	# attacker takes, and half the runs saw no launch).
+	var flags: Array = src.get("ctf_flags", [])
+	var ts0: Variant = src.get("team_spawns", {})
+	if mode == "ctf" and flags.size() == 2 and typeof(ts0) == TYPE_DICTIONARY:
+		for t in ts0:
+			var enemy: Vector2 = _v2(flags[2 - int(t)]) if int(t) in [1, 2] else Vector2.INF
+			if enemy == Vector2.INF:
+				continue
+			for v in ts0[t]:
+				var pc: PackedVector2Array = nav.path(m._settle_on_ground(_v2(v)), m._settle_on_ground(enemy))
+				for i in range(pc.size() - 1):
+					if nav.pad_ride(pc[i], pc[i + 1]) >= 0:
+						return true
 		return false
 	var starts: Array = []
 	var ts: Variant = src.get("team_spawns", {})
@@ -489,3 +514,21 @@ func _pad_on_route(m, src: Dictionary) -> bool:
 
 func _v2(v) -> Vector2:
 	return v if v is Vector2 else Vector2(float(v[0]), float(v[1]))
+
+
+## Counts samples where a bot's remaining path rides a jump pad.
+func _count_pad_plans(m: Node, planned: Array) -> void:
+	var nav = m.get("nav")
+	if nav == null or not nav.has_method("has_pads") or not nav.has_pads():
+		return
+	for b in get_nodes_in_group("soldier"):
+		if not is_instance_valid(b) or b.get("bot_id") == null or bool(b.get("dead")):
+			continue
+		var pth = b.get("_path")
+		if not (pth is PackedVector2Array):
+			continue
+		var i0: int = maxi(1, int(b.get("_path_i")))
+		for i in range(i0, pth.size()):
+			if nav.pad_ride(pth[i - 1], pth[i]) >= 0:
+				planned[0] += 1
+				break
