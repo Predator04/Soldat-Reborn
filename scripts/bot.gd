@@ -2209,6 +2209,11 @@ func _think_drive() -> void:
 		# Only worth it if the buggy is on the way (not behind us).
 		if signf(_goal.x - vpos.x) != signf(_goal.x - global_position.x) and absf(vpos.x - global_position.x) > 80.0:
 			continue
+		# #302: and only with enough road toward the goal from there (not
+		# parked at a wall / drop it would stop at again right away).
+		if str(v.get("kind")) in ["buggy", "tank"] and v.has_method("road_ahead") \
+				and float(v.road_ahead(signf(_goal.x - vpos.x))) < minf(float(v.ROAD_USEFUL), absf(_goal.x - vpos.x) - 260.0):
+			continue
 		if dist < float(v.ENTER_RADIUS) - 6.0:
 			m.vehicle_bot_board(v, self, 0)
 		else:

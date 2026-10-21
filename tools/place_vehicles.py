@@ -537,11 +537,110 @@ def main_plane(argv):
     print("maps with planes: %d" % len(chosen))
 
 
+REACH_DX = 160.0          # a reachable nav node this close sideways ...
+REACH_DY = 60.0           # ... and this close in height = bots walk right past the spot
+REACH_SLACK = 700.0       # walk base -> spot -> other base at most this much longer than base -> base
+REACH_SAME = 600.0        # keep two spots of one kind this far apart
+
+
+def reach_mask(m, fname, shape):
+    """Raster cells (R px) with a nav node bots can walk to from every base
+    within REACH_DX / REACH_DY (not an air waypoint). Also returns the
+    NavReach and, per cell, the walk (px) from each base to that node."""
+    nav = NavReach(m, fname)
+    ny, nx = shape
+    ok = np.zeros(shape, bool)
+    walk = np.full((len(nav.dist) if nav.ok else 0,) + shape, np.inf, np.float32)
+    if not nav.ok:
+        return ok, nav, walk
+    air = set(json.load(open(os.path.join(MA.GAME, "assets", "nav", fname), encoding="utf-8")).get("air", []))
+    dx, dy = int(REACH_DX / R), int(REACH_DY / R)
+    for j, (px, py) in enumerate(nav.P):
+        if j in air:
+            continue
+        w = [dd.get(j) for dd in nav.dist]
+        if any(v is None for v in w):
+            continue
+        cx, cy = int(px / R), int(py / R)
+        y0, y1, x0, x1 = max(0, cy - dy), min(ny, cy + dy + 1), max(0, cx - dx), min(nx, cx + dx + 1)
+        ok[y0:y1, x0:x1] = True
+        for b, v in enumerate(w):
+            walk[b, y0:y1, x0:x1] = np.minimum(walk[b, y0:y1, x0:x1], v)
+    return ok, nav, walk
+
+
+def main_reach(argv):
+    """#302: move only the named buggy / tank spawns that bots can't walk to
+    (BAKED nav graph) to the nearest drivable spot they can — near the same
+    base, on the way between the bases. Every other spot stays as it is (a
+    full re-run moves the spots of the smoothed maps).
+
+        python3 tools/place_vehicles.py --reach [--dry] [--force] dusk:vehicle:0 outpost:tank:0:1400 ...
+
+    An optional 4th field lowers the minimum drivable run for that spot;
+    --force also moves spots bots can reach but never walk past (Rescue's
+    roof buggy).
+    """
+    dry = "--dry" in argv
+    jobs = {}
+    for a in argv:
+        if a.startswith("--"):
+            continue
+        f = a.split(":")
+        jobs.setdefault(f[0], []).append((f[1] + "_spawns", int(f[2]), float(f[3]) if len(f) > 3 else None))
+    for name, items in jobs.items():
+        f = os.path.join(MA.GAME, "assets", "maps", name + ".json")
+        m = json.load(open(f, encoding="utf-8"))
+        bs = bases(m)
+        changed = False
+        for key, idx, min_run in items:
+            w, h, mr = (TANK_W, TANK_H, TANK_MIN_RUN) if key == "tank_spawns" else (CAR_W, CAR_H, MIN_RUN)
+            mr = min_run or mr
+            sp, tot, edge_ok = runs(m, w, h)
+            ok, nav, walk = reach_mask(m, name + ".json", tot.shape)
+            old = m[key][idx]
+            if ok[int(old[1] / R) - 1, int(old[0] / R)] and "--force" not in argv:
+                print("%-10s %s[%d] %s already reachable" % (name, key, idx, old))
+                continue
+            cand = (tot >= mr) & edge_ok & ok
+            ys, xs = np.nonzero(cand)
+            pts = np.stack([xs * R, ys * R], 1)
+            keep = np.ones(len(xs), bool)
+            for k2 in ("vehicle_spawns", "tank_spawns", "heli_spawns", "plane_spawns"):
+                for j, a in enumerate(m.get(k2) or []):
+                    if k2 == key and j == idx:
+                        continue
+                    lim = REACH_SAME if k2 == key else 400.0
+                    keep &= np.hypot(pts[:, 0] - a[0], pts[:, 1] - a[1]) > lim
+            b = idx if idx < len(bs) else 0
+            wb = walk[b, ys, xs]
+            if len(bs) == 2:
+                wo = walk[1 - b, ys, xs]
+                d12 = nav.walks(bs[1 - b])[b] if nav.walks(bs[1 - b])[b] is not None else np.inf
+                keep &= (wb + wo) <= d12 + REACH_SLACK
+                keep &= wb <= wo   # on this base's half of the route
+            if not keep.any():
+                print("%-10s %s[%d] %s: NO reachable drivable spot" % (name, key, idx, old))
+                continue
+            cost = wb - np.minimum(tot[ys, xs], 2.0 * mr) * 0.3
+            cost[~keep] = np.inf
+            i = int(np.argmin(cost))
+            new = [round(float(pts[i, 0]), 1), round(float(pts[i, 1]), 1)]
+            print("%-10s %s[%d] %s -> %s (walk %d px from base %d, run %d px)" % (
+                name, key, idx, old, new, wb[i], b, tot[ys[i], xs[i]]))
+            m[key][idx] = new
+            changed = True
+        if changed and not dry:
+            json.dump(m, open(f, "w", encoding="utf-8"), indent=2)
+
+
 def main(argv):
     if "--heli" in argv:
         return main_heli(argv)
     if "--plane" in argv:
         return main_plane(argv)
+    if "--reach" in argv:
+        return main_reach(argv)
     dry = "--dry" in argv
     if "--builtin" in argv:
         for m in MA.builtin_maps():

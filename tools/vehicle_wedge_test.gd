@@ -6,12 +6,16 @@ extends SceneTree
 ## sent home within the time limit — with the player at the wheel stepped out
 ## clear of the rock — and so is an empty one, a tank, and a buggy whose tilt
 ## reads past 70 deg; a crewed buggy parked on flat ground, one on a slope and
-## the helicopter / plane (hover / fly in place) are never reset.
+## the helicopter / plane (hover / fly in place) are never reset. #302: from
+## the foot of the hill the road to the right ends at the slot's cliff edge
+## (ROAD_DROP, any speed), road_ahead toward it is too short to board for and
+## the road back down is long.
 ## Part 2: an Ascent CTF bot match with buggies — no ground vehicle stays
 ## wedged (still, no floor under it) longer than the reset allows.
 
 const SLOT := Vector2(1758, 1640)       # drop point above the Ascent slot
 const LIMIT := 7.0                      # WEDGE_TIME (4 s) + fall + slack
+const ROAD_FROM := Vector2(1350, 1770)  # #302: foot of the hill left of the slot
 
 var _match_secs := 180.0
 var _phase := 0
@@ -93,6 +97,30 @@ func _wedge_case(v: Node, label: String) -> int:
 		_bad.append("%s: still wedged after %.0fs at %s" % [label, LIMIT, Vector2i((v as Node2D).global_position)])
 		return 1
 	return 0
+
+
+# #302: from the foot of the hill left of the slot, the road to the right ends
+# at the cliff edge (a drop into the slot = ROAD_DROP) at any speed, and the
+# road back down to the left is long; road_ahead (what bots check before
+# boarding) agrees and is cached.
+func _road_case() -> void:
+	var v := _car1
+	var p := (v as Node2D).global_position
+	var edge_x := SLOT.x - 30.0
+	for spd in [0.0, 300.0, 520.0]:
+		var r: Vector2 = v.call("_road_walk", 1.0, 900.0, spd)
+		_log.append("road R@%d %s/%d" % [int(spd), ["clear", "wall", "drop", "void"][int(r.y)], int(r.x)])
+		if int(r.y) != int(v.get("ROAD_DROP")) or p.x + r.x > edge_x:
+			_bad.append("road at %d px/s: slot not seen (%s, %d px from x=%d)" % [int(spd), str(r), int(r.x), int(p.x)])
+	var back := float(v.call("road_ahead", -1.0))
+	var fwd := float(v.call("road_ahead", 1.0))
+	if back < float(v.get("ROAD_USEFUL")):
+		_bad.append("road back down the hill only %d px" % int(back))
+	if fwd >= float(v.get("ROAD_USEFUL")):
+		_bad.append("road_ahead toward the slot %d px (bots would board to drive into it)" % int(fwd))
+	if float(v.call("road_ahead", 1.0)) != fwd:
+		_bad.append("road_ahead not stable")
+	_log.append("road_ahead L=%d R=%d" % [int(back), int(fwd)])
 
 
 func _process(delta: float) -> bool:
@@ -195,6 +223,12 @@ func _process(delta: float) -> bool:
 					_bad.append("buggy on the slope not resting on a floor")
 				_log.append("parked ok (crewed@%s slope@%s)" % [Vector2i((_car0 as Node2D).global_position), Vector2i((_car1 as Node2D).global_position)])
 				_car0.call("clear_seat_of", _player)
+				_case = 5
+				_place(_car1, ROAD_FROM)
+			5:   # #302: the end of the road — the Ascent slot seen from the hill
+				if _t < 1.0:
+					return false
+				_road_case()
 				_phase = 3
 				_t = 0.0
 				_start(8)
@@ -226,10 +260,12 @@ func _process(delta: float) -> bool:
 			elif int(v.get("drive_ban_t")) == 0 and v.has_meta("ban_seen"):
 				v.remove_meta("ban_seen")
 		if _t >= _match_secs:
+			var stops := 0
 			for v in get_nodes_in_group("vehicle"):
 				if is_instance_valid(v) and v.get("wedge_resets") != null:
 					_resets += int(v.get("wedge_resets"))
-			_log.append("match %ds: longest wedge %.1fs, wedge resets %d, bot give-ups %d" % [int(_match_secs), _worst, _resets, _brakes])
+					stops += int(v.get("road_stops"))
+			_log.append("match %ds: longest wedge %.1fs, wedge resets %d, bot give-ups %d, road-end stops %d" % [int(_match_secs), _worst, _resets, _brakes, stops])
 			if _worst > LIMIT:
 				_bad.append("a buggy stayed wedged %.1fs in the bot match" % _worst)
 			return _end("")

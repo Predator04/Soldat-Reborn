@@ -13,6 +13,9 @@ extends SceneTree
 ##   OUT     a vehicle outside the world rect / below the kill line
 ##   RECOVER a #299 wedge reset fired (where from); IDLE an idle return (#259)
 ##   PBAN    a bot gave up on a plane (failed flight -> bot_ban_t)
+##   CRASH   aircraft destroyed with no attacker: "pilot aboard" or "empty for N s"
+##   BAIL    a bot driver gave up (drive ban: stuck / drop / void)
+##   STOP    #302: a bot driver got out at the end of the road (no ban)
 ##   ERR     any engine / script error logged during the run (needs Logger)
 ## Per run it also counts boardings per vehicle (driver / gunner seat) and
 ## the px driven crewed, so a vehicle nobody ever uses shows up (UNUSED).
@@ -276,7 +279,13 @@ func _sample_all(m: Node) -> void:
 			if pos.y > ky - 20.0 or pos.y > mh:
 				_event("OUT", v, "wrecked below the kill line y=%.0f (kill_y=%.0f)" % [pos.y, ky])
 			elif str(v.get("last_hitter")) == "" and kind in ["heli", "plane"]:
-				_event("CRASH", v, "destroyed with no attacker (crash) crew=%s" % ("y" if crewed else "-"))
+				# #302: a pilot aboard up to the last sample, or an empty plane /
+				# heli gliding on after a bot bailed out (the #300 "plane crashed
+				# into the wall" reports were all the latter).
+				var es: float = _t - float(tr.get("crew_t", -999.0))
+				_event("CRASH", v, "destroyed with no attacker (crash) %s" % ("pilot aboard" if es <= 0.3 else "empty for %.0f s" % es))
+		if crewed:
+			tr["crew_t"] = _t
 		if wr > int(tr["wr"]):
 			tr["rec"] += wr - int(tr["wr"])
 			_total_resets += wr - int(tr["wr"])
@@ -344,6 +353,12 @@ func _sample_all(m: Node) -> void:
 					why = ", void ahead"
 				_event("BAIL", v, "bot driver gave up here (drive ban%s)" % why)
 			tr["dban"] = dban
+			# #302: the bot driver got out at the end of the road (no ban).
+			var rst := int(v.get("road_stops"))
+			if rst > int(tr.get("rst", 0)):
+				tr["stops"] = int(tr.get("stops", 0)) + rst - int(tr.get("rst", 0))
+				_event("STOP", v, "bot driver got out at the end of the road")
+			tr["rst"] = rst
 			var sup := supported(v)
 			if float(tr["t"]) >= 8.0 and int(tr["rep"]) == 0 and (not sup or absf(wrapf(tilt, -PI, PI)) > 1.22):
 				tr["rep"] = 1
@@ -443,7 +458,7 @@ func _finish_run(m: Node) -> void:
 			"boards_drv": int(b[0]), "boards_gun": int(b[1]), "bot_boards": int(tr["bot_boards"]),
 			"crewed_s": float(tr["crewed_s"]), "dist": int(tr["dist"]), "max_from_spawn": int(tr["maxd"]),
 			"air_s": float(tr["air_s"]), "takeoffs": int(tr["takeoffs"]), "wrecks": int(tr["wrecks"]),
-			"wedge_resets": int(tr["rec"]), "idle_returns": int(tr["idle"]), "plane_bans": int(tr["pban"]), "bails": int(tr.get("bails", 0))})
+			"wedge_resets": int(tr["rec"]), "idle_returns": int(tr["idle"]), "plane_bans": int(tr["pban"]), "bails": int(tr.get("bails", 0)), "stops": int(tr.get("stops", 0))})
 	print("RUN map=%s %s mode=%d run=%d done (wedge_resets=%d events=%d errors=%d)%s" % [_key(_maps[_mi]), _map_name, _mode, _run, rs, _events.size(), errs.size(), at])
 	if _out != "":
 		var f: FileAccess

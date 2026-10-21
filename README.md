@@ -21,7 +21,7 @@ the classic had and more, with most of Soldat 2's feature list folded in.
 ### What's new in 1.39 — Featured levels
 
 - **8 featured levels built in** — LEVELS opens on a FEATURED tab (works offline): Twin Forts, Magma Crown, Skyline Tower, Iron Valley, The Bunker, Frostbite, Hollow Deep and Last Ridge. PLAY, HOST ONLINE or EDIT A COPY to learn how they're made; the Maker's New map can start from any of them.
-- **Vehicles never get stuck** — every map with vehicles was swept with bot matches: wedged buggies / tanks go home on their own, grenades and dropped guns can't fling vehicles out of the map anymore, and bot helicopters stay out of caves and from under overhangs.
+- **Vehicles never get stuck** — every map with vehicles was swept with bot matches: wedged buggies / tanks go home on their own, grenades and dropped guns can't fling vehicles out of the map anymore, and bot helicopters stay out of caves and from under overhangs. Bots now reach and use vehicles on Dusk, Moonshine, Outpost, Rescue and Laos, and stop driving into dead ends.
 - **Smarter bots** — they fly the planes on Fortress, land for the flag instead of dogfighting forever, ride jump pads on purpose (and don't get flung by ones they walk past), fight properly on contested Domination points and stop jetting into platforms above them.
 - **Movement course prone drop fixed** — forgiving timing, a PRESS X / PRONE cue, and messages that say exactly what went wrong. Going prone mid-air now works even while holding jump.
 - **Laggy players no longer get killed by the cheat checks** — a slow medikit heal or a hit that arrived late used to count as cheating online.
