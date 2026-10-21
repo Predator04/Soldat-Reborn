@@ -58,6 +58,7 @@ var _cook_want := 0.5
 var _voted := false
 var _seat_t := 0.0
 var _place_until := 0
+var _place_tries := 0
 var _done_file := ""
 var _done_check := 0.0
 var _done_at := -1.0
@@ -161,6 +162,7 @@ func _physics_process(delta: float) -> void:
 		_cook = -1.0
 		_seat_t = 0.0
 		_place_until = Time.get_ticks_msec() + 1200
+		_place_tries = 0
 		if cheat in ["partial", "godmode"]:
 			p.test_cheat = cheat
 		_equip(p)
@@ -176,8 +178,10 @@ func _physics_process(delta: float) -> void:
 		# A shooter waits (inside the host's spawn grace) until it sees its
 		# target, then takes a spot next to it; a victim takes a map spot.
 		if role != "shooter" or cheat in ["partial", "godmode"] or _target(m, p) != null or Time.get_ticks_msec() >= _place_until:
-			_place_until = 0
-			_place(m, p)
+			if _place(m, p):
+				_place_until = 0
+			else:
+				return
 		else:
 			return
 	_t += delta
@@ -233,7 +237,9 @@ func _solid(p: Node2D, a: Vector2, b: Vector2, mask: int) -> Dictionary:
 	return {}
 
 
-func _place(m: Node, p: Node2D) -> void:
+## Returns false to try again next frame: right after a map change the
+## level's collision may not be in the physics space yet (every probe misses).
+func _place(m: Node, p: Node2D) -> bool:
 	var mp: Dictionary = m.get("_map") if m.get("_map") != null else {}
 	var spots: Array = mp.get("bot_spawns", [])
 	# (--smoke-gap: both roles must pass the same one, they pick the spot
@@ -269,20 +275,23 @@ func _place(m: Node, p: Node2D) -> void:
 		spot_v = v
 		spot_s = sh
 		break
+	if spot_v == Vector2.INF and _place_tries < 30 and _ground(p, p.global_position.x, p.global_position.y) == Vector2.INF:
+		_place_tries += 1
+		return false
 	if role == "victim" or cheat in ["partial", "godmode"]:
 		if spot_v != Vector2.INF:
 			_put(p, spot_v)
 		else:
 			# No spot on this map: stay at the spawn (the shooter comes over).
 			_put(p, p.global_position)
-			print("SMOKE-DUEL no open spot found")
-		return
+			print("SMOKE-DUEL no open spot found (%d spots, ground here %s, tries %d)" % [spots.size(), str(_ground(p, p.global_position.x, p.global_position.y) != Vector2.INF), _place_tries])
+		return true
 	# A shooter takes the spot if its target is there, else goes next to the
 	# target wherever it is (any map).
 	var tgt := _target(m, p)
 	if spot_s != Vector2.INF and (tgt == null or tgt.global_position.distance_to(spot_v) < 260.0):
 		_put(p, spot_s)
-		return
+		return true
 	if tgt != null:
 		var tg := _ground(p, tgt.global_position.x, tgt.global_position.y)
 		var side := signf(offs.y - offs.x) if offs.y != offs.x else -1.0
@@ -303,14 +312,15 @@ func _place(m: Node, p: Node2D) -> void:
 			if absf(float(d)) > 190.0 and not _open_between(p, tg, sh2):
 				continue
 			_put(p, sh2)
-			return
+			return true
 		# Nowhere open near it: stand right by it.
 		if tg != Vector2.INF:
 			_put(p, tg + Vector2(-side * 40.0, 0.0))
 			print("SMOKE-DUEL placed by the target (no open spot near it)")
-			return
+			return true
 	_put(p, p.global_position)
 	print("SMOKE-DUEL no open spot found")
+	return true
 
 
 func _put(p: Node2D, at: Vector2) -> void:
