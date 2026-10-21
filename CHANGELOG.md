@@ -4,6 +4,9 @@ All notable changes to Soldat Reborn.
 
 ## [Unreleased]
 
+### Fixed
+- **Movement Course step 4 (Prone drop) is passable now (#301).** What went wrong for a real player: the steps before it teach jumping, and jumping off the ledge — especially holding jump for a full jump, as step 3 just taught — made every X press in the air silently undo itself (a held jump stood the soldier straight back up), so the step kept saying "TOO LONG — Press X in mid-air" however he pressed; even a prone that did register couldn't land in the ring after a jump. Pressing X just before the edge laid him down on the ledge so he crawled off and fell short, and only presses within ~0.37 s after leaving the ledge passed. Now holding jump in the air no longer cancels prone (only a fresh jump press does; on the ground jump still stands you up), a press up to 0.25 s before the edge counts as going prone the moment you leave it, the ring reaches a little further (prone up to ~0.45 s after the edge passes), the step says "don't jump", a big PRESS X / PRONE cue shows over the fall, and a miss says what happened: you jumped off, you went prone on the ledge, you went prone 0.52 s after the edge, X didn't register in the air, or a second X / jump press stood you up. Gate F `course` now sweeps the press timing (0.30 s before to 0.60 s after the edge), hop / jump approaches and double presses.
+
 ## [1.38.1] — 2026-10-20 — Hotfix
 
 ### Fixed
