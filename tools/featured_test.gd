@@ -438,7 +438,11 @@ func _check_bots(slug: String) -> bool:
 		"dm", "tdm", "gg":
 			if kills[0] == 0:
 				probs.append("no kills")
-	if has_pads and launches == 0:
+	# Pads are only required to see use when a route to an objective rides
+	# one: since #294 bots no longer get launched just walking across a pad,
+	# so a pad that's a shortcut for humans (Twin Forts' valley pad up to the
+	# sky route) may rightly see no bot launches.
+	if has_pads and launches == 0 and _pad_on_route(m, src):
 		probs.append("nobody used a jump pad")
 	var nveh: int = (src.get("vehicle_spawns", []) as Array).size() + (src.get("tank_spawns", []) as Array).size() \
 		+ (src.get("heli_spawns", []) as Array).size() + (src.get("plane_spawns", []) as Array).size()
@@ -451,3 +455,36 @@ func _check_bots(slug: String) -> bool:
 		return _fail("%s %s: %s" % [slug, mode, "; ".join(probs)])
 	_log.append("%s %s ok" % [slug, mode])
 	return true
+
+
+## Does any spawn -> objective route on this level's nav graph ride a pad?
+func _pad_on_route(m, src: Dictionary) -> bool:
+	var nav = m.get("nav")
+	if nav == null or nav.is_empty() or not nav.has_pads():
+		return false
+	var starts: Array = []
+	var ts: Variant = src.get("team_spawns", {})
+	if typeof(ts) == TYPE_DICTIONARY:
+		for t in ts:
+			for v in ts[t]:
+				starts.append(_v2(v))
+	for v in src.get("bot_spawns", []):
+		starts.append(_v2(v))
+	var goals: Array = []
+	for k in ["ctf_flags", "dom_points"]:
+		for v in src.get(k, []):
+			goals.append(_v2(v))
+	for k in ["htf_flag", "inf_flag", "rambo_pos"]:
+		if src.has(k):
+			goals.append(_v2(src[k]))
+	for a in starts:
+		for b in goals:
+			var pth: PackedVector2Array = nav.path(m._settle_on_ground(a), m._settle_on_ground(b))
+			for i in range(pth.size() - 1):
+				if nav.pad_ride(pth[i], pth[i + 1]) >= 0:
+					return true
+	return false
+
+
+func _v2(v) -> Vector2:
+	return v if v is Vector2 else Vector2(float(v[0]), float(v[1]))
