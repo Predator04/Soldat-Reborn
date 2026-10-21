@@ -318,8 +318,8 @@ func _check_ui() -> bool:
 	mk.open_new()
 	await _frames(2)
 	var rows: int = mk._new_list.get_child_count()
-	if not mk._new.visible or rows != 10:
-		return _fail("New map sheet: visible=%s rows=%d (want 10)" % [str(mk._new.visible), rows])
+	if not mk._new.visible or rows != LEVEL_COUNT + 2:
+		return _fail("New map sheet: visible=%s rows=%d (want %d)" % [str(mk._new.visible), rows, LEVEL_COUNT + 2])
 	(mk._new_list.find_child("Start_magma_crown", true, false) as Button).pressed.emit()
 	await _frames(2)
 	em = ed.get("_map")
