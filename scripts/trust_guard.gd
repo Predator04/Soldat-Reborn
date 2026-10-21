@@ -513,7 +513,11 @@ func stamp_check(peer: int, wname: String, rate: float, stamp: int) -> int:
 	if stamp <= 0:
 		return RATE_FAST
 	if _stamps.has(wname) and stamp - int(_stamps[wname]) < int(rate * 1000.0) - FRAME_SLACK_MS:
-		return RATE_FAST
+		# (A round reset zeroes the owner's cooldown — `restore_for_round` —
+		# so a trigger held through it fires again at once: not a cheat.)
+		if Time.get_ticks_msec() >= amnesty_until_ms:
+			return RATE_FAST
+		HostHits.count("rate_reset")
 	if not clock_ok(peer, stamp):
 		HostHits.count("refused_clock")
 		return RATE_BUNCHED
