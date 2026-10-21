@@ -47,6 +47,7 @@ const GHOST_AHEAD := 0.15     # s: the report may beat the ghost by this much
 const GHOST_AHEAD_MAX := 0.6  # s: ... or by what its reports account for, up to this
 var _g_reports := 0           # shooter's state reports received for this rocket
 var _g_born_ms := 0           # host: when the ghost started
+var g_late_ms := 0            # host: how late the shot itself arrived (a stall; TrustGuard.clock_late)
 var _ghost := false
 var _g_pos := Vector2.ZERO
 var _g_vel := Vector2.ZERO
@@ -175,7 +176,9 @@ func net_explode(pos: Vector2) -> void:
 	if _ghost and not _ghost_allows(pos):
 		_harmless = true
 		HostHits.count("refused_explosive")
-		_flag_shooter("explosive", "%s exploded %.0f px off its flight path" % [weapon_name, _ghost_dist(pos)])
+		_flag_shooter("explosive", "%s exploded %.0f px off its flight path (%.0f px from its start; ghost %d frames, %.2f s old, %d reports%s)" % [
+				weapon_name, _ghost_dist(pos), pos.distance_to(_g_path[0]) if not _g_path.is_empty() else -1.0, _g_path.size(),
+				float(Time.get_ticks_msec() - _g_born_ms) / 1000.0, _g_reports, (", shot %d ms late" % g_late_ms) + (", blocked" if _g_blocked else "")])
 	global_position = pos
 	_explode()
 
@@ -212,7 +215,9 @@ func _ghost_dist(p: Vector2) -> float:
 		# (No more than the wall-clock age + GHOST_AHEAD_MAX: spammed reports
 		# buy nothing; but a host whose own physics fell behind real time
 		# lets its ghost catch up that far.)
-		var wall := float(Time.get_ticks_msec() - _g_born_ms) / 1000.0
+		# (A shot a stall held back arrives with its flight already under way:
+		# the ghost's age counts from when it was really fired.)
+		var wall := float(Time.get_ticks_msec() - _g_born_ms + g_late_ms) / 1000.0
 		var ahead := clampf(minf(told, wall + GHOST_AHEAD_MAX) - float(_g_path.size()) / float(Engine.physics_ticks_per_second), GHOST_AHEAD, GHOST_AHEAD_MAX + 1.5)
 		pts.append_array(_ghost_ahead(ahead))
 	for i in pts.size():

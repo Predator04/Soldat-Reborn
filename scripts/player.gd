@@ -2070,6 +2070,8 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_
 			if not hold.is_empty():
 				r.hold = hold
 			r.rewind_ms = rw_shot
+			if _trust != null:
+				r.g_late_ms = TrustGuard.clock_late(get_multiplayer_authority(), stamp)
 			r.direction = bdir
 			r.speed = float(w["speed"])
 			r.damage = float(w["damage"]) * MatchConfig.mod_damage()

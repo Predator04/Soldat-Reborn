@@ -277,7 +277,7 @@ func check_move(pos: Vector2, world: Rect2, riding := false) -> String:
 		return ""
 	moves += 1
 	HostHits.count("refused_move")
-	print("TRUST move: %s" % moved)
+	print("TRUST move: %s (%.1f s after the last spawn / reset)" % [moved, float(now - amnesty_until_ms + SPAWN_GRACE_MS) / 1000.0])
 	_hist = [[now, pos]]
 	if moves >= MOVES_PER_LIFE:
 		return "movement (%s)" % moved
@@ -556,6 +556,15 @@ static func clock_note(peer: int, gstamp: int) -> void:
 	c[1] = now
 
 
+## How much later than its connection's best this game-clock moment reached
+## the host (ms, ≥ 0, ≤ `cap`): a stall held it back that long.
+static func clock_late(peer: int, gstamp: int, cap := 1000) -> int:
+	var c: Array = _clocks.get(peer, [])
+	if c.is_empty() or gstamp <= 0:
+		return 0
+	return clampi(int(float(c[0]) - float(gstamp - Time.get_ticks_msec())), 0, cap)
+
+
 static func clock_ok(peer: int, gstamp: int) -> bool:
 	var c: Array = _clocks.get(peer, [])
 	if c.is_empty():
@@ -571,12 +580,14 @@ static func clock_ok(peer: int, gstamp: int) -> bool:
 
 
 ## One round out of `slot`'s magazine (`mag` rounds; one round of slack).
-## `stamp` / `reload_secs`: a magazine run dry is full again once the owner
-## has gone 60 % of a reload without firing it (its game clock) — whether or
-## not the host heard its reload flag through a lossy or stalled stream.
+## `stamp` / `reload_secs`: a magazine is full again once the owner has gone
+## 60 % of a reload without firing it (its game clock) — whether or not the
+## host heard its reload flag through a lossy or stalled stream, and however
+## many rounds the host thought were left (a reload with one round in the
+## shadow's slack, then a full magazine, is honest).
 func take_round(slot: int, mag: int, stamp := 0, reload_secs := 0.0) -> bool:
 	var left: int = int(_mags.get(slot, mag))
-	if left <= -1 and stamp > 0 and _last_round.has(slot) \
+	if left < mag and stamp > 0 and _last_round.has(slot) \
 			and stamp - int(_last_round[slot]) >= maxi(200, int(reload_secs * 600.0)):
 		left = mag
 	if left <= -1:

@@ -59,6 +59,7 @@ var _voted := false
 var _seat_t := 0.0
 var _place_until := 0
 var _place_tries := 0
+var _place_from := 0   # (a few frames in: the level's collision is all in the physics space)
 var _ready_frames := 0     # frames the shooter wanted to fire
 var _blocked_frames := 0   # ...with level geometry between its gun and the target
 var _done_file := ""
@@ -164,6 +165,7 @@ func _physics_process(delta: float) -> void:
 		_cook = -1.0
 		_seat_t = 0.0
 		_place_until = Time.get_ticks_msec() + 1200
+		_place_from = Time.get_ticks_msec() + 60
 		_place_tries = 0
 		if cheat in ["partial", "godmode"]:
 			p.test_cheat = cheat
@@ -176,6 +178,8 @@ func _physics_process(delta: float) -> void:
 			"ammo":
 				p.weapons[AK]["mag"] = 999
 				p.ammo[AK] = 999
+	if _place_until > 0 and Time.get_ticks_msec() < _place_from:
+		return
 	if _place_until > 0:
 		# A shooter waits (inside the host's spawn grace) until it sees its
 		# target, then takes a spot next to it; a victim takes a map spot.
@@ -219,10 +223,30 @@ func _wdict(p: Node) -> Dictionary:
 	return p._active_weapon()
 
 
-## Feet on the ground near `x` (raycast down), or INF.
+## Feet on the ground near `x` (raycast down), or INF. The ray may start
+## inside the level (it then stops on a seam inside the rock): a spot needs a
+## soldier's height of open air above it.
 func _ground(p: Node2D, x: float, y: float) -> Vector2:
-	var hit := _solid(p, Vector2(x, y - 300.0), Vector2(x, y + 600.0), 1 | 4)
-	return (hit["position"] as Vector2) + Vector2(0, -1) if not hit.is_empty() else Vector2.INF
+	var from := Vector2(x, y - 300.0)
+	var to := Vector2(x, y + 600.0)
+	var space := p.get_world_2d().direct_space_state
+	for _i in 8:
+		var hit := _solid(p, from, to, 1 | 4)
+		if hit.is_empty():
+			return Vector2.INF
+		var at: Vector2 = (hit["position"] as Vector2) + Vector2(0, -1)
+		var open := true
+		for h in [-3.0, -12.0, -22.0, -30.0]:
+			var q := PhysicsPointQueryParameters2D.new()
+			q.position = at + Vector2(0, h)
+			q.collision_mask = 1 | 4
+			for r in space.intersect_point(q, 4):
+				if r.get("collider") is StaticBody2D:
+					open = false
+		if open:
+			return at
+		from = (hit["position"] as Vector2) + Vector2(0, 2)
+	return Vector2.INF
 
 
 ## First hit of the level itself (pickups, bonus boxes and dropped weapons
@@ -250,6 +274,7 @@ func _place(m: Node, p: Node2D) -> bool:
 	# +off_v and the shooter at +off_s px (--smoke-offsets=V,S).
 	var gap := 190.0
 	var offs := Vector2(INF, INF)
+	var near_vehicle := false
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--smoke-gap="):
 			gap = float(a.substr(12))
@@ -259,24 +284,38 @@ func _place(m: Node, p: Node2D) -> bool:
 				offs = Vector2(float(parts[0]), float(parts[1]))
 		elif a == "--smoke-near-vehicle":
 			spots = mp.get("vehicle_spawns", spots)
+			near_vehicle = true
 	if offs.x == INF:
 		offs = Vector2(40.0, 40.0 - gap)
-	# The map's first open spot (both roles find the same one).
+	# The map's first open spot (both roles find the same one): at a spawn
+	# point, else shifted along the ground from one (most maps' spawns sit on
+	# a ledge or a slope).
 	var spot_v := Vector2.INF
 	var spot_s := Vector2.INF
-	for s in spots:
-		var base: Vector2 = s if s is Vector2 else Vector2(float(s[0]), float(s[1]))
-		var v := _ground(p, base.x + offs.x, base.y)
-		var sh := _ground(p, base.x + offs.y, base.y)
-		if v == Vector2.INF or sh == Vector2.INF or absf(v.y - sh.y) > 40.0:
-			continue
-		if not _los(p, v, sh):
-			continue
-		if gap > 190.0 and not _open_between(p, v, sh):
-			continue
-		spot_v = v
-		spot_s = sh
-		break
+	var shifts: Array = [0.0]
+	if not near_vehicle:
+		for k in range(1, 9):
+			shifts.append(60.0 * k)
+			shifts.append(-60.0 * k)
+	for dx in shifts:
+		for s in spots:
+			var base: Vector2 = s if s is Vector2 else Vector2(float(s[0]), float(s[1]))
+			base.x += float(dx)
+			var v := _ground(p, base.x + offs.x, base.y)
+			var sh := _ground(p, base.x + offs.y, base.y)
+			if v == Vector2.INF or sh == Vector2.INF or absf(v.y - sh.y) > 40.0:
+				continue
+			if not _los(p, v, sh):
+				continue
+			if not near_vehicle and not _flat_around(p, v):
+				continue
+			if gap > 190.0 and not _open_between(p, v, sh):
+				continue
+			spot_v = v
+			spot_s = sh
+			break
+		if spot_v != Vector2.INF:
+			break
 	if spot_v == Vector2.INF and _place_tries < 30 and _ground(p, p.global_position.x, p.global_position.y) == Vector2.INF:
 		_place_tries += 1
 		return false
@@ -325,12 +364,28 @@ func _place(m: Node, p: Node2D) -> bool:
 	return true
 
 
-## Clear shots between two soldiers standing at feet `a` and `b` (a ray at
-## mid-body; lower ones fail on the uneven ground by the vehicle spawns).
+## Clear shots between two soldiers standing at feet `a` and `b`: at
+## muzzle, chest and mid-body height (a low lip between them stops every
+## round at the chest even when a mid-body ray passes over it). By the
+## vehicle spawns the shooter sits up in a buggy: mid-body only (the ground
+## there is uneven).
 func _los(p: Node2D, a: Vector2, b: Vector2) -> bool:
-	for h in [-24.0]:
+	var hs: Array = [-24.0] if OS.get_cmdline_user_args().has("--smoke-near-vehicle") else [-9.0, -12.0, -24.0]
+	for h in hs:
 		if not _solid(p, a + Vector2(0, h), b + Vector2(0, h), 1 | 2).is_empty():
 			return false
+	return true
+
+
+## Ground within 30 px of `v`'s height for `half` px either side: room for
+## the victim's strafe (a narrow ledge drops it to the level below).
+func _flat_around(p: Node2D, v: Vector2, half := 180.0) -> bool:
+	var x := v.x - half
+	while x <= v.x + half:
+		var g := _ground(p, x, v.y)
+		if g == Vector2.INF or absf(g.y - v.y) > 30.0:
+			return false
+		x += 20.0
 	return true
 
 
@@ -388,6 +443,8 @@ func _wander(p: Node2D, reach := 70.0) -> void:
 
 func _victim(p: Node2D) -> void:
 	_wander(p)
+	if fmod(_t, 1.0) < 0.017 and OS.get_cmdline_user_args().has("--smoke-trace"):
+		print("SMOKE-TRACE t=%.1f at=(%.0f,%.0f) floor=%s" % [_t, p.global_position.x, p.global_position.y, str(p.is_on_floor())])
 
 
 func _target(m: Node, p: Node2D) -> Node2D:
@@ -486,8 +543,11 @@ func _shooter(m: Node, p: Node2D, delta: float) -> void:
 		ready = false
 	if ready:
 		_ready_frames += 1
-		if not _solid(p, from, chest, 1).is_empty():
+		var bh := _solid(p, from, chest, 1)
+		if not bh.is_empty():
 			_blocked_frames += 1
+			if _blocked_frames == 30:
+				print("SMOKE-DUEL blocked: %s at (%.0f,%.0f) on the line (%.0f,%.0f) -> (%.0f,%.0f)" % [str(bh["collider"].name), bh["position"].x, bh["position"].y, from.x, from.y, chest.x, chest.y])
 	if cheat == "silentaim":
 		_aim(p, -dir)   # the aim it streams points away
 	else:
