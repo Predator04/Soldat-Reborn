@@ -39,6 +39,9 @@ var _bad: Array = []
 var _log: Array = []
 var _err_re := RegEx.new()
 var _drop_re := RegEx.new()
+# Wait-style deadlines stretch by the gate's load factor (GATE_LOAD, #293;
+# 1 outside the gate); the smoke clients stretch their windows by it too.
+var _lf: float = preload("res://tools/gate_load.gd").factor()
 
 
 func _initialize() -> void:
@@ -104,12 +107,12 @@ func _q(s: String) -> String:
 
 
 func _game(args: String, secs: int, logname: String, engine := "") -> int:
-	return _spawn("exec timeout %d %s --path %s --headless %s -- %s > %s 2>&1" % [secs, _q(_godot), _q(_proj), engine, args, _q(_out.path_join(logname))])
+	return _spawn("exec timeout %d %s --path %s --headless %s -- %s > %s 2>&1" % [int(secs * _lf), _q(_godot), _q(_proj), engine, args, _q(_out.path_join(logname))])
 
 
 func _proxy(listen: int, to: int, link: String, seed: int, logname: String) -> int:
-	return _spawn("exec timeout 600 python3 %s --listen %d --to 127.0.0.1:%d %s --seed %d > %s 2>&1" % [
-		_q(_proj.path_join("tools/udp_lag_proxy.py")), listen, to, link, seed, _q(_out.path_join(logname))])
+	return _spawn("exec timeout %d python3 %s --listen %d --to 127.0.0.1:%d %s --seed %d > %s 2>&1" % [
+		int(900 * _lf), _q(_proj.path_join("tools/udp_lag_proxy.py")), listen, to, link, seed, _q(_out.path_join(logname))])
 
 
 func _stop(pid: int) -> void:
@@ -134,7 +137,7 @@ func _read(logname: String) -> String:
 
 
 func _wait_for(logname: String, needle: String, secs: float) -> bool:
-	var until := Time.get_ticks_msec() + int(secs * 1000.0)
+	var until := Time.get_ticks_msec() + int(secs * 1000.0 * _lf)
 	while Time.get_ticks_msec() < until:
 		if _read(logname).contains(needle):
 			return true
@@ -143,7 +146,7 @@ func _wait_for(logname: String, needle: String, secs: float) -> bool:
 
 
 func _wait_exit(pid: int, secs: float) -> void:
-	var until := Time.get_ticks_msec() + int(secs * 1000.0)
+	var until := Time.get_ticks_msec() + int(secs * 1000.0 * _lf)
 	while _alive(pid) and Time.get_ticks_msec() < until:
 		OS.delay_msec(250)
 
@@ -153,8 +156,10 @@ func _host(extra: String, logname: String, map := "Arena") -> Array:
 	for _try in 3:
 		var port := 30000 + randi() % 9000
 		var pid := _game("--dedicated --port %d --map %s --mode dm --fill=1 --hosthits-log %s" % [port, map, extra], 600, logname)
-		if _wait_for(logname, "listening on port %d" % port, 90.0):
-			OS.delay_msec(3000)
+		# (The match is loaded at "Dedicated match ready" — #293 — so
+		# clients start then, not after a guessed delay.)
+		if _wait_for(logname, "listening on port %d" % port, 90.0) and _wait_for(logname, "Dedicated match ready", 60.0):
+			OS.delay_msec(500)
 			return [pid, port]
 		_stop(pid)
 	_bad.append("server did not start (%s)" % logname)
@@ -374,7 +379,7 @@ func _sc_wait(r: Dictionary) -> void:
 		_wait_exit(int(sh[1]), 115.0)
 	if bool(r["sc"].get("jip", false)):
 		# A second map line = the map changed (34 s round + winner screen + vote).
-		var until := Time.get_ticks_msec() + 60000
+		var until := Time.get_ticks_msec() + int(60000 * _lf)
 		while Time.get_ticks_msec() < until and _lines("%s_host.log" % n, "HOSTHITS-MAP ").size() < 2:
 			OS.delay_msec(250)
 		OS.delay_msec(1500)
