@@ -40,6 +40,7 @@ const WEDGE_TILT := 1.22         # ~70 deg
 # #299: after a bot gives up on it (stuck / a drop it can't take) bots leave it
 # alone longer than the idle return, so an untouched one drives home first.
 const DRIVE_BAN_TIME := 70.0
+const BAIL_RETURN_TIME := 12.0   # #300: home this soon after a bot bail
 var EXPLODE_RADIUS := 150.0
 var EXPLODE_DAMAGE := 120.0
 var EXPLOSIVE_MUL := 1.6      # rockets / grenades hurt it more than bullets
@@ -175,6 +176,13 @@ func _ready() -> void:
 	floor_max_angle = deg_to_rad(58.0)
 	floor_snap_length = 18.0
 	floor_constant_speed = false
+	# #300: grenades / dropped guns are rigid bodies on layer 1, so a
+	# wheel can rest on one for a frame — and a body the engine treats as a
+	# moving platform hands its (crush-squeezed) velocity over on leaving: a
+	# buggy / tank was thrown 2,000 px up out of the world. Terrain is static,
+	# so following platforms buys nothing.
+	platform_floor_layers = 0
+	platform_on_leave = CharacterBody2D.PLATFORM_ON_LEAVE_DO_NOTHING
 	z_index = 5
 	spawn_pos = global_position
 	_spots = VArt.bake_spots(vehicle_id + 1, Rect2(-SHAPE_LEN * 0.5, -SHAPE_R * 2.0 - 12.0, SHAPE_LEN, 14.0), 9)
@@ -399,14 +407,23 @@ func _touch_tick(delta: float) -> void:
 	_idle_t += delta
 	# Stuck-while-driven tracking lives in _simulate where throttle is known;
 	# for the empty case only the idle clock matters.
-	if _is_host_side() and idle_respawn_time > 0.0 and _idle_t >= idle_respawn_time \
+	# #300: one a bot driver just gave up on (stuck / a drop / the
+	# void — the #299 drive ban) sits where bots won't take it on from; it goes
+	# home after BAIL_RETURN_TIME instead of the full idle minute, and keeps
+	# the ban, so bots don't drive it straight back into the same spot.
+	var limit := idle_respawn_time
+	if drive_ban_t > 0.0:
+		limit = minf(limit, BAIL_RETURN_TIME)
+	if _is_host_side() and idle_respawn_time > 0.0 and _idle_t >= limit \
 			and global_position.distance_to(spawn_pos) > 24.0:
 		_idle_t = 0.0
+		var keep_ban := drive_ban_t
 		var main := get_parent()
 		if main != null and main.has_method("vehicle_send"):
 			main.vehicle_send("net_vehicle_respawn", [vehicle_id], true)
 		else:
 			apply_respawn()
+		drive_ban_t = keep_ban
 
 
 ## #299: ground vehicles only — the helicopter hovers and the plane flies, so
