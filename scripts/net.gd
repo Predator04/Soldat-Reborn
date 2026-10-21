@@ -452,17 +452,21 @@ func _smoke_join() -> void:
 	if rj != "":
 		var cf := FileAccess.open(_smoke_arg("--code-file"), FileAccess.READ)
 		var code := cf.get_as_text().strip_edges() if cf != null else ""
-		# #293: say why a relay join failed and try again (3 tries): a freshly
+		# #293: say why a relay join failed and try again: a freshly
 		# started client can be starved past the WebSocket handshake timeout
 		# under CPU load (gate C relay: "players=0", the room never saw a join).
-		var tries := [1]
+		# Up to 6 tries, 2 s apart.
+		var tries := [1, Time.get_ticks_msec()]
 		relay_failed.connect(func(msg: String) -> void:
 			var rp = multiplayer.multiplayer_peer
 			var ws = rp.get("ws") if rp != null else null
-			print("SMOKE-RELAY-FAIL try=%d %s close=%s" % [tries[0], msg, (str(ws.get_close_code()) + " " + ws.get_close_reason()) if ws != null else "?"])
-			if tries[0] < 3 and _map_synced == false:
+			print("SMOKE-RELAY-FAIL try=%d after=%d ms %s close=%s" % [tries[0], Time.get_ticks_msec() - int(tries[1]), msg,
+				(str(ws.get_close_code()) + " " + ws.get_close_reason()) if ws != null else "?"])
+			if tries[0] < 6 and _map_synced == false:
 				tries[0] += 1
-				get_tree().create_timer(1.0).timeout.connect(func() -> void: join_relay(rj, code)))
+				get_tree().create_timer(2.0).timeout.connect(func() -> void:
+					tries[1] = Time.get_ticks_msec()
+					join_relay(rj, code)))
 		join_relay(rj, code)
 	else:
 		join_game("127.0.0.1", _smoke_port())

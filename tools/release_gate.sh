@@ -510,18 +510,22 @@ case " $NETSEL " in *" relay "*)
   # Host and client both go through the WebSocket relay on the master server.
   if [ -x "$RB" ]; then
     rport=$(freeport tcp)
-    SOLDAT_DATA_DIR="$(mktemp -d)" timeout $(T 70) "$RB" -port $rport > "$OUT/net_relay_server.log" 2>&1 &
+    SOLDAT_DATA_DIR="$(mktemp -d)" timeout $(T 100) "$RB" -port $rport > "$OUT/net_relay_server.log" 2>&1 &
     rpid=$!; wait_http $rport 20
     cf="$OUT/relay_code.txt"; rm -f "$cf"
-    timeout $(T 60) "$G" --headless -- --smoke-host --relay-host=http://127.0.0.1:$rport --code-file="$cf" --smoke-secs=28 > "$OUT/net_relay_host.log" 2>&1 &
+    # #293: the client retries an unreachable relay (up to 6 tries, 2 s
+    # apart, SMOKE-RELAY-FAIL lines), so both windows leave room for that.
+    timeout $(T 80) "$G" --headless -- --smoke-host --relay-host=http://127.0.0.1:$rport --code-file="$cf" --smoke-secs=40 > "$OUT/net_relay_host.log" 2>&1 &
     hpid=$!
     for ((_w = 0; _w < $(T 20) * 2; _w++)); do [ -s "$cf" ] && break; sleep 0.5; done
     sleep 3
-    timeout $(T 40) "$G" --headless -- --smoke-join --relay-join=http://127.0.0.1:$rport --code-file="$cf" --smoke-secs=12 > "$OUT/net_relay_client.log" 2>&1
+    timeout $(T 60) "$G" --headless -- --smoke-join --relay-join=http://127.0.0.1:$rport --code-file="$cf" --smoke-secs=26 > "$OUT/net_relay_client.log" 2>&1
+    # Diagnostics for a failed join: does the master still answer a relay upgrade?
+    probe=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 -H "Connection: Upgrade" -H "Upgrade: websocket" -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" "http://127.0.0.1:$rport/relay")
     wait $hpid 2>/dev/null; kill $rpid 2>/dev/null; wait $rpid 2>/dev/null
     e=$(( $(errs "$OUT/net_relay_host.log") + $(errs "$OUT/net_relay_client.log") ))
     line=$(grep -m1 "SMOKE-JOIN " "$OUT/net_relay_client.log")
-    if echo "$line" | grep -q "players=2" && [ "$e" = "0" ]; then pass "C net relay: code $(cat "$cf" 2>/dev/null) | $line"; else fail "C net relay: '${line:-no result}' errors=$e"; fi
+    if echo "$line" | grep -q "players=2" && [ "$e" = "0" ]; then pass "C net relay: code $(cat "$cf" 2>/dev/null) | $line"; else fail "C net relay: '${line:-no result}' errors=$e relay_probe=$probe $(grep -h SMOKE-RELAY-FAIL "$OUT/net_relay_client.log" | tail -2 | tr '\n' ' ')"; fi
   else
     fail "C net relay: relay binary missing ($RB) — set SERVER_DIR"
   fi
