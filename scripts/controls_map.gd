@@ -18,6 +18,7 @@ const ACTION_SECTION := {
 	"move_left": "Movement", "move_right": "Movement", "jump": "Movement",
 	"jet": "Movement", "crouch": "Movement", "prone": "Movement",
 	"fire": "Combat", "grenade": "Combat", "reload": "Combat", "grenade_toggle": "Combat",
+	"drop_powerup": "Combat",
 	"aim_left": "Combat", "aim_right": "Combat", "aim_up": "Combat", "aim_down": "Combat",
 	"secondary_swap": "Weapons", "weapon_throw": "Weapons",
 	"weapon_1": "Weapons", "weapon_2": "Weapons", "weapon_3": "Weapons",
@@ -63,6 +64,9 @@ const ACTIONS := [
 	["reload",          "Reload",           [{"type": "key", "physical_keycode": 82},         # R
 											 {"type": "joy_button", "button_index": 3}]],     # Y
 	["grenade_toggle",  "Grenade Type",     [{"type": "key", "physical_keycode": 71}]],       # G
+	# #303: end the power-up you carry (nothing is left on the ground).
+	["drop_powerup",    "Drop Power-up",    [{"type": "key", "physical_keycode": 66},         # B
+											 {"type": "joy_button", "button_index": 15}]],   # Share / Misc
 	["secondary_swap",  "Swap Weapon",      [{"type": "key", "physical_keycode": 81},         # Q
 											 {"type": "joy_button", "button_index": 9}]],     # LB
 	["weapon_throw",    "Throw / Mount",    [{"type": "key", "physical_keycode": 70},         # F
@@ -198,6 +202,7 @@ static func event_display(ev: InputEvent) -> String:
 			12: return "D-Pad Down"
 			13: return "D-Pad Left"
 			14: return "D-Pad Right"
+			15: return "Pad Share"
 			_: return "Pad %d" % (ev as InputEventJoypadButton).button_index
 	if ev is InputEventJoypadMotion:
 		var m: InputEventJoypadMotion = ev

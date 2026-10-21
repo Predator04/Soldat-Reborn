@@ -21,6 +21,7 @@ const ROWS := [
 	["Swap to secondary", "secondary_swap"],
 	["Weapons", "weapon_1|weapon_10"],
 	["Drop gun / mount M2", "weapon_throw"],
+	["Drop power-up", "drop_powerup"],
 	["Scoreboard", "scoreboard"],
 	["Chat / team chat", "chat|team_chat"],
 	["Team radio", "radio"],

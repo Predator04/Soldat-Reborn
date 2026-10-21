@@ -246,6 +246,95 @@ func _tick_bonus_boxes(delta: float) -> void:
 			_spawn_bonus_at_slot(i)
 
 
+# ── Drop the power-up (#303) ──────────────────────────
+# Dropping ends the effect; nothing spawns and the box slot's respawn timer is
+# left alone, so a drop can never bring a box (or a fresh 30 s) back early.
+const DROP_MIN_GAP_TICKS := 15        # host: per-peer request rate limit (0.25 s at 60 Hz)
+var _drop_last_tick: Dictionary = {}  # host: peer_id -> physics tick of the last accepted drop
+var drops_done := 0                   # host / SP: accepted drops (tests)
+var drops_ignored := 0                # host: refused requests (tests)
+
+
+func drop_powerup_request() -> void:
+	if not Net.is_networked():
+		host_drop_powerup(1)
+	elif Net.is_host():
+		host_drop_powerup(main.multiplayer.get_unique_id())
+	elif main.multiplayer.has_multiplayer_peer():
+		main.rpc_id(1, "net_drop_powerup", main.multiplayer.get_unique_id())
+
+
+## Host: a client asks to drop. Only its own soldier, never someone else's.
+func net_drop_powerup(target_pid: int) -> void:
+	if not Net.is_host():
+		return
+	var sender: int = main.multiplayer.get_remote_sender_id()
+	if sender != target_pid:
+		drops_ignored += 1
+		print("DROP-POWERUP ignored: peer %d asked to drop peer %d's power-up" % [sender, target_pid])
+		return
+	host_drop_powerup(sender)
+
+
+## Host / SP: end peer `pid`'s power-up everywhere. False when there was nothing
+## to drop (none active, dead, unknown soldier) or the peer is spamming.
+func host_drop_powerup(pid: int) -> bool:
+	var p = main._players_by_id.get(pid, null)
+	if not is_instance_valid(p) and pid == 1:
+		p = main.player
+	if not is_instance_valid(p) or not p.has_method("drop_bonus") or p.get("dead") == true:
+		return false
+	var kind: String = str(p.get("bonus_kind"))
+	if kind == "":
+		return false
+	# Game time (physics ticks), not wall time: fixed-fps runs go faster than real time.
+	var now := Engine.get_physics_frames()
+	if _drop_last_tick.has(pid) and now - int(_drop_last_tick[pid]) < DROP_MIN_GAP_TICKS:
+		drops_ignored += 1
+		return false
+	_drop_last_tick[pid] = now
+	p.drop_bonus()
+	drops_done += 1
+	if Net.is_networked():
+		print("DROP-POWERUP peer %d dropped %s (host replica now '%s')" % [pid, kind, str(p.get("bonus_kind"))])
+	return true
+
+
+# Release gate only (C `drop`): a host started with --smoke-bonus=KIND gives
+# every joined human KIND once, after its body has been live for ~2 s, once
+# two humans are in.
+var _smoke_bonus := "?"
+var _smoke_seen: Dictionary = {}     # peer_id -> ticks seen alive (-1 = granted)
+var _smoke_bonus_t := 0.0
+
+
+func _smoke_bonus_tick(delta: float) -> void:
+	if _smoke_bonus == "?":
+		_smoke_bonus = ""
+		for a in OS.get_cmdline_user_args():
+			if a.begins_with("--smoke-bonus="):
+				_smoke_bonus = a.substr(len("--smoke-bonus="))
+	if _smoke_bonus == "" or not Net.is_networked() or not Net.is_host():
+		return
+	_smoke_bonus_t -= delta
+	if _smoke_bonus_t > 0.0:
+		return
+	_smoke_bonus_t = 1.0
+	var ready: Array = main.ready_peer_ids()
+	# Both clients in first: a late joiner isn't told about power-ups already active.
+	if ready.size() < 2:
+		return
+	for pid in main._players_by_id.keys():
+		var p = main._players_by_id[pid]
+		if int(_smoke_seen.get(pid, 0)) < 0 or not (int(pid) in ready) or not is_instance_valid(p) or p.get("dead") == true:
+			continue
+		_smoke_seen[pid] = int(_smoke_seen.get(pid, 0)) + 1
+		if int(_smoke_seen[pid]) >= 2:
+			_smoke_seen[pid] = -1
+			p.apply_bonus(_smoke_bonus, BONUS_EFFECT_DURATION)
+			print("SMOKE-BONUS granted %s to peer %d" % [_smoke_bonus, int(pid)])
+
+
 func net_bonus_spawn(bid: int, pos: Vector2, kind: String) -> void:
 	# Host already has this locally; this RPC targets clients only.
 	if Net.is_host():
