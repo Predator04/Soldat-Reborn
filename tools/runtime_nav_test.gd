@@ -5,16 +5,38 @@ extends SceneTree
 ## name, then a map from the editor's generator) must get a graph built in-game
 ## on a worker thread: non-empty, adopted within the time limit, every CTF leg
 ## (each team's spawn -> enemy flag -> home) routable, bots actually travel on
-## it, and the build must not stall the main thread (frame gaps stay small).
+## it, and the build must not stall the main thread (#293, load-robust; raw
+## wall gaps are only logged, under load they mostly measure other processes):
+##  - adopting the graph (main.nav_adopt_ms, capped by the own time — wall
+##    minus run-queue wait — of the frame it happened in) takes < STALL_MS;
+##  - the main thread keeps ticking while the worker builds: at least
+##    MIN_BUILD_FRAMES frames pass (a main thread waiting on the build would
+##    see ~1; main and worker are slowed alike by load, so the count isn't);
+##  - generous guard: no frame during the build over HANG_MS of own time.
 ## Then Maker maps (#286): the starter level with spikes and lava pits (no
 ## nav node on a hazard, no bot walks into one), with a buggy, a tank and a
 ## heli pad per team (a bot boards a buggy and drives it; tank / heli use is
 ## logged), and with the red flag on a floating island ~690 px up that only a
 ## big jump pad reaches (the graph routes the attack over the pad; a bot is
-## launched by it and lands on the island).
+## launched by it and lands on the island), and with a small pad on the walkway
+## out of each base that nothing is worth riding to (#294: bots cross them
+## without being launched — unintended launches <= 15 % of crossings).
+## #296 maker_basin: Magma Crown with each lava pool's rock basin merged into
+## the rock under it (one outline, no designer gap) in Domination — the merged
+## outline must give the same nav graph as separate shapes, and bots on a
+## contested point must not stand inside each other (they did, shots started
+## past the enemy's body and the match froze: all 8 on the hilltop, nobody hit).
+## #297 maker_overhang: a floating island 420 px over flat ground with the red
+## flag on it and a slab 340 px up — no climb link may start under either
+## (bots jetted into the undersides again and again); bots must not keep
+## bonking them, and a blue attacker must make it onto the island.
 ## Zero script errors (the gate greps the log).
 
-const LIMIT_MS := 20000
+const GL = preload("res://tools/gate_load.gd")
+const LIMIT_MS := 20000   # build + adopt deadline on a quiet box; scaled by the load (below)
+const STALL_MS := 400.0   # main-thread own time adopting the graph
+const HANG_MS := 3000.0   # any single frame's own time while the build runs
+const MIN_BUILD_FRAMES := 10
 var _st := 0
 var _n := 0
 var _t0 := 0
@@ -24,10 +46,15 @@ var _saved := []
 var _start_pos := {}
 var _last_pos := {}
 var _dist := {}
-var _max_gap := 0
-var _last_ms := 0
+var _max_gap := 0.0      # raw wall gap (logged only)
+var _max_own := 0.0      # own time of the worst frame during the build
+var _build_frames := 0   # main-thread frames while the worker built
+var _last_own := 0.0     # own time of the latest frame interval
+var _last_st := {}       # GL.stamp() at the previous frame
+var _wait_wall := 0.0    # wall / own ms summed while waiting for the graph:
+var _wait_own := 0.0     # their ratio = how much other processes slowed us
 var _case := 0
-var _cases := ["classic", "generated", "maker_hazards", "maker_vehicles", "maker_pads"]
+var _cases := ["classic", "generated", "maker_hazards", "maker_vehicles", "maker_pads", "maker_padcross", "maker_basin", "maker_overhang"]
 var _hz_kills0 := 0
 var _launch0 := 0
 var _drive := {}        # vehicle instance id -> px driven by a bot
@@ -40,6 +67,30 @@ var _pad_t := -1.0      # maker_pads: seconds until a bot first stood on the isl
 var _pad_arrive := {}   # maker_pads: team -> seconds until its first bot landed there
 const PAD_ISLAND := Rect2(4140, 700, 320, 130)   # feet on the island's top (see _write_custom)
 const PAD_LIMIT_S := 60   # maker_pads: a blue attacker must make it onto the island within this
+const CASE_MODE := {"maker_basin": 7}   # default CTF (2)
+const CASE_BOTS := {"maker_basin": 8}   # default 6
+const BASIN_SECS := 40          # maker_basin: match length watched
+const BASIN_STACK_MAX := 6.0    # maker_basin: longest a blue + a red bot may stand inside each other on a point
+const OVERHANG_ISLAND := Rect2(3500, 1090, 400, 80)   # maker_overhang: the island (flag on top)...
+const OVERHANG_SLAB := Rect2(2220, 1170, 360, 60)     # ...and a plain slab hanging over the valley
+const OVERHANG_MIN_S := 30      # maker_overhang: watched at least this long...
+const OVERHANG_LIMIT_S := 75    # ...and until a blue attacker made it up to the island (at most this)
+const OVERHANG_BONKS := 3       # maker_overhang: a bot hitting an underside this often = jetting into it
+var _kills := 0
+var _dom_events := 0
+var _stack_run := 0.0
+var _stack_max := 0.0
+var _bonk := {}         # maker_overhang: bot instance id -> underside hits
+var _bonk_on := {}
+var _top_t := -1.0      # maker_overhang: seconds until a blue bot made it up to the island
+var _pc_side := {}      # maker_padcross: "bot:pad" -> which side of the pad's trigger the feet were on
+var _pc_last := {}      # maker_padcross: bot -> msec of its last pad launch seen
+var _pc_cross := 0      # maker_padcross: crossings near the pad's level
+var _pc_un := 0         # ...launches of bots not riding that pad on purpose
+var _pc_int := 0        # ...launches of bots whose path rides it
+var _pc_prev := {}      # RTNAV_PADDBG: bot -> its state last frame
+const PC_MIN_CROSS := 4
+const PC_MAX_SHARE := 0.15   # unintended launches per crossing at most
 
 
 func _write_custom(kind: String) -> String:
@@ -62,18 +113,31 @@ func _write_custom(kind: String) -> String:
 			pcs.append(B.make_piece("spikes", Vector2(3700, 1496), Vector2(160, 28)))
 			pcs.append(B.make_piece("lava", Vector2(1600, 1600), Vector2(360, 80)))
 			pcs.append(B.make_piece("lava", Vector2(3200, 1600), Vector2(360, 80)))
+		elif kind == "maker_basin":
+			src = _basin_source()
+		elif kind == "maker_overhang":
+			src = _overhang_source()
 		elif kind == "maker_pads":
 			# A floating island 690 px over the east ground (out of jet-link
 			# reach) carrying the red flag, a big jump pad beside it.
 			pcs.append(B.make_piece("float", Vector2(4300, 860), Vector2(320, 80)))
 			pcs.append(B.make_piece("pad_big", Vector2(4000, 1500), Vector2(64, 20)))
 			src["ctf_flags"] = [Vector2(300, 1500), Vector2(4300, 810)]
+		elif kind == "maker_padcross":
+			# #294: a jump pad on the only walkway out of each base (nothing
+			# worth riding to within its reach): every attack crosses one.
+			pcs.append(B.make_piece("pad", Vector2(900, 1500), Vector2(64, 20)))
+			pcs.append(B.make_piece("pad", Vector2(3900, 1500), Vector2(64, 20)))
 		else:
 			src["vehicle_spawns"] = [Vector2(900, 1510), Vector2(3900, 1510)]
 			src["tank_spawns"] = [Vector2(600, 1510), Vector2(4200, 1510)]
 			src["heli_spawns"] = [Vector2(1150, 1510), Vector2(3650, 1510)]
 		m = B.compile(src)
-		m["name"] = {"maker_hazards": "RTNav Maker Hazards", "maker_pads": "RTNav Maker Pads"}.get(kind, "RTNav Maker Vehicles")
+		if kind == "maker_basin":
+			_check_basin_geometry(src, m)
+		m.erase("_mk_outlines")
+		m["name"] = {"maker_hazards": "RTNav Maker Hazards", "maker_pads": "RTNav Maker Pads", "maker_basin": "RTNav Maker Basin",
+			"maker_overhang": "RTNav Maker Overhang", "maker_padcross": "RTNav Maker Pad Crossing"}.get(kind, "RTNav Maker Vehicles")
 	return io.save_to_file(str(m["name"]), m)
 
 
@@ -95,9 +159,17 @@ func _process(_d: float) -> bool:
 	if st == null:
 		return false
 	var now := Time.get_ticks_msec()
-	if _last_ms > 0 and _st == 2:
-		_max_gap = maxi(_max_gap, now - _last_ms)
-	_last_ms = now
+	var stp := GL.stamp()
+	if not _last_st.is_empty():
+		_last_own = GL.own_ms(_last_st, stp)
+		if _st == 2:
+			var w := GL.wall_ms(_last_st, stp)
+			_max_gap = maxf(_max_gap, w)
+			_max_own = maxf(_max_own, _last_own)
+			_build_frames += 1
+			_wait_wall += w
+			_wait_own += _last_own
+	_last_st = stp
 	match _st:
 		0:
 			if _saved.is_empty():
@@ -107,30 +179,55 @@ func _process(_d: float) -> bool:
 			if path == "":
 				return _end("could not save the %s test map" % _cases[_case])
 			st.custom_map_path = path
-			st.game_mode = 2
-			st.bot_count = 6
+			st.game_mode = int(CASE_MODE.get(_cases[_case], 2))
+			st.bot_count = int(CASE_BOTS.get(_cases[_case], 6))
 			root.get_node("Net").set_singleplayer()
 			change_scene_to_file("res://scenes/main.tscn")
 			_st = 1
 			_n = 0
 		1:
 			var m = current_scene
-			if m == null or m.get("nav") == null or _n < 3:
+			if m == null or m.get("nav") == null:
 				return false
+			# Checked on the match's FIRST frame, before main._process ever ran,
+			# so a worker-built graph can't have been adopted yet (#293: this
+			# used to wait 3 frames, and under load the worker finished and was
+			# adopted in between — reported as a stale bake).
 			if not m.nav.is_empty():
-				_bad.append("%s: graph present before the runtime build (stale bake?)" % _cases[_case])
+				if int(m.nav_runtime_ms) >= 0 or float(m.nav_adopt_ms) >= 0.0:
+					_bad.append("%s: runtime graph adopted before the match's first frame (built on the main thread?)" % _cases[_case])
+				else:
+					_bad.append("%s: graph present before the runtime build (stale bake?)" % _cases[_case])
+			elif int(m.get("_nav_task")) < 0:
+				_bad.append("%s: no baked graph and no runtime build started" % _cases[_case])
 			_t0 = now
-			_max_gap = 0
+			_max_gap = 0.0
+			_max_own = 0.0
+			_build_frames = 0
+			_wait_wall = 0.0
+			_wait_own = 0.0
 			_st = 2
 		2:
 			var m = current_scene
 			if m.nav.is_empty():
-				if now - _t0 > LIMIT_MS:
-					return _end("%s: no runtime graph after %d ms" % [_cases[_case], LIMIT_MS])
+				# Deadline for a wait, scaled by the load: the gate's measured
+				# factor, or how much other processes slowed this very wait.
+				var slow := clampf(_wait_wall / maxf(1.0, _wait_own), 1.0, GL.MAX_FACTOR)
+				var limit := LIMIT_MS * maxf(GL.factor(), slow)
+				if now - _t0 > limit:
+					return _end("%s: no runtime graph after %d ms (limit scaled x%.1f by load)" % [_cases[_case], now - _t0, limit / LIMIT_MS])
 				return false
-			_log.append("%s graph %d ms (frame gap max %d ms)" % [_cases[_case], int(m.nav_runtime_ms), _max_gap])
-			if _max_gap > 400:
-				_bad.append("%s: main thread stalled %d ms during the build" % [_cases[_case], _max_gap])
+			# Adopted during main._process of the previous frame, i.e. inside
+			# the interval that just ended.
+			var adopt := float(m.nav_adopt_ms)
+			var stall := minf(adopt, _last_own) if adopt >= 0.0 else _last_own
+			_log.append("%s graph %d ms (adopt %.0f ms, %d frames meanwhile, frame own max %.0f ms, raw gap max %.0f ms)" % [_cases[_case], int(m.nav_runtime_ms), stall, _build_frames, _max_own, _max_gap])
+			if _build_frames < MIN_BUILD_FRAMES:
+				_bad.append("%s: only %d main-thread frames during the %d ms build (main thread blocked on it?)" % [_cases[_case], _build_frames, int(m.nav_runtime_ms)])
+			if stall > STALL_MS:
+				_bad.append("%s: main thread stalled %.0f ms adopting the graph" % [_cases[_case], stall])
+			if _max_own > HANG_MS:
+				_bad.append("%s: a frame took %.0f ms of main-thread time during the build" % [_cases[_case], _max_own])
 			# CTF legs
 			var home := {}
 			for f in m.flags:
@@ -172,10 +269,41 @@ func _process(_d: float) -> bool:
 					_bad.append("maker_pads: the runtime graph has no jump-pad links")
 				elif rides == 0:
 					_bad.append("maker_pads: the attack path to the island flag doesn't use the pad")
+			if _cases[_case] == "maker_overhang":
+				_check_overhang_links(m)
+			if _cases[_case] == "maker_basin":
+				# DOM legs: each team's spawn <-> every point.
+				var broken := 0
+				for dp in m.dom_points():
+					var op: Vector2 = m._settle_on_ground((dp as Node2D).global_position)
+					for t in [1, 2]:
+						var sp: Array = m._team_spawn_list(t)
+						var s: Vector2 = m._settle_on_ground(sp[0])
+						if not _ok(m.nav, s, op) or not _ok(m.nav, op, s):
+							broken += 1
+				_log.append("maker_basin dom legs broken=%d" % broken)
+				if broken > 0:
+					_bad.append("maker_basin: %d spawn <-> DOM point legs unroutable" % broken)
+			_kills = 0
+			_dom_events = 0
+			_stack_run = 0.0
+			_stack_max = 0.0
+			_bonk.clear()
+			_bonk_on.clear()
+			_top_t = -1.0
+			if not m.kill.is_connected(_on_kill):
+				m.kill.connect(_on_kill)
+			if not m.objective.is_connected(_on_objective):
+				m.objective.connect(_on_objective)
 			_hz_kills0 = int(m.get("_hazards").kills) if m.get("_hazards") != null else 0
 			_launch0 = int(m.get("_hazards").bot_launches) if m.get("_hazards") != null else 0
 			_pad_t = -1.0
 			_pad_arrive.clear()
+			_pc_side.clear()
+			_pc_last.clear()
+			_pc_cross = 0
+			_pc_un = 0
+			_pc_int = 0
 			_boarded.clear()
 			_drv_prev.clear()
 			_drive_kind.clear()
@@ -225,6 +353,8 @@ func _process(_d: float) -> bool:
 							_heli_alt = maxf(_heli_alt, gy - vp.y)
 				_drv_prev[vid] = d
 				_drive_last[vid] = vp
+			if _cases[_case] == "maker_padcross":
+				_padcross_tick()
 			if _cases[_case] == "maker_pads" and _pad_arrive.size() < 2:
 				# Over the island's top, coming down (or standing) after a pad
 				# launch within the last 4 s (first arrival per team: red defends
@@ -239,8 +369,16 @@ func _process(_d: float) -> bool:
 						_pad_arrive[int(b.get("team"))] = float(_n) / 60.0
 						if _pad_t < 0.0:
 							_pad_t = float(_n) / 60.0
+			if _cases[_case] == "maker_basin":
+				_track_stack(current_scene)
+			if _cases[_case] == "maker_overhang":
+				_track_bonks(current_scene)
 			# maker_pads runs on (up to PAD_LIMIT_S) until an attacker made the trip.
 			if _n < 60 * 25 or (_cases[_case] == "maker_pads" and not _pad_arrive.has(1) and _n < 60 * PAD_LIMIT_S):
+				return false
+			if _cases[_case] == "maker_basin" and _n < 60 * BASIN_SECS:
+				return false
+			if _cases[_case] == "maker_overhang" and (_n < 60 * OVERHANG_MIN_S or (_top_t < 0.0 and _n < 60 * OVERHANG_LIMIT_S)):
 				return false
 			var m = current_scene
 			if _cases[_case] == "maker_hazards":
@@ -267,6 +405,30 @@ func _process(_d: float) -> bool:
 					_bad.append("maker_pads: no bot used the jump pad")
 				if not _pad_arrive.has(1):
 					_bad.append("maker_pads: no blue attacker reached the island off the pad in %d s (pad launches %d)" % [PAD_LIMIT_S, nl])
+			if _cases[_case] == "maker_basin":
+				_log.append("maker_basin kills=%d dom_events=%d longest_stack=%.1f s" % [_kills, _dom_events, _stack_max])
+				if _stack_max >= BASIN_STACK_MAX:
+					_bad.append("maker_basin: a blue and a red bot stood inside each other on a point for %.1f s (kills %d, captures %d)" % [_stack_max, _kills, _dom_events])
+				if _kills == 0:
+					_bad.append("maker_basin: no kills in %d s of Domination" % BASIN_SECS)
+			if _cases[_case] == "maker_overhang":
+				var worst := 0
+				var tot := 0
+				for k in _bonk:
+					worst = maxi(worst, int(_bonk[k]))
+					tot += int(_bonk[k])
+				_log.append("maker_overhang underside_hits=%d worst_bot=%d blue_on_island_at=%.1f s" % [tot, worst, _top_t])
+				if worst >= OVERHANG_BONKS:
+					_bad.append("maker_overhang: a bot hit a platform's underside %d times" % worst)
+				if _top_t < 0.0:
+					_bad.append("maker_overhang: no blue attacker made it up to the island in %d s" % OVERHANG_LIMIT_S)
+			if _cases[_case] == "maker_padcross":
+				_log.append("maker_padcross pads=%d crossings=%d launches unintended=%d intended=%d" % [
+					m.get("_hazards").pads.size(), _pc_cross, _pc_un, _pc_int])
+				if _pc_cross < PC_MIN_CROSS:
+					_bad.append("maker_padcross: bots crossed the pads only %d times" % _pc_cross)
+				elif float(_pc_un) > maxf(1.0, float(_pc_cross) * PC_MAX_SHARE):
+					_bad.append("maker_padcross: %d of %d pad crossings launched a bot that wasn't riding it" % [_pc_un, _pc_cross])
 			var moved := 0
 			var total := 0
 			for b in m.get_tree().get_nodes_in_group("soldier"):
@@ -276,12 +438,247 @@ func _process(_d: float) -> bool:
 				if float(_dist.get(b.get_instance_id(), 0.0)) > 900.0:
 					moved += 1
 			_log.append("%s bots travelled %d/%d" % [_cases[_case], moved, total])
-			if total == 0 or moved * 2 < total:
+			# Half the bots must cover 900 px; in Domination (maker_basin) a third:
+			# holders stand on their point, and 4/8 was the quiet-box norm, so a
+			# 3/7 run failed (#293) though kills / captures were fine.
+			var share: int = 3 if int(CASE_MODE.get(_cases[_case], 2)) == 7 else 2
+			if total == 0 or moved * share < total:
 				_bad.append("%s: bots didn't travel (%d/%d covered > 900 px)" % [_cases[_case], moved, total])
 			_case += 1
 			if _case >= _cases.size():
 				return _end("")
 			_st = 0
+	return false
+
+
+func _on_kill(_a, _b, _c, _d, _e) -> void:
+	_kills += 1
+
+
+func _on_objective(kind: String, _t: int, _w: String) -> void:
+	if kind == "dom":
+		_dom_events += 1
+
+
+## #296: Magma Crown's source with every rock piece just under a lava basin
+## pulled up against it, so basin + rock + neighbours union into one outline
+## (the layout the designer first had to keep 3 px apart).
+func _basin_source() -> Dictionary:
+	var src: Dictionary = load("res://scripts/featured_levels.gd").source("magma_crown")
+	_set_basin_gap(src, 0.0)
+	return src
+
+
+## Put the top of every ground piece that sits within 8 px under a lava
+## basin's floor `gap` px under it. Returns how many pieces it moved.
+func _set_basin_gap(src: Dictionary, gap: float) -> int:
+	var B = load("res://scripts/maker/maker_build.gd")
+	var pcs: Array = src["maker"]["pieces"]
+	var moved := 0
+	for lv in pcs.duplicate():
+		if str(lv["t"]) != "lava":
+			continue
+		var lr: Rect2 = B.piece_rect(lv)   # the pool + its basin
+		for i in pcs.size():
+			var q: Dictionary = pcs[i]
+			if not (str(q["t"]) in ["block", "wide"]):
+				continue
+			var r: Rect2 = B.piece_rect(q)
+			if r.end.x <= lr.position.x or r.position.x >= lr.end.x or absf(r.position.y - lr.end.y) > 8.0:
+				continue
+			var top := lr.end.y + gap
+			pcs[i] = B.make_piece(str(q["t"]), Vector2(r.get_center().x, (top + r.end.y) * 0.5), Vector2(r.size.x, r.end.y - top))
+			moved += 1
+	return moved
+
+
+## #296: the merged outline must not change what bots can do: the nav graph
+## must match the same map with the basins kept 3 px apart.
+func _check_basin_geometry(src: Dictionary, merged: Dictionary) -> void:
+	var B = load("res://scripts/maker/maker_build.gd")
+	var NB = load("res://scripts/nav_builder.gd")
+	var apart: Dictionary = src.duplicate(true)
+	var n := _set_basin_gap(apart, 3.0)
+	var sep: Dictionary = B.compile(apart)
+	var om := _solid_outlines(merged)
+	var os := _solid_outlines(sep)
+	if n < 2 or om >= os:
+		_bad.append("maker_basin: the basins didn't merge (%d rocks moved, outlines merged %d vs apart %d)" % [n, om, os])
+	var pm := _node_set(NB.build(merged))
+	var ps := _node_set(NB.build(sep))
+	var only := 0
+	for k in pm:
+		if not ps.has(k):
+			only += 1
+	for k in ps:
+		if not pm.has(k):
+			only += 1
+	_log.append("maker_basin outlines merged=%d apart=%d nodes %d / %d (differ %d)" % [om, os, pm.size(), ps.size(), only])
+	if only > maxi(2, (pm.size() + ps.size()) / 100):
+		_bad.append("maker_basin: merged basins change the nav graph (%d of %d / %d nodes differ)" % [only, pm.size(), ps.size()])
+
+
+func _solid_outlines(m: Dictionary) -> int:
+	var k := 0
+	for o in m.get("_mk_outlines", []):
+		if int(o["col"]) == 0:
+			k += 1
+	return k
+
+
+func _node_set(g: Dictionary) -> Dictionary:
+	var out := {}
+	var nodes: Array = g.get("nodes", [])
+	var i := 0
+	while i + 1 < nodes.size():
+		out[Vector2i(int(round(float(nodes[i]) / 8.0)), int(round(float(nodes[i + 1]) / 8.0)))] = true
+		i += 2
+	return out
+
+
+## Bots on a DOM point: a blue and a red one (alive, standing) within 12 px of
+## each other = inside each other, where no shot can hit.
+func _track_stack(m: Node) -> void:
+	var on: Array = []
+	for b in m.get_tree().get_nodes_in_group("soldier"):
+		if is_instance_valid(b) and b != m.player and not bool(b.get("dead")) and (b as CharacterBody2D).is_on_floor():
+			for dp in m.dom_points():
+				if (b.global_position as Vector2).distance_to((dp as Node2D).global_position) < 60.0:
+					on.append(b)
+					break
+	var stacked := false
+	for i in on.size():
+		for j in range(i + 1, on.size()):
+			var a: Node2D = on[i]
+			var c: Node2D = on[j]
+			if int(a.get("team")) != int(c.get("team")) and absf(a.global_position.x - c.global_position.x) < 12.0 \
+					and absf(a.global_position.y - c.global_position.y) < 16.0:
+				stacked = true
+	_stack_run = _stack_run + 1.0 / 60.0 if stacked else 0.0
+	_stack_max = maxf(_stack_max, _stack_run)
+
+
+## #297: flat ground, the red flag on a floating island 420 px up, a slab
+## 340 px over the valley.
+func _overhang_source() -> Dictionary:
+	var B = load("res://scripts/maker/maker_build.gd")
+	var src := {"name": "", "platforms": [], "ladders": [], "bot_spawns": [], "player_spawn": Vector2(400, 1500)}
+	var pcs: Array = []
+	for x in [600.0, 1800.0, 3000.0, 4200.0]:
+		pcs.append(B.make_piece("wide", Vector2(x, 1660), Vector2(1200, 300)))
+	pcs.append(B.make_piece("float", OVERHANG_ISLAND.get_center(), OVERHANG_ISLAND.size))
+	pcs.append(B.make_piece("block", OVERHANG_SLAB.get_center(), OVERHANG_SLAB.size))
+	src["maker"] = {"v": 1, "theme": "grassland", "grid": 20, "w": 4800.0, "h": 2000.0, "bottom": "void", "pieces": pcs}
+	src["team_spawns"] = {1: [Vector2(300, 1506), Vector2(600, 1506)], 2: [Vector2(4300, 1506), Vector2(4550, 1506)]}
+	src["ctf_flags"] = [Vector2(400, 1506), Vector2(OVERHANG_ISLAND.get_center().x, OVERHANG_ISLAND.position.y - 4.0)]
+	return src
+
+
+## No climb link may start under a platform: straight up from its start a
+## soldier would hit terrain before the link's top.
+func _check_overhang_links(m: Node) -> void:
+	var nav = m.nav
+	var space: PhysicsDirectSpaceState2D = (m as Node2D).get_world_2d().direct_space_state
+	var under := 0
+	var climbs := 0
+	var ex: Array = []
+	for u in nav.astar.get_point_ids():
+		var a: Vector2 = nav.astar.get_point_position(u)
+		for v in nav.astar.get_point_connections(u):
+			var b: Vector2 = nav.astar.get_point_position(v)
+			if b.y > a.y - 90.0:
+				continue
+			climbs += 1
+			for sx in [-6.0, 6.0]:
+				var from := Vector2(a.x + sx, a.y - 20.0)
+				var q := PhysicsRayQueryParameters2D.create(from, Vector2(from.x, b.y - 4.0), 1 | 4)
+				var hit := space.intersect_ray(q)
+				if not hit.is_empty() and hit.get("collider") is StaticBody2D:
+					under += 1
+					if ex.size() < 4:
+						ex.append("%s->%s" % [str(Vector2i(a)), str(Vector2i(b))])
+					break
+	_log.append("maker_overhang climb_links=%d from_under=%d" % [climbs, under])
+	if climbs == 0:
+		_bad.append("maker_overhang: no climb links onto the platforms")
+	if under > 0:
+		_bad.append("maker_overhang: %d climb links start under a platform (%s)" % [under, ", ".join(ex)])
+
+
+## Underside hits: a bot pressed against the bottom of the island / slab.
+func _track_bonks(m: Node) -> void:
+	for b in m.get_tree().get_nodes_in_group("soldier"):
+		if not is_instance_valid(b) or b == m.player or bool(b.get("dead")):
+			continue
+		var id: int = b.get_instance_id()
+		var gp: Vector2 = b.global_position
+		var hit := false
+		if (b as CharacterBody2D).is_on_ceiling():
+			for r: Rect2 in [OVERHANG_ISLAND, OVERHANG_SLAB]:
+				if gp.x > r.position.x - 8.0 and gp.x < r.end.x + 8.0 and gp.y > r.position.y + 20.0 and gp.y < r.end.y + 40.0:
+					hit = true
+		if hit and not bool(_bonk_on.get(id, false)):
+			_bonk[id] = int(_bonk.get(id, 0)) + 1
+		_bonk_on[id] = hit
+		# A blue attacker made the climb: on the island's top, or up beside its
+		# lip at the height of the top (red defends up there and often shoots
+		# it before the feet touch down).
+		if _top_t < 0.0 and int(b.get("team")) == 1 and gp.x > OVERHANG_ISLAND.position.x - 40.0 and gp.x < OVERHANG_ISLAND.end.x + 40.0 \
+				and gp.y < OVERHANG_ISLAND.position.y + 4.0 and gp.y > OVERHANG_ISLAND.position.y - 60.0:
+			_top_t = float(_n) / 60.0
+## maker_padcross (#294): count bots crossing a pad near its level (feet go
+## from one side of its trigger to the other) and pad launches, sorted by
+## whether the bot's path meant to ride that pad.
+func _padcross_tick() -> void:
+	var m = current_scene
+	var hz = m.get("_hazards")
+	if hz == null:
+		return
+	for b in m.get_tree().get_nodes_in_group("soldier"):
+		if not is_instance_valid(b) or b == m.player or b.get("bot_id") == null or bool(b.get("dead")):
+			continue
+		var id: int = b.get_instance_id()
+		var f: Vector2 = (b as Node2D).global_position
+		var lt: int = int(hz._pad_cd.get(id, -1))
+		if lt != int(_pc_last.get(id, -1)):
+			_pc_last[id] = lt
+			if lt >= 0:
+				var near_pad := Vector2.INF
+				for pd in hz.pads:
+					if near_pad == Vector2.INF or (pd["pos"] as Vector2).distance_to(f) < near_pad.distance_to(f):
+						near_pad = pd["pos"]
+				if _rides_pad(b, m.nav, near_pad):
+					_pc_int += 1
+				else:
+					_pc_un += 1
+					if OS.get_environment("RTNAV_PADDBG") != "":
+						print("PADDBG unintended %s pad=%s before=%s" % [str(b.get("display_name")), str(near_pad), str(_pc_prev.get(id, []))])
+		_pc_prev[id] = [f.round(), (b as CharacterBody2D).velocity.round(), (b as CharacterBody2D).is_on_floor(), str(b.get("_goal_label")),
+			snappedf(float(b.get("jump_cd")), 0.01), snappedf(float(b.get("_escape_t")), 0.01), str(b.get("target") != null and b.get("_target_visible") == true)]
+		for i in hz.pads.size():
+			var pp: Vector2 = hz.pads[i]["pos"]
+			var k := "%d:%d" % [id, i]
+			if f.y < pp.y - 120.0 or f.y > pp.y + 20.0:
+				_pc_side.erase(k)
+				continue
+			var side := -1 if f.x < pp.x - 28.0 else (1 if f.x > pp.x + 28.0 else 0)
+			if side == 0:
+				continue
+			if _pc_side.has(k) and int(_pc_side[k]) == -side:
+				_pc_cross += 1
+			_pc_side[k] = side
+
+
+func _rides_pad(b: Node, nav, pad: Vector2) -> bool:
+	if int(b.get("_pad_ride")) >= 0:
+		return true
+	var p: PackedVector2Array = b.get("_path")
+	var i0: int = int(b.get("_path_i"))
+	if nav == null or not nav.has_method("pad_ride") or pad == Vector2.INF:
+		return false
+	for k in range(maxi(0, i0 - 1), mini(i0 + 3, p.size() - 1)):
+		if p[k].distance_to(pad) < 40.0 and nav.pad_ride(p[k], p[k + 1]) >= 0:
+			return true
 	return false
 
 

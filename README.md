@@ -18,9 +18,19 @@ the classic had and more, with most of Soldat 2's feature list folded in.
 
 <sub>Real frames from the v1.35 build ( bot matches, 1280×720, rendered in software GL — on a GPU it looks the same, only smoother).</sub>
 
+### What's new in 1.39 — Featured levels
+
+- **8 featured levels built in** — LEVELS opens on a FEATURED tab (works offline): Twin Forts, Magma Crown, Skyline Tower, Iron Valley, The Bunker, Frostbite, Hollow Deep and Last Ridge. PLAY, HOST ONLINE or EDIT A COPY to learn how they're made; the Maker's New map can start from any of them.
+- **Vehicles never get stuck** — every map with vehicles was swept with bot matches: wedged buggies / tanks go home on their own, grenades and dropped guns can't fling vehicles out of the map anymore, and bot helicopters stay out of caves and from under overhangs.
+- **Smarter bots** — they fly the planes on Fortress, land for the flag instead of dogfighting forever, ride jump pads on purpose (and don't get flung by ones they walk past), fight properly on contested Domination points and stop jetting into platforms above them.
+- **Movement course prone drop fixed** — forgiving timing, a PRESS X / PRONE cue, and messages that say exactly what went wrong. Going prone mid-air now works even while holding jump.
+- **Laggy players no longer get killed by the cheat checks** — a slow medikit heal or a hit that arrived late used to count as cheating online.
+
+![Featured levels](docs/screenshots/levels-featured.jpg)
+
 ### What's new in 1.38 — Planes
 
-- **Planes** — a fast fighter you fly by pitching the nose: take off down a runway, loop, dive and strafe with the nose gun, drop bombs, and bail out when it's going down. Slow down too much and it stalls. On Fortress, Outpost and Industrial, as a Maker piece, online, and bots fly them too.
+- **Planes** — a fast fighter you fly by pitching the nose: take off down a runway, loop, dive and strafe with the nose gun, drop bombs, and bail out when it's going down. Slow down too much and it stalls. On Fortress and Industrial, as a Maker piece, online, and bots fly them too.
 - **Smarter bots on your levels** — they ride jump pads up to high objectives and use tanks and helicopters on Maker maps.
 - **Discord status** — your Discord profile shows the mode, map and score you're playing (Windows / Linux desktop).
 - **Phone BACK button fixed everywhere** — it closes the top dialog first instead of throwing you out of the editor or quitting.

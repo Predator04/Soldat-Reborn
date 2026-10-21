@@ -94,6 +94,16 @@ func _process(_d: float) -> bool:
 				Input.action_press("fire")
 			if _n - _t < 52:
 				return false
+			# #293: keep the trigger down (up to 4 s more) until one of our
+			# bullets has spawned: the switch to slot 2 can be refused while
+			# the previous gun is still busy (reload), and a 12-frame burst
+			# then fired nothing ("no gold tracer on own bullets").
+			var pl = m.player
+			if not _spawned_ok and _n - _t < 52 + 240 and is_instance_valid(pl) and not bool(pl.dead):
+				if int(pl.get("weapon_index")) != 2:
+					pl.call("_switch_weapon", 2)
+				Input.action_press("fire")
+				return false
 			Input.action_release("fire")
 			Input.action_release("jet")
 			var tinted := 0

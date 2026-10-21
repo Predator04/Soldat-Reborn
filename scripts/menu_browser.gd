@@ -75,7 +75,7 @@ func _refresh_lan() -> void:
 		c.queue_free()
 	if found.is_empty():
 		var l := Label.new()
-		l.text = "Looking for games on your network..." if _lan_listening else "Can't listen for LAN games (port %d busy)." % Net.LAN_PORT
+		l.text = "Looking for games on your network..." if _lan_listening else "Can't listen for LAN games (port %d busy)." % Net.lan_discovery_port
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		l.add_theme_font_size_override("font_size", 14)
 		l.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)

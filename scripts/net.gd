@@ -451,7 +451,23 @@ func _smoke_join() -> void:
 	var rj := _smoke_arg("--relay-join")
 	if rj != "":
 		var cf := FileAccess.open(_smoke_arg("--code-file"), FileAccess.READ)
-		join_relay(rj, cf.get_as_text().strip_edges() if cf != null else "")
+		var code := cf.get_as_text().strip_edges() if cf != null else ""
+		# #293: say why a relay join failed and try again: a freshly
+		# started client can be starved past the WebSocket handshake timeout
+		# under CPU load (gate C relay: "players=0", the room never saw a join).
+		# Up to 6 tries, 2 s apart.
+		var tries := [1, Time.get_ticks_msec()]
+		relay_failed.connect(func(msg: String) -> void:
+			var rp = multiplayer.multiplayer_peer
+			var ws = rp.get("ws") if rp != null else null
+			print("SMOKE-RELAY-FAIL try=%d after=%d ms %s close=%s" % [tries[0], Time.get_ticks_msec() - int(tries[1]), msg,
+				(str(ws.get_close_code()) + " " + ws.get_close_reason()) if ws != null else "?"])
+			if tries[0] < 6 and _map_synced == false:
+				tries[0] += 1
+				get_tree().create_timer(2.0).timeout.connect(func() -> void:
+					tries[1] = Time.get_ticks_msec()
+					join_relay(rj, code)))
+		join_relay(rj, code)
 	else:
 		join_game("127.0.0.1", _smoke_port())
 	_smoke_auto_start()
@@ -524,7 +540,29 @@ func _smoke_join() -> void:
 						watch.queue_free()))
 	# Larger window so the client has time to complete: connect → map_received →
 	# main.tscn._ready → net_client_ready → host mirrors bots via net_spawn_bot.
+	# #293: player bodies (name + head/skin) seen at any point of the window,
+	# not just at its end: under load a botfire client in the same match is
+	# often dead / respawning right then and its body is missing.
+	var seen_names: Array = []
+	var seen_heads: Array = []
+	var sampler := Timer.new()
+	sampler.wait_time = 0.25
+	sampler.autostart = true
+	add_child(sampler)
+	sampler.timeout.connect(func() -> void:
+		var sm := get_tree().current_scene
+		if sm == null or sm.get("_players_by_id") == null:
+			return
+		for _c in sm.get_children():
+			if _c is CharacterBody2D and _c.get("loadout") == null and not _c.is_in_group("vehicle"):
+				var nm := str(_c.name)
+				var hd := str(_c.cosmetics.get("head", "?")) + "/" + str(_c.cosmetics.get("skin", "-"))
+				if not seen_names.has(nm):
+					seen_names.append(nm)
+				if not seen_heads.has(hd):
+					seen_heads.append(hd))
 	get_tree().create_timer(_smoke_secs(6.0)).timeout.connect(func() -> void:
+		sampler.stop()
 		var main := get_tree().current_scene
 		var pbi = main.get("_players_by_id") if main != null else null
 		var pcount: int = pbi.size() if pbi != null else 0
@@ -544,11 +582,17 @@ func _smoke_join() -> void:
 			for _c in _mn.get_children():
 				if _c is CharacterBody2D and _c.get("loadout") == null and not _c.is_in_group("vehicle"):
 					_names.append(str(_c.name))
+			for nm in seen_names:
+				if not _names.has(nm):
+					_names.append(nm)
 			print("SMOKE-JOIN-PLAYERS ", _names)
 			var _heads := []
 			for _c in _mn.get_children():
 				if _c is CharacterBody2D and _c.get("loadout") == null and not _c.is_in_group("vehicle"):
 					_heads.append(str(_c.cosmetics.get("head", "?")) + "/" + str(_c.cosmetics.get("skin", "-")))
+			for hd in seen_heads:
+				if not _heads.has(hd):
+					_heads.append(hd)
 			print("SMOKE-JOIN-HEADS ", _heads)
 			var _bk := -1
 			for _c in _mn.get_children():
@@ -981,11 +1025,18 @@ func _smoke_port() -> int:
 
 
 
+## A smoke client's window counts from launch, so under CPU load less of it is
+## left once the match has loaded: the release gate's GATE_LOAD factor (#293,
+## 1 = quiet, <= 4; unset outside the gate) stretches it.
 func _smoke_secs(default_secs: float) -> float:
+	var secs := default_secs
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--smoke-secs="):
-			return maxf(1.0, float(a.substr(13)))
-	return default_secs
+			secs = maxf(1.0, float(a.substr(13)))
+	var lf := OS.get_environment("GATE_LOAD")
+	if lf.is_valid_float():
+		secs *= clampf(float(lf), 1.0, 4.0)
+	return secs
 
 
 # --smoke-auto: drive the joined client's soldier with random input (move, jet,
@@ -1073,11 +1124,23 @@ func _smoke_auto_tick(delta: float) -> void:
 # the same network can join without typing an IP.
 const LAN_PORT := 23074
 const LAN_TAG := "soldat-reborn"
+# #293: test isolation only — TRACERFALL_LAN_PORT=<port> moves discovery
+# (beacons + listener) off LAN_PORT so parallel release gates on one machine
+# neither hear each other's servers nor fail to bind the listener. Unset for
+# players: always LAN_PORT.
+var lan_discovery_port: int = _lan_port_from_env()
 var lan_servers: Dictionary = {}    # "ip:port" -> {ip, port, name, map, mode, players, max, v, seen}
 var _lan_tx: PacketPeerUDP = null
 var _lan_rx: PacketPeerUDP = null
 var _lan_timer: Timer = null
 var _lan_port := DEFAULT_PORT
+
+
+static func _lan_port_from_env() -> int:
+	var v := OS.get_environment("TRACERFALL_LAN_PORT")
+	if v.is_valid_int() and int(v) > 0 and int(v) < 65536:
+		return int(v)
+	return LAN_PORT
 
 
 func _lan_advertise_start(port: int) -> void:
@@ -1108,7 +1171,7 @@ func _lan_beacon() -> void:
 	var pkt := JSON.stringify(server_info()).to_utf8_buffer()
 	# Broadcast for the LAN, loopback for a second copy on this machine.
 	for dest in ["255.255.255.255", "127.0.0.1"]:
-		if _lan_tx.set_dest_address(dest, LAN_PORT) == OK:
+		if _lan_tx.set_dest_address(dest, lan_discovery_port) == OK:
 			_lan_tx.put_packet(pkt)
 
 
@@ -1139,7 +1202,7 @@ func lan_listen_start() -> bool:
 	if _lan_rx != null:
 		return true
 	_lan_rx = PacketPeerUDP.new()
-	if _lan_rx.bind(LAN_PORT, "*") != OK:
+	if _lan_rx.bind(lan_discovery_port, "*") != OK:
 		_lan_rx = null
 		return false
 	lan_servers.clear()

@@ -21,6 +21,7 @@ var _codes := {}
 var _titles := {}
 
 
+const GL = preload("res://tools/gate_load.gd")   # #293: wall deadlines scale with GATE_LOAD
 var _done := false
 
 
@@ -30,7 +31,7 @@ func _initialize() -> void:
 
 # Watchdog: a script error stops the coroutine — report instead of hanging.
 func _process(_d: float) -> bool:
-	if not _done and Time.get_ticks_msec() > 85000:
+	if not _done and Time.get_ticks_msec() > GL.wait_ms(85000):
 		_finish(false, "timed out after: " + " | ".join(_log))
 	return false
 
@@ -48,10 +49,10 @@ func _until(cond: Callable, frames: int = 600) -> bool:
 	var t0 := Time.get_ticks_msec()
 	var n := 0
 	while not cond.call():
-		if Time.get_ticks_msec() > 80000:
+		if Time.get_ticks_msec() > GL.wait_ms(80000):
 			_fail("timed out after: " + " | ".join(_log))
 			return false
-		if n >= frames and Time.get_ticks_msec() - t0 > 15000:
+		if n >= frames and Time.get_ticks_msec() - t0 > GL.wait_ms(15000):
 			return false
 		n += 1
 		await process_frame
@@ -329,6 +330,8 @@ func _run():
 	dlg.visible = false
 	(ed.find_child("LevelsButton", true, false) as Button).pressed.emit()
 	var ov: Node = ed.get_node("UI").get_node_or_null("LevelsBrowser")
+	if ov != null:
+		ov.set_tab("new")   # it opens on FEATURED (#295)
 	if ov == null or not await _until(func() -> bool: return ov.loaded > 0) or not _order(ov).contains("D"):
 		return _fail("editor LEVELS overlay: %s" % (_order(ov) if ov != null else "missing"))
 	ov.close()

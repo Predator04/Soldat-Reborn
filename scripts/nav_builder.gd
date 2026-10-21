@@ -69,6 +69,8 @@ var ground := PackedByteArray()
 var col_ground: Array = []      # per column: PackedInt32Array of ground rows (sorted)
 var stats := {}
 var _pad_links: Array = []      # Vector3i(pad node, landing node, steer mode)
+var _pad_nodes := {}            # pad node index (pts_l) -> true
+var _pad_cross := {}            # #294: nodes reached by walking across a pad (pts_l index) -> true
 
 
 ## Build the graph for map `m`. Returns {} when the map has no walkable space.
@@ -105,6 +107,7 @@ func _build(m: Dictionary) -> Dictionary:
 	var edges: Array = res[1]
 	_add_pad_links(m, pts, pts_l, edges)
 	var nb := _bridges(m, pts_l, edges)
+	_mark_pad_crossings(m, pts_l, edges)
 	var out := _components(pts_l, edges)
 	stats = {"ms": Time.get_ticks_msec() - t0, "nodes": out["nodes"].size() / 2, "edges": out["edges"].size() / 2,
 		"bridges": nb, "cells": nx * ny}
@@ -435,6 +438,16 @@ func _clear(a: Vector2, b: Vector2) -> bool:
 	return false
 
 
+## #297: a standing soldier fits all the way straight up from `p` to height
+## `top_y` (nothing overhead to start a climb under).
+func _rise_clear(p: Vector2, top_y: float) -> bool:
+	var cx := int(round(p.x / R))
+	for y in range(int(round(p.y / R)), int(round(top_y / R)) - 1, -1):
+		if not _stand_at(cx, y):
+			return false
+	return true
+
+
 func _has_floor_below(x: float, y: float) -> bool:
 	var cx := int(round(x / R))
 	if cx < 0 or cx >= nx:
@@ -501,6 +514,7 @@ func _link(pts: Array) -> Array:
 		have[e] = true
 	var pts_l: Array = pts.duplicate()
 	var air := {}
+	var steps := {}
 	var per_src := {}
 	for e in climb:
 		var i: int = e.x
@@ -527,7 +541,24 @@ func _link(pts: Array) -> Array:
 					bi = pts_l.size()
 					pts_l.append(bb)
 					air[key] = bi
-				edges.append(Vector2i(i, bi))
+				if _clear(p, bb) and _rise_clear(p, bb.y):
+					edges.append(Vector2i(i, bi))
+				else:
+					# #297: p stands UNDER the platform (a slab hanging 300-560 px
+					# over walkable ground): the straight line p -> bb runs through
+					# its body or along its underside, and a bot follows a link's
+					# line (it can't build up the sideways speed under it either)
+					# — it jetted into the underside again and again. Route over
+					# the step-out point the detour was checked with: walk out
+					# to `a`, then jet straight up beside the lip.
+					var ak := Vector2i(int(a.x / 16.0), int(a.y / 16.0))
+					var ai: int = int(steps.get(ak, -1))
+					if ai < 0:
+						ai = pts_l.size()
+						pts_l.append(a)
+						steps[ak] = ai
+					edges.append(Vector2i(i, ai))
+					edges.append(Vector2i(ai, bi))
 				edges.append(Vector2i(bi, j))
 				per_src[i] = int(per_src.get(i, 0)) + 1
 				done = true
@@ -572,6 +603,7 @@ func _fits_at(x: float, y: float) -> bool:
 ## in the map = nothing changes.
 func _add_pad_links(m: Dictionary, pts: Array, pts_l: Array, edges: Array) -> void:
 	_pad_links.clear()
+	_pad_nodes.clear()
 	var pads := _jump_pads(m)
 	if pads.is_empty():
 		return
@@ -610,6 +642,7 @@ func _add_pad_links(m: Dictionary, pts: Array, pts_l: Array, edges: Array) -> vo
 		if ins.is_empty():
 			continue
 		pts_l.append(pn)
+		_pad_nodes[pi] = true
 		for j: int in ins:
 			edges.append(Vector2i(j, pi))
 		var apex := pn.y - power * power / (2.0 * pad_gravity)
@@ -630,6 +663,45 @@ func _add_pad_links(m: Dictionary, pts: Array, pts_l: Array, edges: Array) -> vo
 					edges.append(Vector2i(pi, j))
 					_pad_links.append(Vector3i(pi, j, mode))
 					break
+
+
+## #294: walking ACROSS a pad (not riding it) launches the walker, so a route
+## that does should cost more than one that doesn't: every walk link at a
+## pad's level whose span overlaps the pad's trigger (+ PAD_CROSS_SLOP) marks
+## its destination node; NavGraph.adopt weights those (PAD_CROSS_WEIGHT), and
+## bots that still have to cross hop over the pad (bot._pad_hop_ahead). The pad's
+## own node and its ride links are left alone. No pads = nothing changes.
+const PAD_TRIGGER_HALF := 28.0   # match_hazards.PAD_HALF_W
+const PAD_CROSS_SLOP := 6.0
+const PAD_LEVEL_DY := 24.0
+
+
+func _mark_pad_crossings(m: Dictionary, pts_l: Array, edges: Array) -> void:
+	_pad_cross.clear()
+	var pads := _jump_pads(m)
+	if pads.is_empty():
+		return
+	# Nodes that walk INTO a pad node are its approach: weighting them would
+	# make riding the pad cost as much as crossing it, and routes stopped
+	# using the pads at all (Twin Forts, #295). Only crossings are weighted.
+	var approach := {}
+	for e: Vector2i in edges:
+		if _pad_nodes.has(e.y) and not _pad_nodes.has(e.x):
+			approach[e.x] = true
+	for pad: Dictionary in pads:
+		var pp: Vector2 = pad["pos"]
+		var x0 := pp.x - PAD_TRIGGER_HALF - PAD_CROSS_SLOP
+		var x1 := pp.x + PAD_TRIGGER_HALF + PAD_CROSS_SLOP
+		for e: Vector2i in edges:
+			if _pad_nodes.has(e.x) or _pad_nodes.has(e.y) or approach.has(e.y):
+				continue
+			var a: Vector2 = pts_l[e.x]
+			var b: Vector2 = pts_l[e.y]
+			if absf(a.y - pp.y) > PAD_LEVEL_DY or absf(b.y - pp.y) > PAD_LEVEL_DY:
+				continue
+			if maxf(a.x, b.x) < x0 or minf(a.x, b.x) > x1:
+				continue
+			_pad_cross[e.y] = true
 
 
 ## One simulated pad ride (feet position, bot physics at 60 Hz) steering at
@@ -1043,4 +1115,20 @@ func _components(pts_l: Array, edges: Array) -> Dictionary:
 			if idx.has(pl.x) and idx.has(pl.y):
 				pads.append_array([idx[pl.x], idx[pl.y], pl.z])
 		out["pads"] = pads
+	if not _pad_nodes.is_empty():
+		# #294: the pad nodes themselves (walk-in only): never a path's start.
+		var pn: Array = []
+		for c in _pad_nodes:
+			if idx.has(c):
+				pn.append(idx[c])
+		pn.sort()
+		out["pad_nodes"] = pn
+	if not _pad_cross.is_empty():
+		# #294: nodes reached by walking across a pad (NavGraph weights them).
+		var pc: Array = []
+		for c in _pad_cross:
+			if idx.has(c):
+				pc.append(idx[c])
+		pc.sort()
+		out["pad_cross"] = pc
 	return out

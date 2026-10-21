@@ -3,6 +3,7 @@ extends SceneTree
 ## QUICK PLAY button drops you straight into a bot match.
 ##   godot --headless -s tools/quickplay_test.gd
 
+const GL = preload("res://tools/gate_load.gd")   # #293: wall deadlines scale with GATE_LOAD
 var _n := 0
 var _st := 0
 var _saved := []
@@ -45,8 +46,8 @@ func _process(_d: float) -> bool:
 					bots += 1
 			if _n % 30 == 0 and bots > 0:
 				return _end(not net.is_networked(), "bot match after %d ms, bots=%d networked=%s" % [Time.get_ticks_msec() - _t0, bots, str(net.is_networked())])
-		if Time.get_ticks_msec() - _t0 > 20000:
-			return _end(false, "still on %s after 20 s" % (m.scene_file_path if m else "?"))
+		if Time.get_ticks_msec() - _t0 > GL.wait_ms(20000):
+			return _end(false, "still on %s after %d s" % [m.scene_file_path if m else "?", GL.wait_ms(20000) / 1000])
 	return false
 
 

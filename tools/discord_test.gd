@@ -16,6 +16,7 @@ extends SceneTree
 
 const P_PATH := "res://scripts/discord/discord_presence.gd"
 const APP := "111122223333444455"
+const GL = preload("res://tools/gate_load.gd")   # #293: wall deadlines scale with GATE_LOAD
 
 var P: GDScript
 var Ipc: GDScript
@@ -82,7 +83,7 @@ class FakeDiscord:
 
 	func take(n: int, timeout_ms: int) -> PackedByteArray:
 		var t0 := Time.get_ticks_msec()
-		while Time.get_ticks_msec() - t0 < timeout_ms:
+		while Time.get_ticks_msec() - t0 < GL.wait_ms(timeout_ms):
 			mx.lock()
 			if _out.size() >= n:
 				var r := _out.slice(0, n)
@@ -130,7 +131,7 @@ func _initialize() -> void:
 
 
 func _process(_d: float) -> bool:
-	if not _done and Time.get_ticks_msec() > 80000:
+	if not _done and Time.get_ticks_msec() > GL.wait_ms(80000):
 		_finish(false, "timed out after: " + " | ".join(_log))
 	return false
 
@@ -144,7 +145,7 @@ func _frames(n: int) -> void:
 func _until(cond: Callable, ms: int = 4000) -> bool:
 	var t0 := Time.get_ticks_msec()
 	while not cond.call():
-		if Time.get_ticks_msec() - t0 > ms:
+		if Time.get_ticks_msec() - t0 > GL.wait_ms(ms):
 			return false
 		await process_frame
 	return true
@@ -203,7 +204,7 @@ func _details(act_frame: Dictionary) -> String:
 func _tick_until_acts(node: Node, fake: FakeDiscord, n: int) -> bool:
 	var t0 := Time.get_ticks_msec()
 	while fake.activities().size() < n:
-		if Time.get_ticks_msec() - t0 > 5000:
+		if Time.get_ticks_msec() - t0 > GL.wait_ms(5000):
 			return false
 		node.call("tick")
 		await process_frame
@@ -454,7 +455,7 @@ func _uds_case() -> String:
 	var buf := PackedByteArray()
 	var got: Array = []
 	var t0 := Time.get_ticks_msec()
-	while Time.get_ticks_msec() - t0 < 6000:
+	while Time.get_ticks_msec() - t0 < GL.wait_ms(6000):
 		if peer == null and bool(srv.call("is_connection_available")):
 			peer = srv.call("take_connection")
 		if peer != null:

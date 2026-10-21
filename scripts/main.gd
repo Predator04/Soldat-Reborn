@@ -191,6 +191,7 @@ var _nav_task := -1
 var _nav_builder: RefCounted = null
 var _nav_data: Dictionary = {}
 var nav_runtime_ms := -1     # build time once adopted (tests / diagnostics)
+var nav_adopt_ms := -1.0     # #293: main-thread wall ms _tick_runtime_nav spent adopting it (gate F rtnav)
 
 var MAPS := [
 	{
@@ -520,6 +521,10 @@ func _ready() -> void:
 				# finished loading (#118 — race between ENet accept and scene load).
 				for _pending in Net.consume_pending_clients():
 					_handle_client_ready(_pending.id, _pending.name, _pending.version, str(_pending.get("token", "")))
+				# #293: the match is loaded (comes after "listening on port"):
+				# the release gate starts its clients on this line instead of
+				# guessing a load time.
+				print("Dedicated match ready: map=%s mode=%d bots=%d" % [str(_map.get("name", "?")), int(Settings.game_mode), _bots_by_id.size()])
 			else:
 				_net._spawn_networked_player(1)  # host is peer 1
 				# Listen host: same bot roster as single player (Bots setting;
@@ -1386,6 +1391,7 @@ func _start_runtime_nav() -> void:
 func _tick_runtime_nav() -> void:
 	if _nav_task < 0 or not WorkerThreadPool.is_task_completed(_nav_task):
 		return
+	var t0 := Time.get_ticks_usec()
 	WorkerThreadPool.wait_for_task_completion(_nav_task)
 	_nav_task = -1
 	if nav != null and nav.has_method("adopt"):
@@ -1396,6 +1402,7 @@ func _tick_runtime_nav() -> void:
 		int(st.get("nodes", 0)), int(st.get("edges", 0)), int(st.get("bridges", 0)), nav_runtime_ms])
 	_nav_data = {}
 	_nav_builder = null
+	nav_adopt_ms = (Time.get_ticks_usec() - t0) / 1000.0
 
 
 func _process(delta: float) -> void:

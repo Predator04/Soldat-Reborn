@@ -4,12 +4,20 @@ extends SceneTree
 ## Presses V, 2, 3 (friendly flag carrier — down) as the player and checks the
 ## call lands in the chat feed with its voice line and without switching
 ## weapons; then waits for a bot to call out an enemy flag carrier.
+## A call-out needs a flag grab, and in a random bot match the first grab can
+## take 15 s or well over 100 s (an attacker dies, or drops the flag before the
+## robbed team's 0.7 s call). So after NATURAL_S of game time without one the
+## test stages the grab (#293): an enemy bot is put on our flag, and the
+## same path (grab -> _bot_radio_efc -> net_radio) must produce the call.
 
 var _t := 0.0
 var _phase := 0
 var _step := 0
 var _w0 := -1
 var _log: Array = []
+var _t4 := 0.0
+var _staged := false
+const NATURAL_S := 60.0
 
 
 func _key(kc: int) -> void:
@@ -70,6 +78,7 @@ func _process(d: float) -> bool:
 					quit()
 					return true
 				_step = 4
+				_t4 = _t
 				m.set("radio_count", 0)
 			elif _t > 10.0:
 				print("RADIO-TEST FAIL no player call said=%s voiced=%d" % [said, voiced])
@@ -77,8 +86,36 @@ func _process(d: float) -> bool:
 				return true
 		4:
 			if int(m.get("radio_count")) > 0:
-				_log.append("bot-call@%.0fs" % _t)
+				_log.append("bot-call@%.0fs%s" % [_t, " (staged grab)" if _staged else ""])
 				print("RADIO-TEST ok %s" % " ".join(_log))
 				quit()
 				return true
+			if _t - _t4 > NATURAL_S:
+				_stage_grab(m, p)
 	return false
+
+
+## Puts a living bot onto an untaken enemy flag every frame until it grabs
+## it, while a bot of the robbed team is alive to make the call.
+func _stage_grab(m: Node, _p: Node) -> void:
+	for f in m.flags:
+		if f.has_meta("carrier") and f.get_meta("carrier") != null:
+			continue
+		var team := int(f.get_meta("team"))
+		var robbed := false
+		var thief: Node2D = null
+		for b in get_nodes_in_group("soldier"):
+			if not is_instance_valid(b) or b.get("bot_id") == null or bool(b.get("dead")):
+				continue
+			if int(b.get("team")) == team:
+				robbed = true
+			elif thief == null:
+				thief = b
+		if not robbed or thief == null:
+			continue
+		if not _staged:
+			_log.append("no natural grab in %.0fs" % NATURAL_S)
+		_staged = true
+		thief.global_position = (f as Node2D).global_position
+		(thief as CharacterBody2D).velocity = Vector2.ZERO
+		return
