@@ -908,8 +908,10 @@ func _bot_pilot(delta: float) -> Vector2:
 		var to := tp - pos
 		if t is CharacterBody2D:
 			to += (t as CharacterBody2D).velocity * (to.length() / (GUN_SPEED + spd))
-		# (No gun runs at targets hugging the sides of the world.)
-		if to.length() < 1400.0 and tp.x > 380.0 and tp.x < mw - 380.0:
+		# (No gun runs at targets hugging the sides of the world — nor, #302,
+		# at one with a wall just past it: Industrial's tower, where a fast
+		# pull-out after the pass ended in the wall.)
+		if to.length() < 1400.0 and tp.x > 380.0 and tp.x < mw - 380.0 and not _wall_past(tp, signf(to.x) if absf(to.x) > 1.0 else face):
 			attack = true
 			want = to
 			if want.y > 0.0 and alt < 260.0:
@@ -954,7 +956,11 @@ func _bot_pilot(delta: float) -> Vector2:
 	# Committed evasive turns (no flip-flopping between goals frame to frame):
 	# the side of the world or a wall ahead -> turn back toward the middle
 	# (over the top when fast, under when slow and high); ground ahead -> climb.
-	var lead := maxf(absf(velocity.x), 300.0) * 1.5
+	# #302: a slow plane turns wide (pitch authority drops toward the stall):
+	# look ahead at least its speed + turn radius, or it loops into the side.
+	var auth_est := clampf((spd - STALL_SPEED * 0.6) / 420.0, 0.3, 1.0) * lerpf(0.45, 1.0, clampf((spd - STALL_SPEED) / STALL_BAND, 0.0, 1.0))
+	var turn_r := minf(spd / maxf(PITCH_RATE * auth_est, 0.5), 700.0)
+	var lead := maxf(maxf(absf(velocity.x), 300.0) * 1.5, absf(velocity.x) + turn_r + 120.0)
 	var edge := (velocity.x >= 0.0 and pos.x + lead > mw - 260.0) or (velocity.x <= 0.0 and pos.x - lead < 260.0)
 	var blk := _path_blocked(pos, spd)
 	if (edge and Vector2.from_angle(_tilt).x * center < 0.3) or blk == 2:
@@ -966,10 +972,16 @@ func _bot_pilot(delta: float) -> Vector2:
 			var room := pos.y - CEIL_Y
 			_bp_evade_over = (room > 650.0 and (spd > 520.0 or alt < 450.0)) or alt < 350.0
 			_bp_evade_dir = Vector2(center * 0.7, -1.0).angle() if _bp_evade_over else Vector2(center, 0.6).angle()
-		elif blk == 2 and not _bp_evade_over and _bp_evade < 1.2:
+		elif blk == 2 and not _bp_evade_over and _bp_evade < 1.2 and (spd > 500.0 or alt < 350.0):
+			# (#302: only with the speed to get over it — a slow plane that
+			# pulls up here stalls and falls back into the wall.)
 			# Still a wall ahead going under: climb out over it instead.
 			_bp_evade_over = true
 			_bp_evade_dir = Vector2(_bp_evade_side * 0.7, -1.0).angle()
+	# #302: still flying at the side of the world when the turn's time is up:
+	# keep turning (the timer used to run out mid-loop next to the edge).
+	if edge and _bp_evade > 0.0 and _bp_evade < 0.5 and velocity.x * _bp_evade_side < 0.0:
+		_bp_evade = 0.5
 	if blk == 1:
 		_bp_climb = maxf(_bp_climb, 0.45)
 	if _bp_evade > 0.0:
@@ -984,6 +996,15 @@ func _bot_pilot(delta: float) -> Vector2:
 		desired = Vector2(center if edge else face, 0.45 if alt > 160.0 else 0.0).angle()
 		thr = 1.0
 	var pitch := clampf(angle_difference(_tilt, desired) * 3.0, -1.0, 1.0)
+	# #302: an evasive turn rolls the nose the way it was planned — through
+	# straight down for "under", through straight up for "over" — not the
+	# shortest way round: a slow pilot set to go under used to pull up over
+	# the top instead, stall short of it, fall back toward the side of the
+	# world and loop into the wall.
+	if _bp_evade > 0.0 and _bp_climb <= 0.0 and absf(angle_difference(_tilt, desired)) > 1.2:
+		var cw_e := fposmod(desired - _tilt, TAU)
+		var down_first := fposmod(PI * 0.5 - _tilt, TAU) < cw_e
+		pitch = 1.0 if down_first == (not _bp_evade_over) else -1.0
 	# Turning round (target / goal behind): go under (a split-S) when there's
 	# little sky left above and height to spare, else over the top.
 	if absf(angle_difference(_tilt, desired)) > 1.7 and _bp_evade <= 0.0 and _bp_climb <= 0.0:
@@ -1037,6 +1058,18 @@ func _path_blocked(pos: Vector2, spd: float) -> int:
 		if gy != INF and gy - p.y < MIN_CLEAR:
 			return 1
 	return 0 if h.is_empty() else 1
+
+
+## #302: a wall (a near-vertical face) within WALL_PAST px beyond `tp` going
+## `dx`, at the target's height or a little above — no gun run there.
+const WALL_PAST := 520.0
+func _wall_past(tp: Vector2, dx: float) -> bool:
+	for up in [20.0, 120.0]:
+		var a := tp + Vector2(0.0, -up)
+		var h := _ray_hit(a, a + Vector2(dx * WALL_PAST, 0.0))
+		if not h.is_empty() and absf((h.normal as Vector2).y) < 0.5:
+			return true
+	return false
 
 
 ## Real ground under `pos` (not the void down to the kill line).

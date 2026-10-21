@@ -41,6 +41,17 @@ const WEDGE_TILT := 1.22         # ~70 deg
 # alone longer than the idle return, so an untouched one drives home first.
 const DRIVE_BAN_TIME := 70.0
 const BAIL_RETURN_TIME := 12.0   # #300: home this soon after a bot bail
+# #302: the bot driver looks for the end of the road (a face the wheels can't
+# climb, a drop it would wedge in / couldn't drive back up from into a dead
+# end, the void) and stops there without a ban; bots board only with
+# ROAD_USEFUL px of road toward their goal (bot._think_drive -> road_ahead).
+enum { ROAD_CLEAR, ROAD_WALL, ROAD_DROP, ROAD_VOID }
+const ROAD_NEAR := 480.0         # px the driver checks ahead (sees past a drop)
+const ROAD_LOOK := 900.0         # px checked before a bot boards
+const ROAD_USEFUL := 600.0       # road a bot needs toward its goal to board
+const ROAD_DROP_H := 60.0        # a fall deeper than this can't be driven back up
+const ROAD_CLIMB_MAX := deg_to_rad(50.0)   # a face steeper than this stalls the wheels
+const ROAD_CRACK := 44.0         # ground this much further below the body centre than at the start = a crack
 var EXPLODE_RADIUS := 150.0
 var EXPLODE_DAMAGE := 120.0
 var EXPLOSIVE_MUL := 1.6      # rockets / grenades hurt it more than bullets
@@ -111,6 +122,11 @@ var _bd_hop := false
 var _bd_drop := false           # #299: bot driver: a drop ahead it can't take
 var _bd_drop_t := 0.0
 var drive_ban_t := 0.0          # #299: bot drivers skip it while > 0 (bot._think_drive)
+static var _VDBG := OS.get_environment("VEHICLE_DEBUG")   # #302: print bot-driver road-end stops
+var road_stops := 0             # #302: bot drivers that got out at the end of the road
+var _road_parked := false       # #302: left at the end of the road: home after BAIL_RETURN_TIME unless taken
+var _road_memo := Vector4(INF, INF, 0.0, 0.0)   # road_ahead cache: x, y, dir, px
+var _road_memo_ms := -100000
 var _gwedge_t := 0.0             # #299: seconds wedged in place (host)
 var _gwedge_at := Vector2.INF
 var wedge_resets := 0           # #299: wedge recoveries (tests)
@@ -260,6 +276,8 @@ func set_seat(seat: int, s: Node2D) -> void:
 	if seat < 0 or seat >= seats.size():
 		return
 	_idle_t = 0.0   # #259: entering counts as touching
+	if seat == 0 and s != null:
+		_road_parked = false
 	var old = seats[seat]
 	if is_instance_valid(old) and old != s and old.has_method("dismount_m2"):
 		old.dismount_m2()
@@ -411,8 +429,10 @@ func _touch_tick(delta: float) -> void:
 	# void — the #299 drive ban) sits where bots won't take it on from; it goes
 	# home after BAIL_RETURN_TIME instead of the full idle minute, and keeps
 	# the ban, so bots don't drive it straight back into the same spot.
+	# #302: one a bot driver left at the end of the road (no ban: bots heading
+	# the other way may take it) goes home as soon, ready for the next trip.
 	var limit := idle_respawn_time
-	if drive_ban_t > 0.0:
+	if drive_ban_t > 0.0 or _road_parked:
 		limit = minf(limit, BAIL_RETURN_TIME)
 	if _is_host_side() and idle_respawn_time > 0.0 and _idle_t >= limit \
 			and global_position.distance_to(spawn_pos) > 24.0:
@@ -730,6 +750,7 @@ func _bot_drive(delta: float) -> Vector2:
 	# Don't drive off into the void.
 	var main := get_parent()
 	var hazard := false
+	var planned := false
 	if not leave and main != null and main.has_method("_geom_ground_y") and absf(velocity.x) > 20.0:
 		var ky: float = float(main.get("KILL_Y"))
 		var gy: float = main._geom_ground_y(global_position.x + dir * 70.0, global_position.y - 30.0)
@@ -741,10 +762,21 @@ func _bot_drive(delta: float) -> Vector2:
 	_bd_drop_t -= delta
 	if _bd_drop_t <= 0.0:
 		_bd_drop_t = 0.1
-		_bd_drop = not leave and is_on_floor() and _bad_drop_ahead(dir)
+		_bd_drop = false
+		if not leave and is_on_floor():
+			# #302: the end of the road (wall / bad drop / dead end / void)
+			# within the stopping distance: brake and get out there. A planned
+			# stop, not a bail: no drive ban (bots heading the other way can
+			# still use it; road_ahead keeps bots going this way off it).
+			var sp: float = absf(velocity.x) if signf(velocity.x) == dir else 0.0
+			var stop: float = 50.0 + sp * 0.12 + sp * sp / (2.0 * BRAKE)
+			var road := _road_walk(dir, maxf(stop + 80.0, ROAD_NEAR), sp)
+			_bd_drop = road.y != ROAD_CLEAR and road.x <= stop
+			if _bd_drop and _VDBG != "":
+				print("VEHICLE road end %s#%d at %s dir=%d v=%s road=%s stop=%d goal=%s" % [kind, vehicle_id, Vector2i(global_position), int(dir), Vector2i(velocity), str(road), int(stop), str(goal)])
 	if _bd_drop and not leave:
 		leave = true
-		hazard = true
+		planned = true
 		if absf(velocity.x) >= 60.0 and signf(velocity.x) == dir:
 			return Vector2(-dir, 0.0)
 	# Stuck: not getting anywhere for a while (hop once, then give up).
@@ -765,6 +797,9 @@ func _bot_drive(delta: float) -> Vector2:
 		_bd_stuck_t = 0.0
 		if hazard:
 			drive_ban_t = DRIVE_BAN_TIME
+		elif planned:
+			road_stops += 1
+			_road_parked = true
 		if Net.is_networked() and main != null and main.has_method("net_vehicle_seat_bot"):
 			main.bcast("net_vehicle_seat_bot", [vehicle_id, 0, int(d.get("bot_id")), false], true)
 		else:
@@ -783,57 +818,160 @@ func _bot_drive(delta: float) -> Vector2:
 	return Vector2(0.0 if leave else dir, hop)
 
 
-## #299: drive ahead along the ground (steps / slopes the wheels take) for the
-## braking distance; where the ground falls away, fly the body on from there at
-## the current speed. True when that flight lands — after a real drop — on a
-## face too steep to stand on (it would wedge or slide into a slot). Pure
-## terrain queries on this body's own shape.
-func _bad_drop_ahead(dir: float) -> bool:
+## #302: where the road ends. Drives the body ahead along the ground for up to
+## `reach` px (steps / slopes the wheels take); where the ground falls away it
+## flies the body on at `spd` (sliding along steep faces) and keeps driving
+## from where it lands. Returns Vector2(px it gets, why it ends):
+##   ROAD_CLEAR  `reach` px of road
+##   ROAD_WALL   a face the wheels can't climb
+##   ROAD_DROP   a drop that lands on a face too steep to stand on / stops dead
+##               (wedged, #299), or a real drop (> ROAD_DROP_H) into a dead end
+##               (it couldn't drive back up): then the road ends at the edge
+##   ROAD_VOID   a fall to the kill line
+## Pure terrain queries on this body's own shape.
+func _road_walk(dir: float, reach: float, spd: float) -> Vector2:
 	if dir == 0.0:
-		return false
-	var spd := maxf(absf(velocity.x), 150.0)
-	var reach := 120.0 + spd * spd / (2.0 * BRAKE) + SHAPE_LEN * 0.5
+		return Vector2(0.0, ROAD_CLEAR)
+	var ex: Array = []
+	var r := _road_walk_terrain(dir, reach, maxf(spd, 150.0), ex)
+	for b in ex:
+		if is_instance_valid(b):
+			remove_collision_exception_with(b)
+	return r
+
+
+## Distance from `p` straight down to the terrain (rigid bodies excepted), up
+## to 200 px.
+func _rw_down(p: Vector2, ex: Array) -> float:
+	var excl: Array[RID] = [get_rid()]
+	for b in ex:
+		if is_instance_valid(b):
+			excl.append((b as CollisionObject2D).get_rid())
+	var q := PhysicsRayQueryParameters2D.create(p, p + Vector2(0.0, 200.0), collision_mask, excl)
+	var hit := get_world_2d().direct_space_state.intersect_ray(q)
+	return 200.0 if hit.is_empty() else (hit.position as Vector2).y - p.y
+
+
+## test_move against the terrain only: grenades / dropped guns (layer-1 rigid
+## bodies the wheels just roll over or push) are excepted for the rest of the
+## walk (`ex`, removed again by _road_walk).
+func _rw_hit(xf: Transform2D, motion: Vector2, col: KinematicCollision2D, ex: Array) -> bool:
+	for _i in 4:
+		if not test_move(xf, motion, col):
+			return false
+		var c := col.get_collider()
+		if c == null or c is StaticBody2D or not (c is PhysicsBody2D):
+			return true
+		add_collision_exception_with(c)
+		ex.append(c)
+	return test_move(xf, motion, col)
+
+
+func _road_walk_terrain(dir: float, reach: float, spd: float, ex: Array) -> Vector2:
+	var main := get_parent()
+	var ky: float = float(main.get("KILL_Y")) if main != null and main.get("KILL_Y") != null else INF
 	var xf := global_transform
 	var col := KinematicCollision2D.new()
+	var tmp := KinematicCollision2D.new()
 	var went := 0.0
+	var edge := -1.0          # px at the last real drop's edge (-1 = none yet)
+	var y_prev := xf.origin.y
+	var d0 := _rw_down(xf.origin, ex)   # body centre to the ground where it stands
 	while went < reach:
 		var fwd := Vector2(dir * 8.0, 0.0)
-		if test_move(xf, fwd):
-			var up := Vector2(0.0, -14.0)
-			if test_move(xf, up) or test_move(xf.translated(up), fwd):
-				return false   # a wall, not a drop
-			xf = xf.translated(up + fwd)
+		if _rw_hit(xf, fwd, tmp, ex):
+			# Up a slope / onto a curb: the least lift that gets past it.
+			var lifted := false
+			for h in [4.0, 8.0, 12.0, STEP_UP]:
+				var up := Vector2(0.0, -h)
+				if not _rw_hit(xf, up, tmp, ex) and not _rw_hit(xf.translated(up), fwd, tmp, ex):
+					xf = xf.translated(up + fwd)
+					lifted = true
+					break
+			if not lifted:
+				return Vector2(edge, ROAD_DROP) if edge >= 0.0 else Vector2(went, ROAD_WALL)
 		else:
 			xf = xf.translated(fwd)
 		went += 8.0
-		if test_move(xf, Vector2(0.0, 24.0), col):
+		if _rw_hit(xf, Vector2(0.0, 24.0), col, ex):
 			xf = xf.translated(col.get_travel())
+			# Climbing a face steeper than the wheels manage (Laos's hump: a
+			# 57 deg lip still counts as floor, but buggies stall on it; the
+			# long 48 deg hill on Ascent is fine).
+			var climb := y_prev - xf.origin.y
+			y_prev = xf.origin.y
+			if climb >= 8.0 and absf(col.get_normal().angle_to(Vector2.UP)) > ROAD_CLIMB_MAX:
+				return Vector2(edge, ROAD_DROP) if edge >= 0.0 else Vector2(maxf(0.0, went - 16.0), ROAD_WALL)
+			# Bridging a crack narrower than the body (Outpost's V crack): the
+			# wheels drop into it and jam against the far side.
+			# (Both ends resting near the ground, the middle over a deep gap —
+			# not a crest, where the front end hangs out over the slope.)
+			if _rw_down(xf.origin, ex) > d0 + ROAD_CRACK:
+				var half := Vector2(SHAPE_LEN * 0.5 - 6.0, 0.0)
+				if _rw_down(xf.origin - half, ex) < d0 + 14.0 and _rw_down(xf.origin + half, ex) < d0 + 14.0:
+					return Vector2(edge, ROAD_DROP) if edge >= 0.0 else Vector2(maxf(0.0, went - SHAPE_LEN * 0.5), ROAD_DROP)
 			continue
-		# The ground falls away: fly on from here (sliding along steep faces
-		# like move_and_slide) until it lands on a floor (fine) or stops dead
-		# without one (wedged).
+		# The ground falls away: fly on from here until it lands on a floor
+		# (drive on from there) or stops dead without one (wedged). (The body
+		# centre is half a length past the edge by now: report the edge.)
+		var at_edge := maxf(0.0, went - SHAPE_LEN * 0.5)
 		var v := Vector2(dir * spd, 0.0)
 		var g := GRAVITY * MatchConfig.mod_gravity()
 		var mark := xf.origin
-		for i in 75:
+		var start := xf.origin
+		var landed := false
+		for i in 90:
 			var rem := v / 30.0
 			for _k in 3:
-				if not test_move(xf, rem, col):
+				if not _rw_hit(xf, rem, col, ex):
 					xf = xf.translated(rem)
 					break
 				xf = xf.translated(col.get_travel())
 				var n := col.get_normal()
 				if absf(n.angle_to(Vector2.UP)) <= floor_max_angle + 0.02:
-					return false
+					landed = true
+					break
 				rem = col.get_remainder().slide(n)
 				v = v.slide(n)
+			if landed:
+				break
+			if xf.origin.y > ky:
+				return Vector2(at_edge if edge < 0.0 else edge, ROAD_VOID)
 			v.y = minf(v.y + g / 30.0, 1400.0)
 			if i % 10 == 9:
 				if xf.origin.distance_to(mark) < 4.0:
-					return true
+					return Vector2(at_edge if edge < 0.0 else edge, ROAD_DROP)
 				mark = xf.origin
-		return false
-	return false
+		if not landed:
+			return Vector2(at_edge if edge < 0.0 else edge, ROAD_DROP)
+		if xf.origin.y - start.y > ROAD_DROP_H and edge < 0.0:
+			edge = at_edge
+		went += absf(xf.origin.x - start.x)
+		y_prev = xf.origin.y
+	return Vector2(went, ROAD_CLEAR)
+
+
+## #302: px of road from here toward `dir` (up to `reach`) — what bots check
+## before they take the wheel. Cached while the vehicle stays put.
+func road_ahead(dir: float, reach: float = ROAD_LOOK) -> float:
+	var now := Time.get_ticks_msec()
+	var p := global_position
+	if now - _road_memo_ms < 2000 and absf(_road_memo.x - p.x) < 8.0 and absf(_road_memo.y - p.y) < 8.0 \
+			and _road_memo.z == dir and _road_memo.w >= 0.0:
+		return _road_memo.w
+	var r := _road_walk(dir, reach, 0.0)
+	var px: float = reach if r.y == ROAD_CLEAR else r.x
+	_road_memo = Vector4(p.x, p.y, dir, px)
+	_road_memo_ms = now
+	return px
+
+
+## #299: a drop ahead that lands on a face too steep to stand on (wedges).
+func _bad_drop_ahead(dir: float) -> bool:
+	var spd := maxf(absf(velocity.x), 150.0)
+	var reach := 120.0 + spd * spd / (2.0 * BRAKE) + SHAPE_LEN * 0.5
+	var r := _road_walk(dir, reach, spd)
+	return r.y == ROAD_DROP or r.y == ROAD_VOID
 
 
 # A bot in the gun seat (host / single-player): aim at its target with lead,
@@ -1065,6 +1203,7 @@ func apply_respawn() -> void:
 	respawns += 1
 	alive = true
 	drive_ban_t = 0.0
+	_road_parked = false
 	_gwedge_t = 0.0
 	_gwedge_at = Vector2.INF
 	_bd_stuck_t = 0.0

@@ -797,7 +797,7 @@ if has F; then
   ft ppickup persistent_pickup_test.gd 120 PPICKUP-TEST "map weapon pickups persist + regenerate in place (#241/#254)"
   ft community community_test.gd 90 COMMUNITY-TEST "host weapon bans (#256) + host chat commands (#257)"
   ft vreset vehicle_reset_test.gd 90 VRESET-TEST "vehicles: idle respawn home, touch resets, occupied never teleports (#259)"
-  ft wedge vehicle_wedge_test.gd 240 WEDGE-TEST "vehicles: wedged buggy / tank (Ascent slot, crewed + empty, tipped) goes home with the crew out, parked ones untouched, no wedge in an Ascent bot match (#299)"
+  ft wedge vehicle_wedge_test.gd 240 WEDGE-TEST "vehicles: wedged buggy / tank (Ascent slot, crewed + empty, tipped) goes home with the crew out, parked ones untouched, bot drivers see the end of the road (#302), no wedge in an Ascent bot match (#299)"
   ft move movement_test.gd 90 MOVE-TEST "movement tech: tap vs held jump height, prone air fast fall (#262)"
   ft balance balance_test.gd 90 BALANCE-TEST "auto team balance at round reset, bots only (#263)"
   ft training training_test.gd 90 TRAINING-TEST "training"

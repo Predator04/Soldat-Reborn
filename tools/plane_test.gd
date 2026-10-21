@@ -15,7 +15,8 @@ extends SceneTree
 ## flies; a plane a bot left parked down the runway goes home ~8 s after it
 ## stops (#294); a bot pilot with an objective goal below and an enemy in sight
 ## keeps fighting early in its sortie but bails out over the goal once it has
-## been up OBJ_COMMIT s (#298). Then a Maker map in CTF: a bot boards a plane on its own and flies it
+## been up OBJ_COMMIT s (#298); a slow bot pilot heading for the side of the
+## world turns back before it (#302). Then a Maker map in CTF: a bot boards a plane on its own and flies it
 ## (distance flown in the air), without flying into the ground over and over.
 
 const G := 1900.0
@@ -125,7 +126,7 @@ func _process(d: float) -> bool:
 		return false
 	_t += d
 	_st_t += d
-	if _t > 150.0:
+	if _t > 165.0:
 		return _fail("timeout st=%d" % _st)
 	var p = m.get("player")
 	if _st == 0 and (_t < 1.0 or p == null or not is_instance_valid(p)):
@@ -617,6 +618,45 @@ func _process(d: float) -> bool:
 					_st_t - _v, int((_ba as Node2D).global_position.x)])
 				if not out:
 					_bad.append("committed objective pilot didn't bail out over its goal under fire")
+				_flag = false
+				_next(23)
+		23:
+			# #302: a slow bot pilot heading for the side of the world turns
+			# back in time (a slow plane turns wide; it used to loop into the
+			# side wall now and then).
+			if _pg.get("alive") != true:
+				_pg.set("_respawn_t", 0.05)
+				return false
+			var mw: float = float(_pg.call("_map_w"))
+			if not _flag:
+				_flag = true
+				_ba.set("health", 100.0)
+				_pg.set("bot_ban_t", 0.0)
+				(_ba as Node2D).global_position = gn.global_position + Vector2(10, 10)
+				m._vehicles_sys.vehicle_bot_board(_pg, _ba, 0)
+				_ba.set_physics_process(false)
+				_set_flight(_pg, Vector2(mw - 900.0, G - 900.0), Vector2(390, -40), -0.1, 1.0)
+				_pg.set("_bp_t", 5.0)
+				_pg.set("_bp_evade", 0.0)
+				_pg.set("_bp_break", 0.0)
+				_pg.set("_bp_climb", 0.4)   # mid pull-up (what it was doing when it looped into the wall)
+				_hp0 = float(_pg.get("crashes"))
+				_v = 0.0
+			if _pg.driver() == _ba:
+				_ba.set("_goal", Vector2(400, G - 20))
+				_ba.set("_goal_label", "roam")
+				_ba.set("target", null)
+			if _v == 0.0:
+				_prev = gn.global_position.x
+			_v = maxf(_v, gn.global_position.x)
+			_prev = minf(_prev, gn.global_position.x) if _v > gn.global_position.x + 1.0 else gn.global_position.x
+			if _st_t > 6.0 or _pg.driver() != _ba:
+				var hit: int = int(_pg.get("crashes")) - int(_hp0)
+				_log.append("edge turn: max_x=%d of %d, back to x=%d, crashes=%d" % [int(_v), int(mw), int(_prev), hit])
+				if hit > 0 or _v > mw - 120.0:
+					_bad.append("slow bot pilot flew into the side of the world (max x %d of %d, %d crashes)" % [int(_v), int(mw), hit])
+				if _v - _prev < 600.0:
+					_bad.append("slow bot pilot didn't turn back from the side of the world")
 				_release_all()
 				_phase = 2
 				_st = 0
