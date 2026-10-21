@@ -540,7 +540,7 @@ func _physics_process(delta: float) -> void:
 		# Objective goals (grab / return / deliver / capture) keep the bot moving
 		# even mid-fight — it shoots on the way. Hunting/patrol goals yield to
 		# close-range strafing.
-		var objective: bool = _goal_label in ["flag", "return", "capture", "zone", "plant", "defuse"]
+		var objective: bool = _goal_label in ["flag", "return", "capture", "zone", "plant", "defuse", "guard"]
 		_pad_ride = -1
 		if _goal != Vector2.INF and seek_lad == null and (not busy_retreat or objective) \
 				and (not close_fight or objective or _carrying_flag()):
@@ -1906,7 +1906,6 @@ func _think_br() -> void:
 # site each (stable by name), chase a carrier who comes close, guard a
 # dropped bomb, and all go to defuse a planted one.
 var bomb_use := false          # holding Use right now (match_bomb.gd reads it)
-var _bomb_round := -1
 var _bomb_site := "A"
 
 
@@ -1931,10 +1930,8 @@ func _think_bomb() -> void:
 	if b == null or str(b.phase) == "post":
 		return
 	_pick_role()
-	if int(b.round_no) != _bomb_round:
-		_bomb_round = int(b.round_no)
-		# One site per round for the whole attacking team (they push together).
-		_bomb_site = "A" if absi(hash("%d:%d:%s" % [int(b.round_no), team, str(_main()._map.get("name", ""))])) % 2 == 0 else "B"
+	# One site per round for the whole attacking team (they push together).
+	_bomb_site = str(b.bot_site)
 	var st := str(b.bomb_state)
 	var carrier: Node = b.carrier if b.carrier != null and is_instance_valid(b.carrier) else null
 	var bpos: Vector2 = b.bomb_pos
@@ -1947,14 +1944,18 @@ func _think_bomb() -> void:
 			else:
 				_set_goal(b.site_spot(_bomb_site), "push")
 		elif st == "planted":
-			if is_instance_valid(target) and _target_visible and target.global_position.distance_to(bpos) < 600.0:
+			# Hold the bomb: everyone back to it, then fight from beside it.
+			if global_position.distance_to(bpos) < 200.0 and is_instance_valid(target) and _target_visible:
 				return
-			_set_goal(_patrol(bpos, 220.0), "defend")
+			_set_goal(_patrol(bpos, 110.0), "guard")
 		elif carrier != null:
-			if _role == "attack" and global_position.distance_to(carrier.global_position) > 160.0:
+			# Push together: stay with the carrier until it's at the site.
+			var cd: float = global_position.distance_to(carrier.global_position)
+			var at_site: bool = str(b.site_at(carrier.global_position)) != ""
+			if not at_site and cd > 140.0:
 				_set_goal(carrier.global_position, "escort")
 			else:
-				_set_goal(b.site_spot(_bomb_site), "push")
+				_set_goal(_patrol(b.site_spot(_bomb_site), 160.0), "push")
 	else:
 		if st == "planted":
 			_set_goal(bpos, "defuse")
@@ -1984,6 +1985,9 @@ func _bomb_hold(on_floor: bool) -> bool:
 			return false
 	elif global_position.distance_to(b.bomb_pos) > float(b.USE_RADIUS) - 12.0:
 		return false
+	elif float(b.fuse_t) > 12.0 and is_instance_valid(target) and _target_visible and not bool(target.get("dead")) \
+			and target.global_position.distance_to(global_position) < 360.0:
+		return false   # clear the site first (unless the fuse is nearly out)
 	bomb_use = true
 	return true
 

@@ -173,6 +173,12 @@ func _process(_d: float) -> bool:
 			var hr: Control = _m._host_root
 			if UIFx.is_animating(hr) or not _near(hr.modulate.a, 1.0) or hr.has_meta("uifx_shift"):
 				_bad.append("reduce motion: host screen still animated")
+			# #304: the Host mode list has every mode, Bomb Defusal last.
+			var hp: OptionButton = _m.get("_host_mode_pick")
+			var names: Array = load("res://scripts/game_lists.gd").MODE_NAMES
+			if hp == null or hp.item_count != names.size() or str(names[names.size() - 1]) != "Bomb Defusal" \
+					or hp.get_item_text(hp.item_count - 1) != tr("Bomb Defusal"):
+				_bad.append("host mode list: %d items (want %d, Bomb Defusal last)" % [hp.item_count if hp != null else -1, names.size()])
 			_m._go_back()
 			if UIFx.is_animating(_m._menu_root) or _m._menu_root.position.distance_to(_base_menu_pos) > 0.5:
 				_bad.append("reduce motion: main list animated back")

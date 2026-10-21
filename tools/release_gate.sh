@@ -7,7 +7,7 @@
 #   C net      dedicated server + client smoke (CTF + DM), listen-host smoke,
 #              zero RPC/node errors on either side; dedboot = dedicated boot
 #              from a never-imported checkout + busy-port failure (#278)
-#   D modes    every game mode (DM..GG) on 3 maps with bots-vs-bots: kills,
+#   D modes    every game mode (DM..BOMB) on 3 maps with bots-vs-bots: kills,
 #              objective scoring where the mode has one, no script errors
 #   R rules    Realistic / Survival / Advance toggles (autopilot, menu path)
 #   F features scripted SP run: gestures, all weapon slots, nades, throw,
@@ -41,8 +41,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 G="${GODOT_BIN:-$HOME/godot/Godot_v4.7.2-stable_linux.x86_64}"
-QUICK=0; OUT="build/gate"; ONLY="A B N C D R F E"; MODESEL="0 1 2 3 4 5 6 7 8 9"
-NETSEL="ctf dm dedboot selfcheck two trust fill ranked friends news featured respawn killcam drive heli plane rejoin relay host listen lan soak m3 m7 m9 m2"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
+QUICK=0; OUT="build/gate"; ONLY="A B N C D R F E"; MODESEL="0 1 2 3 4 5 6 7 8 9 10"
+NETSEL="ctf dm dedboot selfcheck two trust fill ranked friends news featured respawn killcam drive heli plane bomb rejoin relay host listen lan soak m3 m7 m9 m2"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --quick) QUICK=1;; --out) OUT="$2"; shift;; --only) ONLY="$2"; shift;;
@@ -622,6 +622,45 @@ case " $NETSEL " in *" plane "*)
     fail "C net plane: '${fly:-no flight}' '${line:-no result}' errors=$e"
   fi
 ;; esac
+case " $NETSEL " in *" bomb "*)
+  # #304 Bomb Defusal online: a dedicated server in mode "bomb" with no bots
+  # (--fill=0 --bots=0). c1 joins first (BLUE, defends) and holds
+  # Use before any plant -> the host rejects it; c2 (RED, attacks) takes the
+  # bomb, plants it at site A (host-authoritative progress from its Use), then
+  # holds Use on it -> rejected (attackers can't defuse); c1 sees the plant;
+  # c3 joins after the plant and must see the planted bomb at once (join-in-
+  # progress hydration), then defuses it; c1 sees the result. Honest clients:
+  # no trust lines.
+  port=$(freeport udp)
+  timeout $(T 150) "$G" --headless -- --dedicated --port $port --map 19 --mode bomb --fill=0 --bots=0 > "$OUT/net_bomb_server.log" 2>&1 &
+  spid=$!
+  wait_ready "$OUT/net_bomb_server.log"
+  sleep 1
+  timeout $(T 110) "$G" --headless -- --smoke-join --port $port --smoke-secs=70 --smoke-bomb=defend > "$OUT/net_bomb_c1.log" 2>&1 &
+  c1=$!
+  wait_log "$OUT/net_bomb_c1.log" "SMOKE-BOMB defend: plant attempt sent" 40
+  timeout $(T 100) "$G" --headless -- --smoke-join --port $port --smoke-secs=60 --smoke-bomb=attack > "$OUT/net_bomb_c2.log" 2>&1 &
+  c2=$!
+  wait_log "$OUT/net_bomb_server.log" "BOMB planted at A" 60
+  timeout $(T 60) "$G" --headless -- --smoke-join --port $port --smoke-secs=30 --smoke-bomb=late > "$OUT/net_bomb_c3.log" 2>&1
+  wait $c1 2>/dev/null; wait $c2 2>/dev/null
+  kill $spid 2>/dev/null; wait $spid 2>/dev/null
+  e=$(( $(errs "$OUT/net_bomb_server.log") + $(errs "$OUT/net_bomb_c1.log") + $(errs "$OUT/net_bomb_c2.log") + $(errs "$OUT/net_bomb_c3.log") ))
+  tr=$(grep -c "^TRUST " "$OUT/net_bomb_server.log" 2>/dev/null || true)
+  rp=$(grep -m1 "BOMB reject plant: defenders can't plant" "$OUT/net_bomb_server.log")
+  rd=$(grep -m1 "BOMB reject defuse: attackers can't defuse" "$OUT/net_bomb_server.log")
+  pl=$(grep -m1 "SMOKE-BOMB planted site=A" "$OUT/net_bomb_c2.log")
+  sn=$(grep -m1 "SMOKE-BOMB-SEEN planted site=A" "$OUT/net_bomb_c1.log")
+  jn=$(grep -m1 "SMOKE-BOMB-JOIN" "$OUT/net_bomb_c3.log")
+  df=$(grep -m1 "SMOKE-BOMB defused=" "$OUT/net_bomb_c3.log")
+  rs=$(grep -m1 "SMOKE-BOMB-SEEN result=" "$OUT/net_bomb_c1.log")
+  if [ -n "$rp" ] && [ -n "$rd" ] && [ -n "$pl" ] && [ -n "$sn" ] && echo "$jn" | grep -q "phase=planted site=A state=planted" \
+      && echo "$df" | grep -q "defused=true" && echo "$rs" | grep -q "result=defused" && [ "$e" = "0" ] && [ "${tr:-0}" = "0" ]; then
+    pass "C net bomb: $pl | $sn | $jn | $df | forged plant + defuse rejected"
+  else
+    fail "C net bomb: plant='$pl' seen='$sn' join='$jn' defuse='$df' result='$rs' rej_plant='${rp:+yes}' rej_defuse='${rd:+yes}' errors=$e trust_lines=${tr:-0}"
+  fi
+;; esac
 case " $NETSEL " in *" respawn "*)
   # A client kills itself at 4 s (DM, few bots near spawn): it must come back
   # as the exact same node name with no RPC errors anywhere.
@@ -717,11 +756,11 @@ if has C; then
 fi
 
 # ── D modes ─────────────────────────────────────────────────────────────────
-MODES=(DM TDM CTF INF HTF RM PM DOM BR GG)
+MODES=(DM TDM CTF INF HTF RM PM DOM BR GG BOMB)
 has D && for m in $MODESEL; do
   f="$OUT/mode_$m.log"
   # Objective modes get longer rounds: a CTF run home takes 30-60 s.
-  secs=60; case $m in 2|3|4|6|7) secs=120;; esac
+  secs=60; case $m in 2|3|4|6|7|10) secs=120;; esac
   # --autopilot: the human player is driven with random input so player.gd
   # (jet, weapons, nades, stances, throwing) runs in every mode too.
   timeout $(T 170) "$G" --headless --fixed-fps 60 -s tools/stuck_test.gd -- --secs=$secs --from=19 --to=21 --mode=$m --autopilot --sp > "$f" 2>&1
@@ -733,7 +772,7 @@ has D && for m in $MODESEL; do
   [ "$maps" = "3" ] || { ok=0; why="$why maps=$maps/3"; }
   [ "$n" = "0" ] || { ok=0; why="$why errors=$n"; }
   [ "${kills:-0}" -gt 0 ] || { ok=0; why="$why no-kills"; }
-  case $m in 2|6|7) [ "${caps:-0}" -gt 0 ] || { ok=0; why="$why no-objective-score"; };; esac
+  case $m in 2|6|7|10) [ "${caps:-0}" -gt 0 ] || { ok=0; why="$why no-objective-score"; };; esac
   msg="D mode ${MODES[$m]}: kills=${kills:-0} objective=${caps:-0} fell=${fell:-0}"
   if [ $ok = 1 ]; then pass "$msg"; else fail "$msg —$why"; fi
 done
@@ -836,6 +875,7 @@ if has F; then
   ft trailer trailer.gd 120 TRAILER-TEST "trailer director (#263): staged bot beats pick their highlight (rocket in flight near a crowd, crewed helicopter airborne) and log kills / explosions while filming" "--smoke"
   ft levels levels_test.gd 90 LEVELS-TEST "level sharing (#288): Hot / New / Most played / Top liked order, search by title + share code, course-code box, like on / off, bookmark saved + listed (also offline), offline message, flat node count over open / close, editor Publish round trip + title filter, editor LEVELS overlay, PLAY -> bot match on the level + play counted (in-process fake level server)"
   ft featured featured_test.gd 480 FEATURED-TEST "featured levels (#295): all 8 bundled Maker levels load, recompile identically, validate clean for their modes, pass map_audit, runtime nav routes every CTF / DOM / HTF / INF / RM leg; LEVELS opens on FEATURED offline (8 cards, no server request), detail = modes + EDIT A COPY, PLAY / HOST ONLINE, EDIT A COPY -> unsaved Maker copy, Maker New map Start from Empty / Starter / featured, editor overlay edits in place; new strings translate (es / pt_BR / de / fr); short bot match per level: bots travel, objectives progress, pads / vehicles used, few hazard deaths"
+  ft bomb bomb_test.gd 900 BOMB-TEST "Bomb Defusal (#304): carrier handed out, a defender's Use rejected, plant 3 s (moving resets, damage doesn't), fuse -> detonation kills + attackers win, next round after the banner, drop + attacker-only pickup, attacker can't defuse, defuse 7 s, clock out -> defenders, wave respawns (next wave / the one after), halftime swap of roles + spawns, 7 rounds -> match over -> fresh match; bots on Downtown / Dust Yard / Whiteout plant and the plant ends in a defuse or detonation"
   ft discord discord_test.gd 90 DISCORD-TEST "Discord Rich Presence (#223): desktop only (Android / headless / dedicated never start it), silent without an app id, handshake + SET_ACTIVITY for menu / LEVELS / CTF match / Maker editor over a fake pipe, PING/PONG, dedupe + throttle, toggle closes / reconnects, refused id stops, Linux Unix-socket transport"
   ft fxbench fx_bench.gd 90 FX-BENCH "graphics Phase B (#271): FX benchmark, 8 gibbings + minigun + 4 explosions, node count flat, FX ms / frame"
   ft killcam killcam_test.gd 60 KILLCAM-TEST "kill cam: rewind w/ slow-mo, respawn waits, skip, live follow"

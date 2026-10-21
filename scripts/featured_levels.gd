@@ -38,6 +38,13 @@ const LEVELS := [
 		"blurb": "A dark cavern of stalactites, spike pits and ladders. Three points to hold in the deep."},
 	{"slug": "last_ridge", "title": "Last Ridge", "theme": "grassland", "modes": "br dm gg",
 		"blurb": "A big Battle Royale ridge: towers, bunkers and loot everywhere. The ring closes on the summit."},
+	# Bomb Defusal (#304)
+	{"slug": "downtown", "title": "Downtown", "theme": "urban", "modes": "bomb tdm dm",
+		"blurb": "Bomb Defusal in the city: site A on the street, site B on the market roof. Jump pads and a jet across the gap to the attackers' plateau."},
+	{"slug": "dust_yard", "title": "Dust Yard", "theme": "desert", "modes": "bomb tdm dm",
+		"blurb": "Bomb Defusal in a freight yard: site A on the loading dock, site B under the warehouse roof. Containers, a silo to jet up and pads onto the roof."},
+	{"slug": "whiteout", "title": "Whiteout", "theme": "snow", "modes": "bomb tdm dm",
+		"blurb": "Bomb Defusal in the snow: site A down in the trench, site B on the ridge. Hold the bunker hill, jet up the ice tower."},
 ]
 
 ## Maker theme -> level_thumb.gd sky (THEME_SKY keys).

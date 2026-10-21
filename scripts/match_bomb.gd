@@ -61,6 +61,7 @@ var defuse_prog := 0.0
 var defuser: Node = null
 var last_result: Dictionary = {}   # {"team": int, "why": "boom" | "defused" | "time"}
 var sites: Array = []          # [{"name": "A", "rect": Rect2}]
+var bot_site := "A"            # the site attacking bots go for this round (host)
 var stats := {"plants": 0, "defuses": 0, "booms": 0, "timeouts": 0, "drops": 0, "pickups": 0, "rounds": 0, "rejects": 0}
 
 var _use_held: Dictionary = {}     # soldier instance id -> true while Use is held
@@ -71,6 +72,7 @@ var _use_rate: Dictionary = {}     # peer id -> [window start ms, count]
 var _visual: Node2D = null
 var _site_nodes: Array = []
 var _setup_done := false
+var received := false              # client: a host snapshot has arrived (join hydration)
 
 
 func attack_team() -> int:
@@ -263,6 +265,7 @@ func _begin_round_state() -> void:
 	_rejected.clear()
 	if _is_authority():
 		main.time_left = round_t
+		bot_site = "A" if randi() % 2 == 0 else "B"
 
 
 func _is_authority() -> bool:
@@ -693,6 +696,7 @@ func apply_payload(d: Dictionary) -> void:
 	if q <= _seq and not bool(d.get("reset", false)):
 		return
 	_seq = maxi(_seq, q)
+	received = true
 	phase = str(d.get("ph", phase))
 	round_no = int(d.get("rn", round_no))
 	swapped = bool(d.get("sw", swapped))

@@ -20,7 +20,8 @@ extends SceneTree
 ##    enemy flag; DOM: a point taken; HTF: flag grabbed or reached), pads used
 ##    where the level has them, a vehicle boarded where it has them.
 
-const MODE_IDX := {"dm": 0, "tdm": 1, "ctf": 2, "inf": 3, "htf": 4, "rm": 5, "pm": 6, "dom": 7, "br": 8, "gg": 9}
+const MODE_IDX := {"dm": 0, "tdm": 1, "ctf": 2, "inf": 3, "htf": 4, "rm": 5, "pm": 6, "dom": 7, "br": 8, "gg": 9, "bomb": 10}
+const LEVEL_COUNT := 11   # 8 (#295) + 3 Bomb Defusal levels (#304)
 const NEW_KEYS := ["FEATURED", "EDIT A COPY", "Hand-built", "NEW MAP", "Start from:", "Empty", "Starter", "START",
 	"%s copy", "Editing a copy of %s.", "No featured levels found.",
 	"Open this level in the Map Editor as a new map you can change and save.",
@@ -35,6 +36,7 @@ var _saved := {}
 var _done := false
 var _only: Array = []
 var _secs := 22.0
+var _bomb_reached := false   # #304: a bomb carrier stood in a site this match
 const GL = preload("res://tools/gate_load.gd")   # #293: wall deadlines scale with GATE_LOAD
 var _deadline := GL.wait_ms(400000)
 
@@ -105,8 +107,8 @@ func _run() -> void:
 	FL = load("res://scripts/featured_levels.gd")
 	B = load("res://scripts/maker/maker_build.gd")
 	IO = load("res://scripts/map_io.gd")
-	if FL.LEVELS.size() != 8:
-		return _fail("expected 8 featured levels, catalog has %d" % FL.LEVELS.size())
+	if FL.LEVELS.size() != LEVEL_COUNT:
+		return _fail("expected %d featured levels, catalog has %d" % [LEVEL_COUNT, FL.LEVELS.size()])
 	for s in _slugs():
 		if not _check_data(s):
 			return
@@ -188,6 +190,16 @@ func _check_data(slug: String) -> bool:
 	for pair in [["htf", "htf_flag"], ["inf", "inf_flag"], ["rm", "rambo_pos"]]:
 		if pair[0] in modes:
 			objs.append([pair[0], m[pair[1]]])
+	if "bomb" in modes:
+		# #304: both bomb sites (the ground in the middle of each rect).
+		for bs in m.get("bomb_sites", []):
+			var r: Rect2 = bs["rect"]
+			var spot := Vector2(r.get_center().x, r.end.y - 6.0)
+			for c in nav.get("_pts"):
+				if r.has_point((c as Vector2) + Vector2(0, -4)) and (c as Vector2).distance_to(r.get_center()) < spot.distance_to(r.get_center()) + 200.0:
+					spot = c
+					break
+			objs.append(["site" + str(bs["name"]), spot])
 	var all_spawns: Array = (ts.get(1, []) as Array) + (ts.get(2, []) as Array)
 	if all_spawns.is_empty():
 		all_spawns = m.get("bot_spawns", [])
@@ -240,7 +252,7 @@ func _check_ui() -> bool:
 	if str(pn.tab) != "featured" or pn._tab_btns.keys()[0] != "featured":
 		return _fail("LEVELS opened on '%s' (first tab %s), want FEATURED first" % [str(pn.tab), str(pn._tab_btns.keys()[0])])
 	await _frames(3)
-	if int(pn.loaded) != 8 or pn._cards.size() != 8 or int(pn.api.requests) != 0 or bool(pn.offline):
+	if int(pn.loaded) != LEVEL_COUNT or pn._cards.size() != LEVEL_COUNT or int(pn.api.requests) != 0 or bool(pn.offline):
 		return _fail("FEATURED: loaded=%d cards=%d requests=%d offline=%s" % [int(pn.loaded), pn._cards.size(), int(pn.api.requests), str(pn.offline)])
 	for id in pn._cards:
 		var th: Array = (pn._cards[id] as Node).find_children("*", "Control", true, false).filter(func(n: Node) -> bool: return n.get("tris") != null)
@@ -249,9 +261,9 @@ func _check_ui() -> bool:
 	# Other tabs still talk to the server; FEATURED again is instant.
 	pn.set_tab("hot")
 	pn.set_tab("featured")
-	if int(pn.loaded) != 8:
+	if int(pn.loaded) != LEVEL_COUNT:
 		return _fail("FEATURED after HOT: loaded=%d" % int(pn.loaded))
-	_log.append("tab offline: 8 cards, 0 requests")
+	_log.append("tab offline: %d cards, 0 requests" % LEVEL_COUNT)
 	# Detail of each level.
 	for e in FL.LEVELS:
 		var id: String = FL.ID_PREFIX + str(e["slug"])
@@ -332,7 +344,7 @@ func _check_ui() -> bool:
 	# The editor's LEVELS overlay: EDIT A COPY in place.
 	var ov: Node = load("res://scripts/level_publish.gd").open_levels(ed.get_node("UI"), ed)
 	await _frames(3)
-	if int(ov.loaded) != 8:
+	if int(ov.loaded) != LEVEL_COUNT:
 		return _fail("editor LEVELS overlay: loaded=%d" % int(ov.loaded))
 	ov.select(FL.ID_PREFIX + "hollow_deep")
 	(ov.find_child("EditCopy", true, false) as Button).pressed.emit()
@@ -349,6 +361,7 @@ func _check_ui() -> bool:
 func _check_bots(slug: String) -> bool:
 	var meta: Dictionary = FL.meta(slug)
 	var mode := str(meta["modes"]).get_slice(" ", 0)
+	_bomb_reached = false
 	var src: Dictionary = FL.load_map(slug)
 	_st.custom_map_path = FL.local_copy(slug)
 	_st.game_mode = int(MODE_IDX[mode])
@@ -402,6 +415,9 @@ func _check_bots(slug: String) -> bool:
 				best[t] = minf(float(best[t]), gp.distance_to(enemy))
 			if htf != Vector2.INF and gp.distance_to(htf) < 140.0:
 				htf_near = true
+		if mode == "bomb" and m._bomb.carrier != null and is_instance_valid(m._bomb.carrier) \
+				and str(m._bomb.site_at(m._bomb.carrier.global_position)) != "":
+			_bomb_reached = true
 		if _i % 10 == 0:
 			_count_pad_plans(m, planned)
 		for v in get_nodes_in_group("vehicle"):
@@ -444,6 +460,11 @@ func _check_bots(slug: String) -> bool:
 		"dm", "tdm", "gg":
 			if kills[0] == 0:
 				probs.append("no kills")
+		"bomb":
+			# #304 (plants / defuses in a longer match: gate F `bomb`): the
+			# attackers took the bomb into a site.
+			if int(events.get("bomb_plant", 0)) == 0 and not _bomb_reached:
+				probs.append("no attacker carried the bomb into a site")
 	# Pads are only required to see use when a route to an objective rides
 	# one: since #294 bots no longer get launched just walking across a pad,
 	# so a pad that's a shortcut for humans (Twin Forts' valley pad up to the
