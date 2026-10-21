@@ -48,7 +48,11 @@ const HP_TOL := 6.0
 const HP_LAG_PAD_MS := 300         # beyond the measured round trip
 const HP_FIX_AFTER_MS := 400       # off for this long -> send the host's number
 const HP_FIX_GAP_MS := 500
-const HP_IGNORED_MS := 1500        # still too high this long after 2+ fixes -> log
+# Still too high this long and over this many state updates after 2+ fixes
+# -> log "host hits ignored" (#293's bar for "ignored damage": a lagging
+# client's late reports never trip it).
+const HP_IGNORED_MS := 3000
+const HP_IGNORED_UPDATES := 10
 # Spawn protection mirrors Player.CEASEFIRE_SECS; the host sees the body one
 # trip late, so it protects a round trip (+ this) longer.
 const PROTECT_SLACK_MS := 150
@@ -130,6 +134,7 @@ var _hist: Array = []      # [ms, pos] of recent state packets
 var _ride_until_ms := 0    # riding (or just got in / out of) a vehicle or M2
 var _hp_hist: Array = []   # [ms, ledger hp] whenever it changed (and now and then)
 var _hp_off_since := -1
+var _hp_off_n := 0         # state updates while off
 var _hp_fixes := 0
 var _hp_last_fix := -100000
 var _hp_flagged := false
@@ -230,15 +235,17 @@ func check_hp(reported: float, ledger: float, rtt_ms: int, who := "") -> bool:
 	var too_high := reported > hi + HP_TOL
 	if not too_high and reported >= lo - HP_TOL:
 		_hp_off_since = -1
+		_hp_off_n = 0
 		return false
 	if _hp_off_since < 0:
 		_hp_off_since = now
+	_hp_off_n += 1
 	var fix := false
 	if now - _hp_off_since >= HP_FIX_AFTER_MS and now - _hp_last_fix >= HP_FIX_GAP_MS:
 		_hp_last_fix = now
 		_hp_fixes += 1
 		fix = true
-	if too_high and not _hp_flagged and _hp_fixes >= 2 and now - _hp_off_since >= HP_IGNORED_MS:
+	if too_high and not _hp_flagged and _hp_fixes >= 2 and now - _hp_off_since >= HP_IGNORED_MS and _hp_off_n >= HP_IGNORED_UPDATES:
 		_hp_flagged = true
 		HostHits.count("hp_ignored")
 		print("TRUST hp: %s reports %.0f, host has %.0f (host hits ignored)" % [who, reported, ledger])
