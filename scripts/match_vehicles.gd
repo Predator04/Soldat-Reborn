@@ -168,6 +168,17 @@ func _gun_ok(shooter: Node, gun: String, rate: float, muzzle: Vector2, at: Vecto
 	if off > reach and v != null and v.has_method("min_dist_recent"):
 		off = minf(off, float(v.min_dist_recent(muzzle, 600 + int(main._net.peer_rtt_ms(_peer_of(shooter))))))
 	if off > reach:
+		# The vehicle's stream (or the shooter's own) is running late — a
+		# stall held its states back while the rounds came through: its copy
+		# here is not where the driver is. Refuse quietly (no flag).
+		var now := Time.get_ticks_msec()
+		var stale: bool = v != null and v.has_meta("state_ms") and now - int(v.get_meta("state_ms")) > 200
+		var behind: bool = stamp > 0 and g.track_newest() > 0 and g.track_newest() < stamp - 50
+		if stale or behind:
+			HostHits.count("refused_origin_quiet")
+			if OS.get_cmdline_user_args().has("--hosthits-log"):
+				print("HOSTORIGIN %s %.0f px off (max %.0f), %s" % [gun, off, reach, "vehicle state %d ms old" % (now - int(v.get_meta("state_ms"))) if stale else "shooter's stream %d ms behind the shot" % (stamp - g.track_newest())])
+			return false
 		if g.flag("origin", "%s fired %.0f px from the gun (max %.0f; muzzle (%.0f, %.0f), gun (%.0f, %.0f))" % [gun, off, reach, muzzle.x, muzzle.y, at.x, at.y]):
 			shooter._trust_force_death("shots (%s)" % gun)
 		return false
@@ -360,6 +371,7 @@ func net_vehicle_state(vid: int, pos: Vector2, vel: Vector2, tilt: float, f: flo
 	if Net.is_networked() and not Net.is_host() and main.multiplayer.get_remote_sender_id() != 1:
 		return
 	v.apply_state(pos, vel, tilt, f, aim)
+	v.set_meta("state_ms", Time.get_ticks_msec())   # (host: how fresh its copy is — _gun_ok)
 
 
 ## How far from a vehicle's copy here its gun's muzzle may be: the copy

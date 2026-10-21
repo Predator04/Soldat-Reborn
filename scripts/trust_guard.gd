@@ -134,6 +134,7 @@ var fuel_shadow := 100.0
 var grenades := 3
 var _hist: Array = []      # [ms, pos] of recent state packets
 var _ride_until_ms := 0    # riding (or just got in / out of) a vehicle or M2
+var _got_state := false    # the owner's first state packet has arrived
 var _hp_hist: Array = []   # [ms, ledger hp] whenever it changed (and now and then)
 var _hp_off_since := -1
 var _hp_off_n := 0         # state updates while off
@@ -261,6 +262,12 @@ func check_hp(reported: float, ledger: float, rtt_ms: int, who := "") -> bool:
 ## Check one state packet's position. Returns a forced-death reason or "".
 func check_move(pos: Vector2, world: Rect2, riding := false) -> String:
 	var now := Time.get_ticks_msec()
+	if not _got_state:
+		# A fresh body's grace runs from its owner's first state, not from
+		# when the host made it: a client still loading the map (a join, a
+		# map change on a slow machine) spawns — and may jump — seconds later.
+		_got_state = true
+		amnesty_until_ms = maxi(amnesty_until_ms, now + SPAWN_GRACE_MS)
 	if riding:
 		_ride_until_ms = now + 1500   # covers the seat snap in and the eject out
 	if now < amnesty_until_ms or now < _ride_until_ms:
