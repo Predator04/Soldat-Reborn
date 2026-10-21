@@ -325,11 +325,10 @@ func _place(m: Node, p: Node2D) -> bool:
 	return true
 
 
-## Clear shots between two soldiers standing at feet `a` and `b`: at chest
-## and at muzzle height (a low lip between them stops rounds fired at the
-## chest even when a ray at mid-body passes over it).
+## Clear shots between two soldiers standing at feet `a` and `b` (a ray at
+## mid-body; lower ones fail on the uneven ground by the vehicle spawns).
 func _los(p: Node2D, a: Vector2, b: Vector2) -> bool:
-	for h in [-9.0, -12.0, -24.0]:
+	for h in [-24.0]:
 		if not _solid(p, a + Vector2(0, h), b + Vector2(0, h), 1 | 2).is_empty():
 			return false
 	return true
