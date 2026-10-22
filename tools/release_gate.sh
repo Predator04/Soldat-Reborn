@@ -380,6 +380,7 @@ fill = 4
 respawn_time = 2.5
 score_limit_ctf = 50
 EOF
+  rm -f "$OUT/net_${L}_server.log" "$OUT/net_${L}_client.log"   # a --keep rerun must not wait on the old log
   timeout $(T 150) "$BIN" "$@" --config "$CFG" > "$OUT/net_${L}_server.log" 2>&1 &
   local spid=$!
   wait_ready "$OUT/net_${L}_server.log"
