@@ -135,19 +135,19 @@ const AMMO_STATS := {
 # bots don't spawn with those loadouts today. Fallback = AK-74 stats.
 const WEAPON_STATS := {
 	"Deagles":      {"damage": 34.0,  "rate": 0.44,  "speed": 1200.0, "kind": "bullet"},
-	"MP5":          {"damage": 13.0,  "rate": 0.10,  "speed": 950.0,  "kind": "bullet"},
+	"MP5":          {"damage": 15.0,  "rate": 0.10,  "speed": 950.0,  "kind": "bullet"},
 	"AK-74":        {"damage": 22.0,  "rate": 0.45,  "speed": 1050.0, "kind": "bullet"},
 	"Steyr AUG":    {"damage": 18.0,  "rate": 0.15,  "speed": 1150.0, "kind": "bullet"},
-	"Spas-12":      {"damage": 9.0,   "rate": 0.9,   "speed": 850.0,  "kind": "bullet", "pellets": 8, "spread": 0.26},
+	"Spas-12":      {"damage": 11.0,  "rate": 0.9,   "speed": 850.0,  "kind": "bullet", "pellets": 8, "spread": 0.26},
 	"Ruger 77":     {"damage": 82.0,  "rate": 1.0,   "speed": 1450.0, "kind": "bullet"},
-	"M79":          {"damage": 90.0,  "rate": 3.0,   "speed": 470.0,  "kind": "launcher", "gravity": 980.0},
+	"M79":          {"damage": 115.0, "rate": 3.0,   "speed": 640.0,  "kind": "launcher", "gravity": 980.0},
 	"Barrett":      {"damage": 245.0, "rate": 2.2,   "speed": 2400.0, "kind": "bullet"},
 	"Minimi":       {"damage": 23.0,  "rate": 0.20,  "speed": 1180.0, "kind": "bullet"},
 	"Minigun":      {"damage": 13.0,  "rate": 0.066, "speed": 1275.0, "kind": "bullet"},
 	"Flamethrower": {"damage": 19.0,  "rate": 0.08,  "speed": 420.0,  "kind": "bullet", "life": 0.35, "visual": "flame"},
 	"Rambo Bow":    {"damage": 100.0,  "rate": 1.5,   "speed": 900.0,  "kind": "bullet"},
 	"USSOCOM":      {"damage": 27.0,  "rate": 0.167, "speed": 800.0,  "kind": "bullet"},
-	"LAW":          {"damage": 90.0,  "rate": 1.6,   "speed": 720.0,  "kind": "rocket"},
+	"LAW":          {"damage": 115.0, "rate": 1.6,   "speed": 720.0,  "kind": "rocket"},
 	# Gun Game melee rungs: bots don't do full melee arc scans, so approximate with
 	# a very-short-life bullet — travels ~60px then dies harmlessly. Damage still
 	# routes through take_damage with the correct weapon_name for GG kill scoring.

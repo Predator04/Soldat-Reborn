@@ -4,6 +4,17 @@ All notable changes to Soldat Reborn.
 
 ## [Unreleased]
 
+### Changed — weapon & vehicle balance (#310)
+Measured first: thousands of duels at fixed distances against standing and strafing targets, plus 60 minutes of bot matches with every gun in equal use (Deathmatch, Teammatch, CTF and Bomb Defusal on classic and featured maps). Only the guns and vehicles that stood out for their role changed, each by a small step; movement, jets and soldier health are untouched.
+- **LAW: 90 → 115 damage.** A rocket into the body now kills, like the classic LAW; before, a direct hit left the target alive (~83 damage) and it was the slowest gun to get a kill at any range. The blast still falls off, so a near miss doesn't kill.
+- **M79: 90 → 115 damage, shell speed 470 → 640 (the classic speed).** A direct hit kills, and the grenade now reaches mid range: before, it couldn't land a shell 230 px away on flat ground.
+- **Spas-12: 9 → 11 damage per pellet.** The shotgun is the close-range king again; before, every assault rifle beat it at 100 px.
+- **Steyr AUG: spread 0.075 → 0.05.** It's the accurate rifle now (as in classic) and beats the AK-74 at long range; the AK still wins up close. Before, the AUG was worse than the AK at every distance.
+- **MP5: 13 → 15 damage.** The SMG holds its own up close (it lost to the AK-74 even at 100 px).
+- **Minigun: spread 0.3 → 0.24.** Still a hose with a spin-up, but it kills at close range instead of spraying past the target.
+- **Tank: explosives now do full damage (were 80 %).** It still shrugs off bullets (20 %), but it now takes 8 LAW hits instead of ~13 — in the test matches no tank was ever destroyed.
+- Bots use exactly the same gun numbers as players now (damage, speed, magazine, reload come from one table).
+
 ### Added — Bomb Defusal (#304)
 - **New game mode: Bomb Defusal** (mode 10, at the end of every mode list; dedicated `--mode bomb`). RED attacks, BLUE defends, and the sides swap at halftime (after round 6). The attackers carry one bomb to site A or B and plant it (hold **Use** 3 s in the site, standing still — moving or jetting starts it over, getting shot doesn't); the defenders stop them, or defuse a planted bomb (hold Use 7 s on it). A planted bomb beeps faster and faster and blows after 40 s with a big blast around it. A round ends on a detonation (attackers), a defuse (defenders) or the 2:30 clock running out with no plant (defenders); first to 7 rounds wins the match (then the usual winner screen + map vote). The dead come back together in **waves every 10 s** (the death screen counts down to the next one); a new round respawns everyone at once. The carrier drops the bomb where they die; any attacker picks it up, defenders can't.
 - **New control: Use / Plant / Defuse** — C on the keyboard, Y on a gamepad (shared with Reload — reloading while you plant is harmless), remappable in Settings → Controls; on touch screens a USE button appears only when it can do something.

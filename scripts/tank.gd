@@ -35,7 +35,7 @@ func _init() -> void:
 	GUN_SPEED = 900.0
 	GUN_SPREAD = 0.01
 	HEAT_PER_SHOT = 0.0
-	EXPLOSIVE_MUL = 0.8
+	EXPLOSIVE_MUL = 1.0             # #310: was 0.8 — never wrecked in 60 bot match-minutes
 	BULLET_ARMOR = 0.2
 	EXPLODE_RADIUS = 190.0
 	EXPLODE_DAMAGE = 150.0

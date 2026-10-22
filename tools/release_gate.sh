@@ -873,6 +873,7 @@ if has F; then
   ft course movement_course_test.gd 120 COURSE-TEST "movement course: tap/hold gaps, prone drop, bunny lane, best time, settings restored (#262)"
   ft fire fire_test.gd 100 FIRE-TEST "every primary fires"
   ft weapons weapon_test.gd 175 WEAPON-TEST "every weapon hits (player + bots)"
+  ft wbal balance_watch.gd $(T 300) BALANCE-TEST "weapon balance sanity (#310): duel harness — every gun kills a standing target in time at its intended range, no gun fastest at every distance" "--gate"
   ft labels label_test.gd 100 LABEL-TEST "labels / explanations"
   ft kits kit_test.gd 100 KIT-TEST "medikits / grenade kits"
   ft droppu drop_powerup_test.gd 110 DROP-POWERUP-TEST "drop the power-up (#303): every kind ends at once on the drop key (state restored, HUD pill gone, toast), nothing spawns, the box keeps its respawn timer, no-op with nothing active, touch DROP only while active, controls + strings"

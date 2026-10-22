@@ -47,10 +47,13 @@ const STRAFE_RANGE := 160.0
 const DUEL_CAP := 10.0          # s: a trial that hasn't killed by then counts as "no kill"
 # Gate: weapon -> [intended range px, max median time-to-kill s vs a standing target].
 const GATE_LIMITS := {
-	"Deagles": [300, 1.6], "MP5": [100, 1.2], "AK-74": [300, 1.6], "Steyr AUG": [300, 1.6],
-	"Spas-12": [100, 1.6], "Ruger 77": [600, 1.6], "M79": [300, 5.0], "Barrett": [1000, 1.2],
-	"Minimi": [600, 2.5], "Minigun": [100, 1.6], "Flamethrower": [100, 1.0], "Rambo Bow": [600, 1.5],
-	"USSOCOM": [300, 1.6], "LAW": [600, 5.5],
+	# (measured after #310, 8 trials: Deagles 0.87, MP5 0.75, AK 0.97, AUG 1.30, Spas 1.28,
+	# Ruger 1.05, M79 3.57, Barrett 0.72, Minimi 1.57, Minigun 1.27, Flamer 0.62, Bow 0.65,
+	# USSOCOM 0.90, LAW 0.80; before #310 LAW took 4.9 s at 600 and the M79 never reached 300)
+	"Deagles": [300, 1.6], "MP5": [100, 1.2], "AK-74": [300, 1.6], "Steyr AUG": [300, 1.8],
+	"Spas-12": [100, 2.0], "Ruger 77": [600, 1.6], "M79": [300, 5.0], "Barrett": [1000, 1.2],
+	"Minimi": [300, 2.5], "Minigun": [100, 2.0], "Flamethrower": [100, 1.0], "Rambo Bow": [600, 1.5],
+	"USSOCOM": [300, 1.6], "LAW": [600, 2.0],
 }
 
 var _mode := ""
@@ -444,7 +447,7 @@ func _finish_trial(w: Dictionary) -> void:
 		"hits": int(_tr["hits"]), "dmg": float(_tr["dmg_t"]), "self": float(_tr["self"]), "t": float(_tr["t"])})
 	_trial += 1
 	var c: Array = _cells[_ci]
-	var n := _trials
+	var n := 8 if _gate and str(c[3]) == "stand" else _trials   # gate: stand cells = the full duel's 8 seeded trials
 	if _trial < n:
 		_start_trial()
 		return
