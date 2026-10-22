@@ -455,6 +455,47 @@ func pos_at(ms_ago: int) -> Vector2:
 	return (_hist[i][1] as Vector2).lerp(_hist[i + 1][1], float(h[1]))
 
 
+## Host (#266): the driver's own timeline of this vehicle, by its game clock
+## (`gstamp` on net_vehicle_state): [gstamp, pos, vel], ~3 s, for one peer.
+var _gtrack: Array = []
+var _gtrack_peer := 0
+
+
+func note_gtrack(peer: int, gstamp: int, pos: Vector2, vel: Vector2) -> void:
+	if peer != _gtrack_peer:
+		_gtrack.clear()
+		_gtrack_peer = peer
+	if not _gtrack.is_empty() and gstamp <= int(_gtrack[-1][0]):
+		return
+	_gtrack.append([gstamp, pos, vel])
+	while _gtrack.size() > 2 and gstamp - int(_gtrack[0][0]) > 3000:
+		_gtrack.pop_front()
+
+
+## How far `p` (a muzzle) lies beyond where this vehicle could have been at
+## `peer`'s game-clock moment `stamp`: the driver's samples either side of
+## it, each give or take what the vehicle could cover in between (its speed
+## then plus room to speed up; a stall's gap just widens the bound). INF:
+## nothing from that peer near that moment.
+func gun_origin_off(peer: int, p: Vector2, stamp: int, window := 2500) -> float:
+	if peer != _gtrack_peer or _gtrack.is_empty() or stamp <= 0:
+		return INF
+	var i := _gtrack.size() - 1
+	while i >= 0 and int(_gtrack[i][0]) > stamp:
+		i -= 1
+	var off := -1.0
+	for k in [i, i + 1]:
+		if k < 0 or k >= _gtrack.size():
+			continue
+		var e: Array = _gtrack[k]
+		var dt := float(absi(int(e[0]) - stamp)) / 1000.0
+		if dt * 1000.0 > float(window):
+			continue
+		var reach := ((e[2] as Vector2).length() * 1.25 + 600.0) * dt
+		off = maxf(off, maxf(0.0, p.distance_to(e[1]) - reach))
+	return off if off >= 0.0 else INF
+
+
 ## Host: the nearest this vehicle's copy came to `p` over the last `ms` ms.
 func min_dist_recent(p: Vector2, ms: int) -> float:
 	var best := p.distance_to(global_position)
@@ -715,7 +756,7 @@ func _send_state(delta: float) -> void:
 	_net_t = 0.05
 	var main := get_parent()
 	if main != null and main.has_method("vehicle_send"):
-		main.vehicle_send("net_vehicle_state", [vehicle_id, global_position, velocity, _tilt, face, aim_dir], false)
+		main.vehicle_send("net_vehicle_state", [vehicle_id, global_position, velocity, _tilt, face, aim_dir, HostHits.game_ms()], false)
 
 
 # Remote state (Main.net_vehicle_state).

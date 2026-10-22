@@ -165,6 +165,14 @@ func _gun_ok(shooter: Node, gun: String, rate: float, muzzle: Vector2, at: Vecto
 	if g == null:
 		return true
 	var off := muzzle.distance_to(at)
+	# The driver's own gun: where its own stream put the vehicle at the
+	# shot's moment (its game clock).
+	var tracked := false
+	if off > reach and stamp > 0 and v != null and v.has_method("gun_origin_off"):
+		var o: float = v.gun_origin_off(_peer_of(shooter), muzzle, stamp)
+		if o != INF:
+			off = minf(off, o)
+			tracked = true
 	if off > reach and v != null and v.has_method("min_dist_recent"):
 		off = minf(off, float(v.min_dist_recent(muzzle, 600 + int(main._net.peer_rtt_ms(_peer_of(shooter))))))
 	if off > reach:
@@ -172,12 +180,11 @@ func _gun_ok(shooter: Node, gun: String, rate: float, muzzle: Vector2, at: Vecto
 		# stall held its states back while the rounds came through: its copy
 		# here is not where the driver is. Refuse quietly (no flag).
 		var now := Time.get_ticks_msec()
-		var stale: bool = v != null and v.has_meta("state_ms") and now - int(v.get_meta("state_ms")) > 200
-		var behind: bool = stamp > 0 and g.track_newest() > 0 and g.track_newest() < stamp - 50
-		if stale or behind:
+		var stale: bool = not tracked and v != null and v.has_meta("state_ms") and now - int(v.get_meta("state_ms")) > 200
+		if stale:
 			HostHits.count("refused_origin_quiet")
 			if OS.get_cmdline_user_args().has("--hosthits-log"):
-				print("HOSTORIGIN %s %.0f px off (max %.0f), %s" % [gun, off, reach, "vehicle state %d ms old" % (now - int(v.get_meta("state_ms"))) if stale else "shooter's stream %d ms behind the shot" % (stamp - g.track_newest())])
+				print("HOSTORIGIN %s %.0f px off (max %.0f), vehicle state %d ms old" % [gun, off, reach, now - int(v.get_meta("state_ms"))])
 			return false
 		if g.flag("origin", "%s fired %.0f px from the gun (max %.0f; muzzle (%.0f, %.0f), gun (%.0f, %.0f))" % [gun, off, reach, muzzle.x, muzzle.y, at.x, at.y]):
 			shooter._trust_force_death("shots (%s)" % gun)
@@ -360,18 +367,23 @@ func net_vehicle_spawn(vid: int, spawn: Vector2, pos: Vector2, hp_v: float, aliv
 	_make_vehicle(vid, spawn, pos, hp_v, alive_v, kind)
 
 
-func net_vehicle_state(vid: int, pos: Vector2, vel: Vector2, tilt: float, f: float, aim: Vector2) -> void:
+func net_vehicle_state(vid: int, pos: Vector2, vel: Vector2, tilt: float, f: float, aim: Vector2, gstamp: int = 0) -> void:
 	var v := find_vehicle(vid)
 	if v == null:
 		return
 	if _relay_drop(v, pos):
 		return
-	if _vehicle_relay("net_vehicle_state", [vid, pos, vel, tilt, f, aim], int(v.sim_peer())):
+	if _vehicle_relay("net_vehicle_state", [vid, pos, vel, tilt, f, aim, gstamp], int(v.sim_peer())):
 		return
 	if Net.is_networked() and not Net.is_host() and main.multiplayer.get_remote_sender_id() != 1:
 		return
 	v.apply_state(pos, vel, tilt, f, aim)
 	v.set_meta("state_ms", Time.get_ticks_msec())   # (host: how fresh its copy is — _gun_ok)
+	# #266: the driver's own timeline of its vehicle (its game clock), so
+	# the driver's gun rounds are checked against where the vehicle was when
+	# they were fired, however the stream was bunched on the way.
+	if Net.is_networked() and Net.is_host() and gstamp > 0 and v.has_method("note_gtrack"):
+		v.note_gtrack(main.multiplayer.get_remote_sender_id(), gstamp, pos, vel)
 
 
 ## How far from a vehicle's copy here its gun's muzzle may be: the copy

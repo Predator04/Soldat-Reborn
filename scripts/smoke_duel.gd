@@ -390,6 +390,16 @@ func _flat_around(p: Node2D, v: Vector2, half := 180.0) -> bool:
 
 
 func _put(p: Node2D, at: Vector2) -> void:
+	# The jump to the spot is only fine inside the host's spawn grace (2.5 s
+	# from the body's first state). On a starved machine this client can get
+	# to it seconds late (a kill-cam replay before the new body is ours): a
+	# body already over 1.8 s old (spawn protection, 3 s, counts down from
+	# its spawn) stays where it is.
+	var cf = p.get("ceasefire_t")
+	if cf != null and p.global_position.distance_to(at) > 40.0 and float(cf) < 3.0 - 1.8:
+		set_meta("anchor", p.global_position)
+		print("SMOKE-DUEL placed role=%s at=(%.0f,%.0f) (late: stays put, not at (%.0f,%.0f))" % [role, p.global_position.x, p.global_position.y, at.x, at.y])
+		return
 	p.global_position = at
 	p.velocity = Vector2.ZERO
 	set_meta("anchor", at)

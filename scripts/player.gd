@@ -1949,10 +1949,11 @@ func net_state(pos: Vector2, vel: Vector2, aim: Vector2, face: float, jetting: b
 		TrustGuard.clock_note(auth, gstamp)
 		if g != null:
 			var riding := _trust_riding()
-			var force := g.check_move(pos, _trust_world(), riding)
+			var force := g.check_move(pos, _trust_world(), riding, gstamp)
 			# Health is the host's ledger (#266): the client's figure is only
-			# compared, and corrected when it drifts.
-			if g.check_hp(hp, health, _owner_rtt(), display_name):
+			# compared, and corrected when it drifts. (A client running behind
+			# — a stall, a starved machine — may still show older values.)
+			if g.check_hp(hp, health, _owner_rtt(), display_name, TrustGuard.clock_late(auth, gstamp, 5000)):
 				_send_hit(0.0, "", "", -1)
 			hp = health
 			var mj: float = MatchConfig.mod_jet()

@@ -216,19 +216,19 @@ func flag(kind: String, msg: String) -> bool:
 func note_ledger(hp: float) -> void:
 	var now := Time.get_ticks_msec()
 	_hp_hist.append([now, hp])
-	while _hp_hist.size() > 2 and now - int(_hp_hist[1][0]) > 2000:
+	while _hp_hist.size() > 2 and now - int(_hp_hist[1][0]) > 6000:
 		_hp_hist.pop_front()
 
 
 ## Compare the client's reported health with the ledger. Returns true when
 ## the host should send its number back (`net_hit` with no damage).
-func check_hp(reported: float, ledger: float, rtt_ms: int, who := "") -> bool:
+func check_hp(reported: float, ledger: float, rtt_ms: int, who := "", behind_ms := 0) -> bool:
 	var now := Time.get_ticks_msec()
 	if _hp_hist.is_empty() or float(_hp_hist[-1][1]) != ledger or now - int(_hp_hist[-1][0]) > 250:
 		note_ledger(ledger)
 	# Every ledger value the client could still be showing: anything from the
 	# last round trip (plus jitter), and whatever stood at the start of it.
-	var span := clampi(rtt_ms, 0, HostHits.REWIND_MAX_MS) + HP_LAG_PAD_MS
+	var span := clampi(rtt_ms, 0, HostHits.REWIND_MAX_MS) + HP_LAG_PAD_MS + clampi(behind_ms, 0, 5000)
 	var lo := ledger
 	var hi := ledger
 	for i in range(_hp_hist.size() - 1, -1, -1):
@@ -260,7 +260,10 @@ func check_hp(reported: float, ledger: float, rtt_ms: int, who := "") -> bool:
 # ── movement ──
 
 ## Check one state packet's position. Returns a forced-death reason or "".
-func check_move(pos: Vector2, world: Rect2, riding := false) -> String:
+## (`gstamp`: the owner's game clock on this packet, kept with the sample;
+## the speed itself is measured in host time — a client's clock must not
+## be able to stretch it.)
+func check_move(pos: Vector2, world: Rect2, riding := false, gstamp := 0) -> String:
 	var now := Time.get_ticks_msec()
 	if not _got_state:
 		# A fresh body's grace runs from its owner's first state, not from
@@ -271,9 +274,9 @@ func check_move(pos: Vector2, world: Rect2, riding := false) -> String:
 	if riding:
 		_ride_until_ms = now + 1500   # covers the seat snap in and the eject out
 	if now < amnesty_until_ms or now < _ride_until_ms:
-		_hist = [[now, pos]]
+		_hist = [[now, pos, gstamp]]
 		return ""
-	_hist.append([now, pos])
+	_hist.append([now, pos, gstamp])
 	while _hist.size() > 2 and now - int(_hist[1][0]) >= SPEED_SPAN_MS:
 		_hist.pop_front()
 	var moved := ""
@@ -289,7 +292,7 @@ func check_move(pos: Vector2, world: Rect2, riding := false) -> String:
 	moves += 1
 	HostHits.count("refused_move")
 	print("TRUST move: %s (%.1f s after the last spawn / reset)" % [moved, float(now - amnesty_until_ms + SPAWN_GRACE_MS) / 1000.0])
-	_hist = [[now, pos]]
+	_hist = [[now, pos, gstamp]]
 	if moves >= MOVES_PER_LIFE:
 		return "movement (%s)" % moved
 	return ""

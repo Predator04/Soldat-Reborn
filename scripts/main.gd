@@ -1767,8 +1767,8 @@ func net_vehicle_spawn(vid: int, spawn: Vector2, pos: Vector2, hp_v: float, aliv
 
 
 @rpc("any_peer", "call_remote", "unreliable_ordered")
-func net_vehicle_state(vid: int, pos: Vector2, vel: Vector2, tilt: float, f: float, aim: Vector2) -> void:
-	_vehicles_sys.net_vehicle_state(vid, pos, vel, tilt, f, aim)
+func net_vehicle_state(vid: int, pos: Vector2, vel: Vector2, tilt: float, f: float, aim: Vector2, gstamp: int = 0) -> void:
+	_vehicles_sys.net_vehicle_state(vid, pos, vel, tilt, f, aim, gstamp)
 
 
 @rpc("any_peer", "call_remote", "reliable")
