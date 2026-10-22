@@ -883,7 +883,7 @@ func net_respawn_ready() -> void:
 func _respawn_delay_for_team(t: int) -> float:
 	# #304 Bomb Defusal: the dead come back together on the next wave.
 	if Settings.game_mode == Settings.MODE_BOMB and _bomb.active():
-		return _bomb.wave_delay()
+		return _bomb.wave_delay(t)
 	# INF attackers pay a longer respawn (defender advantage).
 	if Settings.game_mode == Settings.MODE_INF and t == TEAM_RED:
 		return 5.0

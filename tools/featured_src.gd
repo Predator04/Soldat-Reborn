@@ -517,15 +517,17 @@ static func src_downtown() -> Dictionary:
 	# street = 1900. Blue deck on the left, red plateau on the right (300 up).
 	L.ground(0, 560, 1700, 200)                   # blue deck
 	L.ramp(560, 1700, 880, 1900)                  # down to the street (32 deg)
-	L.prop("crate", 1150, 1900)
-	L.prop("crate_big", 1560, 1900)               # site A cover
-	L.prop("sandbags", 1810, 1900)
-	_site(L, "site_a", 1500, 1900, 1900)
-	L.pad(2160, 1900)                             # street -> market roof
+	# #307: A sits 300 px further down the street and B on the far half of the
+	# roof (the defenders' 10 s waves from the deck retook almost every plant).
+	L.prop("crate", 1450, 1900)
+	L.prop("crate_big", 1860, 1900)               # site A cover
+	L.prop("sandbags", 2090, 1900)
+	_site(L, "site_a", 1800, 2140, 1900)
+	L.pad(2210, 1900)                             # street -> market roof
 	L.p("block", 2600, 1620, 700, 40)             # the market roof (B on top, 260 over the street)
-	L.prop("sandbags", 2480, 1600)
-	L.prop("barrel", 2730, 1600)
-	_site(L, "site_b", 2400, 2800, 1600)
+	L.prop("sandbags", 2600, 1600)
+	L.prop("barrel", 2850, 1600)
+	_site(L, "site_b", 2520, 2920, 1600)
 	L.prop("crate", 2600, 1900)                   # a stall under the roof
 	L.ground(3200, 4800, 1600, 300)               # red plateau (jet the 250 px gap from the roof)
 	L.pad(3110, 1900)                             # street -> plateau
@@ -538,7 +540,7 @@ static func src_downtown() -> Dictionary:
 		L.spawn(2, x, 1580)
 	L.m["player_spawn"] = Vector2(330, 1680)
 	L.m["dom_points"] = [Vector2(1300, 1880), Vector2(2600, 1580), Vector2(4000, 1580)]
-	L.weapon("Spas-12", 1700, 1880)
+	L.weapon("Spas-12", 2000, 1880)
 	L.weapon("Ruger 77", 2600, 1580)
 	L.weapon("MP5", 2600, 1880)
 	L.weapon("Barrett", 4150, 1220)
@@ -560,19 +562,20 @@ static func src_dust_yard() -> Dictionary:
 	# yard = 1900
 	L.ground(0, 520, 1760, 140)                   # blue deck
 	L.ramp(520, 1760, 740, 1900)
-	L.ground(1100, 1620, 1740, 160)               # the loading dock (site A on it)
-	L.ramp(860, 1900, 1100, 1740)
-	L.ramp(1620, 1740, 1860, 1900)
-	L.prop("crate_big", 1200, 1740)
-	L.prop("crate", 1520, 1740)
-	_site(L, "site_a", 1140, 1580, 1740)
-	L.p("block", 2350, 1620, 640, 40)             # warehouse roof (site B under it, on the yard)
-	L.p("wall", 2050, 1675, 40, 70)               # roof edge walls (walk in under them)
-	L.p("wall", 2650, 1675, 40, 70)
-	L.prop("crate", 2280, 1900)
-	_site(L, "site_b", 2140, 2560, 1900)
-	L.pad(1960, 1900)                             # yard -> warehouse roof
-	L.pad(2740, 1900)
+	# #307: the dock (A) and the warehouse (B) moved 560 / 300 px toward the
+	# attackers (from the defenders' deck, 10 s waves retook almost every plant);
+	# the dock is a 160 px step on both sides now (jet up / drop down).
+	L.ground(1660, 2180, 1740, 160)               # the loading dock (site A on it)
+	L.prop("crate_big", 1760, 1740)
+	L.prop("crate", 2080, 1740)
+	_site(L, "site_a", 1700, 2140, 1740)
+	L.p("block", 2650, 1620, 640, 40)             # warehouse roof (site B under it, on the yard)
+	L.p("wall", 2350, 1675, 40, 70)               # roof edge walls (walk in under them)
+	L.p("wall", 2950, 1675, 40, 70)
+	L.prop("crate", 2580, 1900)
+	_site(L, "site_b", 2440, 2860, 1900)
+	L.pad(2265, 1900)                             # yard -> warehouse roof
+	L.pad(3040, 1900)
 	L.p("block", 3250, 1520, 160, 200)            # the silo top (jet onto it; walk under it)
 	L.prop("sandbags", 3250, 1900)
 	L.prop("crate_big", 3600, 1900)               # a container
@@ -584,19 +587,19 @@ static func src_dust_yard() -> Dictionary:
 	for x in [4380.0, 4520.0, 4670.0]:
 		L.spawn(2, x, 1740)
 	L.m["player_spawn"] = Vector2(300, 1740)
-	L.m["dom_points"] = [Vector2(1360, 1700), Vector2(2900, 1880), Vector2(4550, 1740)]
-	L.weapon("Steyr AUG", 1360, 1720)
-	L.weapon("Minimi", 2350, 1880)
+	L.m["dom_points"] = [Vector2(1920, 1700), Vector2(3100, 1880), Vector2(4550, 1740)]
+	L.weapon("Steyr AUG", 1920, 1720)
+	L.weapon("Minimi", 2650, 1880)
 	L.weapon("Barrett", 3250, 1380)
-	L.weapon("LAW", 2350, 1580)
+	L.weapon("LAW", 2650, 1580)
 	L.weapon("Spas-12", 3800, 1840)
 	L.add("medkits", 900, 1880)
 	L.add("medkits", 3000, 1880)
-	L.add("grenade_kits", 1800, 1880)
+	L.add("grenade_kits", 1100, 1880)
 	L.add("grenade_kits", 4000, 1880)
 	L.deco("_dcactus3", 80, 1760, 0.45)
 	L.deco("_dcactus3", 2900, 1900, 0.4)
-	L.deco("barrel", 1700, 1900, 0.8)
+	L.deco("barrel", 1000, 1900, 0.8)
 	L.deco("_dcactus3", 4700, 1760, 0.45)
 	return L.done()
 
@@ -613,20 +616,26 @@ static func src_whiteout() -> Dictionary:
 	_site(L, "site_a", 1620, 1900, 1900)
 	L.ramp(1900, 1900, 2100, 1780)                # and up again
 	L.ground(2100, 4800, 1780, 120)               # snowfield, east
-	L.p("hill", 2900, 1660, 900, 240)             # the ridge (site B on its crest)
-	_site(L, "site_b", 2740, 3060, 1560, 170)
+	L.p("hill", 2750, 1660, 900, 240)             # the ridge (site B on its crest; #307: 150 px west)
+	_site(L, "site_b", 2590, 2910, 1560, 170)
 	L.p("block", 3500, 1600, 100, 360)            # ice tower (jet up from either side)
 	L.ground(4220, 4800, 1650, 130)               # red bunker deck
 	L.ramp(3920, 1780, 4220, 1650)
 	L.prop("sandbags", 3800, 1780)
-	L.prop("crate", 2300, 1780)
+	L.prop("crate", 2160, 1780)
 	for x in [180.0, 360.0, 540.0]:
 		L.spawn(1, x, 1630)
 	for x in [4330.0, 4500.0, 4660.0]:
 		L.spawn(2, x, 1630)
 	L.m["player_spawn"] = Vector2(360, 1630)
+	# #307: the ridge now covers the middle, so the other modes' objectives are
+	# placed by hand (the auto-placer stood them in its slope).
+	L.m["inf_flag"] = Vector2(3320, 1760)
+	L.m["htf_flag"] = Vector2(3320, 1760)
+	L.m["rambo_pos"] = Vector2(3320, 1760)
+	L.m["dom_points"] = [Vector2(1250, 1760), Vector2(2750, 1500), Vector2(4000, 1760)]
 	L.weapon("Ruger 77", 600, 1630)
-	L.weapon("Minigun", 2900, 1500)
+	L.weapon("Minigun", 2750, 1500)
 	L.weapon("Barrett", 3500, 1400)
 	L.weapon("AK-74", 1760, 1880)
 	L.weapon("M79", 4100, 1700)
@@ -635,7 +644,7 @@ static func src_whiteout() -> Dictionary:
 	L.add("grenade_kits", 2200, 1760)
 	L.add("grenade_kits", 4000, 1760)
 	L.deco("tree2", 100, 1650, 0.7)
-	L.deco("mnp-deadtree1", 2450, 1780, 0.45)
+	L.deco("mnp-deadtree1", 2030, 1780, 0.45)
 	L.deco("tree2", 3700, 1780, 0.65)
 	L.deco("tree2", 4700, 1650, 0.7)
 	return L.done()

@@ -12,6 +12,18 @@ All notable changes to Soldat Reborn.
 - **Maker: Bomb site A / Bomb site B** pieces (Objectives tab, resizable areas). The checks before PLAY / SAVE want both for Bomb Defusal, inside the map and over ground you can stand on; the Maker's test mode can be Bomb Defusal. Maps store them as `bomb_sites`; shared levels with both are tagged BOMB.
 - Online: the host decides everything (who carries the bomb, plant / defuse progress, the fuse); a player only says "I'm holding Use" for their own soldier, so a modified client can't plant or defuse for anyone. Players joining mid-round see the planted bomb and its fuse right away.
 
+### Changed — Bomb Defusal balance (#307)
+- **Attack and defense are much closer to even.** Bot matches showed the defenders winning most rounds: they respawned close to the sites every 10 s and retook almost every planted bomb (Downtown and Dust Yard: about 1 round in 6 for the attackers). Once the bomb is planted, the **defenders' respawn waves now come every 15 s** (the attackers' stay at 10 s), and the NEXT WAVE clock shows your own team's wave.
+- **Downtown:** site A is 300 px further down the street (cover and the roof pad moved with it) and site B is on the far half of the market roof. **Dust Yard:** the loading dock (site A) moved 560 px toward the middle and is now a step up on both sides, and the warehouse (site B) moved 300 px. **Whiteout:** the ridge with site B moved 150 px toward the defenders. Bot matches now go from roughly 1-in-6 to 2-in-5 or better for the attackers on Downtown and Dust Yard, and Whiteout stays around even.
+- **Arena2 / Arena3:** the site that sat on top of the defenders' spawn moved off it (bots could hold it against defenders spawning into the bomb).
+
+### Fixed — Bomb Defusal
+- **Bots reach the bomb sites on every map (#308).** Maps without their own sites now get them on spots both teams can actually walk to from every spawn, on the way between the bases, not on top of either base, and placed by walking distance so neither side is next door. Argy got hand-placed sites in the lower tunnel the attackers really use (the old ones sent the bomb carrier through a cave nobody climbed back out of).
+- **Replays show the bomb (#309).** Bomb Defusal replays now record the sites, who carries the bomb, where it was dropped or planted, the fuse and the plant / defuse progress, and the replay viewer draws them like the live game: the A / B sites (red when the bomb is planted there), the bomb on the carrier's back / on the ground / planted with its blinking light, a status line (round, carrier, fuse) and a progress ring over the soldier planting or defusing. Older replays play as before.
+
+### Fixed — online
+- **Joining a match in progress now shows other players' active power-ups (#305).** A Predator was not see-through, a Berserker not red, etc. for someone who joined after it was picked up, until it ran out; the server now sends each player's active power-up and the time left as part of joining.
+
 ## [1.39.0] — 2026-10-21 — Featured levels
 
 ### Added — drop your power-up (#303)

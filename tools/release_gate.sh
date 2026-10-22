@@ -42,7 +42,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 G="${GODOT_BIN:-$HOME/godot/Godot_v4.7.2-stable_linux.x86_64}"
 QUICK=0; OUT="build/gate"; ONLY="A B N C D R F E"; MODESEL="0 1 2 3 4 5 6 7 8 9 10"
-NETSEL="ctf dm dedboot selfcheck two trust drop fill ranked friends news featured respawn killcam drive heli plane bomb rejoin relay host listen lan soak m3 m7 m9 m2"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
+NETSEL="ctf dm dedboot selfcheck two trust drop latepu fill ranked friends news featured respawn killcam drive heli plane bomb rejoin relay host listen lan soak m3 m7 m9 m2"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --quick) QUICK=1;; --out) OUT="$2"; shift;; --only) ONLY="$2"; shift;;
@@ -716,6 +716,31 @@ case " $NETSEL " in *" drop "*)
     fail "C net drop power-up: host='$hd' forged='$hf' drops=$nd c1='$(grep -h 'SMOKE-DROP' "$OUT/net_drop_c1.log" | tr '\n' ' ')' c2='$we' errors=$e"
   fi
 ;; esac
+case " $NETSEL " in *" latepu "*)
+  # Join in progress (#305): the host grants the first client a Predator;
+  # a second client joining after that must see it on the holder's replica
+  # at once (kind + time left from the join hydration, see-through).
+  port=$(freeport udp)
+  timeout $(T 90) "$G" --headless -- --dedicated --fill=0 --bots=0 --smoke-bonus=predator --smoke-bonus-min=1 --port $port --map 0 --mode 0 > "$OUT/net_latepu_server.log" 2>&1 &
+  spid=$!
+  wait_ready "$OUT/net_latepu_server.log"
+  timeout $(T 70) "$G" --headless -- --smoke-join --port $port --smoke-secs=30 --smoke-latepu=holder > "$OUT/net_latepu_c1.log" 2>&1 &
+  c1=$!
+  wait_log "$OUT/net_latepu_server.log" "^SMOKE-BONUS granted predator" 40
+  timeout $(T 50) "$G" --headless -- --smoke-join --port $port --smoke-secs=14 --smoke-latepu=joiner > "$OUT/net_latepu_c2.log" 2>&1
+  wait $c1 2>/dev/null; kill $spid 2>/dev/null; wait $spid 2>/dev/null
+  e=$(( $(errs "$OUT/net_latepu_server.log") + $(errs "$OUT/net_latepu_c1.log") + $(errs "$OUT/net_latepu_c2.log") ))
+  hv=$(grep -m1 "^SMOKE-LATEPU have=predator" "$OUT/net_latepu_c1.log")
+  sw=$(grep -m1 "^SMOKE-LATEPU saw peer=.* kind=predator" "$OUT/net_latepu_c2.log")
+  sl=$(echo "$sw" | sed -n 's/.*left=\([0-9.]*\).*/\1/p')
+  sa=$(echo "$sw" | sed -n 's/.*alpha=\([0-9.]*\).*/\1/p')
+  sf=$(echo "$sw" | sed -n 's/.*after=\([0-9.]*\).*/\1/p')
+  if [ -n "$hv" ] && [ -n "$sl" ] && awk "BEGIN{exit !($sl > 0.5 && $sl < 30 && $sa < 0.5 && $sf <= 2)}" && [ "$e" = "0" ]; then
+    pass "C net join-in-progress power-up: $sw"
+  else
+    fail "C net join-in-progress power-up: holder='$hv' joiner='$(grep -h 'SMOKE-LATEPU' "$OUT/net_latepu_c2.log" | tr '\n' ' ')' errors=$e"
+  fi
+;; esac
 case " $NETSEL " in *" killcam "*)
   # A bot "kills" the client: its kill cam rewind plays (~4.3 s) and the host
   # holds the respawn until the client says it's done; a self-kill (case
@@ -891,7 +916,7 @@ if has F; then
   ft sart soldier_art_test.gd 60 SOLDIER-ART-TEST "Operator soldier art (#280/#281): every rig part in both facings with normal maps + mipmaps, layer mirrors, every head / vest / pose drawn, jet flame from the pack, classic setting wins"
   ft wart weapons_gfx_test.gd 60 WEAPONS-ART-TEST "HD weapon art (#284): every weapon + belt grenade at 6x its classic sprite with mipmaps + normal map, drawn HD in hand / slung / as a pickup, bullet spawn identical in both looks, drawn barrel scales with the 78% gun, classic asks for no HD"
   ft joincode join_code_test.gd 60 JOINCODE-TEST "join codes: round trip, typos, garbage, host shows its code"
-  ft replay replay_test.gd 150 REPLAY-TEST "replays: record, save on leave, list, play back in place, seek, exit restores"
+  ft replay replay_test.gd 300 REPLAY-TEST "replays: record, save on leave, list, play back in place, seek, exit restores; Bomb Defusal replay keeps the sites + bomb (carried / planted) and the viewer draws them (#309)"
   ft tags label_overlap_test.gd 120 LABELS-TEST "pickup name tags never overlap (#185)"
   ft friends friends_test.gd 60 FRIENDS-TEST "friends list: order, online + join, stars, cap"
   ft unlock unlock_test.gd 60 UNLOCK-TEST "unlock in play: toast, equip live, kept on respawn"
@@ -906,7 +931,7 @@ if has F; then
   ft trailer trailer.gd 120 TRAILER-TEST "trailer director (#263): staged bot beats pick their highlight (rocket in flight near a crowd, crewed helicopter airborne) and log kills / explosions while filming" "--smoke"
   ft levels levels_test.gd 90 LEVELS-TEST "level sharing (#288): Hot / New / Most played / Top liked order, search by title + share code, course-code box, like on / off, bookmark saved + listed (also offline), offline message, flat node count over open / close, editor Publish round trip + title filter, editor LEVELS overlay, PLAY -> bot match on the level + play counted (in-process fake level server)"
   ft featured featured_test.gd 480 FEATURED-TEST "featured levels (#295): all 8 bundled Maker levels load, recompile identically, validate clean for their modes, pass map_audit, runtime nav routes every CTF / DOM / HTF / INF / RM leg; LEVELS opens on FEATURED offline (8 cards, no server request), detail = modes + EDIT A COPY, PLAY / HOST ONLINE, EDIT A COPY -> unsaved Maker copy, Maker New map Start from Empty / Starter / featured, editor overlay edits in place; new strings translate (es / pt_BR / de / fr); short bot match per level: bots travel, objectives progress, pads / vehicles used, few hazard deaths"
-  ft bomb bomb_test.gd 900 BOMB-TEST "Bomb Defusal (#304): carrier handed out, a defender's Use rejected, plant 3 s (moving resets, damage doesn't), fuse -> detonation kills + attackers win, next round after the banner, drop + attacker-only pickup, attacker can't defuse, defuse 7 s, clock out -> defenders, wave respawns (next wave / the one after), halftime swap of roles + spawns, 7 rounds -> match over -> fresh match; bots on Downtown / Dust Yard / Whiteout plant and the plant ends in a defuse or detonation"
+  ft bomb bomb_test.gd 1500 BOMB-TEST "Bomb Defusal (#304): carrier handed out, a defender's Use rejected, plant 3 s (moving resets, damage doesn't), fuse -> detonation kills + attackers win, next round after the banner, drop + attacker-only pickup, attacker can't defuse, defuse 7 s, clock out -> defenders, wave respawns (next wave / the one after), halftime swap of roles + spawns, 7 rounds -> match over -> fresh match; bots on Downtown / Dust Yard / Whiteout plant, the plant ends in a defuse or detonation, and both sides win a round (#307)"
   ft discord discord_test.gd 90 DISCORD-TEST "Discord Rich Presence (#223): desktop only (Android / headless / dedicated never start it), silent without an app id, handshake + SET_ACTIVITY for menu / LEVELS / CTF match / Maker editor over a fake pipe, PING/PONG, dedupe + throttle, toggle closes / reconnects, refused id stops, Linux Unix-socket transport"
   ft fxbench fx_bench.gd 90 FX-BENCH "graphics Phase B (#271): FX benchmark, 8 gibbings + minigun + 4 explosions, node count flat, FX ms / frame"
   ft killcam killcam_test.gd 60 KILLCAM-TEST "kill cam: rewind w/ slow-mo, respawn waits, skip, live follow"

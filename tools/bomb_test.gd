@@ -11,7 +11,9 @@ extends SceneTree
 ##   wave (and the one after when it's under 2 s away); halftime swap (roles +
 ##   spawns); 7 rounds -> match over (winner screen) -> fresh match.
 ## bots (each Bomb Defusal featured level, 8 bots, the player parked): a plant
-## and then a defuse or detonation within `secs` of match time.
+## and then a defuse or detonation, and (#307 balance smoke) both sides win at
+## least one round, within `secs` of match time per level (default 900; a
+## balanced level takes ~2-4 rounds, ~100-250 s).
 
 const GL = preload("res://tools/gate_load.gd")
 
@@ -21,7 +23,7 @@ var _done := false
 var _log: Array = []
 var _only := ""
 var _maps: Array = ["downtown", "dust_yard", "whiteout"]
-var _secs := 300.0
+var _secs := 900.0
 var _deadline := 0
 var _events: Array = []
 
@@ -395,6 +397,11 @@ func _bots(level: String) -> bool:
 	var plant_t := -1.0
 	var end_t := -1.0
 	var why := ""
+	var wins := {"att": 0, "def": 0}
+	m.objective.connect(func(kind: String, team: int, _who: String) -> void:
+		if kind == "bomb_round":
+			var side := "att" if team == int(b.attack_team()) else "def"
+			wins[side] = int(wins[side]) + 1)
 	var limit := _secs * 60.0
 	var f := 0
 	while f < int(limit):
@@ -405,14 +412,18 @@ func _bots(level: String) -> bool:
 		t = float(f) / 60.0
 		if plant_t < 0.0 and int(b.stats["plants"]) > 0:
 			plant_t = t
-		if plant_t >= 0.0 and int(b.stats["defuses"]) + int(b.stats["booms"]) > 0:
+		if end_t < 0.0 and plant_t >= 0.0 and int(b.stats["defuses"]) + int(b.stats["booms"]) > 0:
 			end_t = t
 			why = "defuse" if int(b.stats["defuses"]) > 0 else "detonation"
+		if end_t >= 0.0 and int(wins["att"]) > 0 and int(wins["def"]) > 0:
 			break
-	var line := "%s: plant %.0f s, %s %.0f s, rounds %d (plants %d defuses %d booms %d timeouts %d) score %s" % [level, plant_t, why if why != "" else "no resolution",
-		end_t, int(b.stats["rounds"]), int(b.stats["plants"]), int(b.stats["defuses"]), int(b.stats["booms"]), int(b.stats["timeouts"]), str(m.scores)]
+	var line := "%s: plant %.0f s, %s %.0f s, rounds %d won attack %d / defense %d in %.0f s (plants %d defuses %d booms %d timeouts %d)" % [level, plant_t,
+		why if why != "" else "no resolution", end_t, int(b.stats["rounds"]), int(wins["att"]), int(wins["def"]), t, int(b.stats["plants"]),
+		int(b.stats["defuses"]), int(b.stats["booms"]), int(b.stats["timeouts"])]
 	print("BOMB-BOTS " + line)
 	if plant_t < 0.0 or end_t < 0.0:
 		return _fail("bots on %s" % line)
+	if int(wins["att"]) == 0 or int(wins["def"]) == 0:
+		return _fail("balance smoke: one side never won on %s" % line)
 	_log.append(line)
 	return true
