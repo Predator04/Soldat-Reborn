@@ -37,7 +37,7 @@ const DEFAULT_W := 4800.0
 const DEFAULT_H := 2000.0
 const SIZES := [["S", 3200.0, 1600.0], ["M", 4800.0, 2000.0], ["L", 7200.0, 2600.0], ["XL", 9600.0, 3200.0]]
 
-const TEAM_MODES := [1, 2, 3, 4, 6, 7, 10]   # Settings.is_team_mode()
+const TEAM_MODES := [1, 2, 3, 4, 6, 7, 10, 11]   # Settings.is_team_mode()
 const MODE_CTF := 2
 const MODE_INF := 3
 const MODE_HTF := 4

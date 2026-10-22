@@ -35,10 +35,10 @@ const TABS := [
 	["likes", "TOP LIKED"], ["bookmarks", "BOOKMARKED"], ["search", "SEARCH"],
 ]
 ## Mode hint key (server "modes") -> Settings mode index, in pick priority.
-const MODE_KEYS := {"ctf": 2, "dom": 7, "htf": 4, "inf": 3, "rm": 5, "br": 8, "pm": 6, "gg": 9, "tdm": 1, "dm": 0, "bomb": 10}
+const MODE_KEYS := {"ctf": 2, "dom": 7, "htf": 4, "inf": 3, "rm": 5, "br": 8, "pm": 6, "gg": 9, "tdm": 1, "dm": 0, "bomb": 10, "zombie": 11}
 const MODE_LABEL := {"dm": "DM", "tdm": "TDM", "ctf": "CTF", "inf": "INF", "htf": "HTF", "rm": "RM", "dom": "DOM",
-	"br": "BR", "pm": "PM", "gg": "GG", "bomb": "BOMB"}
-const MODE_ORDER := ["ctf", "bomb", "dom", "htf", "inf", "rm", "br", "pm", "gg", "tdm", "dm"]
+	"br": "BR", "pm": "PM", "gg": "GG", "bomb": "BOMB", "zombie": "ZOMBIE"}
+const MODE_ORDER := ["ctf", "bomb", "dom", "htf", "inf", "rm", "br", "pm", "gg", "zombie", "tdm", "dm"]
 
 ## Map editor -> menu hand-off for HOST ONLINE (the editor has no Host screen).
 static var pending_host := ""

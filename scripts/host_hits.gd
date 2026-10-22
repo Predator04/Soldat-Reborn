@@ -94,6 +94,9 @@ static func route(s: Node) -> int:
 ## Apply a hit on soldier `s` wherever this peer is the one that decides it.
 ## `ignore_protection` mirrors callers that clear ceasefire first (run-overs).
 static func damage(s: Node, amount: float, killer: String, weapon: String, killer_team: int, ignore_protection := false, coalesce := false) -> void:
+	# #314 Zombie: zombies shrug off part of every hit (one place, so every
+	# damage path — and the host's ledger — agrees).
+	amount = preload("res://scripts/zombie_rules.gd").scaled_damage(s, amount)
 	match route(s):
 		APPLY:
 			if ignore_protection:

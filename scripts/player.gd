@@ -296,6 +296,7 @@ const TouchControls = preload("res://scripts/touch_controls.gd")
 const FootAudio = preload("res://scripts/foot_audio.gd")
 const GameInfo = preload("res://scripts/game_info.gd")
 const BonusPickup = preload("res://scripts/bonus_pickup.gd")
+const ZombieRules = preload("res://scripts/zombie_rules.gd")   # #314
 
 
 func _ready() -> void:
@@ -375,6 +376,21 @@ func _ready() -> void:
 	jet_particles.scale_amount_max = 2.3
 	jet_particles.color = Color(1.0, 0.55, 0.18)
 	add_child(jet_particles)
+	_zombie_arm()
+
+
+## #314 Zombie: a zombie fights with its claws only (the Knife slot through
+## the normal melee path), no grenades; switching / throwing / pickups are
+## locked below (_switch_weapon, _toggle_secondary, _drop_active_weapon,
+## try_pickup_weapon, _live_grenade, the F mount).
+func _zombie_arm() -> void:
+	if not ZombieRules.is_zombie(self):
+		return
+	using_secondary = true
+	secondary_index = ZombieRules.CLAW_SLOT
+	grenades = 0
+	_cook_t = -1.0
+	ceasefire_t = minf(ceasefire_t, ZombieRules.SPAWN_SHIELD)
 
 
 func _physics_process(delta: float) -> void:
@@ -653,6 +669,9 @@ func _live_move(delta: float, left: bool, right: bool, jump_pressed: bool, climb
 			speed_mul *= 1.35
 		elif bonus_kind == "berserker":
 			speed_mul *= 1.15
+		# #314: zombies run faster.
+		if ZombieRules.is_zombie(self):
+			speed_mul *= ZombieRules.SPEED_MUL
 		var accel := (GROUND_ACCEL if on_floor else AIR_ACCEL) * speed_mul
 		var cap := (RUN_SPEED if on_floor else BUNNY_SPEED) * speed_mul
 		# Preserve bunny-hop momentum: if a buffered jump will fire this tick,
@@ -816,7 +835,7 @@ func _live_weapon_keys() -> void:
 	var f_now := Input.is_action_pressed("weapon_throw")
 	if f_now and not f_prev:
 		var m2 := _find_nearby_m2()
-		if m2 != null and mounted_m2 == null:
+		if m2 != null and mounted_m2 == null and not ZombieRules.is_zombie(self):
 			m2.mount(self)
 		elif Settings.game_mode != Settings.MODE_GG:
 			_drop_active_weapon()
@@ -846,7 +865,7 @@ func _live_grenade(delta: float) -> void:
 			_throw_grenade(_cook_t)
 			_cook_t = -1.0
 			grenade_cd = 0.6
-	elif Settings.game_mode != Settings.MODE_GG \
+	elif Settings.game_mode != Settings.MODE_GG and not ZombieRules.is_zombie(self) \
 			and g_held and not _g_held_prev and grenade_cd <= 0.0 and grenades > 0:
 		_cook_t = 0.0
 		_cook_cluster = use_cluster
@@ -1145,7 +1164,8 @@ func advance_receive_kill() -> PackedStringArray:
 
 func _switch_weapon(idx: int) -> void:
 	# Gun Game: your rung IS your weapon. Number-key / hotkey switching is locked.
-	if Settings.game_mode == Settings.MODE_GG:
+	# #314: a zombie only has its claws.
+	if Settings.game_mode == Settings.MODE_GG or ZombieRules.is_zombie(self):
 		return
 	# Berserker bonus (#78) locks the soldier into the knife slot for the
 	# effect duration — swapping to a primary would defeat "no primary use".
@@ -1190,8 +1210,8 @@ func _switch_weapon(idx: int) -> void:
 
 
 func _toggle_secondary() -> void:
-	# Gun Game: rung IS the weapon — Q swap is locked.
-	if Settings.game_mode == Settings.MODE_GG:
+	# Gun Game: rung IS the weapon — Q swap is locked (#314: zombies too).
+	if Settings.game_mode == Settings.MODE_GG or ZombieRules.is_zombie(self):
 		return
 	# Berserker locks us on the knife slot (#78) — Q would take us back to
 	# a primary, undoing the effect.
@@ -1487,8 +1507,8 @@ func _drop_active_weapon() -> void:
 	# Gun Game locks the rung to the weapon — dropping would strand the player on
 	# a non-ladder slot until their next kill re-applies _apply_gg_weapon. Also
 	# lets a Knife-rung player free-toss a damaging knife pickup on cooldown.
-	# Disable F throw entirely in GG.
-	if Settings.game_mode == Settings.MODE_GG:
+	# Disable F throw entirely in GG (#314: and for zombies — claws only).
+	if Settings.game_mode == Settings.MODE_GG or ZombieRules.is_zombie(self):
 		return
 	var w := _active_weapon()
 	var wname := str(w["name"])
@@ -1656,6 +1676,8 @@ func try_pickup_weapon(weapon_name: String, mag: int = -1) -> bool:
 	# Only the authority peer mutates the loadout — otherwise net_state loops.
 	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
 		return false
+	if ZombieRules.is_zombie(self):
+		return false   # #314: zombies don't pick up weapons
 	# #256: banned weapons never enter the match.
 	if MatchConfig.weapon_banned(weapon_name):
 		return false
@@ -1940,6 +1962,7 @@ func restore_for_round() -> void:
 	if Settings.game_mode == Settings.MODE_GG:
 		gg_level = 0
 		_apply_gg_weapon()
+	_zombie_arm()
 
 
 # ── RPCs ──────────────────────────────────────────────
@@ -2066,6 +2089,8 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_
 		# Berserker bonus (#78) — one-hit-kill melee. 999 blows through vest halving.
 		if bonus_kind == "berserker":
 			dmg = 999.0
+		elif ZombieRules.is_zombie(self):
+			dmg = ZombieRules.CLAW_DAMAGE * MatchConfig.mod_damage()   # #314 claws
 		# Scan soldiers in a short forward arc. Whoever decides each body's hits
 		# applies it (host_hits.gd): the host for humans, the owner for bots.
 		# #266: on the host, a remote swinger's reach is measured from where it

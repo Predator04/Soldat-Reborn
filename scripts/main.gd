@@ -31,6 +31,7 @@ const MatchBots = preload("res://scripts/match_bots.gd")
 const MatchWorld = preload("res://scripts/match_world.gd")
 const MatchHazards = preload("res://scripts/match_hazards.gd")
 const MatchBomb = preload("res://scripts/match_bomb.gd")
+const MatchZombie = preload("res://scripts/match_zombie.gd")
 var _vehicles_sys: MatchVehicles = null   # match_vehicles.gd
 var _bonuses: MatchBonuses = null   # match_bonuses.gd
 var _votes: MatchVotes = null   # match_votes.gd
@@ -40,6 +41,7 @@ var _bots: MatchBots = null   # match_bots.gd
 var _world: MatchWorld = null   # match_world.gd
 var _hazards: MatchHazards = null   # match_hazards.gd (#286 spikes / lava / jump pads)
 var _bomb: MatchBomb = null   # match_bomb.gd (#304 Bomb Defusal)
+var _zombie: MatchZombie = null   # match_zombie.gd (#314 Zombie)
 
 var player: Node2D = null            # LOCAL player (whichever peer owns us)
 var hud: CanvasLayer = null
@@ -98,6 +100,7 @@ var _rambo_carrier_id: int = 0
 # Domination — control point nodes + per-team hold accumulator.
 var _dom_points: Array = []
 const DOM_SCORE_TO_WIN := 800    # owned points × 1 pt/sec (was 90: ~64 s with 8 bots)
+const ZOMBIE_SCORE_TO_WIN := 5   # #314: rounds won (match_zombie.gd)
 
 # Battle Royale — shrinking safe zone.
 var _br_zone_radius: float = 2200.0
@@ -416,6 +419,7 @@ func _init() -> void:
 	_world = _attach(MatchWorld.new(), "MatchWorld")
 	_hazards = _attach(MatchHazards.new(), "MatchHazards")
 	_bomb = _attach(MatchBomb.new(), "MatchBomb")
+	_zombie = _attach(MatchZombie.new(), "MatchZombie")
 
 
 ## A system helper is an internal child: freed with Main, invisible to
@@ -724,13 +728,16 @@ func _spawn_player() -> void:
 	var ffa: Array = (_map.get("bot_spawns", []) as Array).duplicate()
 	ffa.append(_map["player_spawn"])
 	var my_team: int = TEAM_BLUE if Settings.is_team_mode() else 0
-	var pick: Vector2 = _team_spawn_pick(TEAM_BLUE) if Settings.is_team_mode() else _pick_spawn_away(ffa, 0)
+	# #314 Zombie: the round decides the side (zombie / human).
+	if Settings.game_mode == Settings.MODE_ZOMBIE:
+		my_team = _zombie.team_for(Settings.display_name())
+	var pick: Vector2 = _team_spawn_pick(my_team) if Settings.is_team_mode() else _pick_spawn_away(ffa, 0)
 	p.position = _safe_spawn_near(pick, my_team)
 	_maker_spawn_override(p)
 	# In team modes player joins BLUE (team 1); in DM/RM she's team 0 (FFA).
 	if Settings.is_team_mode():
-		p.team = TEAM_BLUE
-		p.color = preload("res://scripts/team_colors.gd").blue()
+		p.team = my_team
+		p.color = preload("res://scripts/team_colors.gd").for_team(my_team)
 	else:
 		p.team = 0
 	p.display_name = Settings.display_name()
@@ -922,6 +929,9 @@ func _respawn_delay_for_team(t: int) -> float:
 	# #304 Bomb Defusal: the dead come back together on the next wave.
 	if Settings.game_mode == Settings.MODE_BOMB and _bomb.active():
 		return _bomb.wave_delay(t)
+	# #314 Zombie: the dead (zombies and the freshly turned) are back quickly.
+	if Settings.game_mode == Settings.MODE_ZOMBIE and _zombie.active():
+		return _zombie.respawn_delay()
 	# INF attackers pay a longer respawn (defender advantage). 5 / 2 s unless
 	# a dedicated server's server.cfg says otherwise (#317, via MatchConfig so
 	# clients count down the host's delay).
@@ -938,6 +948,7 @@ func win_score(mode: int) -> int:
 		Settings.MODE_HTF: def = HTF_SCORE_TO_WIN
 		Settings.MODE_PM: def = PM_SCORE_TO_WIN
 		Settings.MODE_DOM: def = DOM_SCORE_TO_WIN
+		Settings.MODE_ZOMBIE: def = ZOMBIE_SCORE_TO_WIN
 	if Net.is_dedicated and Net.server_cfg != null:
 		return Net.server_cfg.score_limit(mode, def)
 	return def
@@ -1489,6 +1500,7 @@ func _process(delta: float) -> void:
 				and str(player.current_weapon_name()) == "Rambo Bow":
 			player.health = minf(100.0, float(player.health) + 40.0 * delta)
 		_bomb.client_tick(delta)
+		_zombie.client_tick(delta)
 		return
 	# Bonus box respawn timer (#78) — host / SP owns spawn cadence.
 	_bonuses._tick_bonus_boxes(delta)
@@ -1513,6 +1525,8 @@ func _process(delta: float) -> void:
 		_modes._tick_battle_royale(delta)
 	if round_active and Settings.game_mode == Settings.MODE_BOMB:
 		_bomb.tick(delta)   # #304: rounds + their clock live in match_bomb.gd
+	elif round_active and Settings.game_mode == Settings.MODE_ZOMBIE:
+		_zombie.tick(delta)   # #314: rounds + their clock live in match_zombie.gd
 	elif round_active:
 		time_left = maxf(0.0, time_left - delta)
 		if time_left <= 0.0:
@@ -1883,3 +1897,11 @@ func net_bomb_sync(payload: Dictionary) -> void:
 @rpc("authority", "call_local", "reliable")
 func net_bomb_boom(at: Vector2) -> void:
 	_bomb.boom_local(at)
+
+
+# ── Zombie (#314) ──────────────────────────────────────
+
+## Host -> clients: the round state (join, round start / end).
+@rpc("authority", "call_remote", "reliable")
+func net_zombie_sync(payload: Dictionary) -> void:
+	_zombie.net_sync(payload)

@@ -30,7 +30,7 @@ func _spawn_bots() -> void:
 	var spots: Array = main._map["bot_spawns"]
 	# #67: bot_count -1 = "every spawn slot" (legacy). Otherwise cap to the setting.
 	# We recycle spawn positions round-robin if the user asks for more bots than slots.
-	if _bot_fill_active() and Settings.is_team_mode() and Settings.game_mode != Settings.MODE_INF and not spots.is_empty():
+	if _split_fill() and not spots.is_empty():
 		_reconcile_fill_teams()
 		return
 	var desired: int = _desired_bot_count()
@@ -45,6 +45,13 @@ func _spawn_bots() -> void:
 # they leave. Otherwise the Bots setting decides.
 func _bot_fill_active() -> bool:
 	return Net.is_networked() and Net.is_host() and Net.is_dedicated and Net.fill_target > 0
+
+
+## Team-split fill (each side topped up): team modes except INF (one-sided)
+## and Zombie (#314: one roster, the round decides each bot's side).
+func _split_fill() -> bool:
+	return _bot_fill_active() and Settings.is_team_mode() and Settings.game_mode != Settings.MODE_INF \
+			and Settings.game_mode != Settings.MODE_ZOMBIE
 
 
 func _desired_bot_count() -> int:
@@ -127,7 +134,13 @@ func _spawn_bot_at(i: int, desired: int) -> void:
 	# 26 of 32 TDM rounds over 15 maps (46 % of kills blue); per side: 16 / 13.
 	var team_split: bool = Settings.is_team_mode() and mode != Settings.MODE_INF
 	var loadout := _bot_loadout(i == desired - 1 or (team_split and desired >= 4 and i == desired / 2 - 1))
-	if Settings.is_team_mode():
+	if mode == Settings.MODE_ZOMBIE:
+		# #314: one roster ("Bot N"); this round's pick decides the side.
+		var znm: String = main._zombie.bot_name(i)
+		var zt: int = main._zombie.team_for(znm)
+		var zl := main._team_spawn_list(zt)
+		_spawn_bot(zl[i % zl.size()] if not zl.is_empty() else slot, zt, znm, main._zombie.bot_loadout(zt, loadout))
+	elif Settings.is_team_mode():
 		if mode == Settings.MODE_INF:
 			# INF: bots are attackers (RED). Player defends solo on BLUE.
 			var rl := main._team_spawn_list(main.TEAM_RED)
@@ -155,7 +168,7 @@ func _reconcile_bots() -> void:
 	var spots: Array = main._map["bot_spawns"]
 	if spots.is_empty():
 		return
-	if _bot_fill_active() and Settings.is_team_mode() and Settings.game_mode != Settings.MODE_INF:
+	if _split_fill():
 		_reconcile_fill_teams()
 		_log_fill.call_deferred()
 		return
@@ -309,7 +322,7 @@ func _spawn_bot(pos: Vector2, team: int, bname: String, loadout: String = "AK-74
 		_bot_pending[bname] = true
 		# #304: kept so a new Bomb Defusal round can respawn the bot at once.
 		_bot_respawn_fn[bname] = func() -> void:
-			_spawn_bot(_bot_respawn_pos(pos, team), team, bname, loadout)
+			_respawn_bot(pos, team, bname, loadout)
 		main.get_tree().create_timer(delay).timeout.connect(func() -> void:
 			# Guard against the outer Main being torn down (scene change / quit)
 			# during the respawn window — the SceneTreeTimer keeps firing.
@@ -320,7 +333,7 @@ func _spawn_bot(pos: Vector2, team: int, bname: String, loadout: String = "AK-74
 				return
 			_bot_pending.erase(bname)
 			_bot_respawn_fn.erase(bname)
-			_spawn_bot(_bot_respawn_pos(pos, team), team, bname, loadout)))
+			_respawn_bot(pos, team, bname, loadout)))
 	main.add_child(b)
 	# Reassert authority after add_child so children added in _ready inherit it.
 	if Net.is_networked() and Net.is_host():
@@ -335,6 +348,19 @@ func _spawn_bot(pos: Vector2, team: int, bname: String, loadout: String = "AK-74
 		# that's fine, joiners get all live bots mirrored in net_client_ready below.
 		for pid in main._connected_peers.keys():
 			main.rpc_id(int(pid), "net_spawn_bot", assigned_id, b.position, team, bname, loadout, b.cosmetics)
+
+
+## A dead bot's next body. Zombie (#314): the round decides the side again
+## (a human who died rises as a zombie, with the claws).
+func _respawn_bot(slot: Vector2, team: int, bname: String, loadout: String) -> void:
+	if Settings.game_mode == Settings.MODE_ZOMBIE and main._zombie.active():
+		var zt: int = main._zombie.team_for(bname)
+		var zl := main._team_spawn_list(zt)
+		var at: Vector2 = main._pick_spawn_away(zl, zt) if not zl.is_empty() else slot
+		var human_lo: String = _bot_loadout(false) if loadout == main._zombie.ZR.CLAW_WEAPON else loadout
+		_spawn_bot(at, zt, bname, main._zombie.bot_loadout(zt, human_lo))
+		return
+	_spawn_bot(_bot_respawn_pos(slot, team), team, bname, loadout)
 
 
 # Respawn somewhere on the bot's own side (team modes) or any spawn point

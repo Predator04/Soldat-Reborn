@@ -154,6 +154,9 @@ func _on_bonus_touched(body: Node, bid: int, slot_idx: int) -> void:
 	if not is_instance_valid(box):
 		return
 	var kind: String = str(box.get("bonus_kind"))
+	# #314: zombies take no power-ups or grenade kits (medikits are fine).
+	if preload("res://scripts/zombie_rules.gd").is_zombie(body) and kind != "medkit":
+		return
 	if kind in BonusPickup.KIT_KINDS:
 		_collect_kit(body, bid, slot_idx, kind)
 		return

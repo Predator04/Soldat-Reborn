@@ -299,6 +299,7 @@ var jet_particles: CPUParticles2D
 
 
 const FootAudio = preload("res://scripts/foot_audio.gd")
+const ZR = preload("res://scripts/zombie_rules.gd")   # #314 Zombie
 
 
 func _ready() -> void:
@@ -331,6 +332,11 @@ func _ready() -> void:
 			"wskin": ["", "", "", "desert", "woodland", "carbon"][randi() % 6],
 			"jet": ["", "", "", "blue", "green"][randi() % 5],
 		}
+	# #314: a zombie bot fights with its claws only (no grenades, no swaps).
+	if _zombie():
+		loadout = ZR.CLAW_WEAPON
+		grenades = 0
+		ceasefire_t = minf(ceasefire_t, ZR.SPAWN_SHIELD)
 	ammo = int(gun_stats(loadout)["mag"])
 	secondary_ammo = int(gun_stats("USSOCOM")["mag"])
 	# Gun Game: force loadout to the current rung so every bot starts on level 0.
@@ -454,7 +460,7 @@ func _physics_process(delta: float) -> void:
 	# Self-preservation: entering critical HP starts a brief retreat; keep it
 	# refreshing only on the crossing so a low-HP bot still re-engages.
 	_retreat_t = maxf(0.0, _retreat_t - delta)
-	if health < 35.0 and _prev_health >= 35.0 and not _carrying_flag():
+	if health < 35.0 and _prev_health >= 35.0 and not _carrying_flag() and not _zombie():
 		_retreat_t = 1.8
 	_prev_health = health
 	# #114: low HP + engaged + not already reloading → reload during the retreat
@@ -695,14 +701,14 @@ func _physics_process(delta: float) -> void:
 			if not (navigating and nav_up and not is_on_floor()):
 				dir = _escape_dir
 
-		velocity.x = move_toward(velocity.x, dir * RUN_SPEED * MatchConfig.mod_speed(), 1300.0 * MatchConfig.mod_speed() * delta)
+		velocity.x = move_toward(velocity.x, dir * RUN_SPEED * _spd(), 1300.0 * MatchConfig.mod_speed() * delta)
 		_hop_cd = maxf(0.0, _hop_cd - delta)
 
 		# #294: a jump pad just ahead that our path isn't riding: hop over it
 		# instead of being flung up (no-op on maps without pads).
 		if dir != 0.0 and on_floor and _pad_ride < 0 and _pad_hop_ahead(dir, PAD_HOP_NEAR, PAD_HOP_FAR):
 			velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
-			velocity.x = dir * maxf(RUN_SPEED * MatchConfig.mod_speed(), absf(velocity.x))
+			velocity.x = dir * maxf(RUN_SPEED * _spd(), absf(velocity.x))
 			jump_cd = 0.4
 			_ledge_hop_cd = 0.5
 			Sfx.jump(global_position)
@@ -714,7 +720,7 @@ func _physics_process(delta: float) -> void:
 		if dir != 0.0 and on_floor and jump_cd <= 0.0 and _ledge_hop_cd <= 0.0:
 			if _wall_ahead(dir) or _ledge_ahead(dir):
 				velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
-				velocity.x = dir * maxf(RUN_SPEED * MatchConfig.mod_speed(), absf(velocity.x) * 1.05)
+				velocity.x = dir * maxf(RUN_SPEED * _spd(), absf(velocity.x) * 1.05)
 				jump_cd = 0.4
 				_ledge_hop_cd = 0.5
 
@@ -740,7 +746,7 @@ func _physics_process(delta: float) -> void:
 			_blocked_t += delta
 			if _blocked_t > 0.2 and jump_cd <= 0.0:
 				velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
-				velocity.x = dir * RUN_SPEED * MatchConfig.mod_speed()
+				velocity.x = dir * RUN_SPEED * _spd()
 				jump_cd = 0.4
 				_blocked_t = 0.0
 		else:
@@ -773,7 +779,7 @@ func _physics_process(delta: float) -> void:
 					and not _hazard_ahead(dir, HOP_REACH) and not _pad_hop_ahead(dir, 0.0, HOP_REACH + PAD_HOP_FAR):
 				# Long flat stretch: bunny-hop for speed like players do.
 				velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
-				velocity.x = dir * maxf(RUN_SPEED * MatchConfig.mod_speed(), absf(velocity.x) * 1.08)
+				velocity.x = dir * maxf(RUN_SPEED * _spd(), absf(velocity.x) * 1.08)
 				jump_cd = 0.35
 				_hop_cd = HOP_COOLDOWN
 				Sfx.jump(global_position)
@@ -791,7 +797,7 @@ func _physics_process(delta: float) -> void:
 			elif on_floor and jump_cd <= 0.0 and dist_h > 260.0 and _hop_cd <= 0.0 and not _hazard_ahead(signf(dx), HOP_REACH) \
 					and not _pad_hop_ahead(signf(dx), 0.0, HOP_REACH + PAD_HOP_FAR):
 				velocity.y = JUMP_VEL * MatchConfig.mod_gravity()
-				velocity.x = signf(dx) * maxf(RUN_SPEED * MatchConfig.mod_speed(), absf(velocity.x) * 1.08)
+				velocity.x = signf(dx) * maxf(RUN_SPEED * _spd(), absf(velocity.x) * 1.08)
 				jump_cd = 0.35
 				_hop_cd = HOP_COOLDOWN
 				Sfx.jump(global_position)
@@ -825,7 +831,7 @@ func _physics_process(delta: float) -> void:
 				jet_on = true
 			if _safe_floor_x > -1.0e8 and not (navigating and _gap_ahead and _gap_hazard):
 				var back: float = signf(_safe_floor_x - global_position.x)
-				velocity.x = move_toward(velocity.x, back * RUN_SPEED * MatchConfig.mod_speed(), 1400.0 * delta)
+				velocity.x = move_toward(velocity.x, back * RUN_SPEED * _spd(), 1400.0 * delta)
 				# (Sfx.jet is the LOCAL player's single jet loop — bots toggling it made
 		# your jet hum start/stop from across the map.)
 		was_jet = jet_on
@@ -873,7 +879,7 @@ func _physics_process(delta: float) -> void:
 		# shooting at us. Gun Game locks the slot to the current rung, so the
 		# fallback is disabled there — reload the rung weapon instead.
 		var engaged: bool = is_instance_valid(target) and _retreat_t <= 0.0
-		var gg_lock: bool = Settings.game_mode == Settings.MODE_GG
+		var gg_lock: bool = Settings.game_mode == Settings.MODE_GG or _zombie()   # #314: claws only
 		if not gg_lock and not using_secondary and engaged and secondary_ammo > 0:
 			using_secondary = true
 		elif not gg_lock and using_secondary:
@@ -1010,6 +1016,9 @@ func _scan_pickup(delta: float) -> void:
 	# every frame. If we're already heading to a pickup, keep it unless it's
 	# invalidated (freed, consumed).
 	_pickup_scan_cd -= delta
+	if _zombie():
+		_pickup_target = null   # #314: zombies take nothing
+		return
 	if is_instance_valid(_pickup_target) and _pickup_target.get_parent() != null:
 		# Give up on a pickup we can't reach within a few seconds.
 		_pickup_t += delta
@@ -1321,6 +1330,8 @@ func net_bot_shoot(muzzle: Vector2, aim: Vector2, proj_id: int = 0, weapon: Stri
 			b.direction = dir
 			b.speed = float(stats["speed"])
 			b.damage = float(stats["damage"]) * dmg_mul
+			if active_weapon == ZR.CLAW_WEAPON and _zombie():
+				b.damage = ZR.CLAW_DAMAGE * dmg_mul   # #314 claws
 			b.weapon_name = active_weapon
 			b.team = team
 			b.killer_name = display_name
@@ -1501,6 +1512,8 @@ func restore_for_round() -> void:
 	if Settings.game_mode == Settings.MODE_GG:
 		gg_level = 0
 		_apply_gg_weapon()
+	if _zombie():
+		grenades = 0
 
 
 func _spawn_gibs() -> void:
@@ -1688,6 +1701,9 @@ func _think() -> void:
 	if mounted_m2 != null:
 		_think_goal()
 		return
+	if _zombie():
+		_think_goal()   # #314: zombies hunt on foot (no vehicles / guns)
+		return
 	if _think_ride():
 		return
 	_think_goal()
@@ -1721,6 +1737,8 @@ func _think_goal() -> void:
 		_think_br()
 	elif mode == Settings.MODE_BOMB:
 		_think_bomb()
+	elif mode == Settings.MODE_ZOMBIE:
+		_think_zombie()
 	if _goal == Vector2.INF:
 		_think_hunt()
 
@@ -2589,6 +2607,72 @@ func _ground_within(dist: float) -> bool:
 		return true
 	var gy: float = m._geom_ground_y(global_position.x, global_position.y)
 	return gy != INF and gy - global_position.y <= dist
+
+
+## #314 Zombie: this bot is on the zombie side.
+func _zombie() -> bool:
+	return ZR.is_zombie(self)
+
+
+## Run-speed multiplier: the match's speed mod (x zombie speed, #314).
+func _spd() -> float:
+	return MatchConfig.mod_speed() * (ZR.SPEED_MUL if _zombie() else 1.0)
+
+
+# ── Zombie (#314) ─────────────────────────────────────
+# Zombies hunt the nearest living human along the nav graph. Humans regroup
+# on the round's rally point (high, reachable ground near their spawn, picked
+# by match_zombie.rally()), hold around it and back off from a zombie that
+# gets close (they keep shooting while they move).
+const ZOMBIE_FALLBACK_R := 230.0
+const ZOMBIE_RALLY_NEAR := 260.0
+
+
+func _nearest_of(t: int) -> Node2D:
+	var best: Node2D = null
+	var bd := INF
+	for s in get_tree().get_nodes_in_group("soldier"):
+		if s == self or not is_instance_valid(s) or bool(s.get("dead")) or int(s.get("team")) != t:
+			continue
+		var d: float = global_position.distance_squared_to((s as Node2D).global_position)
+		if d < bd:
+			bd = d
+			best = s
+	return best
+
+
+func _think_zombie() -> void:
+	var m := _main()
+	if m == null or m.get("_zombie") == null or not m._zombie.active():
+		return
+	var z = m._zombie
+	if _zombie():
+		var h := _nearest_of(ZR.TEAM_HUMAN)
+		if h == null:
+			return
+		target = h
+		if _target_visible and global_position.distance_to(h.global_position) < 44.0:
+			return   # in reach: the chase / swing code closes the last pixels
+		_set_goal(h.global_position, "hunt")
+		return
+	if str(z.phase) != "live":
+		return
+	var zb := _nearest_of(ZR.TEAM_ZOMBIE)
+	if zb != null:
+		var zd: float = global_position.distance_to(zb.global_position)
+		if zd < ZOMBIE_FALLBACK_R and absf(zb.global_position.y - global_position.y) < 160.0:
+			var away: float = signf(global_position.x - zb.global_position.x)
+			if away == 0.0:
+				away = 1.0
+			_set_goal(global_position + Vector2(away * 320.0, -40.0), "fallback")
+			return
+	var r: Vector2 = z.rally()
+	if r == Vector2.INF:
+		return
+	if global_position.distance_to(r) > ZOMBIE_RALLY_NEAR:
+		_set_goal(r, "regroup")
+	else:
+		_set_goal(_patrol(r, 130.0), "hold")
 
 
 func _is_melee() -> bool:

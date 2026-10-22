@@ -79,7 +79,7 @@ func _draw() -> void:
 	var num_font := UITheme.font("hud")
 	var rows := _rows()
 	var team_mode: bool = Settings.is_team_mode()
-	var show_caps: bool = Settings.game_mode in [Settings.MODE_CTF, Settings.MODE_INF, Settings.MODE_PM, Settings.MODE_BOMB]
+	var show_caps: bool = Settings.game_mode in [Settings.MODE_CTF, Settings.MODE_INF, Settings.MODE_PM, Settings.MODE_BOMB, Settings.MODE_ZOMBIE]
 	var groups: Array = []
 	if team_mode:
 		for t in [1, 2]:
@@ -131,7 +131,7 @@ func _draw() -> void:
 		_text(head_font, Vector2(x0 + cols[0], y), "K", 13, dim)
 		_text(head_font, Vector2(x0 + cols[1], y), "D", 13, dim)
 		if show_caps:
-			_text(head_font, Vector2(x0 + cols[2], y), "CAPS", 13, dim)
+			_text(head_font, Vector2(x0 + cols[2], y), "TURNS" if Settings.game_mode == Settings.MODE_ZOMBIE else "CAPS", 13, dim)
 		if online:
 			_text(head_font, Vector2(x0 + cols[0] - 80.0, y), "PING", 13, dim)
 		draw_line(Vector2(x0 + 14, y + 7), Vector2(x0 + W - 14, y + 7), Color(head_col, 0.35), 1.0)

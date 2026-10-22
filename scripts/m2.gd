@@ -38,6 +38,8 @@ func mount(pl: Node2D) -> void:
 		return
 	if operator != null:
 		return
+	if preload("res://scripts/zombie_rules.gd").is_zombie(pl):
+		return   # #314: zombies don't man guns
 	# In MP: route the mount through Main so every peer applies it as authority.
 	# The local player who pressed F asks the host to arbitrate.
 	if Net.is_networked():

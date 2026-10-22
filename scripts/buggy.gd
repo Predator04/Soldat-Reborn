@@ -244,6 +244,9 @@ func free_seat() -> int:
 func can_enter(s: Node2D) -> bool:
 	if not alive or free_seat() < 0 or seat_of(s) >= 0:
 		return false
+	# #314: zombies don't drive or fly.
+	if preload("res://scripts/zombie_rules.gd").is_zombie(s):
+		return false
 	# Team modes: no climbing into the other team's occupied buggy.
 	if Settings.is_team_mode():
 		for o in seats:

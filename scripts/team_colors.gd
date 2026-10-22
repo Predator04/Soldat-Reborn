@@ -19,6 +19,7 @@ static var viewer_team := 0
 static var _frame := -1
 static var _style := "classic"
 static var _team_mode := false
+static var _zombie := false   # #314: Zombie mode — the red side is the zombies (green)
 
 
 static func _refresh() -> void:
@@ -31,10 +32,12 @@ static func _refresh() -> void:
 	if st == null:
 		_style = "classic"
 		_team_mode = false
+		_zombie = false
 		return
 	var s := str(st.get("team_colors"))
 	_style = s if STYLES.has(s) else "classic"
 	_team_mode = bool(st.call("is_team_mode"))
+	_zombie = int(st.get("game_mode")) == 11
 
 
 ## Settings changed this frame (the Video tab, tests): re-read at once.
@@ -57,12 +60,23 @@ static func blue(bright := false) -> Color:
 
 
 static func red(bright := false) -> Color:
+	if zombie_mode() and style() != "colorblind":
+		# #314: zombies are a sickly green (colourblind keeps its orange).
+		if style() == "contrast":
+			return Color(0.62, 1.0, 0.16) if bright else Color(0.5, 0.95, 0.08)
+		return Color(0.55, 0.92, 0.32) if bright else Color(0.42, 0.78, 0.22)
 	match style():
 		"colorblind":
 			return Color(1.0, 0.68, 0.18) if bright else Color(0.95, 0.58, 0.1)
 		"contrast":
 			return Color(1.0, 0.3, 0.45) if bright else Color(0.95, 0.16, 0.32)
 	return Color(1.0, 0.42, 0.3) if bright else Color(0.92, 0.28, 0.18)
+
+
+## #314: Zombie mode (team 2 = the zombies, drawn green).
+static func zombie_mode() -> bool:
+	_refresh()
+	return _zombie
 
 
 ## 1 = blue, 2 = red; anything else gets `other`.
@@ -84,6 +98,8 @@ static func paint(t: int) -> Color:
 			"contrast": return Color(0.1, 0.9, 1.0)
 		return Color(0.16, 0.62, 1.0)
 	if t == 2:
+		if _zombie and s != "colorblind":
+			return Color(0.55, 1.0, 0.12) if s == "contrast" else Color(0.36, 0.82, 0.12)
 		match s:
 			"colorblind": return Color(1.0, 0.6, 0.04)
 			"contrast": return Color(1.0, 0.1, 0.32)

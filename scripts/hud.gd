@@ -475,6 +475,8 @@ func announce_objective(kind: String, team: int, who: String) -> void:
 			var m := get_parent()
 			if kind.begins_with("bomb_") and m != null and m.get("_bomb") != null:
 				txt = m._bomb.feed_text(kind, team, who)
+			elif kind.begins_with("zombie_") and m != null and m.get("_zombie") != null:
+				txt = m._zombie.feed_text(kind, team, who)   # Zombie (#314)
 			if txt == "":
 				return
 	feed.add_text(txt, _team_display_info(team).get("color", Color(1, 0.85, 0.35)))
@@ -1283,6 +1285,10 @@ func _render_gg_scoreboard(main: Node) -> void:
 
 
 func _team_display_info(team_id: int) -> Dictionary:
+	# Zombie (#314): fixed HUMANS / ZOMBIES labels, online too.
+	if Settings.game_mode == Settings.MODE_ZOMBIE and (team_id == 1 or team_id == 2):
+		var TC = preload("res://scripts/team_colors.gd")
+		return {"name": tr("HUMANS") if team_id == 1 else tr("ZOMBIES"), "color": TC.blue(true) if team_id == 1 else TC.red(true)}
 	if not Net.is_networked():
 		# INF: fixed defender / attacker labels.
 		if Settings.game_mode == Settings.MODE_INF:

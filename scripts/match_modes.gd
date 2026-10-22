@@ -67,6 +67,7 @@ func _spawn_mode_entities() -> void:
 		Settings.MODE_DOM: _spawn_dom_points()
 		Settings.MODE_BR:  _reset_br_zone()
 		Settings.MODE_BOMB: main._bomb.setup()   # #304 sites + bomb (match_bomb.gd)
+		Settings.MODE_ZOMBIE: main._zombie.setup()   # #314 rounds (match_zombie.gd)
 
 
 func _spawn_flags() -> void:
@@ -613,6 +614,13 @@ func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: Str
 	_track_kill_streaks(killer_name, victim_name, killer_team)
 	if Net.is_networked() and not Net.is_host():
 		return
+	# #314 Zombie: kills don't score; a human who dies turns (host decides).
+	if Settings.game_mode == Settings.MODE_ZOMBIE:
+		if main.round_active and killer_team >= 0:
+			main._bots._maybe_bot_chatter(killer_name, victim_name)
+		if main.round_active:
+			main._zombie.on_kill(killer_name, victim_name, killer_team, victim_team)
+		return
 	if not main.round_active or killer_team < 0:
 		return
 	main._bots._maybe_bot_chatter(killer_name, victim_name)
@@ -846,7 +854,7 @@ func _reset_round() -> void:
 	main._stuck_time.clear()
 	# #263: even the teams between rounds (bots only — never touch a human's
 	# chosen side). Snowballed lobbies were the classic complaint.
-	if Settings.is_team_mode() and Settings.game_mode != Settings.MODE_INF:
+	if Settings.is_team_mode() and Settings.game_mode != Settings.MODE_INF and Settings.game_mode != Settings.MODE_ZOMBIE:
 		main._bots._balance_teams()
 	# Flags home, nobody carrying — a carrier teleported to spawn used to start
 	# the next round holding the enemy flag next to their own base.
@@ -933,6 +941,9 @@ func _reset_round() -> void:
 	# #304: a new Bomb Defusal match starts at round 1, first-half sides.
 	if Settings.game_mode == Settings.MODE_BOMB:
 		main._bomb.match_reset()
+	# #314: a new Zombie match starts at round 1 with a fresh zombie pick.
+	if Settings.game_mode == Settings.MODE_ZOMBIE:
+		main._zombie.match_reset()
 	if Net.is_networked() and Net.is_host():
 		main._net._broadcast_match_state()
 

@@ -27,7 +27,7 @@ TEXT = (237, 242, 247)
 # Order = GameLists.MODE_NAMES / DiscordPresence.MODE_IMAGES.
 MODES = [("dm", "DM"), ("tdm", "TDM"), ("ctf", "CTF"), ("inf", "INF"), ("htf", "HTF"),
          ("rm", "RM"), ("pm", "PM"), ("dom", "DOM"), ("br", "BR"), ("gg", "GG"),
-         ("bomb", "BOMB")]
+         ("bomb", "BOMB"), ("zombie", "ZOMBIE")]
 
 
 def font(name, size):

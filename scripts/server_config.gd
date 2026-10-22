@@ -49,6 +49,7 @@ const KEYS := {
 	"score_limit_rm": ["int", "live", "Rambomatch kills to win"],
 	"score_limit_pm": ["int", "live", "Pointmatch points to win"],
 	"score_limit_dom": ["int", "live", "Domination points to win"],
+	"score_limit_zombie": ["int", "live", "Zombie rounds to win (#314)"],
 	"respawn_time": ["float", "live", "seconds before a dead soldier respawns"],
 	"respawn_time_inf_attackers": ["float", "live", "Infiltration attackers' (red) respawn seconds"],
 	"realistic": ["bool", "match", "Realistic sub-mode"],
@@ -76,9 +77,9 @@ const KEYS := {
 }
 
 const SCORE_KEYS := {0: "score_limit_dm", 1: "score_limit_tdm", 2: "score_limit_ctf",
-	3: "score_limit_inf", 4: "score_limit_htf", 5: "score_limit_rm", 6: "score_limit_pm", 7: "score_limit_dom"}
+	3: "score_limit_inf", 4: "score_limit_htf", 5: "score_limit_rm", 6: "score_limit_pm", 7: "score_limit_dom", 11: "score_limit_zombie"}
 const MODE_ALIASES := {"dm": 0, "tdm": 1, "ctf": 2, "inf": 3, "htf": 4, "rm": 5, "pm": 6,
-	"dom": 7, "br": 8, "gg": 9, "bomb": 10, "bd": 10}
+	"dom": 7, "br": 8, "gg": 9, "bomb": 10, "bd": 10, "zombie": 11, "zm": 11}
 
 var path := ""            # file in use ("" = none)
 var values: Dictionary = {}   # key -> parsed value (only keys the file set)

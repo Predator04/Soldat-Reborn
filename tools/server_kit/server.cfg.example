@@ -52,7 +52,7 @@ admin_password =
 
 [rotation]
 # Maps played in order, each "Map" or "Map:mode" (mode names or short forms
-# dm tdm ctf inf htf rm pm dom br gg bomb). When a match ends the next entry
+# dm tdm ctf inf htf rm pm dom br gg bomb zombie). When a match ends the next entry
 # loads; after the last one it starts again. [live]  Default: none (players
 # vote between three random maps at the end of a match)
 rotation = Ascent:ctf, Nuubia:ctf, Arena:dm, Viet:inf, Warehouse:tdm
@@ -90,6 +90,8 @@ rotation = Ascent:ctf, Nuubia:ctf, Arena:dm, Viet:inf, Warehouse:tdm
 #score_limit_pm = 200
 # Domination: points (one per owned point per second).
 #score_limit_dom = 800
+# Zombie: rounds won (humans survive the clock / zombies turn everyone).
+#score_limit_zombie = 5
 
 # Seconds before a dead soldier comes back (0 - 60). [live]  Default: 2
 #respawn_time = 2

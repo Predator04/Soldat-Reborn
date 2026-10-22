@@ -93,6 +93,8 @@ func _on_body_entered(body: Node) -> void:
 	# Pickup path — grant weapon + full magazine.
 	if _grace > 0.0 and str(body.get("display_name")) == thrower_name:
 		return
+	if preload("res://scripts/zombie_rules.gd").is_zombie(body):
+		return   # #314: zombies don't pick up weapons (the host decides contacts)
 	if body.has_method("try_pickup_weapon"):
 		var picked: bool = false
 		if multiplayer.multiplayer_peer == null or body.is_multiplayer_authority():

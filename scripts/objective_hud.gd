@@ -109,10 +109,15 @@ func announce(kind: String, team: int, who: String) -> void:
 			text = "%s CAPTURED POINT %s" % [str(info2["name"]), who]
 			col = info2["color"]
 		_:
-			# Bomb Defusal (#304) banners come from match_bomb.gd.
-			if not kind.begins_with("bomb_") or main.get("_bomb") == null:
+			# Bomb Defusal (#304) / Zombie (#314) banners come from their helpers.
+			var helper: Node = null
+			if kind.begins_with("bomb_"):
+				helper = main.get("_bomb")
+			elif kind.begins_with("zombie_"):
+				helper = main.get("_zombie")
+			if helper == null:
 				return  # "point" pickups: sound + feed only
-			var bt: Array = main._bomb.banner(kind, team, who)
+			var bt: Array = helper.banner(kind, team, who)
 			if str(bt[0]) == "":
 				return
 			text = str(bt[0])
@@ -190,6 +195,10 @@ func _status_text() -> String:
 		var bs: String = main._bomb.status_bbcode(p)
 		if bs != "":
 			parts.append(bs)
+	if Settings.game_mode == Settings.MODE_ZOMBIE and main.get("_zombie") != null:
+		var zs: String = main._zombie.status_bbcode(p)
+		if zs != "":
+			parts.append(zs)
 	if Settings.game_mode == Settings.MODE_BR and main.has_method("br_zone") and p != null:
 		var z: Dictionary = main.br_zone()
 		var d: float = p.global_position.distance_to(z.get("center", p.global_position))

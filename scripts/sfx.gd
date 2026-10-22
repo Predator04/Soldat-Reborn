@@ -344,6 +344,11 @@ const OBJECTIVE_SOUNDS := {
 	"bomb_boom": ["law-end", -1.0, 0.6],
 	"bomb_round": ["capture", -3.0, 1.0],
 	"bomb_half": ["match", -4.0, 1.0],
+	# Zombie (#314)
+	"zombie_start": ["signal", -6.0, 0.8],
+	"zombie_turn": ["flag2", -8.0, 0.7],
+	"zombie_last": ["match", -4.0, 0.9],
+	"zombie_round": ["capture", -3.0, 0.9],
 }
 
 

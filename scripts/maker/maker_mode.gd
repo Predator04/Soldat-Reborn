@@ -27,7 +27,7 @@ const HazardArt = preload("res://scripts/maker/hazard_art.gd")
 const GameLists = preload("res://scripts/game_lists.gd")
 const FeaturedLevels = preload("res://scripts/featured_levels.gd")
 const LevelThumb = preload("res://scripts/level_thumb.gd")
-const FEATURED_MODE := {"dm": 0, "tdm": 1, "ctf": 2, "inf": 3, "htf": 4, "rm": 5, "pm": 6, "dom": 7, "br": 8, "gg": 9, "bomb": 10}
+const FEATURED_MODE := {"dm": 0, "tdm": 1, "ctf": 2, "inf": 3, "htf": 4, "rm": 5, "pm": 6, "dom": 7, "br": 8, "gg": 9, "bomb": 10, "zombie": 11}
 
 const GRIDS := [10, 20, 40, 80]
 const LONG_PRESS := 0.5

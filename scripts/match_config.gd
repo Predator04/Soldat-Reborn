@@ -94,20 +94,21 @@ func bot_count() -> int:
 
 
 ## #317 sub-modes: the host's (SP / host read Settings; clients the snapshot).
-## Same Gun Game / Bomb exemptions as Settings.survival / Settings.advance.
+## Same Gun Game / Bomb / Zombie exemptions as Settings.survival / Settings.advance.
 func realistic() -> bool:
 	return _cfg_realistic if Net.is_client() else bool(Settings.realistic)
 
 
 func survival() -> bool:
 	if Net.is_client():
-		return _cfg_survival and Settings.game_mode != Settings.MODE_GG and Settings.game_mode != Settings.MODE_BOMB
+		return _cfg_survival and Settings.game_mode != Settings.MODE_GG and Settings.game_mode != Settings.MODE_BOMB \
+				and Settings.game_mode != Settings.MODE_ZOMBIE
 	return bool(Settings.survival)
 
 
 func advance() -> bool:
 	if Net.is_client():
-		return _cfg_advance and Settings.game_mode != Settings.MODE_GG
+		return _cfg_advance and Settings.game_mode != Settings.MODE_GG and Settings.game_mode != Settings.MODE_ZOMBIE
 	return bool(Settings.advance)
 
 
