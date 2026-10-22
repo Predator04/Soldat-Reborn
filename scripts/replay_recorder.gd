@@ -1,6 +1,9 @@
 extends Node
 ## Match recorder: 15 snapshots a second of every soldier (position, aim,
 ## pose, weapon, health), projectiles, flags and vehicles, plus kills.
+## Bomb Defusal (#309): frames carry a 6th element with the bomb (state,
+## carrier, position, site, fuse, plant / defuse progress, round) and the
+## header the two sites; older replays simply don't have them.
 ## Saved to user://replays/ (gzip) at the end of each round and when you leave
 ## the match; the REPLAYS screen plays them back (replay_player.gd).
 
@@ -12,7 +15,7 @@ const MIN_SECS := 15.0           # shorter matches aren't worth a file
 const MAX_FRAMES := int(HZ * 60 * 20)   # 20 minutes per file
 
 var main: Node
-var frames: Array = []           # [t, soldiers, shots, flags, vehicles]
+var frames: Array = []           # [t, soldiers, shots, flags, vehicles(, bomb)]
 var who: Dictionary = {}         # soldier id -> {name, team, color, cos}
 var events: Array = []           # [t, "kill", killer, victim, weapon]
 var _ids: Dictionary = {}        # player name -> soldier id
@@ -101,7 +104,28 @@ func _snapshot() -> Array:
 	for v in get_tree().get_nodes_in_group("vehicle"):
 		if is_instance_valid(v):
 			veh.append([str(v.get("kind")), roundi(v.global_position.x), roundi(v.global_position.y), snappedf(v.global_rotation, 0.02), bool(v.get("alive"))])
-	return [snappedf(_t, 0.01), sol, shots, fl, veh]
+	var snap: Array = [snappedf(_t, 0.01), sol, shots, fl, veh]
+	var bomb := _bomb_entry()
+	if not bomb.is_empty():
+		snap.append(bomb)
+	return snap
+
+
+## #309: [state, carrier id, x, y, planted site, fuse, plant progress,
+## defuse progress, planter id, defuser id, round, phase] — [] outside Bomb Defusal.
+func _bomb_entry() -> Array:
+	var b = main.get("_bomb")
+	if b == null or not b.active():
+		return []
+	return [str(b.bomb_state), _bomb_sid(b.carrier), roundi(b.bomb_pos.x), roundi(b.bomb_pos.y), str(b.planted_site),
+		snappedf(float(b.fuse_t), 0.1), snappedf(float(b.plant_prog), 0.01), snappedf(float(b.defuse_prog), 0.01),
+		_bomb_sid(b.planter), _bomb_sid(b.defuser), int(b.round_no), str(b.phase)]
+
+
+func _bomb_sid(s: Variant) -> int:
+	if s == null or not is_instance_valid(s):
+		return 0
+	return _sid(s as Node)
 
 
 func header() -> Dictionary:
@@ -116,9 +140,17 @@ func header() -> Dictionary:
 	var me := ""
 	if main.get("player") != null and is_instance_valid(main.player):
 		me = str(main.player.display_name)
-	return {"v": 1, "game": str(ProjectSettings.get_setting("application/config/version", "")),
+	var h := {"v": 1, "game": str(ProjectSettings.get_setting("application/config/version", "")),
 		"when": _started_unix, "map_index": mi, "map": mname, "map_json": map_json,
 		"mode": int(Settings.game_mode), "secs": snappedf(_t, 0.1), "me": me, "online": Net.is_networked()}
+	var b = main.get("_bomb")
+	if b != null and b.active():
+		var ss: Array = []
+		for s in b.sites:
+			var r: Rect2 = s["rect"]
+			ss.append([str(s["name"]), r.position.x, r.position.y, r.size.x, r.size.y])
+		h["bomb_sites"] = ss
+	return h
 
 
 ## Write the replay so far; returns the path ("" if too short or failed).

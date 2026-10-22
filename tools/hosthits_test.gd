@@ -220,17 +220,17 @@ const SCENARIOS := {
 	"move250": {"min_match": 0.7, "weapon": "ak", "s_ms": 125, "v_ms": 90, "jitter": 40, "loss": 3.0, "spike_every": 5.0, "spike_ms": 300,
 		"s_move": "jet", "damage": 22.0, "match": "shot"},
 	"spas250": {"min_match": 0.7, "weapon": "spas", "s_ms": 120, "v_ms": 100, "jitter": 40, "loss": 3.0, "spike_every": 5.0, "spike_ms": 300,
-		"s_move": "strafe", "v_move": "jet", "damage": 9.0, "match": "shot"},
+		"s_move": "strafe", "v_move": "jet", "damage": 11.0, "match": "shot"},
 	"knife250": {"min_match": 0.7, "weapon": "knife", "s_ms": 125, "v_ms": 100, "jitter": 40, "loss": 3.0, "spike_every": 5.0, "spike_ms": 300,
 		"damage": 55.0, "match": "total"},
 	# A slow PC: the shooter's game stalls 45 ms every frame (Godot --frame-delay:
 	# ~20 fps, physics catching up several steps at a time, packets in bursts).
 	"slowpc": {"weapon": "ak", "s_ms": 60, "v_ms": 50, "jitter": 15, "s_move": "strafe", "damage": 22.0, "match": "shot",
 		"s_engine": "--frame-delay 45"},
-	"slowspas": {"weapon": "spas", "s_ms": 60, "v_ms": 50, "jitter": 15, "damage": 9.0, "match": "shot",
+	"slowspas": {"weapon": "spas", "s_ms": 60, "v_ms": 50, "jitter": 15, "damage": 11.0, "match": "shot",
 		"s_engine": "--frame-delay 45"},
 	"lowping": {"weapon": "ak", "s_ms": 25, "v_ms": 25, "jitter": 4, "s_move": "jet", "damage": 22.0, "match": "shot"},
-	"spas": {"weapon": "spas", "s_ms": 90, "v_ms": 60, "jitter": 30, "loss": 2.0, "s_move": "strafe", "damage": 9.0, "match": "shot"},
+	"spas": {"weapon": "spas", "s_ms": 90, "v_ms": 60, "jitter": 30, "loss": 2.0, "s_move": "strafe", "damage": 11.0, "match": "shot"},
 	"knife": {"weapon": "knife", "s_ms": 100, "v_ms": 60, "jitter": 20, "loss": 1.0, "damage": 55.0, "match": "total"},
 	# (Lagrange: flat open ground by its first buggy, no other vehicle near.)
 	"law": {"secs": 52, "need": 4, "weapon": "law", "s_ms": 90, "v_ms": 75, "jitter": 20, "damage": 0.0, "match": "total",
@@ -455,6 +455,12 @@ func _sc_judge(r: Dictionary) -> Array:
 		bad.append("TRUST lines: %s" % str(trust.slice(0, 3)))
 	# 2. Per shooter: the host's hits vs the shooter's own screen.
 	var dmg: float = float(sc.get("damage", 0.0))
+	# #310: a gun's per-hit damage is the weapon table's (player.gd), so a
+	# balance change can't leave this test checking a stale number.
+	if str(sc.get("match", "")) == "shot" and WEAPON_NAMES.has(str(sc.get("weapon", ""))):
+		var wdef: Dictionary = load("res://scripts/player.gd").weapon_def(str(WEAPON_NAMES[str(sc["weapon"])][0]))
+		if not wdef.is_empty():
+			dmg = float(wdef["damage"])
 	for sh in r["shooters"]:
 		var tag: String = sh[0]
 		var slog: String = sh[2]

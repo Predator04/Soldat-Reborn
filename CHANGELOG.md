@@ -4,6 +4,17 @@ All notable changes to Soldat Reborn.
 
 ## [Unreleased]
 
+### Changed — weapon & vehicle balance (#310)
+Measured first: thousands of duels at fixed distances against standing and strafing targets, plus 60 minutes of bot matches with every gun in equal use (Deathmatch, Teammatch, CTF and Bomb Defusal on classic and featured maps). Only the guns and vehicles that stood out for their role changed, each by a small step; movement, jets and soldier health are untouched.
+- **LAW: 90 → 115 damage.** A rocket into the body now kills, like the classic LAW; before, a direct hit left the target alive (~83 damage) and it was the slowest gun to get a kill at any range. The blast still falls off, so a near miss doesn't kill.
+- **M79: 90 → 115 damage, shell speed 470 → 640 (the classic speed).** A direct hit kills, and the grenade now reaches mid range: before, it couldn't land a shell 230 px away on flat ground.
+- **Spas-12: 9 → 11 damage per pellet.** The shotgun is the close-range king again; before, every assault rifle beat it at 100 px.
+- **Steyr AUG: spread 0.075 → 0.05.** It's the accurate rifle now (as in classic) and beats the AK-74 at long range; the AK still wins up close. Before, the AUG was worse than the AK at every distance.
+- **MP5: 13 → 15 damage.** The SMG holds its own up close (it lost to the AK-74 even at 100 px).
+- **Minigun: spread 0.3 → 0.24.** Still a hose with a spin-up, but it kills at close range instead of spraying past the target.
+- **Tank: explosives now do full damage (were 80 %).** It still shrugs off bullets (20 %), but it now takes 8 LAW hits instead of ~13 — in the test matches no tank was ever destroyed.
+- Bots use exactly the same gun numbers as players now (damage, speed, magazine, reload come from one table).
+
 ### Added — Bomb Defusal (#304)
 - **New game mode: Bomb Defusal** (mode 10, at the end of every mode list; dedicated `--mode bomb`). RED attacks, BLUE defends, and the sides swap at halftime (after round 6). The attackers carry one bomb to site A or B and plant it (hold **Use** 3 s in the site, standing still — moving or jetting starts it over, getting shot doesn't); the defenders stop them, or defuse a planted bomb (hold Use 7 s on it). A planted bomb beeps faster and faster and blows after 40 s with a big blast around it. A round ends on a detonation (attackers), a defuse (defenders) or the 2:30 clock running out with no plant (defenders); first to 7 rounds wins the match (then the usual winner screen + map vote). The dead come back together in **waves every 10 s** (the death screen counts down to the next one); a new round respawns everyone at once. The carrier drops the bomb where they die; any attacker picks it up, defenders can't.
 - **New control: Use / Plant / Defuse** — C on the keyboard, Y on a gamepad (shared with Reload — reloading while you plant is harmless), remappable in Settings → Controls; on touch screens a USE button appears only when it can do something.
@@ -11,6 +22,18 @@ All notable changes to Soldat Reborn.
 - **3 featured levels built for it** (FEATURED tab, PLAY / HOST ONLINE / EDIT A COPY): **Downtown** (street site + market-roof site, jump pads, a jet across to the attackers' plateau), **Dust Yard** (loading-dock site + covered-warehouse site, containers, a silo) and **Whiteout** (trench site + ridge site in the snow, an ice tower). Bots carry the bomb to a site, plant, guard it, retake, clear the site and defuse; every map gets two sites placed automatically along the bots' route when it has none of its own.
 - **Maker: Bomb site A / Bomb site B** pieces (Objectives tab, resizable areas). The checks before PLAY / SAVE want both for Bomb Defusal, inside the map and over ground you can stand on; the Maker's test mode can be Bomb Defusal. Maps store them as `bomb_sites`; shared levels with both are tagged BOMB.
 - Online: the host decides everything (who carries the bomb, plant / defuse progress, the fuse); a player only says "I'm holding Use" for their own soldier, so a modified client can't plant or defuse for anyone. Players joining mid-round see the planted bomb and its fuse right away.
+
+### Changed — Bomb Defusal balance (#307)
+- **Attack and defense are much closer to even.** Bot matches showed the defenders winning most rounds: they respawned close to the sites every 10 s and retook almost every planted bomb (Downtown and Dust Yard: about 1 round in 6 for the attackers). Once the bomb is planted, the **defenders' respawn waves now come every 15 s** (the attackers' stay at 10 s), and the NEXT WAVE clock shows your own team's wave.
+- **Downtown:** site A is 300 px further down the street (cover and the roof pad moved with it) and site B is on the far half of the market roof. **Dust Yard:** the loading dock (site A) moved 560 px toward the middle and is now a step up on both sides, and the warehouse (site B) moved 300 px. **Whiteout:** the ridge with site B moved 150 px toward the defenders. Bot matches now go from roughly 1-in-6 to 2-in-5 or better for the attackers on Downtown and Dust Yard, and Whiteout stays around even.
+- **Arena2 / Arena3:** the site that sat on top of the defenders' spawn moved off it (bots could hold it against defenders spawning into the bomb).
+
+### Fixed — Bomb Defusal
+- **Bots reach the bomb sites on every map (#308).** Maps without their own sites now get them on spots both teams can actually walk to from every spawn, on the way between the bases, not on top of either base, and placed by walking distance so neither side is next door. Argy got hand-placed sites in the lower tunnel the attackers really use (the old ones sent the bomb carrier through a cave nobody climbed back out of).
+- **Replays show the bomb (#309).** Bomb Defusal replays now record the sites, who carries the bomb, where it was dropped or planted, the fuse and the plant / defuse progress, and the replay viewer draws them like the live game: the A / B sites (red when the bomb is planted there), the bomb on the carrier's back / on the ground / planted with its blinking light, a status line (round, carrier, fuse) and a progress ring over the soldier planting or defusing. Older replays play as before.
+
+### Fixed — online
+- **Joining a match in progress now shows other players' active power-ups (#305).** A Predator was not see-through, a Berserker not red, etc. for someone who joined after it was picked up, until it ran out; the server now sends each player's active power-up and the time left as part of joining.
 
 ### Improved — telling the teams apart (#306)
 - **Friend and foe now read at a glance (#306).** In team modes every soldier wears big panels of strong team paint — helmet, plate carrier, shoulder pads and an arm band, neck gaiter, cap, vest front, jetpack cover — in a clear cyan-blue or red-orange (the blue side lighter, the red side deeper), so the teams stay distinct on night maps, in smoke and explosions, on the HD terrain and on a phone screen. Your helmet and vest paint still show on the rest of the helmet / vest, and in free-for-all modes (Deathmatch, Rambo, Battle Royale, Gun Game) everyone keeps their own colours.

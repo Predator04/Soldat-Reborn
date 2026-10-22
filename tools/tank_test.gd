@@ -154,8 +154,12 @@ func _process(d: float) -> bool:
 				var h1: float = float(_car.get("hp"))
 				_car.take_damage(100.0, "QA", "LAW", 77)
 				var h2: float = float(_car.get("hp"))
-				_log.append("armor bullet=%d rocket=%d" % [h0 - h1, h1 - h2])
-				if h0 - h1 > 25.0 or h1 - h2 < 60.0:
+				# #310: a LAW splash on the hull costs the tank exactly its damage (EXPLOSIVE_MUL 1.0).
+				var law: float = float(load("res://scripts/player.gd").weapon_def("LAW")["damage"])
+				load("res://scripts/buggy.gd").splash(self, (_car as Node2D).global_position, 130.0, law, "QA", "LAW", 77)
+				var h3: float = float(_car.get("hp"))
+				_log.append("armor bullet=%d rocket=%d law-splash=%d" % [h0 - h1, h1 - h2, h2 - h3])
+				if h0 - h1 > 25.0 or h1 - h2 < 60.0 or absf((h2 - h3) - law) > 0.5 or law != 115.0:
 					_bad.append("armor wrong")
 				_drv_dead = false
 				m.kill.connect(func(_k, v, _w, _kt, _vt): if str(v) == str(p.display_name): _drv_dead = true)

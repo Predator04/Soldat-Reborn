@@ -8,7 +8,9 @@ extends Node
 ## First to ROUNDS_TO_WIN round wins takes the match (main.scores = rounds won;
 ## the match end goes through main's normal winner screen + next-map vote).
 ## The dead respawn in waves every WAVE_TIME s (main._respawn_delay_for_team
-## asks wave_delay()); a new round respawns everyone at once.
+## asks wave_delay()); a new round respawns everyone at once. Once the bomb
+## is down the DEFENDERS' waves come every WAVE_DEF_PLANTED s instead (#307:
+## from a nearby spawn, 10 s waves retook almost every plant).
 ##
 ## Host-authoritative: this runs on the host (or single player). Clients only
 ## send "Use held / released" for their own soldier (Main.net_bomb_use) and
@@ -29,6 +31,7 @@ const PLANT_TIME := 3.0
 const DEFUSE_TIME := 7.0
 const WAVE_TIME := 10.0
 const WAVE_MIN := 2.0          # dying this close to a wave joins the next one
+const WAVE_DEF_PLANTED := 15.0 # defenders' wave period while the bomb is planted (#307)
 const POST_TIME := 5.0         # round result banner before the next round
 const ROUNDS_TO_WIN := 7
 const HALF_ROUNDS := 6         # sides swap after this many rounds
@@ -49,6 +52,7 @@ var swapped := false           # halftime passed: BLUE attacks
 var round_t := ROUND_TIME
 var fuse_t := 0.0
 var wave_t := WAVE_TIME
+var def_wave_t := WAVE_DEF_PLANTED   # defenders' wave clock after a plant (runs from the plant)
 var post_t := 0.0
 var bomb_state := "spawn"      # "spawn" (being handed out) | "carried" | "dropped" | "planted" | "gone"
 var carrier: Node = null
@@ -134,35 +138,31 @@ func _read_sites() -> Array:
 	return out
 
 
-## Maps built without bomb sites: two sites on the first-half defenders'
-## (BLUE's) side, a little and a lot of the way from its base to the middle,
-## each settled on the ground there. Pure geometry: the same on every peer.
+## Maps built without bomb sites (#308): two sites on spots that EVERY spawn
+## of both sides can walk / jet to on the nav graph, picked by walking
+## distance (mean over a side's spawns): each site's walk from the defenders
+## is a set share (`SITE_SHARE`) of the walk from the attackers; neither site
+## is on top of a spawn (`SITE_MIN_DEF` / `SITE_MIN_ATT` x the base-to-base
+## walk L) nor off the way between the bases (def + att walk <= `SITE_DETOUR`
+## x L: Argy's lower cave). Without a graph: the old straight-line guess.
+## Deterministic (same graph = same sites; the host syncs its sites anyway).
+const SITE_SHARE := [0.9, 1.15]   # A, B: defenders' walk / attackers' walk
+const SITE_MIN_DEF := 0.22         # x L, from the nearest defender spawn
+const SITE_MIN_ATT := 0.35         # x L, from the nearest attacker spawn
+const SITE_DETOUR := 1.3           # def walk + att walk <= this x L (strict pass)
+const SITE_DETOUR_MAX := 1.6       # ... when the strict pass can't find two
+const SITE_MAX_CLIMB := 650.0     # tallest unbroken climb on the way there (either side)
+const SITE_APART := 420.0          # A and B at least this far apart (and >= 0.18 x L)
+var auto_info := ""                # how the auto sites were picked (watch / test logs)
+
+
 func _auto_sites() -> Array:
 	var blue: Vector2 = main._centroid(main._team_spawn_list(main.TEAM_BLUE))
 	var red: Vector2 = main._centroid(main._team_spawn_list(main.TEAM_RED))
 	var spots: Array = []
 	var nav = main.nav
 	if nav != null and not nav.is_empty():
-		# Along the attackers' own route from their spawn to the defenders'
-		# (so they can get there: routes may drop down one way): B 60 % and A
-		# 82 % of the way — the defenders' half — both on walkable nav nodes.
-		var route: PackedVector2Array = nav.path(red, blue)
-		if route.size() >= 4:
-			var total := 0.0
-			for i in range(1, route.size()):
-				total += route[i].distance_to(route[i - 1])
-			for frac in [0.82, 0.6]:
-				var want: float = total * frac
-				var acc := 0.0
-				var at: Vector2 = route[route.size() - 1]
-				for i in range(1, route.size()):
-					acc += route[i].distance_to(route[i - 1])
-					if acc >= want:
-						at = route[i]
-						break
-				var g := _site_node(nav, at, spots)
-				if g != Vector2.INF:
-					spots.append(g)
+		spots = _walk_sites(nav)
 	if spots.size() < 2:
 		spots.clear()
 		for frac in [0.2, 0.42]:
@@ -176,50 +176,189 @@ func _auto_sites() -> Array:
 	return out
 
 
-## The standable nav node nearest to `at` that is at least 420 px from the
-## spots already taken and that both sides' spawns can walk / jet to (the
-## route there may drop down one way). INF if none within 700 px.
-func _site_node(nav, at: Vector2, taken: Array) -> Vector2:
-	var air: Dictionary = nav.get("_air") if nav.get("_air") != null else {}
+## Walk lengths from `src` to every node (Dijkstra over the directed graph,
+## edge = straight distance; unreached = INF) and, along each shortest walk,
+## the tallest unbroken climb (consecutive steep links up = jet / ladder
+## climbs; bots fail the tall ones: Argy's 700 px shafts). [dist, climb].
+static func _walk_from(nav, src: int) -> Array:
 	var pts: PackedVector2Array = nav.get("_pts")
-	var cands: Array = []
-	for id in pts.size():
-		if air.has(id):
-			continue
-		var p: Vector2 = pts[id]
-		var d := p.distance_to(at)
-		if d > 700.0:
-			continue
-		var far := true
-		for t in taken:
-			if p.distance_to(t) < 420.0:
-				far = false
-		if far and p.x >= SITE_W * 0.5 and p.x <= main.MAP_W - SITE_W * 0.5:
-			cands.append([d, p])
-	cands.sort_custom(func(a, b) -> bool: return a[0] < b[0])
-	var froms: Array = []
-	for t in [main.TEAM_BLUE, main.TEAM_RED]:
-		var sl: Array = main._team_spawn_list(t)
-		if not sl.is_empty():
-			froms.append(sl[0])
-	var tries := 0
-	for c in cands:
-		var p: Vector2 = c[1]
-		var g := _ground_spot(p + Vector2(0, -10))
-		if g == Vector2.INF or absf(g.y - p.y) > 24.0:
-			continue
-		tries += 1
-		if tries > 16:
-			break
-		var ok := true
-		for f in froms:
-			var path: PackedVector2Array = nav.path(f, p)
-			if path.size() == 0 or path[path.size() - 1].distance_to(p) > 60.0:
-				ok = false
+	var astar: AStar2D = nav.get("astar")
+	var dist := PackedFloat32Array()
+	dist.resize(pts.size())
+	dist.fill(INF)
+	var run := PackedFloat32Array()
+	run.resize(pts.size())
+	run.fill(0.0)
+	var climb := PackedFloat32Array()
+	climb.resize(pts.size())
+	climb.fill(0.0)
+	if src < 0:
+		return [dist, climb]
+	dist[src] = 0.0
+	# Binary heap of [cost, node].
+	var hc := PackedFloat32Array([0.0])
+	var hn := PackedInt32Array([src])
+	while hc.size() > 0:
+		var c: float = hc[0]
+		var u: int = hn[0]
+		var last := hc.size() - 1
+		hc[0] = hc[last]
+		hn[0] = hn[last]
+		hc.resize(last)
+		hn.resize(last)
+		var i := 0
+		while true:
+			var l := i * 2 + 1
+			if l >= hc.size():
 				break
-		if ok:
-			return g
-	return Vector2.INF
+			var m := l
+			if l + 1 < hc.size() and hc[l + 1] < hc[l]:
+				m = l + 1
+			if hc[m] >= hc[i]:
+				break
+			var tc: float = hc[i]; hc[i] = hc[m]; hc[m] = tc
+			var tn: int = hn[i]; hn[i] = hn[m]; hn[m] = tn
+			i = m
+		if c > dist[u]:
+			continue
+		for v in astar.get_point_connections(u):
+			var nd: float = c + pts[u].distance_to(pts[v])
+			if nd < dist[v]:
+				dist[v] = nd
+				var up: float = pts[u].y - pts[v].y
+				run[v] = run[u] + up if up > 0.0 and up > 1.2 * absf(pts[v].x - pts[u].x) else 0.0
+				climb[v] = maxf(climb[u], run[v])
+				hc.append(nd)
+				hn.append(v)
+				var j := hc.size() - 1
+				while j > 0:
+					var par := (j - 1) / 2
+					if hc[par] <= hc[j]:
+						break
+					var tc2: float = hc[j]; hc[j] = hc[par]; hc[par] = tc2
+					var tn2: int = hn[j]; hn[j] = hn[par]; hn[par] = tn2
+					j = par
+	return [dist, climb]
+
+
+## Per node: [nearest, median, farthest] walk from `spawns` (up to 6 of
+## them); "farthest" skips one unreachable spawn out of 3+ (a map's odd spawn
+## in a sealed room, Blox) and is INF otherwise. Also the spawn nodes (3).
+func _walk_stats(nav, spawns: Array) -> Array:
+	var pts: PackedVector2Array = nav.get("_pts")
+	var runs: Array = []
+	var climbs: Array = []
+	var nodes: Array = []
+	for sp in spawns:
+		if runs.size() >= 6:
+			break
+		var n: int = nav.nearest(sp, 480.0)
+		if n < 0 or nodes.has(n):
+			continue
+		nodes.append(n)
+		var wr: Array = _walk_from(nav, n)
+		runs.append(wr[0])
+		climbs.append(wr[1])
+	var lo := PackedFloat32Array()
+	var med := PackedFloat32Array()
+	var hi := PackedFloat32Array()
+	lo.resize(pts.size())
+	med.resize(pts.size())
+	hi.resize(pts.size())
+	var cl := PackedFloat32Array()
+	cl.resize(pts.size())
+	cl.fill(0.0)
+	lo.fill(INF)
+	med.fill(INF)
+	hi.fill(INF)
+	if runs.is_empty():
+		return [lo, med, hi, nodes, cl]
+	var v := PackedFloat32Array()
+	v.resize(runs.size())
+	for i in pts.size():
+		for r in runs.size():
+			v[r] = (runs[r] as PackedFloat32Array)[i]
+		v.sort()
+		lo[i] = v[0]
+		hi[i] = v[v.size() - 2] if v.size() >= 3 and v[v.size() - 1] == INF else v[v.size() - 1]
+		med[i] = v[v.size() / 2] if v.size() % 2 == 1 else (v[v.size() / 2 - 1] + v[v.size() / 2]) * 0.5
+		for r in climbs.size():
+			if (runs[r] as PackedFloat32Array)[i] < INF:
+				cl[i] = maxf(cl[i], (climbs[r] as PackedFloat32Array)[i])
+	return [lo, med, hi, nodes, cl]
+
+
+## The two site spots by walk share (see SITE_SHARE); [] if the graph can't
+## give two (then the caller falls back to geometry).
+func _walk_sites(nav) -> Array:
+	var pts: PackedVector2Array = nav.get("_pts")
+	var air: Dictionary = nav.get("_air") if nav.get("_air") != null else {}
+	var dsp: Array = main._team_spawn_list(main.TEAM_BLUE)   # first-half defenders (spawns follow the role)
+	var asp: Array = main._team_spawn_list(main.TEAM_RED)
+	if dsp.is_empty() or asp.is_empty():
+		return []
+	var ds: Array = _walk_stats(nav, dsp)
+	var as_: Array = _walk_stats(nav, asp)
+	var d_lo: PackedFloat32Array = ds[0]
+	var d_med: PackedFloat32Array = ds[1]
+	var d_hi: PackedFloat32Array = ds[2]
+	var a_lo: PackedFloat32Array = as_[0]
+	var a_med: PackedFloat32Array = as_[1]
+	var a_hi: PackedFloat32Array = as_[2]
+	var d_cl: PackedFloat32Array = ds[4]
+	var a_cl: PackedFloat32Array = as_[4]
+	# Base-to-base walk L: the attackers' median walk to the defenders' spawns
+	# (median over the ones they can reach).
+	var ls: Array = []
+	for n in ds[3]:
+		if a_med[int(n)] < INF:
+			ls.append(a_med[int(n)])
+	ls.sort()
+	if ls.is_empty():
+		auto_info = "no walk between the bases"
+		return []
+	var L: float = ls[ls.size() / 2]
+	# Strict first (on the way, well apart), then a longer detour, then closer
+	# together, so odd layouts still get two graph sites.
+	for pass_i in 3:
+		var detour: float = SITE_DETOUR if pass_i == 0 else SITE_DETOUR_MAX
+		var apart: float = maxf(SITE_APART, 0.18 * L) if pass_i < 2 else SITE_APART
+		var cands: Array = []    # [|share - A|, |share - B|, node, share]
+		for i in pts.size():
+			if air.has(i) or d_hi[i] == INF or a_hi[i] == INF or a_med[i] <= 0.0:
+				continue
+			var p: Vector2 = pts[i]
+			if p.x < SITE_W * 0.5 or p.x > main.MAP_W - SITE_W * 0.5:
+				continue
+			if d_lo[i] < SITE_MIN_DEF * L or a_lo[i] < SITE_MIN_ATT * L or d_med[i] + a_med[i] > detour * L:
+				continue
+			if a_cl[i] > SITE_MAX_CLIMB or d_cl[i] > SITE_MAX_CLIMB:
+				continue
+			var share: float = d_med[i] / a_med[i]
+			cands.append([absf(share - float(SITE_SHARE[0])), absf(share - float(SITE_SHARE[1])), i, share])
+		var spots: Array = []
+		var info: Array = []
+		for k in 2:
+			cands.sort_custom(func(x, y) -> bool: return x[k] < y[k] or (x[k] == y[k] and x[2] < y[2]))
+			for c in cands:
+				var p: Vector2 = pts[int(c[2])]
+				var far := true
+				for t in spots:
+					if p.distance_to(t) < apart:
+						far = false
+				if not far:
+					continue
+				var g := _ground_spot(p + Vector2(0, -10))
+				if g == Vector2.INF or absf(g.y - p.y) > 24.0:
+					continue
+				spots.append(g)
+				info.append("%s share %.2f def %d att %d climb %d/%d" % ["AB"[k], float(c[3]), int(d_med[int(c[2])]), int(a_med[int(c[2])]),
+					int(d_cl[int(c[2])]), int(a_cl[int(c[2])])])
+				break
+		auto_info = "walk %d, pass %d, %d candidates: %s" % [int(L), pass_i, cands.size(), ", ".join(info)]
+		if spots.size() == 2:
+			return spots
+	return []
 
 
 ## First open, standable ground under `p` (scanning down from it), or INF.
@@ -271,6 +410,7 @@ func _begin_round_state() -> void:
 	fuse_t = 0.0
 	post_t = 0.0
 	wave_t = WAVE_TIME
+	def_wave_t = WAVE_DEF_PLANTED
 	bomb_state = "spawn"
 	carrier = null
 	planted_site = ""
@@ -330,11 +470,20 @@ func _flush_respawns() -> void:
 
 ## Seconds until the next respawn wave (a death right before a wave joins it
 ## only if there's WAVE_MIN left; otherwise the one after).
-func wave_delay() -> float:
-	var d := wave_t
+func wave_delay(team: int = -1) -> float:
+	var d := wave_left(team)
 	if d < WAVE_MIN:
-		d += WAVE_TIME
+		d += WAVE_DEF_PLANTED if _def_planted(team) else WAVE_TIME
 	return maxf(0.1, d)
+
+
+func _def_planted(team: int) -> bool:
+	return phase == "planted" and team == defend_team()
+
+
+## Seconds to `team`'s next respawn wave (HUD + wave_delay).
+func wave_left(team: int = -1) -> float:
+	return def_wave_t if _def_planted(team) else wave_t
 
 
 func _round_over(team: int, why: String) -> void:
@@ -378,6 +527,10 @@ func tick(delta: float) -> void:
 	wave_t -= delta
 	while wave_t <= 0.0:
 		wave_t += WAVE_TIME
+	if phase == "planted":
+		def_wave_t -= delta
+		while def_wave_t <= 0.0:
+			def_wave_t += WAVE_DEF_PLANTED
 	if phase == "post":
 		post_t -= delta
 		main.time_left = maxf(0.0, post_t)
@@ -503,6 +656,7 @@ func _plant(s: Node2D) -> void:
 	bomb_state = "planted"
 	phase = "planted"
 	fuse_t = FUSE_TIME
+	def_wave_t = WAVE_DEF_PLANTED
 	carrier = null
 	planter = null
 	plant_prog = 0.0
@@ -686,7 +840,7 @@ func _by_sid(id: int) -> Node:
 
 func net_payload(full: bool) -> Dictionary:
 	_seq += 1
-	var d := {"q": _seq, "ph": phase, "rn": round_no, "sw": swapped, "rt": round_t, "ft": fuse_t, "wt": wave_t,
+	var d := {"q": _seq, "ph": phase, "rn": round_no, "sw": swapped, "rt": round_t, "ft": fuse_t, "wt": wave_t, "dw": def_wave_t,
 		"pt": post_t, "bs": bomb_state, "c": _sid(carrier), "bp": bomb_pos, "site": planted_site, "pn": planter_name,
 		"pp": plant_prog, "pl": _sid(planter), "dp": defuse_prog, "df": _sid(defuser), "res": last_result}
 	if full:
@@ -719,6 +873,7 @@ func apply_payload(d: Dictionary) -> void:
 	round_t = float(d.get("rt", round_t))
 	fuse_t = float(d.get("ft", fuse_t))
 	wave_t = float(d.get("wt", wave_t))
+	def_wave_t = float(d.get("dw", def_wave_t))
 	post_t = float(d.get("pt", post_t))
 	bomb_state = str(d.get("bs", bomb_state))
 	carrier = _by_sid(int(d.get("c", 0)))
@@ -759,6 +914,10 @@ func client_tick(delta: float) -> void:
 	wave_t -= delta
 	while wave_t <= 0.0:
 		wave_t += WAVE_TIME
+	if phase == "planted":
+		def_wave_t -= delta
+		while def_wave_t <= 0.0:
+			def_wave_t += WAVE_DEF_PLANTED
 	match phase:
 		"live": round_t = maxf(0.0, round_t - delta)
 		"planted": fuse_t = maxf(0.0, fuse_t - delta)
