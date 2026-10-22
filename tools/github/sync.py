@@ -152,17 +152,47 @@ def changelog_section(ver):
     return m.group(1).strip() if m else "See CHANGELOG.md."
 
 
+DOWNLOADS = ("\n\n**Downloads:** `SoldatReborn.exe` (Windows) and `SoldatReborn.apk` (Android). "
+             "`SoldatReborn.pck` is the game pack for dedicated servers.\n"
+             "**Dedicated server (no game needed):** `TracerfallServer-windows.zip` / `TracerfallServer-linux.tar.gz` "
+             "- unpack, run `start-server`, see HOSTING.md inside.")
+# Release assets, in upload order. The SoldatReborn.* names are what every
+# installed game / the official server look for — never rename them. The
+# server archives (#320) are extra; a build without them is just skipped.
+ASSETS = (("SoldatReborn.exe", "application/vnd.microsoft.portable-executable"),
+          ("SoldatReborn.exe.sig", "application/octet-stream"),  # #237 updater signature
+          ("SoldatReborn.apk", "application/vnd.android.package-archive"),
+          ("SoldatReborn.pck", "application/octet-stream"),
+          ("TracerfallServer-windows.zip", "application/zip"),
+          ("TracerfallServer-windows.zip.sig", "application/octet-stream"),
+          ("TracerfallServer-linux.tar.gz", "application/gzip"),
+          ("TracerfallServer-linux.tar.gz.sig", "application/octet-stream"))
+
+
+def server_archive_version(path):
+    """VERSION.txt inside a server archive (#320), None if there is none."""
+    import tarfile, zipfile
+    try:
+        if path.endswith(".zip"):
+            with zipfile.ZipFile(path) as z:
+                return z.read("TracerfallServer/VERSION.txt").decode().strip()
+        with tarfile.open(path, "r:gz") as t:
+            return t.extractfile("TracerfallServer/VERSION.txt").read().decode().strip()
+    except (OSError, KeyError, AttributeError, tarfile.TarError, zipfile.BadZipFile):
+        return None
+
+
 def release(tag):
     rel = call("GET", "/repos/%s/releases/tags/%s" % (REPO, tag))
     if rel is None:
         rel = call("POST", "/repos/%s/releases" % REPO, {
             "tag_name": tag, "target_commitish": "main", "name": "Tracerfall " + tag,
-            "body": changelog_section(tag) + "\n\n**Downloads:** `SoldatReborn.exe` (Windows) and `SoldatReborn.apk` (Android). `SoldatReborn.pck` is the game pack for dedicated servers."})
+            "body": changelog_section(tag) + DOWNLOADS})
         print("release created", tag)
     else:
         # Keep the release notes in step with CHANGELOG.md (a version can gain
         # entries after its first publish).
-        body = changelog_section(tag) + "\n\n**Downloads:** `SoldatReborn.exe` (Windows) and `SoldatReborn.apk` (Android). `SoldatReborn.pck` is the game pack for dedicated servers."
+        body = changelog_section(tag) + DOWNLOADS
         if (rel.get("body") or "") != body:
             call("PATCH", "/repos/%s/releases/%d" % (REPO, rel["id"]), {"body": body})
             print("release notes updated")
@@ -178,11 +208,22 @@ def release(tag):
             raise SystemExit(f"build/SoldatReborn.exe exists but {sig_p} is missing — run tools/build_release.sh (it signs the exe). Refusing to publish an unsigned update.")
         if os.path.getmtime(exe_p) > os.path.getmtime(sig_p) + 2:
             raise SystemExit("build/SoldatReborn.exe is newer than its .sig — re-run tools/build_release.sh. Refusing to publish a mismatched signature.")
-    for f, ctype in (("SoldatReborn.exe", "application/vnd.microsoft.portable-executable"),
-                     ("SoldatReborn.exe.sig", "application/octet-stream"),  # #237 updater signature
-                     ("SoldatReborn.apk", "application/vnd.android.package-archive"),
-                     ("SoldatReborn.pck", "application/octet-stream")):
+    # #320: a server archive's .sig must belong to it (updaters refuse a
+    # mismatch); an archive rebuilt after its .sig is not uploaded stale.
+    for arc in ("TracerfallServer-windows.zip", "TracerfallServer-linux.tar.gz"):
+        ap = os.path.join(ROOT, "build", arc)
+        if os.path.exists(ap) and os.path.exists(ap + ".sig") and os.path.getmtime(ap) > os.path.getmtime(ap + ".sig") + 2:
+            raise SystemExit("build/%s is newer than its .sig - re-run tools/build_release.sh server." % arc)
+    stale = set()
+    for arc in ("TracerfallServer-windows.zip", "TracerfallServer-linux.tar.gz"):
+        v = server_archive_version(os.path.join(ROOT, "build", arc))
+        if v is not None and v != tag.lstrip("v"):
+            print("asset skip", arc, "(left over from %s, this release is %s - run tools/build_release.sh server)" % (v, tag))
+            stale.update((arc, arc + ".sig"))
+    for f, ctype in ASSETS:
         p = os.path.join(ROOT, "build", f)
+        if f in stale:
+            continue
         if not os.path.exists(p):
             print("asset skip", f, "(no build)")
             continue

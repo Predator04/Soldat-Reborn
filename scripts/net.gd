@@ -75,10 +75,17 @@ var _idle := false
 var _idle_since_ms := 0
 var _idle_enabled := true
 var _active_tps := 60
+# #317: the dedicated server's config file (scripts/server_config.gd). Always
+# present (child node "ServerConfig"); empty unless a dedicated launch loaded
+# a file. Host code reads configurable numbers through rule().
+var server_cfg: Node = null
 
 
 func _ready() -> void:
-	if _maybe_print_version():
+	server_cfg = preload("res://scripts/server_config.gd").new()
+	server_cfg.name = "ServerConfig"
+	add_child(server_cfg)
+	if _maybe_print_version() or _maybe_verify_update():
 		return
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
@@ -100,6 +107,42 @@ func _maybe_print_version() -> bool:
 		ver = "unknown"
 	print(preload("res://scripts/game_info.gd").TITLE, " ", ver)
 	get_tree().quit()
+	return true
+
+
+## #320 server updater (tools/server_kit/update_server.py): check a downloaded
+## server archive against the release signing key compiled into THIS build
+## (scripts/updater.gd PUB_PEM, #237) before it replaces anything:
+##   --verify-update=<file> --update-sig=<file.sig> [--update-pubkey=<pem>]
+## Prints `UPDATE-VERIFY OK <sha256>` (exit 0) or `UPDATE-VERIFY FAIL <why>`
+## (exit 1). --update-pubkey (another key) is for the gate's test release.
+func _maybe_verify_update() -> bool:
+	var file := _smoke_arg("--verify-update")
+	if file == "":
+		return false
+	is_dedicated = true   # the menu scene builds nothing for the one frame left
+	var Upd = preload("res://scripts/updater.gd")
+	var sig_path := _smoke_arg("--update-sig")
+	var pem: String = Upd.PUB_PEM
+	var pk := _smoke_arg("--update-pubkey")
+	if pk != "":
+		pem = FileAccess.get_file_as_string(pk)
+	var why := ""
+	if not FileAccess.file_exists(file):
+		why = "no file %s" % file
+	elif sig_path == "" or not FileAccess.file_exists(sig_path):
+		why = "no signature file"
+	else:
+		var sig := FileAccess.get_file_as_bytes(sig_path)
+		if sig.is_empty() or sig.size() > 1024:
+			why = "bad signature file"
+		elif not Upd.verify_signature(file, sig, pem):
+			why = "signature does not match"
+	if why == "":
+		print("UPDATE-VERIFY OK %s" % FileAccess.get_sha256(file))
+	else:
+		print("UPDATE-VERIFY FAIL %s" % why)
+	get_tree().quit(0 if why == "" else 1)
 	return true
 
 
@@ -129,6 +172,10 @@ func _maybe_run_dedicated() -> void:
 	# entirely and boots straight into main.tscn with no local player. See #54.
 	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
 	var wants_dedicated: bool = ("--dedicated" in args) or ("--server" in args)
+	# #320: the standalone server download (dedicated_server export) is always
+	# a dedicated server — no flag needed.
+	if OS.has_feature("dedicated_server"):
+		wants_dedicated = true
 	var wants_smoke: bool = "--smoke-dedicated" in args
 	if not (wants_dedicated or wants_smoke):
 		return
@@ -136,6 +183,21 @@ func _maybe_run_dedicated() -> void:
 	var map_index: int = Settings.map_index
 	var mode_index: int = Settings.game_mode
 	var fill_arg := 8
+	# #317: server.cfg first, then the flags below override it.
+	var cfg_path: String = server_cfg.find_path(args)
+	if cfg_path != "" and server_cfg.load_file(cfg_path, true):
+		var boot: Dictionary = server_cfg.apply_boot({"port": port, "map_index": map_index,
+				"mode_index": mode_index, "register_url": register_url, "fill": fill_arg})
+		port = int(boot.port)
+		map_index = int(boot.map_index)
+		mode_index = int(boot.mode_index)
+		register_url = str(boot.register_url)
+		fill_arg = int(boot.fill)
+	for a in args:
+		for pair in [["--port", "port"], ["--map", "map"], ["--mode", "mode"], ["--bans", "weapon_bans"],
+				["--register", "register"], ["--fill", "fill"], ["--bots", "bots"], ["--name", "name"]]:
+			if a == pair[0] or String(a).begins_with(pair[0] + "="):
+				server_cfg.cli_keys[pair[1]] = true
 	var i: int = 0
 	while i < args.size():
 		var a: String = args[i]
@@ -186,10 +248,21 @@ func _maybe_run_dedicated() -> void:
 	# loads, so a log that stops here says how far the boot got.
 	print("Dedicated server starting: %s %s, port %d" % [preload("res://scripts/game_info.gd").TITLE,
 		str(ProjectSettings.get_setting("application/config/version", "dev")), port])
+	server_cfg.flush_log()
+	if OS.has_feature("dedicated_server"):
+		print("Dedicated server data folder: %s" % ProjectSettings.globalize_path("user://"))
 	if wants_smoke:
 		call_deferred("_smoke_dedicated", port, map_index, mode_index)
 	else:
 		call_deferred("_start_dedicated", port, map_index, mode_index)
+
+
+## #317: a configurable host-side number / flag: the dedicated server's
+## server.cfg value for `key`, else `def` (always `def` off a dedicated server).
+func rule(key: String, def):
+	if not is_dedicated or server_cfg == null:
+		return def
+	return server_cfg.rule(key, def)
 
 
 func _resolve_map_arg(v: String, fallback: int = -1) -> int:
@@ -265,7 +338,8 @@ func _start_dedicated(port: int, map_index: int, mode_index: int) -> void:
 	var mode_name: String = MODE_NAMES[mode_index] if mode_index >= 0 and mode_index < MODE_NAMES.size() else "mode#%d" % mode_index
 	print("Dedicated server listening on port %d, map=%s mode=%s" % [port, map_name, mode_name])
 	get_tree().change_scene_to_file("res://scenes/main.tscn")
-	_idle_enabled = not ("--no-idle" in (OS.get_cmdline_args() + OS.get_cmdline_user_args()))
+	_idle_enabled = not ("--no-idle" in (OS.get_cmdline_args() + OS.get_cmdline_user_args())) \
+			and bool(server_cfg.get_value("idle_pause", true))
 	if _idle_enabled:
 		# Net keeps running (heartbeat, peer events) while the match is paused.
 		process_mode = Node.PROCESS_MODE_ALWAYS
@@ -635,6 +709,7 @@ func _smoke_botfire() -> void:
 		get_tree().change_scene_to_file("res://scenes/main.tscn"))
 	join_game("127.0.0.1", _smoke_port())
 	_smoke_auto_start()
+	_smoke_admin_start()
 	# Track the lowest HP the local player was seen at during the smoke — the
 	# player may already have died and respawned (or died and not yet respawned)
 	# by the time we print, so a single snapshot of main.player.health can miss
@@ -713,6 +788,36 @@ func _smoke_botfire() -> void:
 		print("SMOKE-BOTFIRE id=%d mode=%d gm=%d players=%d bots_visible=%d bot_shots_seen=%d bot_bullets_seen=%d bot_bullets_max=%d bot_bullets_visible=%d local_hp=%.1f min_hp=%.1f deaths=%d status=\"%s\" left=\"%s\" stats=%d auto_shots=%d proj_msgs=%d" % [local_id(), mode, Settings.game_mode, pcount, bots_visible, bot_shots_seen, bot_bullets_seen, max_bullets_ref[0], bot_bullets_visible, local_hp, min_hp_ref[0], deaths_ref[0], status, last_disconnect_reason, (main.player_stats.size() if main != null and main.get("player_stats") != null else -1), smoke_auto_shots, proj_msgs_seen])
 		leave()
 		get_tree().quit())
+
+
+## #317 gate C `srvcfg`: --smoke-admin="/bots 2;/login pw;/reloadcfg" sends
+## each "/" command to the server 1.5 s apart once our soldier exists (the
+## typed-line path: hud_commands.try_host_command -> Main.net_admin_cmd) and
+## prints every chat line received as `SMOKE-CHAT <author>: <text>`.
+var smoke_chat_log := false
+
+
+func _smoke_admin_start() -> void:
+	var spec := _smoke_arg("--smoke-admin")
+	if spec == "":
+		return
+	smoke_chat_log = true
+	var cmds: Array = Array(spec.split(";", false))
+	var t := Timer.new()
+	t.wait_time = 1.5
+	t.autostart = true
+	add_child(t)
+	t.timeout.connect(func() -> void:
+		var main := get_tree().current_scene
+		if cmds.is_empty() or main == null or main.get("player") == null or not is_instance_valid(main.player):
+			return
+		var hud = main.get("hud")
+		var c: String = str(cmds.pop_front()).strip_edges()
+		print("SMOKE-ADMIN send %s" % c)
+		if hud != null and hud.get("command_line") != null:
+			hud.command_line.try_host_command(c)
+		else:
+			main.rpc_id(1, "net_admin_cmd", c))
 
 
 func host_game(port: int = DEFAULT_PORT, map_index: int = 0) -> bool:
@@ -969,6 +1074,8 @@ func _on_peer_connected(id: int) -> void:
 
 
 func _on_peer_disconnected(id: int) -> void:
+	if server_cfg != null:
+		server_cfg.on_peer_left(id)
 	if is_host():
 		_refresh_host_status()
 

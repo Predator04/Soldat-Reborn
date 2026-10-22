@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-# Export Windows .exe + signed Android .apk into build/.
-#   tools/build_release.sh [win|android|all]   (default all)
+# Export Windows .exe + signed Android .apk (+ the standalone server
+# downloads, #320) into build/.
+#   tools/build_release.sh [win|android|server|all]   (default all)
+# server: build/TracerfallServer-windows.zip + TracerfallServer-linux.tar.gz
+# (+ .sig each) from the stripped "Windows Server" / "Linux Server" presets.
+# A platform whose export template isn't installed is skipped with a SKIP
+# line — it never fails the release.
 # Needs: Godot 4.7.2 + export templates in ~/.local/share/godot/export_templates/4.7.2.stable
 # Android without a full SDK: Godot only needs *paths* to exist for an UNSIGNED
 # export (we point it at a stub SDK), then uber-apk-signer zipaligns + signs
@@ -49,6 +54,62 @@ if [ "$WHAT" = all ] || [ "$WHAT" = win ]; then
   openssl dgst -sha256 -sign "$KEYDIR/update-sign-key.pem" \
     -out build/SoldatReborn.exe.sig build/SoldatReborn.exe
   sync; ls -la build/SoldatReborn.exe build/SoldatReborn.exe.sig build/SoldatReborn.pck
+fi
+
+if [ "$WHAT" = all ] || [ "$WHAT" = server ]; then
+  # #320: standalone dedicated server: stripped export (no textures / music)
+  # + start scripts, service install, updater, server.cfg.example, HOSTING.md.
+  VER="$(sed -n 's/^config\/version="\(.*\)"/\1/p' project.godot | tr -d '\r')"
+  GV="$("$G" --version 2>/dev/null | tr -d '\r' | sed -E 's/^([0-9]+\.[0-9]+(\.[0-9]+)?)\.([a-z]+[0-9]*)\..*/\1.\3/')"
+  TPLDIR=""
+  for base in "${XDG_DATA_HOME:-$HOME/.local/share}/godot" "$(cygpath "${APPDATA:-}" 2>/dev/null)/Godot" "$HOME/Library/Application Support/Godot"; do
+    if [ -d "$base/export_templates/$GV" ]; then TPLDIR="$base/export_templates/$GV"; break; fi
+  done
+  KIT=tools/server_kit
+  for plat in linux windows; do
+    if [ "$plat" = linux ]; then
+      PRESET="Linux Server"; BIN=TracerfallServer.x86_64; TPL=linux_release.x86_64; ARC=TracerfallServer-linux.tar.gz
+      FILES="start-server.sh install-service.sh tracerfall-server.service update-server.sh update_server.py server.cfg.example"
+    else
+      PRESET="Windows Server"; BIN=TracerfallServer.exe; TPL=windows_release_x86_64.exe; ARC=TracerfallServer-windows.zip
+      FILES="start-server.bat run-service.bat install-service.bat uninstall-service.bat update-server.bat update_server.py server.cfg.example"
+    fi
+    rm -f "build/$ARC" "build/$ARC.sig"
+    if [ -z "$TPLDIR" ] || [ ! -f "$TPLDIR/$TPL" ]; then
+      echo "SKIP server $plat: export template $TPL not found in ${TPLDIR:-<Godot data>/export_templates/$GV} — install the $GV export templates (Godot editor: Editor > Manage Export Templates) to build $ARC"
+      continue
+    fi
+    ST="build/server/$plat/TracerfallServer"
+    rm -rf "build/server/$plat"; mkdir -p "$ST"
+    "$G" --headless --export-release "$PRESET" "$ST/$BIN" > "build/server/export_$plat.log" 2>&1 || true
+    if [ ! -f "$ST/$BIN" ] || [ ! -f "$ST/TracerfallServer.pck" ]; then
+      echo "SKIP server $plat: export failed — see build/server/export_$plat.log"
+      continue
+    fi
+    for f in $FILES; do cp "$KIT/$f" "$ST/$f"; done
+    cp docs/HOSTING.md "$ST/HOSTING.md"
+    cp LICENSE.md "$ST/LICENSE.md"
+    printf '%s\n' "$VER" > "$ST/VERSION.txt"
+    # Line endings for the target OS (a Windows checkout may hand us CRLF scripts).
+    if [ "$plat" = linux ]; then
+      sed -i 's/\r$//' "$ST"/*.sh "$ST"/*.py "$ST"/*.service "$ST"/*.md "$ST"/server.cfg.example "$ST/VERSION.txt"
+      chmod +x "$ST/$BIN" "$ST"/*.sh "$ST"/*.py
+    else
+      sed -i 's/\r*$/\r/' "$ST"/*.bat "$ST"/*.md "$ST"/server.cfg.example "$ST/VERSION.txt"
+    fi
+    "$G" --headless -s tools/pack_server.gd -- --src="$ST" --out="build/$ARC" 2>&1 | grep -E "PACK-" || true
+    if [ ! -f "build/$ARC" ]; then
+      echo "SKIP server $plat: packing failed"
+      continue
+    fi
+    # Signed like the game exe (#237): update_server.py refuses unsigned archives.
+    if [ -f "$KEYDIR/update-sign-key.pem" ]; then
+      openssl dgst -sha256 -sign "$KEYDIR/update-sign-key.pem" -out "build/$ARC.sig" "build/$ARC"
+    else
+      echo "WARNING: $KEYDIR/update-sign-key.pem missing — build/$ARC is unsigned (servers will not auto-update to it)" >&2
+    fi
+    ls -la "build/$ARC" "build/$ARC.sig" 2>/dev/null || true
+  done
 fi
 
 if [ "$WHAT" = all ] || [ "$WHAT" = android ]; then

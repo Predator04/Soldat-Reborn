@@ -1,0 +1,21 @@
+# systemd unit for the Tracerfall dedicated server. install-service.sh fills
+# in @DIR@ / @USER@ and copies it to /etc/systemd/system/; to do it by hand,
+# replace them yourself (the folder holding TracerfallServer.x86_64, and the
+# user it runs as).
+[Unit]
+Description=Tracerfall dedicated server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@USER@
+WorkingDirectory=@DIR@
+# Update to the latest release before each start (install-service.sh --auto-update):
+#@UPDATE@ExecStartPre=-/usr/bin/env python3 "@DIR@/update_server.py"
+ExecStart="@DIR@/TracerfallServer.x86_64" -- --config "@DIR@/server.cfg"
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

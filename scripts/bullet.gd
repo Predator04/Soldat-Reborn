@@ -269,7 +269,7 @@ func _on_body_entered(body: Node, feet_y: float = INF) -> void:
 			var wname := weapon_name
 			# Realistic: hit region above ~-14 (local) counts as a head-shot 1HK.
 			# Prone soldiers have a much smaller head hitbox — offset accordingly.
-			if Settings.realistic:
+			if MatchConfig.realistic():
 				var head_top: float = -14.0
 				if body.get("prone") == true:
 					head_top = -4.0

@@ -421,6 +421,9 @@ func _attach(h: Node, n: String) -> Node:
 
 
 func _ready() -> void:
+	# #317: server.cfg match-time keys (sub-modes, mods, time limit, ...).
+	if Net.is_dedicated and Net.server_cfg != null:
+		Net.server_cfg.on_match_start(self)
 	if Net._smoke_arg("--smoke-round-secs") != "":
 		round_time = maxf(10.0, float(Net._smoke_arg("--smoke-round-secs")))
 		time_left = round_time
@@ -681,7 +684,7 @@ func net_m2_fire(m2_id: int, muzzle: Vector2, aim_dir: Vector2, shooter_team: in
 ## Respawn with the gun picked in the limbo menu (or last switched to).
 ## Advance and Gun Game pick the weapon themselves.
 func _apply_spawn_loadout(p: Node) -> void:
-	if Settings.advance or Settings.game_mode == Settings.MODE_GG:
+	if MatchConfig.advance() or Settings.game_mode == Settings.MODE_GG:
 		return
 	# #256: a banned pick falls back to the first allowed weapon in that slot.
 	var prim: Array = p.get("weapons")
@@ -722,7 +725,7 @@ func _spawn_player() -> void:
 		p.team = 0
 	p.display_name = Settings.display_name()
 	# Advance mode: start with the humble knife.
-	if Settings.advance:
+	if MatchConfig.advance():
 		p.set("using_secondary", true)
 		p.set("secondary_index", 1)  # Knife
 	# Gun Game: restore the persisted rung so death keeps you on the same weapon.
@@ -760,7 +763,7 @@ func _on_player_died() -> void:
 		else:
 			request_respawn_ready.call_deferred()   # nothing to watch: respawn on the normal timer
 		if hud:
-			if Settings.survival and round_active:
+			if MatchConfig.survival() and round_active:
 				hud.show_death(str(player.last_killer), str(player.last_weapon), -1.0)
 			else:
 				hud.show_death(str(player.last_killer), str(player.last_weapon), mp_delay)
@@ -772,7 +775,7 @@ func _on_player_died() -> void:
 		return
 	# Survival: no respawn until round ends. _reset_round will (re)spawn everyone
 	# (also when we die on the winner screen — a timer here would add a 2nd body).
-	if Settings.survival:
+	if MatchConfig.survival():
 		if hud:
 			# Negative delay = HUD shows "waiting for next round" instead of a countdown.
 			hud.show_death(str(player.last_killer), str(player.last_weapon), -1.0)
@@ -894,10 +897,25 @@ func _respawn_delay_for_team(t: int) -> float:
 	# #304 Bomb Defusal: the dead come back together on the next wave.
 	if Settings.game_mode == Settings.MODE_BOMB and _bomb.active():
 		return _bomb.wave_delay(t)
-	# INF attackers pay a longer respawn (defender advantage).
-	if Settings.game_mode == Settings.MODE_INF and t == TEAM_RED:
-		return 5.0
-	return 2.0
+	# INF attackers pay a longer respawn (defender advantage). 5 / 2 s unless
+	# a dedicated server's server.cfg says otherwise (#317, via MatchConfig so
+	# clients count down the host's delay).
+	return MatchConfig.respawn_secs(Settings.game_mode == Settings.MODE_INF and t == TEAM_RED)
+
+
+## #317: points / kills / captures to win in `mode` — the constants below
+## unless a dedicated server's server.cfg sets score_limit_<mode>.
+func win_score(mode: int) -> int:
+	var def: int = SCORE_TO_WIN
+	match mode:
+		Settings.MODE_CTF: def = CTF_SCORE_TO_WIN
+		Settings.MODE_INF: def = INF_SCORE_TO_WIN
+		Settings.MODE_HTF: def = HTF_SCORE_TO_WIN
+		Settings.MODE_PM: def = PM_SCORE_TO_WIN
+		Settings.MODE_DOM: def = DOM_SCORE_TO_WIN
+	if Net.is_dedicated and Net.server_cfg != null:
+		return Net.server_cfg.score_limit(mode, def)
+	return def
 
 
 func _safe_spawn_near(pos: Vector2, team: int) -> Vector2:
@@ -1612,6 +1630,14 @@ func host_say(text: String) -> void:
 
 func host_toggle_ff() -> void:
 	_votes.host_toggle_ff()
+
+
+## #317: a client's "/" admin command (/login, /myid, host commands) for the
+## server; the host checks the sender is an admin (match_votes.remote_admin).
+@rpc("any_peer", "reliable")
+func net_admin_cmd(text: String) -> void:
+	if Net.is_host():
+		_votes.remote_admin(multiplayer.get_remote_sender_id(), text)
 
 
 func request_vote(kind: String, arg: String) -> void:

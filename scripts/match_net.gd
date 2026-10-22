@@ -81,7 +81,7 @@ func _schedule_peer_respawn(peer_id: int, t: int) -> void:
 	if not Net.is_host():
 		return
 	# Survival: _reset_round rebuilds everyone's body; no timer.
-	if Settings.survival:
+	if MatchConfig.survival():
 		return
 	var delay: float = main._respawn_delay_for_team(t)
 	var mode_at_schedule: int = Net.mode
@@ -368,6 +368,9 @@ func net_spawn_ack() -> void:
 	# the host's mods / friendly-fire / bot roster immediately instead of
 	# running under its own local Settings until the next admin-menu change.
 	main.rpc_id(sender, "net_match_config_apply", MatchConfig.to_dict())
+	# #317: server.cfg message of the day (once per connection).
+	if Net.is_dedicated and Net.server_cfg != null:
+		Net.server_cfg.on_peer_ready(main, sender)
 	# Send an immediate pickup snapshot + M2 mount ownership so a late-joiner
 	# sees currently-thrown weapons on the ground and knows which turrets are
 	# already occupied, instead of waiting for the next 10Hz broadcast tick.
@@ -599,7 +602,10 @@ func net_chat(author: String, msg: String, scope: String, sender_team: int) -> v
 	msg = msg.left(200)
 	if Net.is_networked():
 		var sender: int = main.multiplayer.get_remote_sender_id()
-		if sender > 0 and sender != main.multiplayer.get_unique_id():
+		# The host (peer 1) is the authority and may post as "HOST" / "SERVER"
+		# (a dedicated host has no body to resolve a name from, so its /say,
+		# MOTD and admin replies used to be dropped here, #317).
+		if sender > 1 and sender != main.multiplayer.get_unique_id():
 			# Resolve from the sender's registered identity even while dead —
 			# otherwise a dead client could post as anyone / read-leak team chat.
 			if main._players_by_id.has(sender) and is_instance_valid(main._players_by_id[sender]):
@@ -614,6 +620,8 @@ func net_chat(author: String, msg: String, scope: String, sender_team: int) -> v
 	# visible to everyone. Route through the HUD's chat feed.
 	if scope == "team" and is_instance_valid(main.player) and int(main.player.team) != sender_team:
 		return
+	if Net.smoke_chat_log:
+		print("SMOKE-CHAT %s: %s" % [author, msg])
 	if main.hud != null and main.hud.has_method("post_chat"):
 		main.hud.post_chat(author, msg, scope == "team")
 

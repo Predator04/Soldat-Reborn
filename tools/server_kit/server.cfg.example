@@ -1,0 +1,147 @@
+# Tracerfall dedicated server config (server.cfg)
+#
+# Copy this file to server.cfg next to the server program and change what you
+# need (start-server does that for you on the first run). Every line is
+#     key = value
+# Lines starting with # are comments; a key you leave out keeps the game's
+# default (shown in each comment). [section] headers are only for reading.
+# A line the server doesn't understand is printed in the log
+# ("SERVERCFG line N: ...") and skipped - the server always starts.
+#
+# Command-line flags win over this file (--port, --map, --mode, --bans,
+# --register, --fill, --bots, --name), also after /reloadcfg.
+# Another file:  TracerfallServer --config /path/to/other.cfg
+#
+# When a change takes effect:
+#   [boot]  restart the server
+#   [live]  at once, after an admin types /reloadcfg in the game
+#   [next]  when the next map starts (after /reloadcfg)
+
+[server]
+# Name in the server browser (max 48 characters). [live]  Default: Soldat Server
+name = My Tracerfall Server
+
+# UDP port. Players also need port + 1 (server info queries), so open both,
+# e.g. 7777 and 7778. [boot]  Default: 7777
+port = 7777
+
+# List the server on the master server so it shows up in Find Games.
+# true = the official master, false = LAN / direct IP only, or a master URL.
+# [boot]  Default: false
+register = true
+
+# Message of the day, sent to each player who joins. Repeat the key for more
+# lines (up to 200 characters each). [live]  Default: none
+motd = Welcome! Be nice, no spawn camping.
+#motd = Rotation: Ascent, Nuubia, Arena. Type /votemap <map> to change.
+
+# In-game admin: a player types  /login <password>  in the chat line, then can
+# use the host commands: /addbot [skill] [name], /bots N, /kick name,
+# /map name, /gamemode mode, /restart, /next (next rotation map), /say text,
+# /ff (friendly fire on/off), /votecancel, /reloadcfg. Empty = password
+# login off. [live]  Default: empty
+admin_password =
+
+# Players who are admins without a password: their player ids, comma
+# separated (a player types /myid on your server to see theirs). [live]
+#admins = 3f9a0c6e1b2d4e5f...
+
+# Pause the match (and drop to ~5 frames a second) while nobody is connected,
+# so an idle server costs almost nothing. [live]  Default: true
+#idle_pause = true
+
+[rotation]
+# Maps played in order, each "Map" or "Map:mode" (mode names or short forms
+# dm tdm ctf inf htf rm pm dom br gg bomb). When a match ends the next entry
+# loads; after the last one it starts again. [live]  Default: none (players
+# vote between three random maps at the end of a match)
+rotation = Ascent:ctf, Nuubia:ctf, Arena:dm, Viet:inf, Warehouse:tdm
+
+# Play the rotation in a random order (reshuffled every lap). [live]
+# Default: false
+#rotation_random = false
+
+# Mode for rotation entries without ":mode" (and the first map when there is
+# no rotation). [next]  Default: the server's last mode (Deathmatch on a new
+# install)
+#mode = ctf
+
+# First map when there is no rotation. [boot]
+#map = Ascent
+
+# End-of-match vote: the next rotation map plus two others (rotation maps
+# first). Nobody votes = the rotation map. false = always the rotation map
+# (without a rotation: replay the same map). [live]  Default: true
+#next_map_vote = true
+
+[rules]
+# Match length in minutes (0.5 - 120). [next]  Default: 5
+#time_limit = 5
+
+# Score to win, per mode. [live]  Defaults below.
+#score_limit_dm = 20
+#score_limit_tdm = 20
+#score_limit_ctf = 3
+#score_limit_inf = 3
+# Hold the Flag: seconds the flag is held.
+#score_limit_htf = 60
+#score_limit_pm = 20
+# Domination: points (one per owned point per second).
+#score_limit_dom = 90
+
+# Seconds before a dead soldier comes back (0 - 60). [live]  Default: 2
+#respawn_time = 2
+# Infiltration attackers (red) wait longer. [live]  Default: 5
+#respawn_time_inf_attackers = 5
+
+# Sub-modes. [next]  Defaults: false
+#   realistic: headshots kill in one hit, no jet boots, no ammo / fuel readouts
+#   survival:  no respawns until one side is wiped out (not Gun Game / Bomb)
+#   advance:   weapons unlock as you score kills (not Gun Game)
+#realistic = false
+#survival = false
+#advance = false
+
+# Friendly fire in team modes. [live]  Default: false
+#friendly_fire = false
+
+# Bots. fill = keep this many soldiers in the match: bots leave as players
+# join and come back when they go (0 = use "bots" instead). [live]
+# Default: fill 8
+#fill = 8
+# Fixed bot count when fill = 0 (-1 = one per spawn point). [live]
+#bots = -1
+# Bot skill 1 (easy) - 5 (hard). [live]  Default: 3
+#bot_skill = 3
+
+# Power-up crates (Predator, Berserker, vest, cluster grenades): crate slots
+# per map 0 - 3, and seconds before a taken crate comes back.
+# [next] / [live]  Defaults: 3, 20
+#bonuses = 3
+#bonus_respawn = 20
+# Medikits and grenade kits on maps that have them, and their respawn time.
+# [next] / [live]  Defaults: true, 25
+#kits = true
+#kit_respawn = 25
+
+# Weapons removed from the match (comma separated, same names as in the game,
+# e.g. Minigun, Barrett, M79, LAW, Flamethrower). [live]  Default: none
+#weapon_bans = Minigun, LAW
+
+# Buggies, tanks, helicopters and planes on maps that have them. [next]
+# Default: true
+#vehicles = true
+
+# Modifiers (1 = normal). [next]
+#gravity = 1.0
+#jet = 1.0
+#damage = 1.0
+#speed = 1.0
+
+[votes]
+# Player votes: /votemap <map>, /votekick <name>. [live]  Defaults: true
+#vote_map = true
+#vote_kick = true
+# Seconds a vote stays open, seconds between votes. [live]  Defaults: 30, 30
+#vote_time = 30
+#vote_cooldown = 30

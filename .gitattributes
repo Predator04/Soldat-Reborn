@@ -9,3 +9,5 @@
 *.exe binary
 *.zip binary
 *.bat text eol=crlf
+*.sh text eol=lf
+*.service text eol=lf
