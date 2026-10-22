@@ -173,7 +173,7 @@ var mounted_m2: Node2D = null
 var _next_proj_id: int = 1
 
 # Advance mode — kill count and per-slot unlock kill thresholds. Only enforced
-# when Settings.advance is on; otherwise every weapon is available from spawn.
+# when MatchConfig.advance() is on; otherwise every weapon is available from spawn.
 var advance_kills := 0
 # Indexed by weapon_index — 12 primaries (matches `weapons` array size).
 const ADV_PRIMARY_UNLOCK := [10, 4, 6, 8, 12, 14, 20, 22, 18, 24, 28, 30]
@@ -684,7 +684,7 @@ func _live_move(delta: float, left: bool, right: bool, jump_pressed: bool, climb
 		# the boots — Soldat's Realistic ruleset removes fuel entirely.
 		# mod_jet scales thrust/drain/regen consistently; mod_gravity scales thrust
 		# so the boots still lift you in higher-gravity worlds.
-		var jet_pressed := Input.is_action_pressed("jet") and not Settings.realistic
+		var jet_pressed := Input.is_action_pressed("jet") and not MatchConfig.realistic()
 		var mj: float = MatchConfig.mod_jet()
 		var mg: float = MatchConfig.mod_gravity()
 		jet_on = false
@@ -1105,7 +1105,7 @@ func net_gesture(cmd: String) -> void:
 
 
 func _is_primary_unlocked(idx: int) -> bool:
-	if not Settings.advance:
+	if not MatchConfig.advance():
 		return true
 	if idx < 0 or idx >= ADV_PRIMARY_UNLOCK.size():
 		return false
@@ -1113,7 +1113,7 @@ func _is_primary_unlocked(idx: int) -> bool:
 
 
 func _is_secondary_unlocked(idx: int) -> bool:
-	if not Settings.advance:
+	if not MatchConfig.advance():
 		return true
 	if idx < 0 or idx >= ADV_SECONDARY_UNLOCK.size():
 		return false
@@ -1124,7 +1124,7 @@ func advance_receive_kill() -> PackedStringArray:
 	# Called by Main._on_kill_scored on the killer. Bumps the kill counter and
 	# auto-equips any weapon that just unlocked so the player can try it now.
 	var out := PackedStringArray()
-	if not Settings.advance:
+	if not MatchConfig.advance():
 		return out
 	advance_kills += 1
 	for i in ADV_PRIMARY_UNLOCK.size():
@@ -1156,7 +1156,7 @@ func _switch_weapon(idx: int) -> void:
 	if idx >= 0 and idx < weapons.size() and MatchConfig.weapon_banned(str(weapons[idx]["name"])):
 		return
 	# Advance: block hotkeys pointing to still-locked primaries.
-	if Settings.advance and not _is_primary_unlocked(idx):
+	if MatchConfig.advance() and not _is_primary_unlocked(idx):
 		return
 	# #87: block hotkeys pointing at a weapon we've thrown away.
 	if _is_thrown(str(weapons[idx]["name"])):
@@ -1203,7 +1203,7 @@ func _toggle_secondary() -> void:
 	if not using_secondary and MatchConfig.weapon_banned(str(secondary[secondary_index]["name"])):
 		return
 	# Advance: don't swap into a slot whose weapon isn't unlocked yet.
-	if Settings.advance:
+	if MatchConfig.advance():
 		if using_secondary and not _is_primary_unlocked(weapon_index):
 			return
 		if not using_secondary and not _is_secondary_unlocked(secondary_index):
@@ -1568,7 +1568,7 @@ func _first_non_thrown_unlocked(arr: Array, is_secondary: bool) -> int:
 	for i in arr.size():
 		if _is_thrown(str(arr[i]["name"])):
 			continue
-		if Settings.advance:
+		if MatchConfig.advance():
 			if is_secondary and not _is_secondary_unlocked(i):
 				continue
 			if not is_secondary and not _is_primary_unlocked(i):
@@ -1975,7 +1975,7 @@ func net_state(pos: Vector2, vel: Vector2, aim: Vector2, face: float, jetting: b
 				_send_hit(0.0, "", "", -1)
 			hp = health
 			var mj: float = MatchConfig.mod_jet()
-			var fv: Dictionary = g.check_fuel(jetting, fuel_val, JET_DRAIN / maxf(0.1, mj), JET_REGEN * mj, 0.0 if Settings.realistic else 100.0)
+			var fv: Dictionary = g.check_fuel(jetting, fuel_val, JET_DRAIN / maxf(0.1, mj), JET_REGEN * mj, 0.0 if MatchConfig.realistic() else 100.0)
 			fuel_val = float(fv["fuel"])
 			if force == "":
 				force = str(fv["force"])

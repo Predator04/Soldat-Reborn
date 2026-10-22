@@ -88,7 +88,7 @@ func _draw() -> void:
 	card.shadow_color = Color(UITheme.COL_ALERT, 0.18 * pulse)
 	card.shadow_size = 10 if low else 0
 	draw_style_box(card, CARD)
-	var real: bool = Settings.realistic
+	var real: bool = MatchConfig.realistic()
 	# Health
 	var hp_col := UITheme.COL_HUD_HEALTH
 	if _hp < 0.6:

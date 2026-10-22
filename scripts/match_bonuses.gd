@@ -75,7 +75,7 @@ func _spawn_bonus_boxes_init() -> void:
 	var spots: Array = explicit.duplicate() if not explicit.is_empty() \
 		else (main._map.get("bot_spawns", []) as Array).duplicate()
 	spots.shuffle()
-	var count: int = mini(BONUS_MAX_SLOTS, spots.size())
+	var count: int = mini(int(Net.rule("bonuses", BONUS_MAX_SLOTS)), spots.size())   # #317 server.cfg
 	# Test hosts (--smoke-no-bonus, tools/hosthits_test.gd): no random bonus
 	# crates — a Berserker knife or Predator speed would change the scripted
 	# duel's numbers. Kits stay.
@@ -92,7 +92,7 @@ func _spawn_bonus_boxes_init() -> void:
 	for pair in [["medkits", "medkit"], ["grenade_kits", "grenades"]]:
 		var pts: Array = (main._map.get(pair[0], []) as Array).duplicate()
 		pts.shuffle()
-		for i in mini(KIT_MAX_EACH, pts.size()):
+		for i in (mini(KIT_MAX_EACH, pts.size()) if bool(Net.rule("kits", true)) else 0):
 			var v = pts[i]
 			var kp: Vector2 = v if v is Vector2 else Vector2(float(v[0]), float(v[1]))
 			_bonus_slots.append(kp + Vector2(0, -14.0))
@@ -185,7 +185,7 @@ func _on_bonus_touched(body: Node, bid: int, slot_idx: int) -> void:
 	# will land there in BONUS_RESPAWN seconds.
 	if slot_idx >= 0 and slot_idx < _bonus_slot_cd.size():
 		_bonus_slot_active[slot_idx] = 0
-		_bonus_slot_cd[slot_idx] = BONUS_RESPAWN
+		_bonus_slot_cd[slot_idx] = float(Net.rule("bonus_respawn", BONUS_RESPAWN))
 
 
 # Medikit heals to full, grenade kit refills to 3 — for players and bots, and
@@ -209,7 +209,7 @@ func _collect_kit(body: Node, bid: int, slot_idx: int, kind: String) -> void:
 	_despawn_bonus_local(bid)
 	if slot_idx >= 0 and slot_idx < _bonus_slot_cd.size():
 		_bonus_slot_active[slot_idx] = 0
-		_bonus_slot_cd[slot_idx] = KIT_RESPAWN
+		_bonus_slot_cd[slot_idx] = float(Net.rule("kit_respawn", KIT_RESPAWN))
 
 
 func _despawn_bonus_local(bid: int) -> void:

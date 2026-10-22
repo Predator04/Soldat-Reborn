@@ -669,7 +669,7 @@ func show_mode_banner() -> void:
 	var t := "%s\n%s" % [GameInfo.mode_title(gm), GameInfo.mode_goal(gm)]
 	var subs: PackedStringArray = PackedStringArray()
 	for k in ["realistic", "survival", "advance"]:
-		if bool(Settings.get(k)):
+		if bool(MatchConfig.call(k)):
 			subs.append(str(GameInfo.SUBMODES[k]))
 	if not subs.is_empty():
 		t += "\n" + "  ".join(subs)
@@ -1039,11 +1039,11 @@ func _process(delta: float) -> void:
 	var mode_str: String = GameInfo.mode_title(Settings.game_mode).capitalize() + " · "
 	# Sub-modes append to the tag so players notice.
 	var tags: PackedStringArray = PackedStringArray()
-	if Settings.realistic:
+	if MatchConfig.realistic():
 		tags.append("REAL")
-	if Settings.survival:
+	if MatchConfig.survival():
 		tags.append("SURV")
-	if Settings.advance:
+	if MatchConfig.advance():
 		tags.append("ADV")
 	if tags.size() > 0:
 		mode_str = mode_str + "[" + "/".join(tags) + "] "
@@ -1096,8 +1096,8 @@ func _process(delta: float) -> void:
 		w = player.weapons[wi]
 		mag = player.ammo[wi]
 	# Realistic ruleset hides the magazine readout — pilots go by weapon feel.
-	lbl_ammo.visible = not Settings.realistic
-	lbl_fuel.visible = not Settings.realistic
+	lbl_ammo.visible = not MatchConfig.realistic()
+	lbl_fuel.visible = not MatchConfig.realistic()
 	lbl_ammo.text = (tr("RELOADING")) if player.reloading else "%d / %d" % [mag, int(w["mag"])]
 	lbl_ammo.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM if player.reloading \
 			else (UITheme.COL_ALERT if mag == 0 else UITheme.COL_HUD_HEALTH))

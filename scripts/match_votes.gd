@@ -12,6 +12,7 @@ const Main = preload("res://scripts/main.gd")
 var main: Main
 
 var _nm_votes: Dictionary = {}       # voter peer id (1 = host / SP) -> choice
+var _rot_pick: Array = []            # #317: [map, mode] of the rotation's next entry (choice 0)
 # ── Vote system (#77) ─────────────────────────────────
 # Host-authoritative: any player calls /votemap or /votekick, F1/F2 to cast,
 # majority passes. Broadcast alongside match state at MATCH_SYNC_HZ.
@@ -138,6 +139,106 @@ func host_toggle_ff() -> void:
 	var hud := main.get_node_or_null("HUD")
 	if hud != null and hud.has_method("post_chat"):
 		hud.post_chat("HOST", "Friendly fire is now %s." % ("ON" if MatchConfig.host_friendly_fire else "OFF"), false)
+	elif Net.is_dedicated:
+		host_say("Friendly fire is now %s." % ("ON" if MatchConfig.host_friendly_fire else "OFF"))
+
+
+## Host chat commands (#257) shared by the host's own typed line
+## (hud_commands.gd) and remote admins on a dedicated server (#317). Returns
+## the reply for whoever typed it ("" = none). `cmd` is lower-case.
+const HOST_COMMANDS := ["/addbot", "/kick", "/bots", "/gamemode", "/map", "/restart", "/say", "/ff",
+	"/reloadcfg", "/next", "/votecancel"]
+
+
+func run_host_command(cmd: String, body: String) -> String:
+	if Net.is_networked() and not Net.is_host():
+		return "That command is host only."
+	var hc = preload("res://scripts/hud_commands.gd")
+	match cmd:
+		"/addbot":
+			var skill := 0
+			var bot_name := body
+			if body != "" and body.split(" ")[0].is_valid_int():
+				skill = int(body.split(" ")[0])
+				bot_name = body.substr(body.split(" ")[0].length()).strip_edges()
+			if skill != 0 and (skill < 1 or skill > 5):
+				return "Usage: /addbot [skill 1-5] [name]"
+			host_addbot(skill, bot_name)
+			return "Bot added." + (" %s" % bot_name if bot_name != "" else "")
+		"/bots":
+			if not body.is_valid_int():
+				return "Usage: /bots <count>"
+			host_set_bots(int(body))
+			return "Bots: %d." % Settings.bot_count
+		"/kick":
+			if body == "":
+				return "Usage: /kick <name>"
+			if not host_kick(body):
+				return "No player or bot named \"%s\"." % body
+			return "Kicked %s." % body
+		"/gamemode":
+			var mi: int = hc.resolve_mode_arg(body)
+			if mi < 0:
+				return "Usage: /gamemode <0-9 or name>"
+			host_restart_to(int(Settings.map_index), mi)
+		"/map":
+			var mp: int = hc.resolve_map_arg(body)
+			if mp < 0:
+				return "Usage: /map <name or index>"
+			host_restart_to(mp, int(Settings.game_mode))
+		"/restart":
+			host_restart_to(int(Settings.map_index), int(Settings.game_mode))
+		"/say":
+			if body == "":
+				return "Usage: /say <message>"
+			host_say(body)
+		"/ff":
+			host_toggle_ff()
+		"/votecancel":
+			cancel_vote()
+		"/reloadcfg":
+			return Net.server_cfg.reload(main)
+		"/next":
+			# #317: go to the next rotation entry now (else a random map).
+			if Net.server_cfg != null and Net.server_cfg.has_rotation():
+				var nx: Array = Net.server_cfg.peek_next(int(Settings.game_mode))
+				Net.server_cfg.advance_rotation()
+				print("ROTATION next: map=%s mode=%s (/next)" % [_resolve_map_name(int(nx[0])), str(Net.MODE_NAMES[int(nx[1])])])
+				host_restart_to(int(nx[0]), int(nx[1]))
+			else:
+				host_restart_to((main.cur_map_index + 1 + randi() % maxi(1, main.MAPS.size() - 1)) % main.MAPS.size(), int(Settings.game_mode))
+	return ""
+
+
+## #317: a "/" command a client sent to the server (Main.net_admin_cmd).
+## Anyone: /myid, /login <password>. Admins (server.cfg `admins`, or logged
+## in): the host commands above. The reply goes back to the sender only.
+func remote_admin(pid: int, raw: String) -> void:
+	if not (Net.is_networked() and Net.is_host()) or Net.server_cfg == null:
+		return
+	raw = raw.strip_edges().left(200)
+	var parts := raw.split(" ", false)
+	if parts.is_empty():
+		return
+	var cmd := parts[0].to_lower()
+	var body := raw.substr(parts[0].length()).strip_edges()
+	var cfg = Net.server_cfg
+	var reply := ""
+	if cmd == "/myid":
+		reply = "Your player id: %s" % str(Net.peer_profiles.get(pid, "unknown (rejoin)"))
+	elif cmd == "/login":
+		reply = cfg.login(pid, body)
+	elif not HOST_COMMANDS.has(cmd):
+		return
+	elif not cfg.is_admin(pid):
+		reply = "That command is for server admins (/login <password>)."
+	else:
+		print("ADMIN %s (peer %d): %s" % [_peer_display_name(pid), pid, cmd])
+		reply = run_host_command(cmd, body)
+		if reply == "" and cmd != "/say":
+			reply = "Done: %s" % cmd
+	if reply != "":
+		cfg.tell(main, pid, reply)
 
 
 func request_vote(kind: String, arg: String) -> void:
@@ -242,6 +343,13 @@ func _host_start_vote(kind: String, arg: String, starter_id: int) -> void:
 		_vote_chat("Vote cooldown: %ds left." % int(ceil(_vote_cooldown)))
 		return
 	var starter := _peer_display_name(starter_id)
+	# #317: server.cfg vote_map / vote_kick switches.
+	if not bool(Net.rule("vote_map" if kind == "votemap" else "vote_kick", true)):
+		var off := "%s votes are off on this server." % ("Map" if kind == "votemap" else "Kick")
+		_vote_chat(off)
+		if Net.is_dedicated:
+			Net.server_cfg.tell(main, starter_id, off)
+		return
 	match kind:
 		"votemap":
 			var idx := _resolve_vote_map_arg(arg)
@@ -271,7 +379,7 @@ func _host_start_vote(kind: String, arg: String, starter_id: int) -> void:
 	main.vote_yes = 1  # starter's implicit yes vote
 	main.vote_no = 0
 	_vote_voters = {starter_id: true}
-	main.vote_time_left = VOTE_DURATION
+	main.vote_time_left = float(Net.rule("vote_time", VOTE_DURATION))
 	main.vote_starter = starter
 	_vote_chat("%s called a %s: %s   ([F1]/[F2] to vote)" % [starter, main.vote_kind, main.vote_target_str])
 	if Net.is_networked() and Net.is_host():
@@ -340,7 +448,7 @@ func _resolve_vote(passed: bool, reason: String = "") -> void:
 	main.vote_no = 0
 	main.vote_time_left = 0.0
 	_vote_voters.clear()
-	_vote_cooldown = VOTE_COOLDOWN
+	_vote_cooldown = float(Net.rule("vote_cooldown", VOTE_COOLDOWN))
 	if not passed:
 		return
 	match kind:
@@ -407,7 +515,22 @@ func _pick_next_map_choices() -> void:
 	_nm_votes.clear()
 	main.my_next_map_vote = -1
 	# Custom / editor maps (and Survival BR-style resets) keep playing the same map.
-	if main.cur_map_index < 0 or Settings.custom_map_path != "" or Net.custom_map_json != "" or main.MAPS.size() < 4:
+	_rot_pick = []
+	if main.cur_map_index < 0 or Settings.custom_map_path != "" or Net.custom_map_json != "":
+		return
+	# #317: a dedicated server's rotation (server.cfg): the next entry is
+	# choice 1 — the one played when nobody votes; next_map_vote adds two
+	# more (rotation maps first). next_map_vote = false without a rotation
+	# replays the map.
+	if Net.server_cfg != null and Net.server_cfg.has_rotation():
+		_rot_pick = Net.server_cfg.peek_next(int(Settings.game_mode))
+		var choices: Array = [int(_rot_pick[0])]
+		if bool(Net.rule("next_map_vote", true)):
+			choices += Net.server_cfg.vote_extras([int(_rot_pick[0]), main.cur_map_index], 2, main.MAPS.size())
+		main.next_map_choices = choices
+		_push_next_maps()
+		return
+	if not bool(Net.rule("next_map_vote", true)) or main.MAPS.size() < 4:
 		return
 	var cur: int = main.cur_map_index
 	var pool: Array = []
@@ -485,9 +608,17 @@ func _apply_next_map_vote() -> bool:
 			return false
 	var target: int = int(main.next_map_choices[best])
 	print("NEXT-MAP %s (%d votes)" % [next_map_name(best), best_ct])
+	var next_mode: int = int(Settings.game_mode)
+	if best == 0 and not _rot_pick.is_empty() and int(_rot_pick[0]) == target:
+		# #317: the rotation entry won (or nobody voted): its mode, and the
+		# rotation moves on. Another map voted in leaves the rotation where it is.
+		next_mode = int(_rot_pick[1])
+		Net.server_cfg.advance_rotation()
+		print("ROTATION next: map=%s mode=%s" % [next_map_name(best), str(Net.MODE_NAMES[clampi(next_mode, 0, Net.MODE_NAMES.size() - 1)])])
+	_rot_pick = []
 	main.next_map_choices = []
 	if Net.is_networked():
-		main.bcast("net_match_restart", [target, Settings.game_mode], true)
+		main.bcast("net_match_restart", [target, next_mode], true)
 	else:
 		Settings.map_index = target
 		Settings.custom_map_path = ""

@@ -42,7 +42,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 G="${GODOT_BIN:-$HOME/godot/Godot_v4.7.2-stable_linux.x86_64}"
 QUICK=0; OUT="build/gate"; ONLY="A B N C D R F E"; MODESEL="0 1 2 3 4 5 6 7 8 9 10"
-NETSEL="ctf dm dedboot selfcheck two trust drop latepu fill ranked friends news featured respawn killcam drive heli plane bomb rejoin relay host listen lan soak m3 m7 m9 m2"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
+NETSEL="ctf dm dedboot selfcheck srvcfg srvbuild two trust drop latepu fill ranked friends news featured respawn killcam drive heli plane bomb rejoin relay host listen lan soak m3 m7 m9 m2"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --quick) QUICK=1;; --out) OUT="$2"; shift;; --only) ONLY="$2"; shift;;
@@ -147,6 +147,7 @@ echo "== Release gate $(date -Is)  godot=$G  load=x$LOAD0 ($(cut -d' ' -f1 /proc
 # could not bind). Every Godot launch also starts from default settings /
 # controls (tests toggle mods, bot counts, loadouts and some of them save).
 # The machine's own user files are never touched.
+ORIG_XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"   # export templates live here (C srvbuild)
 RUN_ID="$$-$(date +%s)"
 GATE_DATA="$(cd "$OUT" && pwd)/.userdata-$RUN_ID"
 mkdir -p "$GATE_DATA"
@@ -187,6 +188,29 @@ if [ "$(grep -c 'include_filter="\*.poa, \*.json' export_presets.cfg)" -ge 2 ]; 
 # #224 itch.io upload script: butler command lines (fake butler), skips cleanly without a key / target.
 il=$(python3 tools/itch/push.py --self-test 2>&1 | tail -1)
 if echo "$il" | grep -q "ITCH-SELFTEST ok"; then pass "A itch push: ${il#ITCH-SELFTEST ok }"; else fail "A itch push self-test: $il"; fi
+# #320 server updater: fake signed GitHub release, signature checked by the game.
+ul=$(timeout $(T 400) python3 tools/server_update_test.py --godot "'$G' --headless --path '$(pwd)'" 2>&1 | tail -1)
+if echo "$ul" | grep -q "^SRVUPDATE-TEST ok"; then pass "A server updater: ${ul#SRVUPDATE-TEST ok }"; else fail "A server updater: $ul"; fi
+# #320 server archive packer (tools/pack_server.gd): tar.gz keeps the exec bit, zip lists the files.
+PK="$OUT/packtest"; rm -rf "$PK"; mkdir -p "$PK/src/TracerfallServer"
+printf '#!/bin/sh\n' > "$PK/src/TracerfallServer/start-server.sh"; printf 'x\n' > "$PK/src/TracerfallServer/HOSTING.md"
+"$G" --headless -s tools/pack_server.gd -- --src="$PK/src/TracerfallServer" --out="$PK/t.tar.gz" > "$PK/pack.log" 2>&1
+"$G" --headless -s tools/pack_server.gd -- --src="$PK/src/TracerfallServer" --out="$PK/t.zip" >> "$PK/pack.log" 2>&1
+tl=$(tar tvzf "$PK/t.tar.gz" 2>&1 | tr '\n' ' ')
+zl=$(python3 -c 'import sys, zipfile; print(" ".join(sorted(zipfile.ZipFile(sys.argv[1]).namelist())))' "$PK/t.zip" 2>&1)
+if echo "$tl" | grep -q -- "-rwxr-xr-x .*TracerfallServer/start-server.sh" && echo "$tl" | grep -q -- "-rw-r--r-- .*TracerfallServer/HOSTING.md" \
+    && echo "$zl" | grep -q "TracerfallServer/start-server.sh" && [ "$(errs "$PK/pack.log")" = "0" ]; then
+  pass "A server archive packer: tar.gz modes + zip entries"
+else
+  fail "A server archive packer: tar='$tl' zip='$zl'"
+fi
+# #320 the stripped server presets exist and keep the game's own export untouched.
+if grep -q '^name="Linux Server"' export_presets.cfg && grep -q '^name="Windows Server"' export_presets.cfg \
+    && [ "$(grep -c '^dedicated_server=true' export_presets.cfg)" = 2 ] && grep -q '^export_path="build/SoldatReborn.exe"' export_presets.cfg; then
+  pass "A server export presets (Linux Server + Windows Server, dedicated, stripped)"
+else
+  fail "A server export presets missing / changed"
+fi
 
 fi
 
@@ -327,6 +351,111 @@ case " $NETSEL " in *" selfcheck "*)
     pass "C net selfcheck (tools/selfcheck.py): $line"
   else
     fail "C net selfcheck: exit=$src '${line:-no SELFCHECK line}' $(grep -v '^selfcheck: log' "$OUT/net_selfcheck.log" | head -1 | cut -c1-160)"
+  fi
+;; esac
+# #317 server.cfg on a dedicated server: bad lines are logged and skipped,
+# MOTD reaches the joiner, admin commands need /login, /reloadcfg applies a
+# live key at once and a next-map key on the next map, the rotation moves on
+# when the (30 s) match ends. srvcfg_case LABEL GODOT-BINARY [server flags]
+srvcfg_case() {
+  local L="$1" BIN="$2"; shift 2
+  local port; port=$(freeport udp)
+  local CFG="$OUT/${L}_server.cfg"
+  cat > "$CFG" <<EOF
+# gate C $L (#317) — every kind of line
+[server]
+name = "Gate Config Server"
+port = $port
+motd = Welcome to the $L gate
+motd = Second MOTD line
+admin_password = gatepw
+bogus_key = 1
+bots = banana
+this line has no equals sign
+[rotation]
+rotation = Arena:ctf, Ascent:dm
+[rules]
+time_limit = 0.5
+fill = 4
+respawn_time = 2.5
+score_limit_ctf = 50
+EOF
+  rm -f "$OUT/net_${L}_server.log" "$OUT/net_${L}_client.log"   # a --keep rerun must not wait on the old log
+  timeout $(T 150) "$BIN" "$@" --config "$CFG" > "$OUT/net_${L}_server.log" 2>&1 &
+  local spid=$!
+  wait_ready "$OUT/net_${L}_server.log"
+  # The admin edits the file, then reloads: one live key, one next-map key.
+  sed -i 's/^respawn_time = 2.5/respawn_time = 3/' "$CFG"; echo "realistic = true" >> "$CFG"
+  sleep 1
+  timeout $(T 120) "$G" --headless -- --smoke-botfire --port $port --smoke-secs=75 \
+    --smoke-admin="/bots 3;/myid;/login nope;/login gatepw;/reloadcfg" > "$OUT/net_${L}_client.log" 2>&1
+  wait_log "$OUT/net_${L}_server.log" "Dedicated match ready: map=Ascent mode=0" 30
+  kill $spid 2>/dev/null; wait $spid 2>/dev/null
+  local S="$OUT/net_${L}_server.log" C="$OUT/net_${L}_client.log" miss=""
+  local first; first=$(grep -v -e '^Godot Engine' -e '^$' "$S" | head -1)
+  echo "$first" | grep -q "^Dedicated server starting: .*port $port" || miss="$miss first-line"
+  grep -qE "^SERVERCFG line [0-9]+: unknown key 'bogus_key'" "$S" || miss="$miss unknown-key"
+  grep -qE "^SERVERCFG line [0-9]+: bad value for bots" "$S" || miss="$miss bad-value"
+  grep -qE "^SERVERCFG line [0-9]+: not a 'key = value' line" "$S" || miss="$miss no-equals"
+  grep -q "listening on port $port, map=Arena mode=Capture the Flag" "$S" || miss="$miss rotation-start"
+  grep -q "SERVERCFG match rules: realistic=false .*time=30s respawn=2.5s" "$S" || miss="$miss rules-1"
+  grep -q "^ADMIN .*/reloadcfg" "$S" || miss="$miss admin-log"
+  grep -q "^SERVERCFG reload #1" "$S" || miss="$miss reload"
+  grep -q "^ROTATION next: map=Ascent mode=Deathmatch" "$S" || miss="$miss rotation-next"
+  grep -q "Dedicated match ready: map=Ascent mode=0" "$S" || miss="$miss rotation-loaded"
+  grep -q "SERVERCFG match rules: realistic=true .*respawn=3.0s" "$S" || miss="$miss rules-2"
+  grep -q "SMOKE-CHAT SERVER: Welcome to the $L gate" "$C" || miss="$miss motd"
+  grep -q "SMOKE-CHAT SERVER: Second MOTD line" "$C" || miss="$miss motd-2"
+  grep -q "SMOKE-CHAT SERVER: That command is for server admins" "$C" || miss="$miss not-admin"
+  grep -qE "SMOKE-CHAT SERVER: Your player id: [0-9a-f]{64}" "$C" || miss="$miss myid"
+  grep -q "SMOKE-CHAT SERVER: Wrong admin password" "$C" || miss="$miss bad-password"
+  grep -q "SMOKE-CHAT SERVER: You are now an admin" "$C" || miss="$miss login"
+  grep -q "SMOKE-CHAT SERVER: Config reloaded .*Next map: realistic" "$C" || miss="$miss reload-reply"
+  grep -q "SMOKE-BOTFIRE" "$C" || miss="$miss client-end"
+  # A map change with a client connected: the client's last state packets for
+  # its old body can reach the server after the old Main is gone (same as the
+  # end-of-match map vote). Those dropped-packet lines are expected here; any
+  # other error counts.
+  local DROP='Node not found: "Main/Player_|Failed to get cached node from peer|Invalid packet received. Requested node was not found'
+  local se ce; se=$(grep -E "$ERR_RE" "$S" 2>/dev/null | grep -cvE "$DROP" || true); ce=$(errs "$C")
+  if [ -z "$miss" ] && [ "$se" = "0" ] && [ "$ce" = "0" ]; then
+    pass "C net $L: bad lines logged + skipped, MOTD, /login + /reloadcfg (live + next map), rotation Arena:ctf -> Ascent:dm"
+  else
+    fail "C net $L: missing:${miss:- none} server_errs=$se client_errs=$ce"
+  fi
+}
+case " $NETSEL " in *" srvcfg "*)
+  srvcfg_case srvcfg "$G" --headless -- --dedicated
+  # The shipped example file has no bad lines (flags win: other port, unlisted).
+  ep=$(freeport udp)
+  timeout $(T 60) "$G" --headless -- --smoke-dedicated --config tools/server_kit/server.cfg.example --port $ep --register= > "$OUT/net_srvcfg_example.log" 2>&1
+  el=$(grep -m1 -E "^SERVERCFG loaded .*server.cfg.example" "$OUT/net_srvcfg_example.log")
+  if echo "$el" | grep -qE ": [0-9]+ settings, 0 problems" && grep -q "SMOKE-DEDICATED listening=true" "$OUT/net_srvcfg_example.log" \
+      && ! grep -q "^SERVERCFG line" "$OUT/net_srvcfg_example.log" && [ "$(errs "$OUT/net_srvcfg_example.log")" = "0" ]; then
+    pass "C net srvcfg example file: ${el#SERVERCFG loaded }"
+  else
+    fail "C net srvcfg example file: '${el:-no SERVERCFG line}' $(grep -m2 '^SERVERCFG line' "$OUT/net_srvcfg_example.log" | tr '\n' ' ')"
+  fi
+;; esac
+# #320 standalone server download: export the stripped "Linux Server" preset
+# (needs the Linux export template; skipped with a note without it) and run
+# the srvcfg checks against that binary.
+case " $NETSEL " in *" srvbuild "*)
+  TPL="$ORIG_XDG_DATA_HOME/godot/export_templates/$("$REAL_G" --version 2>/dev/null | sed -E 's/^([0-9.]+)\.stable.*/\1.stable/')/linux_release.x86_64"
+  if [ ! -f "$TPL" ]; then
+    info "C net srvbuild skipped: no Linux export template ($TPL)"
+  else
+    SB="$OUT/srvbuild"; rm -rf "$SB"; mkdir -p "$SB"
+    XDG_DATA_HOME="$ORIG_XDG_DATA_HOME" timeout $(T 600) "$REAL_G" --headless --export-release "Linux Server" "$SB/TracerfallServer.x86_64" > "$OUT/net_srvbuild_export.log" 2>&1
+    if [ ! -x "$SB/TracerfallServer.x86_64" ] || [ ! -f "$SB/TracerfallServer.pck" ]; then
+      fail "C net srvbuild: export failed ($(grep -m1 ERROR "$OUT/net_srvbuild_export.log"))"
+    else
+      info "C net srvbuild: pck $(( $(stat -c %s "$SB/TracerfallServer.pck") / 1048576 )) MB, binary $(( $(stat -c %s "$SB/TracerfallServer.x86_64") / 1048576 )) MB"
+      XDG_DATA_HOME="$GATE_DATA" srvcfg_case srvbuild "$SB/TracerfallServer.x86_64"
+      grep -q "^Dedicated server data folder: .*TracerfallServer" "$OUT/net_srvbuild_server.log" \
+        && pass "C net srvbuild: own data folder ($(grep -m1 '^Dedicated server data folder' "$OUT/net_srvbuild_server.log" | sed 's/.*: //'))" \
+        || fail "C net srvbuild: no 'Dedicated server data folder: …TracerfallServer' line"
+    fi
   fi
 ;; esac
 case " $NETSEL " in *" two "*)

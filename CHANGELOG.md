@@ -2,6 +2,21 @@
 
 All notable changes to Soldat Reborn.
 
+## [Unreleased]
+
+### Added — standalone dedicated server download (#320)
+- **Run a server without the game.** Every release now also has `TracerfallServer-windows.zip` (47 MB) and `TracerfallServer-linux.tar.gz` (37 MB): a headless server with the graphics and music stripped out (36 MB of game data instead of 168 MB; the full game exe is 277 MB). Unpack, run `start-server.bat` / `./start-server.sh`, done — see `HOSTING.md` inside (ports, admin, service, updating). The game's own downloads (`SoldatReborn.exe/.apk/.pck`) are unchanged.
+- **Runs at boot:** `install-service.bat` (a Windows scheduled task, nothing extra to install; output in `logs\server.log`) or `sudo ./install-service.sh` (systemd unit, `--auto-update` optional).
+- **Updates itself safely:** `update-server` downloads the latest server archive from GitHub only when it is newer, refuses anything not signed with the game's release key (checked by the installed server), checks the new version really is that version, keeps your `server.cfg` and the old files (`_update/previous`). Needs Python 3.
+- The server keeps its own data folder (`TracerfallServer`, printed at start), so hosting on your gaming PC never touches your game settings.
+- Measured, Ascent CTF with 8 bots: about 22 % of one core and 217 MB RAM on the server download vs 21 % / 225 MB for the full game run headless — headless already skipped the graphics work, the gain is the download and needing nothing of the game.
+
+### Added — server.cfg for dedicated servers (#317)
+- **One config file for a dedicated server:** name, port, master-server listing, message of the day, admin password + admin list, map / mode **rotation** (`rotation = Ascent:ctf, Nuubia:ctf, Arena:dm`, optional random order), end-of-match vote on/off, time limit, score limit per mode, respawn times (incl. Infiltration attackers), Realistic / Survival / Advance, friendly fire, bots / skill / fill, power-up crates and kits (count, respawn), weapon bans, vehicles, modifiers, vote settings. Every key is explained in `server.cfg.example`. `--config <file>` picks another file; command-line flags still win.
+- A line the server doesn't understand (unknown key, bad value) is printed in the log and skipped — the server always starts.
+- **In-game admin on dedicated servers:** `/login <password>` (or be listed by `/myid` in `admins`), then the host commands work remotely: `/map`, `/gamemode`, `/restart`, `/next` (next rotation map), `/addbot`, `/bots`, `/kick`, `/say`, `/ff`, `/votecancel`, and **`/reloadcfg`** — applies most settings at once and the map-level ones on the next map, and says which.
+- Fixed: a dedicated server's `/say` lines never reached players, and joined players ran their own Realistic / Survival / Advance choice instead of the server's (the host's sub-modes and respawn delay now reach every player).
+
 ## [1.40.0] — 2026-10-22 — Bomb Defusal
 
 ### Changed — game mode limits and map balance (#311)

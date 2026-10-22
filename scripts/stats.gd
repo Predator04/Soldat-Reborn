@@ -331,7 +331,7 @@ func record_match_end(won: bool) -> void:
 		if not (Settings.game_mode in modes):
 			modes.append(Settings.game_mode)
 		counters["modes_won"] = modes
-		if Settings.survival:
+		if MatchConfig.survival():
 			_bump("survival_wins")
 	else:
 		losses += 1

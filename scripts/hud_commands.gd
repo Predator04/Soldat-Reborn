@@ -121,13 +121,18 @@ func try_vote_command(raw: String) -> bool:
 			main.request_vote("votekick", arg)
 		return true
 	if lower == "/votecancel":
-		if main.has_method("cancel_vote"):
+		if Net.is_networked() and not Net.is_host():
+			main.rpc_id(1, "net_admin_cmd", "/votecancel")   # #317: a dedicated server's admin
+		elif main.has_method("cancel_vote"):
 			main.cancel_vote()
 		return true
 	return false
 
 
-# Host chat commands (#257) — the classic Soldat server set. Host / SP only.
+# Host chat commands (#257) — the classic Soldat server set. On the host / SP
+# they run here (match_votes.run_host_command); a client sends them to the
+# server (#317: a dedicated server's admins — server.cfg `admins` or
+# /login <password> — may use them; /myid shows the id for `admins`).
 # Returns true when the text was one of ours (the caller skips chat/gestures).
 func try_host_command(raw: String) -> bool:
 	var main := _main()
@@ -136,64 +141,25 @@ func try_host_command(raw: String) -> bool:
 	var parts := raw.split(" ", false)
 	var cmd := parts[0].to_lower()
 	var body := raw.substr(parts[0].length()).strip_edges()
-	var cmds := ["/addbot", "/kick", "/bots", "/gamemode", "/map", "/restart", "/say", "/ff"]
-	var hit := false
-	for c in cmds:
-		if cmd == c:
-			hit = true
-			break
-	if not hit:
+	var remote_only := ["/login", "/myid"]
+	if not (cmd in main._votes.HOST_COMMANDS or cmd in remote_only):
 		return false
 	if Net.is_networked() and not Net.is_host():
-		_post("HOST", "That command is host only.")
+		main.rpc_id(1, "net_admin_cmd", raw)
 		return true
-	match cmd:
-		"/addbot":
-			var skill := 0
-			var bot_name := body
-			if body != "" and body.split(" ")[0].is_valid_int():
-				skill = int(body.split(" ")[0])
-				bot_name = body.substr(body.split(" ")[0].length()).strip_edges()
-			if skill != 0 and (skill < 1 or skill > 5):
-				_post("HOST", "Usage: /addbot [skill 1-5] [name]")
-				return true
-			main.host_addbot(skill, bot_name)
-			_post("HOST", "Bot added." + (" %s" % bot_name if bot_name != "" else ""))
-		"/bots":
-			if body.is_valid_int():
-				main.host_set_bots(int(body))
-			else:
-				_post("HOST", "Usage: /bots <count>")
-		"/kick":
-			if body == "":
-				_post("HOST", "Usage: /kick <name>")
-			elif not main.host_kick(body):
-				_post("HOST", "No player or bot named \"%s\"." % body)
-		"/gamemode":
-			var mi := resolve_mode_arg(body)
-			if mi < 0:
-				_post("HOST", "Usage: /gamemode <0-9 or name>")
-			else:
-				main.host_restart_to(int(Settings.map_index), mi)
-		"/map":
-			var mp := resolve_map_arg(body)
-			if mp < 0:
-				_post("HOST", "Usage: /map <name or index>")
-			else:
-				main.host_restart_to(mp, int(Settings.game_mode))
-		"/restart":
-			main.host_restart_to(int(Settings.map_index), int(Settings.game_mode))
-		"/say":
-			if body == "":
-				_post("HOST", "Usage: /say <message>")
-			else:
-				main.host_say(body)
-		"/ff":
-			main.host_toggle_ff()
+	if cmd == "/myid":
+		_post("HOST", "Your player id: %s" % Settings.profile_id.to_lower().sha256_text())
+		return true
+	if cmd == "/login":
+		_post("HOST", "You are the host here.")
+		return true
+	var reply: String = main._votes.run_host_command(cmd, body)
+	if reply != "":
+		_post("HOST", reply)
 	return true
 
 
-func resolve_mode_arg(a: String) -> int:
+static func resolve_mode_arg(a: String) -> int:
 	if a.is_valid_int():
 		return clampi(int(a), 0, Net.MODE_NAMES.size() - 1)
 	var la := a.to_lower()
@@ -203,7 +169,7 @@ func resolve_mode_arg(a: String) -> int:
 	return -1
 
 
-func resolve_map_arg(a: String) -> int:
+static func resolve_map_arg(a: String) -> int:
 	if a.is_valid_int():
 		return clampi(int(a), 0, Net.MAP_NAMES.size() - 1)
 	var la := a.to_lower()

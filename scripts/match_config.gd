@@ -28,6 +28,13 @@ var _cfg_bot_skill: int = 3
 var _cfg_game_mode: int = 0
 var _cfg_map_index: int = 0
 var _cfg_weapon_bans: Array = []    # #256: names removed from the match
+# #317: sub-modes + respawn delays follow the host (a dedicated server's
+# server.cfg sets them; before, each client ran its own Settings sub-modes).
+var _cfg_realistic := false
+var _cfg_survival := false
+var _cfg_advance := false
+var _cfg_respawn := 2.0
+var _cfg_respawn_inf := 5.0
 var _broadcast_scheduled := false   # #245: debounced host_broadcast pending
 
 # Host-only match knob: even in team modes, bullets/grenades/rockets/melee can
@@ -86,6 +93,34 @@ func bot_count() -> int:
 	return _cfg_bot_count if Net.is_client() else int(Settings.bot_count)
 
 
+## #317 sub-modes: the host's (SP / host read Settings; clients the snapshot).
+## Same Gun Game / Bomb exemptions as Settings.survival / Settings.advance.
+func realistic() -> bool:
+	return _cfg_realistic if Net.is_client() else bool(Settings.realistic)
+
+
+func survival() -> bool:
+	if Net.is_client():
+		return _cfg_survival and Settings.game_mode != Settings.MODE_GG and Settings.game_mode != Settings.MODE_BOMB
+	return bool(Settings.survival)
+
+
+func advance() -> bool:
+	if Net.is_client():
+		return _cfg_advance and Settings.game_mode != Settings.MODE_GG
+	return bool(Settings.advance)
+
+
+## Respawn delay in seconds (`inf_attacker` = Infiltration's red team).
+## Defaults 2 / 5; a dedicated server's server.cfg can change them (#317).
+func respawn_secs(inf_attacker: bool) -> float:
+	if Net.is_client():
+		return _cfg_respawn_inf if inf_attacker else _cfg_respawn
+	if inf_attacker:
+		return float(Net.rule("respawn_time_inf_attackers", 5.0))
+	return float(Net.rule("respawn_time", 2.0))
+
+
 func bot_skill() -> int:
 	return _cfg_bot_skill if Net.is_client() else int(Settings.bot_skill)
 
@@ -114,6 +149,11 @@ func to_dict() -> Dictionary:
 		"game_mode": int(Settings.game_mode),
 		"map_index": int(Settings.map_index),
 		"bans": (Settings.weapon_bans as Array).duplicate(),
+		"realistic": bool(Settings.realistic),
+		"survival": bool(Settings.survival_pref),
+		"advance": bool(Settings.advance_pref),
+		"respawn": respawn_secs(false),
+		"respawn_inf": respawn_secs(true),
 	}
 
 
@@ -135,6 +175,11 @@ func apply_dict(d: Dictionary) -> void:
 			if typeof(nm) == TYPE_STRING and GameLists.WEAPON_NAMES.has(nm) and not bans.has(nm):
 				bans.append(nm)
 	_cfg_weapon_bans = bans
+	_cfg_realistic = bool(d.get("realistic", false))
+	_cfg_survival = bool(d.get("survival", false))
+	_cfg_advance = bool(d.get("advance", false))
+	_cfg_respawn = clampf(float(d.get("respawn", 2.0)), 0.0, 60.0)
+	_cfg_respawn_inf = clampf(float(d.get("respawn_inf", 5.0)), 0.0, 60.0)
 
 
 func host_broadcast() -> void:

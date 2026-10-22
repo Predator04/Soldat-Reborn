@@ -303,7 +303,7 @@ func _spawn_bot(pos: Vector2, team: int, bname: String, loadout: String = "AK-74
 			main._bots_by_id.erase(assigned_id)
 		# Survival: _reset_round respawns everyone — a death on the winner
 		# screen used to schedule an extra body that appeared after the reset.
-		if Settings.survival:
+		if MatchConfig.survival():
 			return
 		var delay: float = main._respawn_delay_for_team(team)
 		_bot_pending[bname] = true

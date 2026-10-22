@@ -295,7 +295,7 @@ func _tick_inf() -> void:
 func _inf_score(team: int, capturer: String) -> void:
 	main.scores[team] = int(main.scores.get(team, 0)) + 1
 	_objective_event("capture", team, capturer)
-	if int(main.scores[team]) >= main.INF_SCORE_TO_WIN:
+	if int(main.scores[team]) >= main.win_score(Settings.MODE_INF):
 		_end_round(team)
 
 
@@ -322,7 +322,7 @@ func _tick_htf(delta: float) -> void:
 		while float(_htf_accum.get(ct, 0.0)) >= 1.0:
 			_htf_accum[ct] = float(_htf_accum[ct]) - 1.0
 			main.scores[ct] = int(main.scores.get(ct, 0)) + 1
-			if int(main.scores[ct]) >= main.HTF_SCORE_TO_WIN:
+			if int(main.scores[ct]) >= main.win_score(Settings.MODE_HTF):
 				_end_round(ct)
 				return
 		return
@@ -481,7 +481,7 @@ func _tick_domination(delta: float) -> void:
 		while float(_dom_accum.get(owner_team, 0.0)) >= 1.0:
 			_dom_accum[owner_team] = float(_dom_accum[owner_team]) - 1.0
 			main.scores[owner_team] = int(main.scores.get(owner_team, 0)) + 1
-			if int(main.scores[owner_team]) >= main.DOM_SCORE_TO_WIN:
+			if int(main.scores[owner_team]) >= main.win_score(Settings.MODE_DOM):
 				_end_round(owner_team)
 				return
 
@@ -565,7 +565,7 @@ func _tick_pointmatch(delta: float) -> void:
 				var spawn_pos: Vector2 = p.get_meta("spawn_pos")
 				_pm_pickups[spawn_pos] = 6.0
 				p.queue_free()
-				if int(main.scores[s_team]) >= main.PM_SCORE_TO_WIN:
+				if int(main.scores[s_team]) >= main.win_score(Settings.MODE_PM):
 					_end_round(s_team)
 					return
 				break
@@ -583,7 +583,7 @@ func _tick_pointmatch(delta: float) -> void:
 func _ctf_score(team: int, capturer: String) -> void:
 	main.scores[team] = int(main.scores.get(team, 0)) + 1
 	_objective_event("capture", team, capturer)
-	if main.scores[team] >= main.CTF_SCORE_TO_WIN:
+	if main.scores[team] >= main.win_score(Settings.MODE_CTF):
 		_end_round(team)
 
 
@@ -620,7 +620,7 @@ func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: Str
 	# Suicides are still filtered here so a self-kill can't earn a rung-up.
 	if Settings.game_mode == Settings.MODE_GG:
 		if killer_name == victim_name:
-			if Settings.survival:
+			if MatchConfig.survival():
 				_check_survival_end()
 			return
 		# #91: track per-killer kill count so the GG scoreboard reads live.
@@ -657,7 +657,7 @@ func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: Str
 				main.bcast("net_gg_set_level", [victim_name, _gg_get(victim_name) - 1], true)
 			else:
 				_gg_set(victim_name, _gg_get(victim_name) - 1)
-		if Settings.survival:
+		if MatchConfig.survival():
 			_check_survival_end()
 		if Net.is_networked() and Net.is_host():
 			main._net._broadcast_match_state()
@@ -665,7 +665,7 @@ func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: Str
 	# Suicide or team-kill: no score change, but still check survival end so
 	# the round can end on the last soldier down even from friendly fire.
 	if killer_name == victim_name or killer_team == victim_team:
-		if Settings.survival:
+		if MatchConfig.survival():
 			_check_survival_end()
 		return
 	# Rambo mode: only the current bow carrier's kills count.
@@ -686,14 +686,14 @@ func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: Str
 	if kill_scores:
 		main.scores[killer_team] = int(main.scores.get(killer_team, 0)) + 1
 	# Advance: bump the local player's kill counter and auto-equip any new tier.
-	if Settings.advance and is_instance_valid(main.player) and str(main.player.display_name) == killer_name:
+	if MatchConfig.advance() and is_instance_valid(main.player) and str(main.player.display_name) == killer_name:
 		var unlocked: PackedStringArray = main.player.advance_receive_kill()
 		for name in unlocked:
 			if main.hud != null and main.hud.has_method("post_chat"):
 				main.hud.post_chat("ADVANCE", "Unlocked: %s" % name, false)
-	if kill_scores and main.scores[killer_team] >= main.kill_limit_for(Settings.game_mode):
+	if kill_scores and main.scores[killer_team] >= main.win_score(Settings.game_mode):
 		_end_round(killer_team)
-	elif Settings.survival:
+	elif MatchConfig.survival():
 		# Survival: last team standing ends the round early.
 		_check_survival_end()
 	if Net.is_networked() and Net.is_host():
@@ -886,7 +886,7 @@ func _reset_round() -> void:
 	main.my_next_map_vote = -1
 	# Survival: nobody respawns during the round, so at reset we wipe surviving
 	# bodies and start everyone fresh.
-	if Settings.survival:
+	if MatchConfig.survival():
 		if Net.is_networked():
 			# Only the host owns spawn authority; clients receive net_spawn_player.
 			# Wipe living peer bodies + re-spawn every connected peer.
