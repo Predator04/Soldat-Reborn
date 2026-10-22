@@ -6,14 +6,15 @@ extends RefCounted
 ##
 ## Zombies: claws only (the Knife through the normal melee path, shown as
 ## "claws"), no weapon / grenade / power-up pickups, no grenades, no vehicles
-## or M2s, run SPEED_MUL faster and take DAMAGE_TAKEN of every hit (applied
+## or M2s, run SPEED_MUL faster and take damage_taken() of every hit (applied
 ## in HostHits.damage, so every damage path agrees, host-decided as always).
 
 const MODE := 11
 const TEAM_HUMAN := 1
 const TEAM_ZOMBIE := 2
 const SPEED_MUL := 1.1        # run / air caps
-const DAMAGE_TAKEN := 0.85     # x every hit = ~118 effective HP
+const DAMAGE_TAKEN_LONE := 0.55  # x every hit while the zombies are few (~180 HP) ...
+const DAMAGE_TAKEN_HORDE := 1.3  # ... up to this once nearly everyone is a zombie (~77 HP)
 const CLAW_DAMAGE := 40.0      # per swing (Knife 55): three to turn a healthy human
 const SPAWN_SHIELD := 0.5      # s of spawn protection (soldiers get 3 s)
 const CLAW_WEAPON := "Knife"   # player.gd SECONDARY_WEAPONS entry the claws use
@@ -31,7 +32,20 @@ static func is_zombie(s: Variant) -> bool:
 	return t != null and int(t) == TEAM_ZOMBIE
 
 
+## x a zombie takes of every hit when `share` of the living soldiers are
+## zombies: a lone zombie is tough, a horde is fragile (the last humans can
+## still fight their way through it).
+static func damage_taken(share: float) -> float:
+	return lerpf(DAMAGE_TAKEN_LONE, DAMAGE_TAKEN_HORDE, clampf(share, 0.0, 1.0))
+
+
 ## Damage a zombie actually takes from a hit of `amount` (kill zones / the
-## kill line call take_damage(9999) directly and stay lethal).
+## kill line call take_damage(9999) directly and stay lethal). The share comes
+## from the host's match_zombie (Main is the soldier's parent).
 static func scaled_damage(s: Node, amount: float) -> float:
-	return amount * DAMAGE_TAKEN if is_zombie(s) else amount
+	if not is_zombie(s):
+		return amount
+	var m: Node = s.get_parent()
+	var z: Variant = m.get("_zombie") if m != null else null
+	var share: float = float(z.zombie_share) if z != null else 0.0
+	return amount * damage_taken(share)

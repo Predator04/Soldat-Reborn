@@ -29,10 +29,10 @@ const TeamColors = preload("res://scripts/team_colors.gd")
 
 var main: Main
 
-const ROUND_TIME := 210.0      # 3:30 for the humans to survive
+const ROUND_TIME := 180.0      # 3:00 for the humans to survive
 const WAIT_TIME := 3.0         # first round starts this long after the match loads
 const POST_TIME := 6.0         # round result banner before the next round
-const RESPAWN := 5.0           # zombies (and the freshly turned) come back this fast
+const RESPAWN := 6.0           # zombies (and the freshly turned) come back this fast
 const SHARE := 0.15            # starting zombies = round(soldiers x SHARE), >= 1
 const GONE_TIME := 6.0         # no zombie anywhere this long = the humans win the round
 const TEAM_HUMAN := 1
@@ -45,6 +45,7 @@ var round_t := ROUND_TIME
 var wait_t := WAIT_TIME
 var post_t := 0.0
 var humans_left := 0
+var zombie_share := 0.0        # host: living zombies / living soldiers (zombie_rules.damage_taken)
 var zombies: Dictionary = {}   # host: display name -> true for this round's zombies
 var last_result: Dictionary = {}   # {"team": int, "why": "survived" | "overrun" | "gone"}
 var stats := {"rounds": 0, "human_wins": 0, "zombie_wins": 0, "turns": 0, "claw_turns": 0, "starts": 0}
@@ -176,6 +177,7 @@ func _start_round() -> void:
 	zombies = _pick(roster)
 	_start_z = zombies.size()
 	_start_h = roster.size() - _start_z
+	zombie_share = float(_start_z) / float(maxi(1, roster.size()))
 	stats["starts"] = int(stats["starts"]) + 1
 	main.time_left = round_t
 	print("ZOMBIE round %d start: %d humans, %d zombies (%s)" % [round_no, _start_h, _start_z, ", ".join(PackedStringArray(zombies.keys()))])
@@ -288,6 +290,7 @@ func tick(delta: float) -> void:
 			main.time_left = round_t
 			_turn_backstop()
 			humans_left = _humans_alive()
+			_update_share()
 			if humans_left == 1 and not _last_called and _start_h > 1:
 				_last_called = true
 				_event("zombie_last", TEAM_HUMAN, _last_human_name())
@@ -311,6 +314,17 @@ func _humans_alive() -> int:
 		if _alive(s) and int(s.get("team")) == TEAM_HUMAN and not zombies.has(str(s.get("display_name"))):
 			n += 1
 	return n
+
+
+func _update_share() -> void:
+	var z := 0
+	var n := 0
+	for s in main.get_tree().get_nodes_in_group("soldier"):
+		if _alive(s):
+			n += 1
+			if int(s.get("team")) == TEAM_ZOMBIE:
+				z += 1
+	zombie_share = float(z) / float(n) if n > 0 else 0.0
 
 
 func _last_human_name() -> String:
