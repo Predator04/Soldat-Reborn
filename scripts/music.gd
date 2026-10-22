@@ -35,7 +35,8 @@ func _pick_and_play() -> void:
 	if stream is AudioStreamOggVorbis:
 		(stream as AudioStreamOggVorbis).loop = true
 	_player.stream = stream
-	_player.play()
+	if not Sfx.silent:   # #313: no playbacks headless
+		_player.play()
 
 
 func apply_volume() -> void:
@@ -48,7 +49,7 @@ func apply_volume() -> void:
 			_player.stop()
 		return
 	_player.volume_db = linear_to_db(clampf(Settings.music_volume, 0.001, 1.0))
-	if not _player.playing and _player.stream != null:
+	if not _player.playing and _player.stream != null and not Sfx.silent:
 		_player.play()
 
 

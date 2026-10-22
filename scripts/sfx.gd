@@ -90,6 +90,14 @@ var play_counts: Dictionary = {}
 var _rng := RandomNumberGenerator.new()
 # Slow-mo duck from scripts/gfx/screen_feel.gd (dB, <= 0); applies to new sounds.
 var fx_duck_db := 0.0
+# #313: headless (dedicated servers, gate, soaks) has no audio device, only the
+# Dummy driver's mixer thread. Never start a playback there: Godot 4.7's mixer
+# can read a playback's retired bus-volume block after the main thread freed it
+# (AudioServer::update frees them two FRAMES later, not two mixes later; every
+# playing AudioStreamPlayer2D retires one per mix) -> SIGSEGV in _mix_step on
+# the audio thread, logged as "caller thread can't call propagate_notification
+# on /root" by the crash handler. Sounds are still counted (play_counts).
+var silent := DisplayServer.get_name() == "headless"
 
 
 func _ready() -> void:
@@ -143,7 +151,7 @@ func jump(at := NOWHERE) -> void:
 
 func jet(on: bool) -> void:
 	if on:
-		if Settings.sfx_volume <= 0.0 or _jet_player.stream == null:
+		if silent or Settings.sfx_volume <= 0.0 or _jet_player.stream == null:
 			return
 		_jet_player.volume_db = -12.0 + _master_db()
 		if not _jet_player.playing:
@@ -388,7 +396,8 @@ func ambience(kind: String) -> void:
 	st.loop_end = st.data.size() / bps
 	_amb_player.stream = st
 	_amb_player.volume_db = vol + _master_db()
-	_amb_player.play()
+	if not silent:
+		_amb_player.play()
 	play_counts[key] = int(play_counts.get(key, 0)) + 1
 
 
@@ -457,7 +466,7 @@ func _play_far(file_key: String, vol_db: float, pitch: float, at: Vector2) -> vo
 
 func _play_key(file_key: String, vol_db: float, pitch: float, at := NOWHERE, hear := HEAR_DIST) -> void:
 	play_counts[file_key] = int(play_counts.get(file_key, 0)) + 1
-	if Settings.sfx_volume <= 0.0:
+	if silent or Settings.sfx_volume <= 0.0:
 		return
 	if at != NOWHERE and at.distance_to(listener_pos()) > hear:
 		return

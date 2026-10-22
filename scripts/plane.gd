@@ -1136,7 +1136,7 @@ func _ray_hit(a: Vector2, b: Vector2) -> Dictionary:
 # hp, alive, seats, heat, bomb_cd) and only draws / spawns pooled effects.
 
 func _engine_sound() -> void:
-	if _engine.stream == null or Settings.sfx_volume <= 0.0:
+	if _engine.stream == null or Settings.sfx_volume <= 0.0 or Sfx.silent:   # #313
 		return
 	var running := alive and (driver() != null or throttle > 0.03)
 	if not running:
