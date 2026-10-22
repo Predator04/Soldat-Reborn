@@ -20,7 +20,7 @@ extends SceneTree
 ##    enemy flag; DOM: a point taken; HTF: flag grabbed or reached), pads used
 ##    where the level has them, a vehicle boarded where it has them.
 
-const MODE_IDX := {"dm": 0, "tdm": 1, "ctf": 2, "inf": 3, "htf": 4, "rm": 5, "pm": 6, "dom": 7, "br": 8, "gg": 9, "bomb": 10}
+const MODE_IDX := {"dm": 0, "tdm": 1, "ctf": 2, "inf": 3, "htf": 4, "rm": 5, "pm": 6, "dom": 7, "br": 8, "gg": 9, "bomb": 10, "zombie": 11}
 const LEVEL_COUNT := 11   # 8 (#295) + 3 Bomb Defusal levels (#304)
 const NEW_KEYS := ["FEATURED", "EDIT A COPY", "Hand-built", "NEW MAP", "Start from:", "Empty", "Starter", "START",
 	"%s copy", "Editing a copy of %s.", "No featured levels found.",

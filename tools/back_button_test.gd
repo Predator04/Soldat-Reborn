@@ -358,12 +358,13 @@ func _editor_cases() -> bool:
 		await _back(how)
 		_expect((mk.sel as Array).is_empty(), "selection not cleared")
 		still.call()
-		# The PLAY test-mode list ends with Bomb Defusal (#304); its popup is
+		# The PLAY test-mode list ends with Zombie (#314, after Bomb Defusal #304); its popup is
 		# an overlay like any other.
 		_step = "maker test-mode list %s" % how
 		var mob: OptionButton = mk.get("_mode_ob")
 		var names: Array = load("res://scripts/game_lists.gd").MODE_NAMES
-		_expect(mob != null and mob.item_count == names.size() and mob.get_item_id(mob.item_count - 1) == 10, "test-mode list misses Bomb Defusal")
+		_expect(mob != null and mob.item_count == names.size() and mob.get_item_id(mob.item_count - 1) == 11 \
+				and mob.get_item_id(mob.item_count - 2) == 10, "test-mode list misses Bomb Defusal / Zombie")
 		if mob != null:
 			mob.show_popup()
 			await _frames(2)

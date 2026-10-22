@@ -572,6 +572,10 @@ func _smoke_join() -> void:
 	if _smoke_arg("--smoke-bomb") != "":
 		_sb = {"role": _smoke_arg("--smoke-bomb"), "t": 0.0, "ph": 0, "pt": 0.0}
 		get_tree().process_frame.connect(_smoke_bomb_tick)
+	# --smoke-zombie=play|late (#314, gate C `zombie`): see _smoke_zombie_tick.
+	if _smoke_arg("--smoke-zombie") != "":
+		_sz = {"role": _smoke_arg("--smoke-zombie"), "team0": -1, "risen": false, "join": false, "hooked": false}
+		get_tree().process_frame.connect(_smoke_zombie_tick)
 	if "--smoke-die" in OS.get_cmdline_user_args():
 		get_tree().create_timer(4.0).timeout.connect(func() -> void:
 			var mn = get_tree().current_scene
@@ -2245,3 +2249,46 @@ func _smoke_bomb_tick() -> void:
 				elif pt > 14.0:
 					print("SMOKE-BOMB late: defuse never finished (prog %.2f phase %s)" % [float(b.defuse_prog), str(b.phase)])
 					next.call(9)
+
+
+# ── Zombie smoke client (#314, gate C `zombie`) ──
+# play: reports its side in round 1 (SMOKE-ZOMBIE-ROLE), every turn and round
+#   result it is told about (SMOKE-ZOMBIE-TURN / -ROUND) and, when it was the
+#   human, its own body rising on the zombie side (SMOKE-ZOMBIE-RISEN).
+# late: joins mid-round and must come in as a zombie with the round state
+#   (SMOKE-ZOMBIE-JOIN team / phase / round).
+var _sz: Dictionary = {}
+
+
+func _smoke_zombie_tick() -> void:
+	var mn = get_tree().current_scene
+	if mn == null or mn.get("_zombie") == null or not mn._zombie.active():
+		return
+	var z = mn._zombie
+	if not bool(_sz["hooked"]):
+		_sz["hooked"] = true
+		mn.objective.connect(_smoke_zombie_event)
+	var p = mn.get("player")
+	if p == null or not is_instance_valid(p) or bool(p.get("dead")):
+		return
+	var t := int(p.get("team"))
+	match str(_sz["role"]):
+		"play":
+			if int(_sz["team0"]) < 0 and str(z.phase) == "live" and int(z.round_no) == 1 and z.received:
+				_sz["team0"] = t
+				print("SMOKE-ZOMBIE-ROLE team=%d round=%d humans_left=%d" % [t, int(z.round_no), int(z.humans_left)])
+			elif int(_sz["team0"]) == 1 and t == 2 and not bool(_sz["risen"]):
+				_sz["risen"] = true
+				var claws: bool = bool(p.get("using_secondary")) and int(p.get("secondary_index")) == 1
+				print("SMOKE-ZOMBIE-RISEN team=%d claws=%s grenades=%d" % [t, str(claws), int(p.get("grenades"))])
+		"late":
+			if not bool(_sz["join"]) and z.received:
+				_sz["join"] = true
+				print("SMOKE-ZOMBIE-JOIN team=%d phase=%s round=%d" % [t, str(z.phase), int(z.round_no)])
+
+
+func _smoke_zombie_event(kind: String, team: int, who: String) -> void:
+	if kind == "zombie_turn":
+		print("SMOKE-ZOMBIE-TURN %s team=%d" % [who, team])
+	elif kind == "zombie_round":
+		print("SMOKE-ZOMBIE-ROUND %s team=%d" % [who, team])

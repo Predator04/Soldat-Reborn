@@ -15,8 +15,9 @@ const TITLE_UPPER := "TRACERFALL"
 
 ## Online protocol. Builds with a different protocol (or game version) refuse
 ## each other at the join handshake with a readable reason instead of
-## desyncing. 2 = host-decided hits (#266). Bump whenever RPCs change meaning.
-const NET_PROTOCOL := 2
+## desyncing. 2 = host-decided hits (#266), 3 = Zombie mode (#314: mode 11,
+## Main.net_zombie_sync). Bump whenever RPCs change meaning.
+const NET_PROTOCOL := 3
 
 
 ## What a client sends (and the host compares) in the join handshake.
@@ -64,8 +65,8 @@ const MODES := [
 		"16 rungs from pistol to knife. Weapon switching is locked to your rung."],
 	["BOMB DEFUSAL", "Red attacks, blue defends: plant the bomb at site A or B, or stop it. First to 7 rounds wins.",
 		"Hold Use 3 s in a site to plant; the bomb blows in 40 s unless a defender holds Use on it for 7 s. The dead respawn together every 10 s; sides swap at halftime."],
-	["ZOMBIE", "Humans vs zombies: survive the 3:30 round clock or turn every human. First to 5 rounds wins.",
-		"Zombies only claw, run faster and shrug off half the damage. A human who dies rises as a zombie; zombies are back in 3 s."],
+	["ZOMBIE", "Humans vs zombies: survive the 3:00 round clock or turn every human. First to 5 rounds wins.",
+		"Zombies only claw and run faster; while they're few they shrug off hits. A human who dies rises as a zombie; zombies are back in 6 s."],
 ]
 
 # kind -> [label, what it does]

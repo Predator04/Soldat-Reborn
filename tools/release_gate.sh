@@ -7,7 +7,7 @@
 #   C net      dedicated server + client smoke (CTF + DM), listen-host smoke,
 #              zero RPC/node errors on either side; dedboot = dedicated boot
 #              from a never-imported checkout + busy-port failure (#278)
-#   D modes    every game mode (DM..BOMB) on 3 maps with bots-vs-bots: kills,
+#   D modes    every game mode (DM..ZOMBIE) on 3 maps with bots-vs-bots: kills,
 #              objective scoring where the mode has one, no script errors
 #   R rules    Realistic / Survival / Advance toggles (autopilot, menu path)
 #   F features scripted SP run: gestures, all weapon slots, nades, throw,
@@ -41,8 +41,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 G="${GODOT_BIN:-$HOME/godot/Godot_v4.7.2-stable_linux.x86_64}"
-QUICK=0; OUT="build/gate"; ONLY="A B N C D R F E"; MODESEL="0 1 2 3 4 5 6 7 8 9 10"
-NETSEL="ctf dm dedboot selfcheck srvcfg srvbuild two trust drop latepu fill ranked friends news featured respawn killcam drive heli plane bomb rejoin relay host listen lan soak m3 m7 m9 m2"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
+QUICK=0; OUT="build/gate"; ONLY="A B N C D R F E"; MODESEL="0 1 2 3 4 5 6 7 8 9 10 11"
+NETSEL="ctf dm dedboot selfcheck srvcfg srvbuild two trust drop latepu fill ranked friends news featured respawn killcam drive heli plane bomb zombie rejoin relay host listen lan soak m3 m7 m9 m2"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --quick) QUICK=1;; --out) OUT="$2"; shift;; --only) ONLY="$2"; shift;;
@@ -790,6 +790,46 @@ case " $NETSEL " in *" bomb "*)
     fail "C net bomb: plant='$pl' seen='$sn' join='$jn' defuse='$df' result='$rs' rej_plant='${rp:+yes}' rej_defuse='${rd:+yes}' errors=$e trust_lines=${tr:-0}"
   fi
 ;; esac
+case " $NETSEL " in *" zombie "*)
+  # #314 Zombie online: a dedicated server in mode "zombie" with no bots. c1
+  # and c2 join; round 1 starts with one zombie and one human. The host's
+  # --smoke-zombie-claw lands the zombie player's claws on the human (through
+  # HostHits, round 1 only): the host turns the human, both clients are told,
+  # the human's own body rises on the zombie side with the claws and no
+  # grenades, and the round ends overrun on both clients. c3 joins in round 2
+  # and must come in as a zombie with the live round state. Honest clients:
+  # no trust lines.
+  port=$(freeport udp)
+  timeout $(T 150) "$G" --headless -- --dedicated --port $port --map 19 --mode zombie --fill=0 --bots=0 --smoke-zombie-claw > "$OUT/net_zombie_server.log" 2>&1 &
+  spid=$!
+  wait_ready "$OUT/net_zombie_server.log"
+  sleep 1
+  timeout $(T 110) "$G" --headless -- --smoke-join --port $port --smoke-secs=70 --smoke-zombie=play > "$OUT/net_zombie_c1.log" 2>&1 &
+  c1=$!
+  sleep 3
+  timeout $(T 100) "$G" --headless -- --smoke-join --port $port --smoke-secs=60 --smoke-zombie=play > "$OUT/net_zombie_c2.log" 2>&1 &
+  c2=$!
+  wait_log "$OUT/net_zombie_server.log" "ZOMBIE round 2 start" 80
+  timeout $(T 60) "$G" --headless -- --smoke-join --port $port --smoke-secs=20 --smoke-zombie=late > "$OUT/net_zombie_c3.log" 2>&1
+  wait $c1 2>/dev/null; wait $c2 2>/dev/null
+  kill $spid 2>/dev/null; wait $spid 2>/dev/null
+  e=$(( $(errs "$OUT/net_zombie_server.log") + $(errs "$OUT/net_zombie_c1.log") + $(errs "$OUT/net_zombie_c2.log") + $(errs "$OUT/net_zombie_c3.log") ))
+  tr=$(grep -c "^TRUST " "$OUT/net_zombie_server.log" 2>/dev/null || true)
+  st=$(grep -m1 "ZOMBIE round 1 start: 1 humans, 1 zombies" "$OUT/net_zombie_server.log")
+  tu=$(grep -m1 "ZOMBIE turned .* by " "$OUT/net_zombie_server.log")
+  roles=$(cat "$OUT/net_zombie_c1.log" "$OUT/net_zombie_c2.log" | grep -o "SMOKE-ZOMBIE-ROLE team=[12]" | sort | tr '\n' ' ')
+  rs=$(cat "$OUT/net_zombie_c1.log" "$OUT/net_zombie_c2.log" | grep -m1 "SMOKE-ZOMBIE-RISEN")
+  tn=$(cat "$OUT/net_zombie_c1.log" "$OUT/net_zombie_c2.log" | grep -c "SMOKE-ZOMBIE-TURN .*@" || true)
+  ov=$(cat "$OUT/net_zombie_c1.log" "$OUT/net_zombie_c2.log" | grep -c "SMOKE-ZOMBIE-ROUND overrun" || true)
+  jn=$(grep -m1 "SMOKE-ZOMBIE-JOIN" "$OUT/net_zombie_c3.log")
+  if [ -n "$st" ] && [ -n "$tu" ] && [ "$roles" = "SMOKE-ZOMBIE-ROLE team=1 SMOKE-ZOMBIE-ROLE team=2 " ] \
+      && echo "$rs" | grep -q "team=2 claws=true grenades=0" && [ "${tn:-0}" -ge 2 ] && [ "${ov:-0}" -ge 2 ] \
+      && echo "$jn" | grep -q "team=2 phase=live round=2" && [ "$e" = "0" ] && [ "${tr:-0}" = "0" ]; then
+    pass "C net zombie: 1 zombie / 1 human, $tu, turn seen by both, $rs, overrun on both, late joiner: $jn"
+  else
+    fail "C net zombie: start='$st' turn='$tu' roles='$roles' risen='$rs' turns_seen=${tn:-0} overrun_seen=${ov:-0} join='$jn' errors=$e trust_lines=${tr:-0}"
+  fi
+;; esac
 case " $NETSEL " in *" respawn "*)
   # A client kills itself at 4 s (DM, few bots near spawn): it must come back
   # as the exact same node name with no RPC errors anywhere.
@@ -942,11 +982,11 @@ if has C; then
 fi
 
 # ── D modes ─────────────────────────────────────────────────────────────────
-MODES=(DM TDM CTF INF HTF RM PM DOM BR GG BOMB)
+MODES=(DM TDM CTF INF HTF RM PM DOM BR GG BOMB ZOMBIE)
 has D && for m in $MODESEL; do
   f="$OUT/mode_$m.log"
   # Objective modes get longer rounds: a CTF run home takes 30-60 s.
-  secs=60; case $m in 2|3|4|6|7|10) secs=120;; esac
+  secs=60; case $m in 2|3|4|6|7|10|11) secs=120;; esac
   # --autopilot: the human player is driven with random input so player.gd
   # (jet, weapons, nades, stances, throwing) runs in every mode too.
   timeout $(T 170) "$G" --headless --fixed-fps 60 -s tools/stuck_test.gd -- --secs=$secs --from=19 --to=21 --mode=$m --autopilot --sp > "$f" 2>&1
@@ -958,7 +998,7 @@ has D && for m in $MODESEL; do
   [ "$maps" = "3" ] || { ok=0; why="$why maps=$maps/3"; }
   [ "$n" = "0" ] || { ok=0; why="$why errors=$n"; }
   [ "${kills:-0}" -gt 0 ] || { ok=0; why="$why no-kills"; }
-  case $m in 2|6|7|10) [ "${caps:-0}" -gt 0 ] || { ok=0; why="$why no-objective-score"; };; esac
+  case $m in 2|6|7|10|11) [ "${caps:-0}" -gt 0 ] || { ok=0; why="$why no-objective-score"; };; esac
   msg="D mode ${MODES[$m]}: kills=${kills:-0} objective=${caps:-0} fell=${fell:-0}"
   if [ $ok = 1 ]; then pass "$msg"; else fail "$msg —$why"; fi
 done
@@ -1063,6 +1103,7 @@ if has F; then
   ft trailer trailer.gd 120 TRAILER-TEST "trailer director (#263): staged bot beats pick their highlight (rocket in flight near a crowd, crewed helicopter airborne) and log kills / explosions while filming" "--smoke"
   ft levels levels_test.gd 90 LEVELS-TEST "level sharing (#288): Hot / New / Most played / Top liked order, search by title + share code, course-code box, like on / off, bookmark saved + listed (also offline), offline message, flat node count over open / close, editor Publish round trip + title filter, editor LEVELS overlay, PLAY -> bot match on the level + play counted (in-process fake level server)"
   ft featured featured_test.gd 480 FEATURED-TEST "featured levels (#295): all 8 bundled Maker levels load, recompile identically, validate clean for their modes, pass map_audit, runtime nav routes every CTF / DOM / HTF / INF / RM leg; LEVELS opens on FEATURED offline (8 cards, no server request), detail = modes + EDIT A COPY, PLAY / HOST ONLINE, EDIT A COPY -> unsaved Maker copy, Maker New map Start from Empty / Starter / featured, editor overlay edits in place; new strings translate (es / pt_BR / de / fr); short bot match per level: bots travel, objectives progress, pads / vehicles used, few hazard deaths"
+  ft zombie zombie_test.gd 600 ZOMBIE-TEST "Zombie (#314): strings + mode 11 appended, wait -> round 1 with 1 zombie of 5 (teams = the pick, claws only), a mid-round spawn is a zombie, horde-scaled zombie toughness, a claw kill turns a human who rises as a zombie, a zombie player can't switch / throw / pick up (a human can), clock out -> humans +1, every human turned -> zombies +1, the winning round -> match over -> fresh match; bots: a bot zombie claws a human and a round ends"
   ft bomb bomb_test.gd 1500 BOMB-TEST "Bomb Defusal (#304): carrier handed out, a defender's Use rejected, plant 3 s (moving resets, damage doesn't), fuse -> detonation kills + attackers win, next round after the banner, drop + attacker-only pickup, attacker can't defuse, defuse 7 s, clock out -> defenders, wave respawns (next wave / the one after), halftime swap of roles + spawns, 7 rounds -> match over -> fresh match; bots on Downtown / Dust Yard / Whiteout plant, the plant ends in a defuse or detonation, and both sides win a round (#307)"
   ft discord discord_test.gd 90 DISCORD-TEST "Discord Rich Presence (#223): desktop only (Android / headless / dedicated never start it), silent without an app id, handshake + SET_ACTIVITY for menu / LEVELS / CTF match / Maker editor over a fake pipe, PING/PONG, dedupe + throttle, toggle closes / reconnects, refused id stops, Linux Unix-socket transport"
   ft fxbench fx_bench.gd 90 FX-BENCH "graphics Phase B (#271): FX benchmark, 8 gibbings + minigun + 4 explosions, node count flat, FX ms / frame"

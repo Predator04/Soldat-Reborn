@@ -48,7 +48,7 @@ func _on_kill(_k: String, victim: String, _w: String, _kt: int, _vt: int) -> voi
 
 
 func _on_objective(kind: String, _team: int, _who: String) -> void:
-	if kind == "capture" or kind == "dom" or kind == "point" or kind == "bomb_plant" or kind == "bomb_defuse":
+	if kind == "capture" or kind == "dom" or kind == "point" or kind == "bomb_plant" or kind == "bomb_defuse" or kind == "zombie_turn":
 		_caps += 1
 
 

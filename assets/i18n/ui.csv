@@ -771,3 +771,23 @@ Drop Power-up,Soltar potenciador,Soltar power-up,Power-up ablegen,Lâcher le bon
 Drop power-up,Soltar potenciador,Soltar power-up,Power-up ablegen,Lâcher le bonus
 %s dropped,%s descartado,%s descartado,%s abgelegt,%s abandonné
 DROP,SOLTAR,SOLTAR,ABLEGEN,LÂCHER
+Zombie,Zombi,Zumbi,Zombie,Zombie
+ZOMBIE,ZOMBI,ZUMBI,ZOMBIE,ZOMBIE
+Humans vs zombies: survive the 3:00 round clock or turn every human. First to 5 rounds wins.,Humanos contra zombis: aguanta los 3:00 de la ronda o convierte a todos los humanos. Gana quien llegue a 5 rondas.,Humanos contra zumbis: sobreviva aos 3:00 da rodada ou transforme todos os humanos. Vence quem chegar a 5 rodadas.,"Menschen gegen Zombies: Überlebt die 3:00 der Runde oder verwandelt jeden Menschen. Wer zuerst 5 Runden gewinnt, siegt.",Humains contre zombies : tenez les 3:00 de la manche ou transformez tous les humains. Le premier à 5 manches gagne.
+Zombies only claw and run faster; while they're few they shrug off hits. A human who dies rises as a zombie; zombies are back in 6 s.,Los zombis solo arañan y corren más; mientras son pocos aguantan los disparos. Un humano que muere se levanta como zombi; los zombis vuelven en 6 s.,Zumbis só arranham e correm mais; enquanto são poucos aguentam os tiros. Um humano que morre volta como zumbi; zumbis voltam em 6 s.,"Zombies kratzen nur und rennen schneller; solange sie wenige sind, stecken sie Treffer weg. Wer als Mensch stirbt, steht als Zombie auf; Zombies sind nach 6 s zurück.","Les zombies ne font que griffer et courent plus vite ; tant qu'ils sont peu nombreux, ils encaissent. Un humain qui meurt se relève en zombie ; les zombies reviennent en 6 s."
+ROUND %s — YOU ARE A ZOMBIE: TURN THEM ALL,RONDA %s — ERES UN ZOMBI: CONVIÉRTELOS A TODOS,RODADA %s — VOCÊ É UM ZUMBI: TRANSFORME TODOS,RUNDE %s — DU BIST EIN ZOMBIE: VERWANDLE SIE ALLE,MANCHE %s — VOUS ÊTES UN ZOMBIE : TRANSFORMEZ-LES TOUS
+ROUND %s — SURVIVE FOR %s,RONDA %s — SOBREVIVE %s,RODADA %s — SOBREVIVA %s,RUNDE %s — ÜBERLEBE %s,MANCHE %s — SURVIVEZ %s
+YOU WERE TURNED — HUNT THE HUMANS,TE HAN CONVERTIDO — CAZA A LOS HUMANOS,VOCÊ FOI TRANSFORMADO — CACE OS HUMANOS,DU WURDEST VERWANDELT — JAG DIE MENSCHEN,VOUS AVEZ ÉTÉ TRANSFORMÉ — TRAQUEZ LES HUMAINS
+YOU ARE THE LAST HUMAN,ERES EL ÚLTIMO HUMANO,VOCÊ É O ÚLTIMO HUMANO,DU BIST DER LETZTE MENSCH,VOUS ÊTES LE DERNIER HUMAIN
+LAST HUMAN STANDING: %s,ÚLTIMO HUMANO EN PIE: %s,ÚLTIMO HUMANO DE PÉ: %s,LETZTER MENSCH: %s,DERNIER HUMAIN DEBOUT : %s
+THE HUMANS SURVIVED THE ROUND,LOS HUMANOS SOBREVIVIERON A LA RONDA,OS HUMANOS SOBREVIVERAM À RODADA,DIE MENSCHEN HABEN DIE RUNDE ÜBERLEBT,LES HUMAINS ONT SURVÉCU À LA MANCHE
+THE ZOMBIES ARE GONE — HUMANS WIN THE ROUND,NO QUEDAN ZOMBIS — LOS HUMANOS GANAN LA RONDA,OS ZUMBIS SUMIRAM — OS HUMANOS VENCEM A RODADA,DIE ZOMBIES SIND WEG — DIE MENSCHEN GEWINNEN DIE RUNDE,PLUS DE ZOMBIES — LES HUMAINS GAGNENT LA MANCHE
+OVERRUN — THE ZOMBIES WIN THE ROUND,ARRASADOS — LOS ZOMBIS GANAN LA RONDA,DOMINADOS — OS ZUMBIS VENCEM A RODADA,ÜBERRANNT — DIE ZOMBIES GEWINNEN DIE RUNDE,SUBMERGÉS — LES ZOMBIES GAGNENT LA MANCHE
+%s was turned by %s,%s fue convertido por %s,%s foi transformado por %s,%s wurde von %s verwandelt,%s a été transformé par %s
+%s turned into a zombie,%s se convirtió en zombi,%s virou zumbi,%s wurde zum Zombie,%s est devenu un zombie
+Humans,Humanos,Humanos,Menschen,Humains
+Zombies,Zombis,Zumbis,Zombies,Zombies
+ROUND 1 STARTS IN %d,LA RONDA 1 EMPIEZA EN %d,A RODADA 1 COMEÇA EM %d,RUNDE 1 BEGINNT IN %d,LA MANCHE 1 COMMENCE DANS %d
+HUMANS LEFT: %d,HUMANOS RESTANTES: %d,HUMANOS RESTANTES: %d,MENSCHEN ÜBRIG: %d,HUMAINS RESTANTS : %d
+HUMANS,HUMANOS,HUMANOS,MENSCHEN,HUMAINS
+ZOMBIES,ZOMBIS,ZUMBIS,ZOMBIES,ZOMBIES

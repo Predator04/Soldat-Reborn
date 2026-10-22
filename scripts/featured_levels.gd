@@ -22,19 +22,19 @@ const ID_PREFIX := "featured:"
 ## slug, title, Maker theme, modes (levels_panel MODE_KEYS, first = the default
 ## for PLAY), one-line description.
 const LEVELS := [
-	{"slug": "twin_forts", "title": "Twin Forts", "theme": "grassland", "modes": "ctf htf tdm dm",
+	{"slug": "twin_forts", "title": "Twin Forts", "theme": "grassland", "modes": "ctf htf tdm dm zombie",
 		"blurb": "A mirrored CTF arena: two hilltop forts, a sky route of floating islands and a jump pad up from the valley."},
 	{"slug": "magma_crown", "title": "Magma Crown", "theme": "desert", "modes": "dom tdm dm",
 		"blurb": "King of the hill: hold the crown between two lava pits. Narrow bridges, long falls."},
 	{"slug": "skyline_tower", "title": "Skyline Tower", "theme": "urban", "modes": "htf tdm dm",
 		"blurb": "Jump pads launch you up a zig-zag tower to the flag on the roof. Hold it as long as you can."},
-	{"slug": "iron_valley", "title": "Iron Valley", "theme": "jungle", "modes": "tdm ctf dm",
+	{"slug": "iron_valley", "title": "Iron Valley", "theme": "jungle", "modes": "tdm ctf dm zombie",
 		"blurb": "Wide open warfare: each base has a buggy, a tank, a heli pad and a plane on its runway."},
 	{"slug": "the_bunker", "title": "The Bunker", "theme": "night", "modes": "dm rm tdm gg",
 		"blurb": "Three tight decks under a concrete roof, ladders and shotguns. Fast, close-quarters deathmatch."},
-	{"slug": "frostbite", "title": "Frostbite", "theme": "snow", "modes": "ctf inf tdm dm",
+	{"slug": "frostbite", "title": "Frostbite", "theme": "snow", "modes": "ctf inf tdm dm zombie",
 		"blurb": "Two snowy peaks over a bottomless chasm. One ice bridge and a frozen pillar are the only way across."},
-	{"slug": "hollow_deep", "title": "Hollow Deep", "theme": "cave", "modes": "dom ctf tdm dm",
+	{"slug": "hollow_deep", "title": "Hollow Deep", "theme": "cave", "modes": "dom ctf tdm dm zombie",
 		"blurb": "A dark cavern of stalactites, spike pits and ladders. Three points to hold in the deep."},
 	{"slug": "last_ridge", "title": "Last Ridge", "theme": "grassland", "modes": "br dm gg",
 		"blurb": "A big Battle Royale ridge: towers, bunkers and loot everywhere. The ring closes on the summit."},

@@ -9,7 +9,7 @@ extends SceneTree
 ## level must validate with no errors and no warnings for its listed modes.
 ## Run python3 tools/map_audit.py on the files afterwards.
 
-const MODE_IDX := {"dm": 0, "tdm": 1, "ctf": 2, "inf": 3, "htf": 4, "rm": 5, "pm": 6, "dom": 7, "br": 8, "gg": 9, "bomb": 10}
+const MODE_IDX := {"dm": 0, "tdm": 1, "ctf": 2, "inf": 3, "htf": 4, "rm": 5, "pm": 6, "dom": 7, "br": 8, "gg": 9, "bomb": 10, "zombie": 11}
 const FEET_KEYS := ["bot_spawns", "ctf_flags", "medkits", "grenade_kits", "bonus_spawns",
 	"vehicle_spawns", "tank_spawns", "heli_spawns", "plane_spawns", "m2_mounts"]
 const FEET_SINGLE := ["player_spawn", "inf_flag", "htf_flag", "rambo_pos"]

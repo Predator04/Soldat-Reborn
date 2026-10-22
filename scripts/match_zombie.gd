@@ -64,6 +64,8 @@ var _start_h := 0
 var _start_z := 0
 var _rally := Vector2.INF       # host: where human bots regroup this round
 var _rally_tried := false
+var _smoke_claw := -1          # gate C `zombie`: --smoke-zombie-claw (host) claws the human player in round 1
+var _smoke_claw_t := 0.0
 
 
 func active() -> bool:
@@ -288,6 +290,10 @@ func tick(delta: float) -> void:
 		"live":
 			round_t = maxf(0.0, round_t - delta)
 			main.time_left = round_t
+			if _smoke_claw < 0:
+				_smoke_claw = 1 if OS.get_cmdline_user_args().has("--smoke-zombie-claw") else 0
+			if _smoke_claw == 1 and round_no == 1:
+				_smoke_claw_tick(delta)
 			_turn_backstop()
 			humans_left = _humans_alive()
 			_update_share()
@@ -302,6 +308,31 @@ func tick(delta: float) -> void:
 				_gone_t = 0.0 if _zombie_presence() else _gone_t + delta
 				if _gone_t >= GONE_TIME:
 					_round_over(TEAM_HUMAN, "gone")
+
+
+## Gate C `zombie` (host, --smoke-zombie-claw): in round 1 the zombie player's
+## claws land on the human player every 0.5 s, through HostHits like any hit
+## (stands in for scripted melee aim; the turn, respawn and team change that
+## follow are the real ones).
+func _smoke_claw_tick(delta: float) -> void:
+	_smoke_claw_t -= delta
+	if _smoke_claw_t > 0.0:
+		return
+	_smoke_claw_t = 0.5
+	var zb: Node = null
+	var hb: Node = null
+	for pid in main._players_by_id.keys():
+		var b = main._players_by_id[pid]
+		if not _alive(b):
+			continue
+		if int(b.get("team")) == TEAM_ZOMBIE and zb == null:
+			zb = b
+		elif int(b.get("team")) == TEAM_HUMAN and hb == null:
+			hb = b
+	if zb == null or hb == null:
+		return
+	print("SMOKE-ZOMBIE claw %s -> %s hp=%.0f" % [str(zb.get("display_name")), str(hb.get("display_name")), float(hb.get("health"))])
+	HostHits.damage(hb, ZR.CLAW_DAMAGE, str(zb.get("display_name")), ZR.CLAW_WEAPON, TEAM_ZOMBIE)
 
 
 func _alive(s: Variant) -> bool:
