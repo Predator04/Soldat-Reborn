@@ -152,8 +152,8 @@ func _process(_d: float) -> bool:
 					return _end(false, "bomb match never started")
 				return false
 			var b = m._bomb
-			# ~6 s carried, then plant at A with whoever carries it.
-			if _n - _t < 400 or b.bomb_state != "carried" or b.carrier == null or not is_instance_valid(b.carrier):
+			# ~12 s carried (replays shorter than 15 s are not saved), then plant at A.
+			if _n - _t < 720 or b.bomb_state != "carried" or b.carrier == null or not is_instance_valid(b.carrier):
 				if _n - _t > 3000:
 					return _end(false, "no carrier (bomb %s)" % b.bomb_state)
 				return false
@@ -163,7 +163,7 @@ func _process(_d: float) -> bool:
 			_st = 11
 			_t = _n
 		11:
-			if _n - _t < 240:
+			if _n - _t < 360:
 				return false
 			var b = current_scene._bomb
 			_log.append("bomb=%s site=%s" % [b.bomb_state, b.planted_site])

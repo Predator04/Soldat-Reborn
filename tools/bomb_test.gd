@@ -323,6 +323,22 @@ func _rules() -> bool:
 	if not await _until(func() -> bool: return b.round_no == 4 and b.phase == "live", 420):
 		return _fail("round 4 never started")
 	await _frames(10)
+	# Bodies respawned earlier came back with their AI on: freeze everyone so
+	# nobody plants during the wave checks (a plant switches the defenders to
+	# their own 15 s waves, #307).
+	for s in get_nodes_in_group("soldier"):
+		if is_instance_valid(s) and s.get("bot_id") != null:
+			s.set_physics_process(false)
+			s.set("bomb_use", false)
+	# #307: once planted, the defenders' waves run on their own clock.
+	b.phase = "planted"
+	b.def_wave_t = 12.5
+	var dw: float = float(b.wave_delay(b.defend_team()))
+	var aw: float = float(b.wave_delay(b.attack_team()))
+	b.phase = "live"
+	if absf(dw - 12.5) > 0.01 or absf(aw - float(b.wave_delay(b.attack_team()))) > 0.01:
+		return _fail("planted waves: defenders %.2f (want 12.5) attackers %.2f" % [dw, aw])
+	_log.append("planted: defenders on their own 15 s wave clock")
 	# Wave respawn: a death 2+ s before the wave comes back on it; one under
 	# 2 s before the wave waits for the next.
 	if not await _until(func() -> bool: return float(b.wave_t) > 5.0 and float(b.wave_t) < 8.5, 600):
