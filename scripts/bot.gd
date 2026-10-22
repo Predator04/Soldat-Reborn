@@ -1413,6 +1413,11 @@ func take_damage(amount: float, killer := "", weapon := "", killer_team := -1) -
 		return
 	if ceasefire_t > 0.0 and killer != display_name:
 		return
+	# #315: catch-up never applies to bots (only for the measuring tool).
+	var m := get_parent()
+	var cu = m.get("_catchup") if m != null else null
+	if cu != null:
+		amount = cu.scale(self, amount, killer)
 	health -= amount
 	var bv: float = float(BINK_BY_WEAPON.get(weapon, 0.0))
 	if bv > 0.0:

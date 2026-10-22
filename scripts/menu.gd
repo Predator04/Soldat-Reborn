@@ -905,6 +905,17 @@ func _build_host() -> void:
 		_host_thumb.texture = load(path) if _host_thumb.visible else null
 	_map_pick.item_selected.connect(upd)
 	upd.call()
+	# #315 new-player protection (host-decided; server.cfg `catchup` on a dedicated server).
+	var cu_cb := CheckBox.new()
+	cu_cb.name = "CatchupCheck"
+	cu_cb.text = "Catch-up for new players"
+	cu_cb.tooltip_text = "After 3 deaths in a row without a kill, a player takes 10-20% less damage until they score a kill. Never for bots or in Gun Game."
+	cu_cb.button_pressed = Settings.catchup
+	UITheme.style_checkbox(cu_cb)
+	cu_cb.toggled.connect(func(on: bool) -> void:
+		Settings.catchup = on
+		Settings.save())
+	_host_panel.add_child(cu_cb)
 
 	_host_panel.add_child(UITheme.make_section_header("Network"))
 
