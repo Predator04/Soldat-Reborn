@@ -13,6 +13,7 @@ var main: Main
 
 var bot_scene := preload("res://scenes/bot.tscn")
 var _bot_pending: Dictionary = {}    # bot name -> true while its respawn timer runs
+var _bot_respawn_fn: Dictionary = {} # bot name -> its pending respawn (#304 round start flush)
 var _next_bot_id: int = 1
 const BOT_STATE_CHUNK_MAX := 8       # #102: max bot entries per net_bot_state packet — keeps under ENet MTU (1392 B).
 var _fill_seq := 100
@@ -302,6 +303,9 @@ func _spawn_bot(pos: Vector2, team: int, bname: String, loadout: String = "AK-74
 			return
 		var delay: float = main._respawn_delay_for_team(team)
 		_bot_pending[bname] = true
+		# #304: kept so a new Bomb Defusal round can respawn the bot at once.
+		_bot_respawn_fn[bname] = func() -> void:
+			_spawn_bot(_bot_respawn_pos(pos, team), team, bname, loadout)
 		main.get_tree().create_timer(delay).timeout.connect(func() -> void:
 			# Guard against the outer Main being torn down (scene change / quit)
 			# during the respawn window — the SceneTreeTimer keeps firing.
@@ -311,6 +315,7 @@ func _spawn_bot(pos: Vector2, team: int, bname: String, loadout: String = "AK-74
 			if not _bot_pending.has(bname):
 				return
 			_bot_pending.erase(bname)
+			_bot_respawn_fn.erase(bname)
 			_spawn_bot(_bot_respawn_pos(pos, team), team, bname, loadout)))
 	main.add_child(b)
 	# Reassert authority after add_child so children added in _ready inherit it.
@@ -556,3 +561,15 @@ func net_bot_state(arr: Array) -> void:
 		var sa_v: Variant = entry[13]
 		if typeof(sa_v) == TYPE_INT or typeof(sa_v) == TYPE_FLOAT:
 			b.secondary_ammo = int(sa_v)
+
+
+## #304: every bot waiting on its respawn timer comes back now (a new Bomb
+## Defusal round). The timers then find nothing pending and do nothing.
+func flush_pending_respawns() -> void:
+	for bname in _bot_respawn_fn.keys():
+		var fn: Callable = _bot_respawn_fn[bname]
+		if not _bot_pending.has(bname):
+			continue
+		_bot_pending.erase(bname)
+		fn.call()
+	_bot_respawn_fn.clear()

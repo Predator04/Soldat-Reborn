@@ -62,6 +62,8 @@ const MODES := [
 		"Outside the ring you lose health every second. Turn on Survival for no respawns."],
 	["GUN GAME", "Every kill moves you up to the next weapon. Get a knife kill on the last rung to win.",
 		"16 rungs from pistol to knife. Weapon switching is locked to your rung."],
+	["BOMB DEFUSAL", "Red attacks, blue defends: plant the bomb at site A or B, or stop it. First to 7 rounds wins.",
+		"Hold Use 3 s in a site to plant; the bomb blows in 40 s unless a defender holds Use on it for 7 s. The dead respawn together every 10 s; sides swap at halftime."],
 ]
 
 # kind -> [label, what it does]

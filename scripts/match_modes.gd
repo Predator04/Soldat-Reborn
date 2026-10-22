@@ -66,6 +66,7 @@ func _spawn_mode_entities() -> void:
 		Settings.MODE_PM:  _spawn_point_pickups()
 		Settings.MODE_DOM: _spawn_dom_points()
 		Settings.MODE_BR:  _reset_br_zone()
+		Settings.MODE_BOMB: main._bomb.setup()   # #304 sites + bomb (match_bomb.gd)
 
 
 func _spawn_flags() -> void:
@@ -681,7 +682,7 @@ func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: Str
 	# to the same team score, so a CTF team with two kills won on its first
 	# capture (the limit is 3).
 	var kill_scores: bool = not (Settings.game_mode in [Settings.MODE_CTF, Settings.MODE_INF,
-			Settings.MODE_HTF, Settings.MODE_DOM, Settings.MODE_PM])
+			Settings.MODE_HTF, Settings.MODE_DOM, Settings.MODE_PM, Settings.MODE_BOMB])
 	if kill_scores:
 		main.scores[killer_team] = int(main.scores.get(killer_team, 0)) + 1
 	# Advance: bump the local player's kill counter and auto-equip any new tier.
@@ -926,6 +927,9 @@ func _reset_round() -> void:
 				_restore_living_soldiers_local()
 		else:
 			_restore_living_soldiers_local()
+	# #304: a new Bomb Defusal match starts at round 1, first-half sides.
+	if Settings.game_mode == Settings.MODE_BOMB:
+		main._bomb.match_reset()
 	if Net.is_networked() and Net.is_host():
 		main._net._broadcast_match_state()
 

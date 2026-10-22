@@ -98,6 +98,9 @@ const MODE_PM := 6
 const MODE_DOM := 7
 const MODE_BR := 8
 const MODE_GG := 9
+# #304: always appended at the end of every mode list (indices are saved,
+# streamed, used by dedicated --mode and the master server).
+const MODE_BOMB := 10
 var game_mode := MODE_DM
 
 # Sub-mode overlays — toggle-able flags applied on top of the base mode.
@@ -108,7 +111,7 @@ var realistic := false   # no jet, no HUD ammo, head-shot 1HK (issue #19)
 var survival_pref := false
 var survival: bool:    # no respawn until round end (issue #20)
 	get:
-		return survival_pref and game_mode != MODE_GG
+		return survival_pref and game_mode != MODE_GG and game_mode != MODE_BOMB
 	set(v):
 		survival_pref = v
 var advance_pref := false
@@ -201,7 +204,7 @@ func friendly_fire_on() -> bool:
 
 func is_team_mode() -> bool:
 	return game_mode == MODE_TDM or game_mode == MODE_CTF or game_mode == MODE_INF \
-		or game_mode == MODE_HTF or game_mode == MODE_PM or game_mode == MODE_DOM
+		or game_mode == MODE_HTF or game_mode == MODE_PM or game_mode == MODE_DOM or game_mode == MODE_BOMB
 
 
 func _ready() -> void:
@@ -270,7 +273,7 @@ func load_settings() -> void:
 	fullscreen = bool(cf.get_value("video", "fullscreen", false))
 	map_index = int(cf.get_value("game", "map_index", 0))
 	custom_map_path = str(cf.get_value("game", "custom_map_path", ""))
-	game_mode = clampi(int(cf.get_value("game", "game_mode", MODE_DM)), MODE_DM, MODE_GG)
+	game_mode = clampi(int(cf.get_value("game", "game_mode", MODE_DM)), MODE_DM, MODE_BOMB)
 	map_index = maxi(0, map_index)  # upper bound checked by main against the map list
 	realistic = bool(cf.get_value("game", "realistic", false))
 	survival = bool(cf.get_value("game", "survival", false))

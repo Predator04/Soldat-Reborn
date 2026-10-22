@@ -25,6 +25,7 @@ const ACTION_SECTION := {
 	"weapon_4": "Weapons", "weapon_5": "Weapons", "weapon_6": "Weapons",
 	"weapon_7": "Weapons", "weapon_8": "Weapons", "weapon_9": "Weapons",
 	"weapon_10": "Weapons",
+	"use": "Combat",   # #304 Bomb Defusal: hold to plant / defuse
 	"chat": "Chat", "team_chat": "Chat", "radio": "Chat", "taunt": "Chat", "command": "Chat",
 	"vote_yes": "Utility", "vote_no": "Utility", "pause": "Utility", "scoreboard": "Utility", "help": "Utility",
 	"record_gif": "Utility",
@@ -71,6 +72,10 @@ const ACTIONS := [
 											 {"type": "joy_button", "button_index": 9}]],     # LB
 	["weapon_throw",    "Throw / Mount",    [{"type": "key", "physical_keycode": 70},         # F
 											 {"type": "joy_button", "button_index": 10}]],   # RB
+	# #304: hold to plant / defuse (Bomb Defusal). Pad Y is shared with Reload:
+	# every main pad button is taken and reloading while you plant is harmless.
+	["use",             "Use / Plant / Defuse", [{"type": "key", "physical_keycode": 67},     # C
+											 {"type": "joy_button", "button_index": 3}]],    # Y
 	["weapon_1",        "Weapon Slot 1",    [{"type": "key", "physical_keycode": 49},         # 1
 											 {"type": "joy_button", "button_index": 11}]],   # D-pad Up
 	["weapon_2",        "Weapon Slot 2",    [{"type": "key", "physical_keycode": 50},

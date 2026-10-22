@@ -30,6 +30,7 @@ const MatchNet = preload("res://scripts/match_net.gd")
 const MatchBots = preload("res://scripts/match_bots.gd")
 const MatchWorld = preload("res://scripts/match_world.gd")
 const MatchHazards = preload("res://scripts/match_hazards.gd")
+const MatchBomb = preload("res://scripts/match_bomb.gd")
 var _vehicles_sys: MatchVehicles = null   # match_vehicles.gd
 var _bonuses: MatchBonuses = null   # match_bonuses.gd
 var _votes: MatchVotes = null   # match_votes.gd
@@ -38,6 +39,7 @@ var _net: MatchNet = null   # match_net.gd
 var _bots: MatchBots = null   # match_bots.gd
 var _world: MatchWorld = null   # match_world.gd
 var _hazards: MatchHazards = null   # match_hazards.gd (#286 spikes / lava / jump pads)
+var _bomb: MatchBomb = null   # match_bomb.gd (#304 Bomb Defusal)
 
 var player: Node2D = null            # LOCAL player (whichever peer owns us)
 var hud: CanvasLayer = null
@@ -406,6 +408,7 @@ func _init() -> void:
 	_bots = _attach(MatchBots.new(), "MatchBots")
 	_world = _attach(MatchWorld.new(), "MatchWorld")
 	_hazards = _attach(MatchHazards.new(), "MatchHazards")
+	_bomb = _attach(MatchBomb.new(), "MatchBomb")
 
 
 ## A system helper is an internal child: freed with Main, invisible to
@@ -822,6 +825,8 @@ var _rs_early: Dictionary = {}   # key -> msec a "ready" arrived before its gate
 ## Extra wait so a full rewind fits before the respawn (none if the normal
 ## delay is already long enough, e.g. INF attackers).
 func _killcam_pad(base: float) -> float:
+	if Settings.game_mode == Settings.MODE_BOMB:
+		return 0.0   # #304: wave respawns stay together
 	return maxf(0.0, KillcamRewind.LENGTH + 0.3 - base)
 
 
@@ -886,6 +891,9 @@ func net_respawn_ready() -> void:
 
 
 func _respawn_delay_for_team(t: int) -> float:
+	# #304 Bomb Defusal: the dead come back together on the next wave.
+	if Settings.game_mode == Settings.MODE_BOMB and _bomb.active():
+		return _bomb.wave_delay()
 	# INF attackers pay a longer respawn (defender advantage).
 	if Settings.game_mode == Settings.MODE_INF and t == TEAM_RED:
 		return 5.0
@@ -1066,6 +1074,9 @@ func _team_spawn_list(t: int) -> Array:
 	# ported maps; otherwise the half of all spawn points nearest the base).
 	# Previously every bot used the shared list, so BLUE bots often spawned
 	# inside RED's base and vice versa.
+	# #304: Bomb Defusal spawns by role — after halftime the sides swap.
+	if Settings.game_mode == Settings.MODE_BOMB and _bomb != null and _bomb.swapped:
+		t = TEAM_RED if t == TEAM_BLUE else TEAM_BLUE
 	var ts: Variant = _map.get("team_spawns", {})
 	if typeof(ts) == TYPE_DICTIONARY and (ts as Dictionary).has(t) and not ((ts as Dictionary)[t] as Array).is_empty():
 		return (ts as Dictionary)[t]
@@ -1434,6 +1445,7 @@ func _process(delta: float) -> void:
 				and not bool(player.get("dead")) and player.has_method("current_weapon_name") \
 				and str(player.current_weapon_name()) == "Rambo Bow":
 			player.health = minf(100.0, float(player.health) + 40.0 * delta)
+		_bomb.client_tick(delta)
 		return
 	# Bonus box respawn timer (#78) — host / SP owns spawn cadence.
 	_bonuses._tick_bonus_boxes(delta)
@@ -1456,7 +1468,9 @@ func _process(delta: float) -> void:
 		_modes._tick_domination(delta)
 	elif Settings.game_mode == Settings.MODE_BR:
 		_modes._tick_battle_royale(delta)
-	if round_active:
+	if round_active and Settings.game_mode == Settings.MODE_BOMB:
+		_bomb.tick(delta)   # #304: rounds + their clock live in match_bomb.gd
+	elif round_active:
 		time_left = maxf(0.0, time_left - delta)
 		if time_left <= 0.0:
 			_modes._end_round_by_time()
@@ -1793,3 +1807,28 @@ func net_vehicle_respawn(vid: int) -> void:
 
 func vehicle_hit_soldier(s: Node, dmg: float, killer: String, killer_team: int, vel: Vector2, weapon := "Buggy") -> void:
 	_vehicles_sys.vehicle_hit_soldier(s, dmg, killer, killer_team, vel, weapon)
+
+
+# ── Bomb Defusal (#304) ────────────────────────────────
+
+## The local player pressed / released Use (SP / host: now; client: asks).
+func bomb_use_input(body: Node, held: bool) -> void:
+	if not Net.is_networked() or Net.is_host():
+		_bomb.set_use(body, held)
+	else:
+		rpc_id(1, "net_bomb_use", held)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func net_bomb_use(held: bool) -> void:
+	_bomb.net_use(multiplayer.get_remote_sender_id(), held)
+
+
+@rpc("authority", "call_remote", "reliable")
+func net_bomb_sync(payload: Dictionary) -> void:
+	_bomb.net_sync(payload)
+
+
+@rpc("authority", "call_local", "reliable")
+func net_bomb_boom(at: Vector2) -> void:
+	_bomb.boom_local(at)

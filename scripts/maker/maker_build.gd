@@ -37,12 +37,13 @@ const DEFAULT_W := 4800.0
 const DEFAULT_H := 2000.0
 const SIZES := [["S", 3200.0, 1600.0], ["M", 4800.0, 2000.0], ["L", 7200.0, 2600.0], ["XL", 9600.0, 3200.0]]
 
-const TEAM_MODES := [1, 2, 3, 4, 6, 7]   # Settings.is_team_mode()
+const TEAM_MODES := [1, 2, 3, 4, 6, 7, 10]   # Settings.is_team_mode()
 const MODE_CTF := 2
 const MODE_INF := 3
 const MODE_HTF := 4
 const MODE_RM := 5
 const MODE_DOM := 7
+const MODE_BOMB := 10
 
 
 static func is_maker(m: Dictionary) -> bool:
@@ -77,8 +78,14 @@ static func ensure_maker(m: Dictionary, theme: String = "grassland") -> Dictiona
 			var big := float(j.get("power", 1150.0)) > 1400.0
 			var foot: Vector2 = j.get("pos", Vector2.ZERO)
 			(mk["pieces"] as Array).append(make_piece("pad_big" if big else "pad", foot - Vector2(0, 10), Vector2(64, 20)))
+	# Bomb sites (#304) written by hand / Advanced become pieces too.
+	for b in m.get("bomb_sites", []):
+		if typeof(b) == TYPE_DICTIONARY and b.get("rect") is Rect2:
+			var br: Rect2 = b["rect"]
+			(mk["pieces"] as Array).append(make_piece("site_b" if str(b.get("name", "A")) == "B" else "site_a", br.get_center(), br.size))
 	m.erase("hazards")
 	m.erase("jump_pads")
+	m.erase("bomb_sites")
 	m["maker"] = mk
 	return mk
 
@@ -186,6 +193,7 @@ static func compile(src: Dictionary) -> Dictionary:
 	var hazards: Array = []
 	var pads: Array = []
 	var props: Array = []
+	var bomb_sites: Array = []
 	for p in mk.get("pieces", []):
 		if typeof(p) != TYPE_DICTIONARY:
 			continue
@@ -205,6 +213,13 @@ static func compile(src: Dictionary) -> Dictionary:
 				pads.append({"pos": Vector2(float(p["x"]), float(p["y"]) + float(p.get("h", 20.0)) * 0.5), "power": float(d.get("power", 1150.0))})
 			"prop":
 				props.append({"p": p, "d": d})
+			"site":
+				var nm := str(d.get("site", "A"))
+				var dup := false
+				for s in bomb_sites:
+					dup = dup or str(s["name"]) == nm
+				if not dup:
+					bomb_sites.append({"name": nm, "rect": piece_rect(p)})
 	var drawn: Array = []
 	var outlines: Array = []
 	for key in ["0", "2", "2w", "1"]:
@@ -240,6 +255,11 @@ static func compile(src: Dictionary) -> Dictionary:
 	out["collision"] = coll
 	out["hazards"] = hazards
 	out["jump_pads"] = pads
+	if bomb_sites.is_empty():
+		out.erase("bomb_sites")
+	else:
+		bomb_sites.sort_custom(func(a, b) -> bool: return str(a["name"]) < str(b["name"]))
+		out["bomb_sites"] = bomb_sites
 	var mk_out := {"v": VERSION, "theme": theme, "grid": int(mk.get("grid", 20)), "w": float(out["world"]["w"]),
 		"h": float(out["world"]["h"]), "bottom": str(mk.get("bottom", "void")), "pieces": [],
 		"base_polys": base_polys.size(), "base_coll": base_coll if had_coll else -1, "base_scenery": base_scn}
@@ -292,6 +312,7 @@ static func decompile(m: Dictionary) -> Dictionary:
 			out.erase("scenery")
 	out.erase("hazards")
 	out.erase("jump_pads")
+	out.erase("bomb_sites")
 	out.erase("_mk_outlines")
 	if bool(mk.get("ffa_fill", false)):
 		out["bot_spawns"] = []
@@ -709,9 +730,55 @@ static func validate(m: Dictionary, mode: int) -> Array:
 		probs.append({"lvl": "warn", "msg": _tr("No Rambo bow placed — one goes on the terrain in the middle."), "at": Vector2(W * 0.5, H * 0.5)})
 	elif mode == MODE_DOM and ((m.get("dom_points", []) as Array).is_empty() or auto.has("dom_points")):
 		probs.append({"lvl": "warn", "msg": _tr("No DOM points placed — three go on the terrain, left, middle and right."), "at": Vector2(W * 0.5, H * 0.5)})
+	if mode == MODE_BOMB:
+		probs.append_array(_validate_sites(m, solids, zones, W, H, floor_on, ground_y))
 	var ffa := (m.get("bot_spawns", []) as Array).size() + 1
 	if not (mode in TEAM_MODES) and ffa < 2:
 		probs.append({"lvl": "warn", "msg": _tr("Only one spawn point — add a few so players don't all appear in one spot."), "at": m.get("player_spawn", Vector2.ZERO)})
+	return probs
+
+
+## Bomb Defusal (#304): both sites placed, inside the map, with ground to stand
+## on inside them, out of spikes / lava, apart from each other.
+static func _validate_sites(m: Dictionary, solids: Array, zones: Array, W: float, H: float, floor_on: bool, ground_y: float) -> Array:
+	var probs: Array = []
+	var by_name := {}
+	for b in m.get("bomb_sites", []):
+		if typeof(b) == TYPE_DICTIONARY and b.get("rect") is Rect2:
+			by_name[str(b.get("name", "A"))] = b["rect"]
+	for nm in ["A", "B"]:
+		if not by_name.has(nm):
+			probs.append({"lvl": "error", "msg": _tr("Bomb Defusal needs Bomb site %s (Objectives).") % nm, "at": Vector2(W * (0.35 if nm == "A" else 0.65), H * 0.5)})
+			continue
+		var r: Rect2 = by_name[nm]
+		if not Rect2(0, 0, W, H).encloses(r):
+			probs.append({"lvl": "error", "msg": _tr("Bomb site %s sticks out of the map.") % nm, "at": r.get_center()})
+			continue
+		var stand := 0
+		var x := r.position.x + 10.0
+		while x < r.end.x - 9.0:
+			var y := r.position.y + 2.0
+			while y < r.end.y + 10.0:
+				var solid_here: bool = _in_solid(solids, Vector2(x, y)) or (floor_on and y >= ground_y)
+				if solid_here:
+					var clear := true
+					for up in [6.0, 18.0, 30.0]:
+						if _in_solid(solids, Vector2(x, y - up)):
+							clear = false
+					if clear and y > r.position.y + 30.0:
+						var in_zone := false
+						for z in zones:
+							if (z["rect"] as Rect2).grow(6.0).has_point(Vector2(x, y - 4.0)):
+								in_zone = true
+						if not in_zone:
+							stand += 1
+					break
+				y += 4.0
+			x += 20.0
+		if stand < 2:
+			probs.append({"lvl": "error", "msg": _tr("Bomb site %s has no ground to stand on inside it — stretch it down over a floor.") % nm, "at": r.get_center()})
+	if by_name.has("A") and by_name.has("B") and (by_name["A"] as Rect2).intersects(by_name["B"]):
+		probs.append({"lvl": "warn", "msg": _tr("Bomb sites A and B overlap — put them in different places."), "at": (by_name["B"] as Rect2).get_center()})
 	return probs
 
 
