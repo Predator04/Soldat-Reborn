@@ -628,9 +628,14 @@ func _cheats() -> void:
 	_expect(hl, st, "fuel", "refused_fuel", "TRUST fuel: ")
 	if not hl.contains("fuel (jetting with an empty tank)"):
 		_bad.append("no forced death for infinite fuel")
-	# Spawned / silent-aim rounds never hurt anyone.
-	var sneaky := _shooter_hits(st, "ORIG") + _shooter_hits(st, "SIL")
-	_log.append("hits by spawned / silent-aim rounds: %d" % int(sneaky))
+	# Spawned / silent-aim rounds never hurt anyone. (The origin cheat picks
+	# its moments by its own screen: right after a respawn / rejoin its copy
+	# of the target can be stale, and a round it "spawns at the target" then
+	# starts at its own body — the host's check measured that (HOSTRECV
+	# origin= <= 80 px): no spawned round, not counted.)
+	var near := _orig_near_hits(hl)
+	var sneaky := _shooter_hits(st, "ORIG") - float(near) + _shooter_hits(st, "SIL")
+	_log.append("hits by spawned / silent-aim rounds: %d (origin cheat hits from its own body: %d)" % [int(sneaky), near])
 	if sneaky > 0.5:
 		_bad.append("%d hits landed from spawned / silent-aim rounds" % int(sneaky))
 	# Modified victims: logged, and the host's ledger still kills them.
@@ -667,6 +672,28 @@ func _amount(line: String) -> float:
 
 
 ## Hits landed so far by the soldier tagged `tag` (HOSTHITS shooters=[...]).
+## Origin-cheat hits whose round the host measured at the cheater's own body.
+func _orig_near_hits(hl: String) -> int:
+	var origin_of: Dictionary = {}   # shot id -> px from the body (INF: unknown)
+	var cur := -1
+	var n := 0
+	for line in hl.split("\n"):
+		if line.begins_with("HOSTRECV ") and line.contains("by=«ORIG»"):
+			var id := int(line.get_slice("shot=", 1).get_slice(" ", 0))
+			var o := line.get_slice("origin=", 1)
+			var px := INF
+			if o.begins_with("none, "):
+				px = float(o.get_slice(", ", 1).get_slice(" ", 0))
+			elif o.is_valid_float():
+				px = float(o)
+			origin_of[id] = px
+		elif line.begins_with("HOSTSHOT ") and line.contains("by=«ORIG»"):
+			cur = int(line.get_slice("shot=", 1).get_slice(" ", 0))
+		elif line.begins_with("HOSTHIT «ORIG»") and cur >= 0 and float(origin_of.get(cur, INF)) <= 80.0:
+			n += 1
+	return n
+
+
 func _shooter_hits(st: String, tag: String) -> float:
 	var at := st.find("shooters=[")
 	if at < 0:
