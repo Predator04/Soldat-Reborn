@@ -79,7 +79,7 @@ func _run() -> void:
 	while root.get_node_or_null("Settings") == null:
 		await process_frame
 	_st = root.get_node("Settings")
-	for k in ["game_mode", "custom_map_path", "bot_count", "vehicles", "map_index", "bonuses"]:
+	for k in ["game_mode", "custom_map_path", "bot_count", "vehicles", "map_index"]:
 		_saved[k] = _st.get(k)
 	if _only == "" or _only == "rules":
 		if not _i18n():
@@ -140,21 +140,27 @@ func _by_name(nm: String) -> Node:
 	return null
 
 
+func _hh() -> GDScript:
+	return load("res://scripts/host_hits.gd")
+
+
 func _kill(s: Node, killer: String, kteam: int) -> void:
 	s.set("ceasefire_t", 0.0)
 	for _i in 30:
 		if not is_instance_valid(s) or bool(s.get("dead")):
 			return
-		HostHits.damage(s, 60.0, killer, ZR.CLAW_WEAPON if kteam == 2 else "AK-74", kteam)
+		_hh().damage(s, 60.0, killer, ZR.CLAW_WEAPON if kteam == 2 else "AK-74", kteam)
 
 
 # ── strings ────────────────────────────────────────────────────────────────
 
-const KEYS := ["Zombie", "ZOMBIE", "ROUND %s — YOU ARE A ZOMBIE: TURN THEM ALL", "ROUND %s — SURVIVE FOR %s",
+# ("Zombie" / "ZOMBIES" read the same in German and French: checked for a row only.)
+const SAME_KEYS := ["Zombie", "ZOMBIE", "Zombies", "ZOMBIES"]
+const KEYS := ["ROUND %s — YOU ARE A ZOMBIE: TURN THEM ALL", "ROUND %s — SURVIVE FOR %s",
 	"YOU WERE TURNED — HUNT THE HUMANS", "YOU ARE THE LAST HUMAN", "LAST HUMAN STANDING: %s",
 	"THE HUMANS SURVIVED THE ROUND", "THE ZOMBIES ARE GONE — HUMANS WIN THE ROUND", "OVERRUN — THE ZOMBIES WIN THE ROUND",
-	"%s was turned by %s", "%s turned into a zombie", "Humans", "Zombies", "ROUND 1 STARTS IN %d", "HUMANS LEFT: %d",
-	"HUMANS", "ZOMBIES"]
+	"%s was turned by %s", "%s turned into a zombie", "Humans", "ROUND 1 STARTS IN %d", "HUMANS LEFT: %d",
+	"HUMANS"]
 
 
 func _i18n() -> bool:
@@ -169,6 +175,11 @@ func _i18n() -> bool:
 			if t == k or t == "":
 				TranslationServer.set_locale("en")
 				return _fail("'%s' has no %s translation" % [k, loc])
+	TranslationServer.set_locale("es")
+	for k in SAME_KEYS:
+		if TranslationServer.translate(k) == k:
+			TranslationServer.set_locale("en")
+			return _fail("'%s' has no es translation" % k)
 	TranslationServer.set_locale("en")
 	var names: Array = load("res://scripts/game_lists.gd").MODE_NAMES
 	if names.size() != 12 or str(names[11]) != "Zombie" or str(names[10]) != "Bomb Defusal":
@@ -180,7 +191,6 @@ func _i18n() -> bool:
 # ── rules ──────────────────────────────────────────────────────────────────
 
 func _rules() -> bool:
-	_st.bonuses = false
 	var m := await _start(4)
 	if m == null:
 		return false
@@ -233,7 +243,7 @@ func _rules() -> bool:
 		zb = m.player
 	zb.set("ceasefire_t", 0.0)
 	var hp0: float = float(zb.get("health"))
-	HostHits.damage(zb, 20.0, str(hum.get("display_name")), "AK-74", 1)
+	_hh().damage(zb, 20.0, str(hum.get("display_name")), "AK-74", 1)
 	var took: float = hp0 - float(zb.get("health"))
 	var want_took: float = 20.0 * ZR.damage_taken(float(z.zombie_share))
 	if absf(took - want_took) > 0.05 or took >= 20.0:
@@ -337,7 +347,6 @@ func _rules() -> bool:
 # ── bots ───────────────────────────────────────────────────────────────────
 
 func _bots() -> bool:
-	_st.bonuses = true
 	var m := await _start(8)
 	if m == null:
 		return false

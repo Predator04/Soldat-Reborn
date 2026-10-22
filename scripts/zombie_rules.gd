@@ -21,12 +21,16 @@ const CLAW_WEAPON := "Knife"   # player.gd SECONDARY_WEAPONS entry the claws use
 const CLAW_SLOT := 1           # its secondary index
 
 
+## The mode, read without naming the Settings autoload (tests preload this
+## before autoloads exist).
 static func on() -> bool:
-	return Settings.game_mode == MODE
+	var ml := Engine.get_main_loop() as SceneTree
+	var st: Node = ml.root.get_node_or_null("Settings") if ml != null else null
+	return st != null and int(st.get("game_mode")) == MODE
 
 
 static func is_zombie(s: Variant) -> bool:
-	if Settings.game_mode != MODE or s == null or not is_instance_valid(s):
+	if s == null or not is_instance_valid(s) or not on():
 		return false
 	var t: Variant = (s as Object).get("team")
 	return t != null and int(t) == TEAM_ZOMBIE
