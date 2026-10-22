@@ -728,7 +728,9 @@ func peer_rtt_ms(pid: int) -> int:
 	var app := int(round(float(_rtt.get(pid, -1.0))))
 	var enet_rtt := -1
 	var mp = main.multiplayer.multiplayer_peer
-	if mp is ENetMultiplayerPeer:
+	# (Only a connected remote peer has one: the host itself — a bot's or
+	# the host player's "peer" — or a peer that just left has none.)
+	if mp is ENetMultiplayerPeer and pid != main.multiplayer.get_unique_id() and main.multiplayer.get_peers().has(pid):
 		var pc := (mp as ENetMultiplayerPeer).get_peer(pid)
 		if pc != null:
 			enet_rtt = int(pc.get_statistic(ENetPacketPeer.PEER_ROUND_TRIP_TIME))
