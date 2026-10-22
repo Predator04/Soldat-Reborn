@@ -327,6 +327,10 @@ func _sc_start(base: String, n: String) -> Dictionary:
 	var extra := "--smoke-medic=VIC"
 	if bool(sc.get("jip", false)):
 		extra += " --smoke-round-secs=34"
+	# (No fill bot where a buggy matters: since #302 a bot boards it and
+	# drives it off before the duel starts. Later flags win.)
+	if str(sc.get("weapon", "")) == "buggy" or str(sc.get("v_move", "")) == "drive":
+		extra += " --fill=0 --bots=0"
 	r["host"] = _host(extra, "%s_host.log" % n, str(sc.get("map", "Arena")))
 	return r
 
