@@ -1429,6 +1429,7 @@ func _process(delta: float) -> void:
 		return
 	# Bonus box respawn timer (#78) — host / SP owns spawn cadence.
 	_bonuses._tick_bonus_boxes(delta)
+	_bonuses._smoke_bonus_tick(delta)   # gate C `drop` only (--smoke-bonus=KIND)
 	# Objectives freeze on the winner screen — re-scoring there used to re-call
 	# _end_round every tick and reset the countdown forever (DOM/BR/HTF).
 	if not round_active:
@@ -1648,6 +1649,16 @@ func net_bonus_spawn(bid: int, pos: Vector2, kind: String) -> void:
 @rpc("authority", "reliable")
 func net_bonus_despawn(bid: int) -> void:
 	_bonuses.net_bonus_despawn(bid)
+
+
+## #303: the local player drops his power-up (SP / host: now; client: asks).
+func drop_powerup_request() -> void:
+	_bonuses.drop_powerup_request()
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func net_drop_powerup(target_pid: int) -> void:
+	_bonuses.net_drop_powerup(target_pid)
 
 
 func next_pickup_id() -> int:

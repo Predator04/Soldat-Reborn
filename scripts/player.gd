@@ -115,6 +115,7 @@ var x_prev := false     # prev-frame X — prone toggle on rising edge
 var _stance_jump_prev := false   # prev-tick jump in _live_stance (#301)
 var s_prev := false     # prev-frame S — roll on rising edge with lateral momentum
 var f_prev := false     # prev-frame F — throw current weapon on rising edge
+var b_prev := false     # prev-frame drop_powerup (#303) — rising edge only
 # #87: weapons the player has thrown (name -> true). Thrown weapons are removed
 # from the active roster until re-picked up (or respawn).
 var _thrown: Dictionary = {}
@@ -447,6 +448,7 @@ func _physics_mounted(delta: float) -> void:
 	q_prev = Input.is_action_pressed("secondary_swap")
 	g_prev = Input.is_action_pressed("grenade_toggle")
 	f_prev = Input.is_action_pressed("weapon_throw")
+	b_prev = Input.is_action_pressed("drop_powerup")
 	lmb_prev = Input.is_action_pressed("fire")
 	queue_redraw()
 
@@ -476,6 +478,7 @@ func _physics_input_locked(delta: float) -> void:
 	q_prev = Input.is_action_pressed("secondary_swap")
 	g_prev = Input.is_action_pressed("grenade_toggle")
 	f_prev = Input.is_action_pressed("weapon_throw")
+	b_prev = Input.is_action_pressed("drop_powerup")
 	lmb_prev = Input.is_action_pressed("fire")
 	queue_redraw()
 
@@ -792,6 +795,13 @@ func _live_weapon_keys() -> void:
 		elif Settings.game_mode != Settings.MODE_GG:
 			_drop_active_weapon()
 	f_prev = f_now
+
+	# #303: drop the power-up you carry — it just ends (nothing on the ground).
+	# Not while the taunt modifier is held (Alt + B is a taunt).
+	var b_now := Input.is_action_pressed("drop_powerup")
+	if b_now and not b_prev and not Input.is_action_pressed("taunt"):
+		request_drop_bonus()
+	b_prev = b_now
 
 
 func _live_grenade(delta: float) -> void:
@@ -2363,6 +2373,45 @@ func _break_predator_if_active() -> void:
 		else:
 			rpc_id(1, "net_bonus_clear")
 	_clear_bonus_local()
+
+
+# ── Drop the power-up (#303) ──────────────────────────
+# Dropping just ENDS the effect: nothing is left on the ground and the box
+# keeps its own respawn timer, so there is no drop / re-pickup loop. The owner
+# asks Main (host-authoritative: Main.net_drop_powerup on a client); the host
+# ends it on its replica and fans net_bonus_drop out to every loaded peer.
+# One power-up at a time (a new box replaces the old), so drop ends that one.
+
+## Local input → ask for the drop. No-op without an active power-up.
+func request_drop_bonus() -> void:
+	if bonus_kind == "" or dead:
+		return
+	var m := get_parent()
+	if m != null and m.has_method("drop_powerup_request"):
+		m.drop_powerup_request()
+
+
+## Host (or single player): end it here and on every peer's replica.
+func drop_bonus() -> void:
+	_drop_bonus_local()
+	if Net.is_networked() and Net.is_host() and multiplayer.has_multiplayer_peer():
+		_fanout("net_bonus_drop", [], -1)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func net_bonus_drop() -> void:
+	# Only the host decides a drop (it checked the owner asked for it).
+	if multiplayer.multiplayer_peer != null and multiplayer.get_remote_sender_id() != 1:
+		return
+	_drop_bonus_local()
+
+
+func _drop_bonus_local() -> void:
+	if bonus_kind == "":
+		return
+	var k := bonus_kind
+	_clear_bonus_local()
+	_pickup_toast(TranslationServer.translate("%s dropped") % BonusPickup.kind_label(k), "", BonusPickup.kind_color(k))
 
 
 # Wedge detection: a rectangular body can come to rest between two steep

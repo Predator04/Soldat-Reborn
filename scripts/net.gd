@@ -1060,6 +1060,8 @@ var smoke_auto_shots: int = 0
 func _smoke_auto_start() -> void:
 	if _smoke_arg("--smoke-cheat") != "":
 		get_tree().create_timer(3.0).timeout.connect(_smoke_cheat.bind(_smoke_arg("--smoke-cheat")))
+	if _smoke_arg("--smoke-drop") != "":
+		_smoke_drop_start(_smoke_arg("--smoke-drop"))
 	if not "--smoke-auto" in OS.get_cmdline_user_args():
 		return
 	var t := Timer.new()
@@ -1868,6 +1870,80 @@ func allow_through_firewall() -> bool:
 	var cmd := "/c netsh advfirewall firewall delete rule name=\"Soldat Reborn\" & netsh advfirewall firewall delete rule name=\"Tracerfall\" & netsh advfirewall firewall add rule name=\"Tracerfall\" dir=in action=allow program=\"%s\" enable=yes profile=any" % exe
 	var ps := "Start-Process cmd -Verb RunAs -WindowStyle Hidden -ArgumentList '%s'" % cmd.replace("'", "''")
 	return OS.create_process("powershell.exe", ["-NoProfile", "-WindowStyle", "Hidden", "-Command", ps]) > 0
+
+
+# (--smoke-drop=dropper|watcher, #303, gate C `drop`; the dedicated host runs
+# --smoke-bonus=KIND so every joined human gets a power-up.) The dropper first
+# forges a drop request for the watcher's soldier (the host must ignore it),
+# then drops its own through the real drop_powerup input. The watcher reports
+# when the dropper's replica loses the power-up (with time left on it, so not
+# the natural expiry) and that its own power-up is untouched.
+func _smoke_drop_start(role: String) -> void:
+	print("SMOKE-DROP start role=%s" % role)
+	var t := Timer.new()
+	t.wait_time = 0.1
+	t.autostart = true
+	add_child(t)
+	var st := {"s": 0, "t": 0.0, "other": 0, "left": 0.0}   # lambdas capture locals by value
+	t.timeout.connect(func() -> void:
+		st["t"] = float(st["t"]) + 0.1
+		var mn = get_tree().current_scene
+		var p = mn.get("player") if mn != null else null
+		var pbi = mn.get("_players_by_id") if mn != null else null
+		if p == null or not is_instance_valid(p) or pbi == null:
+			return
+		var me := local_id()
+		var other = null
+		var other_pid := 0
+		for pid in (pbi as Dictionary).keys():
+			if int(pid) != me and is_instance_valid(pbi[pid]):
+				other = pbi[pid]
+				other_pid = int(pid)
+		var mine := str(p.get("bonus_kind"))
+		var theirs := str(other.get("bonus_kind")) if other != null else ""
+		if role == "watcher":
+			match int(st["s"]):
+				0:
+					if theirs != "":
+						print("SMOKE-DROP-WATCH saw peer=%d kind=%s own=%s" % [other_pid, theirs, mine])
+						st["s"] = 1
+				1:
+					if theirs != "":
+						st["left"] = float(other.get("bonus_t"))
+					else:
+						print("SMOKE-DROP-WATCH ended peer=%d left=%.1f own=%s" % [other_pid, float(st["left"]), mine])
+						st["s"] = 2
+			return
+		match int(st["s"]):
+			0:
+				if mine != "":
+					print("SMOKE-DROP have=%s" % mine)
+					st["s"] = 1
+			1:
+				if theirs != "":
+					# Forged: ask the host to drop the OTHER soldier's power-up.
+					mn.rpc_id(1, "net_drop_powerup", other_pid)
+					print("SMOKE-DROP forged target=%d" % other_pid)
+					st["other"] = other_pid
+					st["s"] = 2
+					st["t"] = 0.0
+			2:
+				if float(st["t"]) >= 2.0:
+					print("SMOKE-DROP forged-result other_kind=%s" % theirs)
+					Input.action_press("drop_powerup")
+					st["s"] = 3
+					st["t"] = 0.0
+			3:
+				Input.action_release("drop_powerup")
+				if mine == "":
+					var hud = mn.get("hud")
+					var toast: String = str(hud.lbl_toast.text) if hud != null and hud.get("lbl_toast") != null else "?"
+					print("SMOKE-DROP dropped after=%.1f toast='%s' other_kind=%s" % [float(st["t"]), toast, theirs])
+					st["s"] = 4
+				elif float(st["t"]) > 5.0:
+					print("SMOKE-DROP fail: still %s" % mine)
+					st["s"] = 4
+	)
 
 
 # (--smoke-cheat=godmode|teleport|credit) Play a modified client so the gate can
