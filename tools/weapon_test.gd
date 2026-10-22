@@ -124,7 +124,10 @@ func _player_step(m, p, d: float) -> bool:
 				dist = 80.0
 			elif wn == "M79":
 				dist = 200.0
-				aim = Vector2(cos(deg_to_rad(-31.0)), sin(deg_to_rad(-31.0)))
+				# Low arc onto the target from the table's shell speed + gravity
+				# (#310: 31 deg was hard-coded for the old 470 px/s; 640 -> ~14 deg).
+				var lob: float = 0.5 * asin(clampf(float(w["gravity"]) * dist / pow(float(w["speed"]), 2.0), -1.0, 1.0))
+				aim = Vector2(cos(-lob), sin(-lob))
 			elif kind == "rocket":
 				dist = 380.0
 			elif kind == "arrow":
