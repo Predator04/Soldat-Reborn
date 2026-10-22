@@ -1958,7 +1958,7 @@ func _smoke_latepu_start(role: String) -> void:
 	t.wait_time = 0.1
 	t.autostart = true
 	add_child(t)
-	var st := {"s": 0, "t": 0.0, "seen_t": -1.0}   # lambdas capture locals by value
+	var st := {"s": 0, "t": 0.0, "seen_t": -1.0, "kind_t": 0.0}   # lambdas capture locals by value
 	t.timeout.connect(func() -> void:
 		st["t"] = float(st["t"]) + 0.1
 		if int(st["s"]) >= 2:
@@ -1969,7 +1969,7 @@ func _smoke_latepu_start(role: String) -> void:
 		if p == null or not is_instance_valid(p) or pbi == null:
 			return
 		if role == "holder":
-			if str(p.get("bonus_kind")) != "":
+			if str(p.get("bonus_kind")) == "predator":   # the host's grant (a box picked up on the way doesn't count)
 				print("SMOKE-LATEPU have=%s left=%.1f" % [str(p.get("bonus_kind")), float(p.get("bonus_t"))])
 				st["s"] = 2
 			return
@@ -1981,9 +1981,15 @@ func _smoke_latepu_start(role: String) -> void:
 			if float(st["seen_t"]) < 0.0:
 				st["seen_t"] = float(st["t"])
 			if str(o.get("bonus_kind")) != "":
-				print("SMOKE-LATEPU saw peer=%d kind=%s left=%.1f alpha=%.2f after=%.1f" % [int(pid), str(o.get("bonus_kind")),
-					float(o.get("bonus_t")), float((o as CanvasItem).modulate.a), float(st["t"]) - float(st["seen_t"])])
-				st["s"] = 2
+				# Report a few ticks later: the replica applies the see-through
+				# alpha in its next physics tick.
+				if int(st["s"]) == 0:
+					st["s"] = 1
+					st["kind_t"] = float(st["t"])
+				elif float(st["t"]) - float(st["kind_t"]) >= 0.3:
+					print("SMOKE-LATEPU saw peer=%d kind=%s left=%.1f alpha=%.2f after=%.1f" % [int(pid), str(o.get("bonus_kind")),
+						float(o.get("bonus_t")), float((o as CanvasItem).modulate.a), float(st["kind_t"]) - float(st["seen_t"])])
+					st["s"] = 2
 				return
 		if float(st["seen_t"]) >= 0.0 and float(st["t"]) - float(st["seen_t"]) > 8.0:
 			print("SMOKE-LATEPU missing: no power-up on the other replica after 8 s")
