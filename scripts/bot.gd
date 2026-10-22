@@ -180,6 +180,8 @@ static func gun_stats(weapon_name: String) -> Dictionary:
 			if int(pw.get("pellets", 1)) > 1:
 				out["pellets"] = int(pw["pellets"])
 				out["spread"] = float(pw["spread"])
+			if pw.has("falloff"):
+				out["falloff"] = pw["falloff"]
 	_gun_cache[weapon_name] = out
 	return out
 
@@ -1321,6 +1323,9 @@ func net_bot_shoot(muzzle: Vector2, aim: Vector2, proj_id: int = 0, weapon: Stri
 			b.direction = dir
 			b.speed = float(stats["speed"])
 			b.damage = float(stats["damage"]) * dmg_mul
+			if stats.has("falloff"):
+				var fo: Array = stats["falloff"]
+				b.falloff = Vector3(float(fo[0]), float(fo[1]), float(fo[2]))
 			b.weapon_name = active_weapon
 			b.team = team
 			b.killer_name = display_name

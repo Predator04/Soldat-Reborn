@@ -455,12 +455,15 @@ func _sc_judge(r: Dictionary) -> Array:
 		bad.append("TRUST lines: %s" % str(trust.slice(0, 3)))
 	# 2. Per shooter: the host's hits vs the shooter's own screen.
 	var dmg: float = float(sc.get("damage", 0.0))
+	var dmg_min_mul := 1.0   # shotgun falloff: a pellet may land for less
 	# #310: a gun's per-hit damage is the weapon table's (player.gd), so a
 	# balance change can't leave this test checking a stale number.
 	if str(sc.get("match", "")) == "shot" and WEAPON_NAMES.has(str(sc.get("weapon", ""))):
 		var wdef: Dictionary = load("res://scripts/player.gd").weapon_def(str(WEAPON_NAMES[str(sc["weapon"])][0]))
 		if not wdef.is_empty():
 			dmg = float(wdef["damage"])
+			if wdef.has("falloff"):
+				dmg_min_mul = float((wdef["falloff"] as Array)[2])
 	for sh in r["shooters"]:
 		var tag: String = sh[0]
 		var slog: String = sh[2]
@@ -477,7 +480,12 @@ func _sc_judge(r: Dictionary) -> Array:
 		var wrong := 0
 		for line in hits:
 			var amt := _amount(line)
-			if dmg > 0.0 and absf(amt - dmg) > 0.01 and absf(amt - dmg * 0.5) > 0.01:
+			if dmg > 0.0 and dmg_min_mul < 1.0:
+				# Falloff (#322): anything from the far-range floor to full
+				# damage (or half that through a vest), never more.
+				if amt > dmg + 0.01 or amt < dmg * dmg_min_mul * 0.5 - 0.01:
+					wrong += 1
+			elif dmg > 0.0 and absf(amt - dmg) > 0.01 and absf(amt - dmg * 0.5) > 0.01:
 				wrong += 1
 		if wrong > 0:
 			bad.append("%s: %d hits worth neither %.0f nor %.0f (vest)" % [tag, wrong, dmg, dmg * 0.5])

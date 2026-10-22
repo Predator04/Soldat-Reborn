@@ -17,6 +17,11 @@ var life := 0.0
 # Optional gravity — arrows sag slightly, standard bullets are 0.
 var grav := 0.0
 var _hit := false
+## Damage falloff over distance travelled (shotgun pellets): Vector3(start px,
+## end px, multiplier at / past end); x = y = 0 means none. From the weapon
+## table's "falloff", so every peer computes the same number.
+var falloff := Vector3.ZERO
+var _travel := 0.0   # px flown, counted per physics step (same on every peer)
 # Lag compensation (bullets from a remote player): also test the local
 # player's hitbox from this many ms ago, i.e. where the shooter saw them.
 var lag_ms := 0
@@ -76,6 +81,7 @@ func _physics_process(delta: float) -> void:
 		direction = _velocity.normalized()
 	else:
 		step = direction * speed * delta
+	_travel += step.length()
 	# Swept hit test (v1.18): a Barrett round moves 40 px a frame and a soldier
 	# is ~14 px wide, so overlap checks alone let fast rounds pass straight
 	# through people (bots with the Barrett couldn't hit a standing target).
@@ -237,6 +243,14 @@ static func segment_rect_t(a: Vector2, b: Vector2, r: Rect2) -> float:
 	return t0
 
 
+## Shotgun falloff: full damage up to `f.x` px flown, easing linearly to
+## `f.z` x at `f.y` px and beyond.
+static func falloff_mul(f: Vector3, travel: float) -> float:
+	if f.y <= f.x or travel <= f.x:
+		return 1.0
+	return lerpf(1.0, f.z, clampf((travel - f.x) / (f.y - f.x), 0.0, 1.0))
+
+
 ## `feet_y`: the victim's feet in the rewound hitbox (host tests, #266).
 func _on_body_entered(body: Node, feet_y: float = INF) -> void:
 	# queue_free() is deferred; a second body_entered in the same physics flush would
@@ -265,7 +279,7 @@ func _on_body_entered(body: Node, feet_y: float = INF) -> void:
 				return
 			_hit = true
 			ImpactFx.spawn(get_parent(), global_position, -direction, "blood")
-			var dmg := damage
+			var dmg := damage * falloff_mul(falloff, _travel)
 			var wname := weapon_name
 			# Realistic: hit region above ~-14 (local) counts as a head-shot 1HK.
 			# Prone soldiers have a much smaller head hitbox — offset accordingly.
