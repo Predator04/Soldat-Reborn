@@ -34,6 +34,7 @@ Measured first: thousands of duels at fixed distances against standing and straf
 
 ### Fixed — online
 - **Joining a match in progress now shows other players' active power-ups (#305).** A Predator was not see-through, a Berserker not red, etc. for someone who joined after it was picked up, until it ran out; the server now sends each player's active power-up and the time left as part of joining.
+- **Dedicated servers no longer crash now and then (#313).** About one headless run in a hundred (dedicated servers, test runs) died with a segfault on the audio thread, logged as "caller thread can't call propagate_notification on /root". It was a race inside Godot's sound mixer while sounds play; a server has no speakers, so headless runs now play no sounds at all (they are still counted for the tests). Nothing changes for players with sound.
 
 ### Improved — telling the teams apart (#306)
 - **Friend and foe now read at a glance (#306).** In team modes every soldier wears big panels of strong team paint — helmet, plate carrier, shoulder pads and an arm band, neck gaiter, cap, vest front, jetpack cover — in a clear cyan-blue or red-orange (the blue side lighter, the red side deeper), so the teams stay distinct on night maps, in smoke and explosions, on the HD terrain and on a phone screen. Your helmet and vest paint still show on the rest of the helmet / vest, and in free-for-all modes (Deathmatch, Rambo, Battle Royale, Gun Game) everyone keeps their own colours.

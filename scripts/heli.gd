@@ -828,7 +828,7 @@ func _bot_leave(d: Node) -> void:
 # ── Presentation (#277, cosmetic only) ────────────────
 
 func _engine_sound() -> void:
-	if _engine.stream == null or Settings.sfx_volume <= 0.0:
+	if _engine.stream == null or Settings.sfx_volume <= 0.0 or Sfx.silent:   # #313
 		return
 	if rpm < 0.02 or not alive:
 		if _engine.playing:

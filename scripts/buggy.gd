@@ -1402,7 +1402,7 @@ static func splash(tree: SceneTree, at: Vector2, radius: float, dmg: float, kill
 # here touches physics, net state, timers or the gameplay random stream.
 
 func _engine_sound() -> void:
-	if _engine.stream == null or Settings.sfx_volume <= 0.0:
+	if _engine.stream == null or Settings.sfx_volume <= 0.0 or Sfx.silent:   # #313
 		return
 	var running := driver() != null
 	if not running:
