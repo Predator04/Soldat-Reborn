@@ -5,12 +5,14 @@ extends SceneTree
 ## for bots too (`Catchup.bots_too`, `force_sp`), each map played with it
 ## OFF and ON.
 ##   godot --headless --fixed-fps 60 -s tools/catchup_watch.gd -- --case=even|weak --maps=0,3-7
-##       [--secs=180] [--runs=1] [--bots=8] [--weak-spread=0.35] [--out=build/catchup/x.jsonl]
+##       [--secs=180] [--runs=1] [--bots=8] [--weak-spread=1.2] [--weak-rate=2.5] [--out=build/catchup/x.jsonl]
 ## even: Teammatch (mode 1), all bots skill 3 — blue's share of the kills and
 ##       the kill rate should not move.
-## weak: Deathmatch (mode 0), "Bot 1" aims with --weak-spread rad of jitter
-##       (skill 3 = 0.16, skill 1 = 0.30) — its kill share / K:D with it on
-##       vs off.
+## weak: Deathmatch (mode 0), "Bot 1" plays like skill 1 (slow target
+##       pick-up, short range) with --weak-spread rad of aim jitter (skill 3 =
+##       0.16, skill 1 = 0.30; 0.6 alone barely hurt a bot at close range, so
+##       use ~1.2) and its fire cooldowns x --weak-rate (2.5) — its kill
+##       share / K:D with it on vs off.
 ## One JSON line per (map, run, on/off); lines already in --out are skipped,
 ## so a killed batch resumes. Summary: python3 tools/catchup_report.py FILE.
 
@@ -32,6 +34,8 @@ var _team_k: Dictionary = {} # team -> kills
 var _done: Dictionary = {}
 var _wall0 := 0
 var _fix_t := 0.0
+var _rate := 2.5             # weak bot: fire cooldowns x this
+var _last_cd := 0.0
 
 
 func _initialize() -> void:
@@ -49,6 +53,7 @@ func _initialize() -> void:
 		elif a.begins_with("--bots="): _bots = int(a.substr(7))
 		elif a.begins_with("--case="): _case = a.substr(7)
 		elif a.begins_with("--weak-spread="): _spread = float(a.substr(14))
+		elif a.begins_with("--weak-rate="): _rate = float(a.substr(12))
 		elif a.begins_with("--out="): _out = a.substr(6)
 	for m in _maps:
 		for r in _runs:
@@ -127,12 +132,23 @@ func _physics_process(delta: float) -> bool:
 		if p.is_in_group("soldier"):
 			p.remove_from_group("soldier")
 	if _case == "weak":
+		# Fire cadence: every new cooldown (= a shot) is stretched x --weak-rate.
+		for b in m._bots_by_id.values():
+			if is_instance_valid(b) and str(b.display_name) == "Bot 1":
+				var cd := float(b.get("fire_cd"))
+				if cd > _last_cd + 0.01:
+					cd *= _rate
+					b.set("fire_cd", cd)
+				_last_cd = cd
 		_fix_t -= delta
 		if _fix_t <= 0.0:
 			_fix_t = 0.5
 			for b in m._bots_by_id.values():
 				if is_instance_valid(b) and str(b.display_name) == "Bot 1":
+					# Skill-1 reactions + range, and a much wider aim cone.
 					b.set("_skill_aim_spread", _spread)
+					b.set("_skill_target_cd", 2.0)
+					b.set("_skill_engage_range", 720.0 * 0.55)   # bot.gd ENGAGE_RANGE x skill 1
 	_t += delta
 	if _t < _secs and not bool(m.match_over):
 		return false
@@ -148,7 +164,7 @@ func _finish(m: Node) -> void:
 	var rec := {"case": _case, "map": int(job[0]), "map_name": str(m.get("_map").get("name", "?")), "run": int(job[1]),
 		"on": bool(job[2]), "secs": snappedf(_t, 0.1), "kills": _k, "deaths": _d, "team_kills": _team_k, "total": total,
 		"cut_hits": int(m._catchup.reduced_hits), "cut_dmg": snappedf(float(m._catchup.reduced_dmg), 0.1),
-		"spread": _spread if _case == "weak" else 0.0, "wall_s": snappedf((Time.get_ticks_msec() - _wall0) / 1000.0, 0.1)}
+		"spread": _spread if _case == "weak" else 0.0, "rate": _rate if _case == "weak" else 1.0, "wall_s": snappedf((Time.get_ticks_msec() - _wall0) / 1000.0, 0.1)}
 	var line := JSON.stringify(rec)
 	print("RUN " + line)
 	if _out != "":
