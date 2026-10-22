@@ -118,6 +118,8 @@ func _on_net_peer_disconnected(id: int) -> void:
 			_left_team[str(main._peer_names[id])] = int(lp.team)
 		main._peer_names.erase(id)
 		_peer_tokens.erase(id)
+		_rtt.erase(id)
+		_rtt_sent.erase(id)
 		main._ready_peers.erase(id)
 		main._pickup_peer_sig.erase(id)
 		main._connected_peers.erase(id)
@@ -203,11 +205,15 @@ func _handle_client_ready(sender_id: int, joiner_name: String = "", client_versi
 		return
 	# Version handshake: mismatched builds desync maps/nav/RPCs in odd ways, so
 	# refuse them with a readable reason instead.
-	var host_version := str(ProjectSettings.get_setting("application/config/version", ""))
+	# The string carries the online protocol too (game_info.gd NET_PROTOCOL):
+	# a same-version build from before #266 (host-decided hits) is refused.
+	var GI := preload("res://scripts/game_info.gd")
+	var host_version: String = GI.net_version()
 	if client_version != host_version:
-		main.rpc_id(sender, "net_reject", "Version mismatch: host %s, you %s" % [host_version, client_version if client_version != "" else "(old build)"])
+		main.rpc_id(sender, "net_reject", "Version mismatch: host %s, you %s" % [GI.pretty_net_version(host_version), GI.pretty_net_version(client_version)])
 		main.get_tree().create_timer(0.5).timeout.connect(func() -> void:
-			if main.multiplayer.has_multiplayer_peer() and main.multiplayer.multiplayer_peer is ENetMultiplayerPeer:
+			if main.multiplayer.has_multiplayer_peer() and main.multiplayer.multiplayer_peer is ENetMultiplayerPeer \
+					and main.multiplayer.get_peers().has(sender):
 				(main.multiplayer.multiplayer_peer as ENetMultiplayerPeer).disconnect_peer(sender))
 		return
 	# Remember the joiner's chosen display name (sanitized, unique) so
@@ -340,6 +346,7 @@ func _leave_to_menu(reason: String) -> void:
 	if Net.disconnected.is_connected(main._on_lost_host):
 		Net.disconnected.disconnect(main._on_lost_host)
 	Net.leave()
+	print("NET left the match: %s" % reason)
 	Net.status = reason
 	Net.last_disconnect_reason = reason
 	main.get_tree().paused = false
@@ -628,6 +635,110 @@ func _tick_pings(delta: float) -> void:
 
 func net_pings(table: Dictionary) -> void:
 	main.peer_pings = table
+
+
+# #266: the round trip to each peer, measured end to end with tiny probes
+# (RPC to RPC, so it includes frame delays and works over the WebSocket relay
+# too). The host rewinds a player's shots by this (host_hits.gd). An echo can
+# only answer a probe the host actually sent, and on ENet the figure is capped
+# near ENet's own round-trip time, so holding echoes back can't buy much rewind.
+var _rtt: Dictionary = {}        # peer -> smoothed ms
+var _rtt_sent: Dictionary = {}   # peer -> recent probe stamps
+var _rtt_t := 0.0
+var _hh_log_ms := 0
+var _medic := false
+var _medic_tag := ""   # --smoke-medic=TAG: only names with that clan tag
+const RTT_PROBE_SECS := 0.5
+
+
+func _ready() -> void:
+	for a in OS.get_cmdline_user_args():
+		if a == "--smoke-medic" or a.begins_with("--smoke-medic="):
+			_medic = true
+			_medic_tag = a.substr(14).to_upper() if a.begins_with("--smoke-medic=") else ""
+
+
+func _tick_rtt(delta: float) -> void:
+	if not Net.is_networked() or not Net.is_host():
+		return
+	# Release-gate only (--smoke-medic, tools/hosthits_test.gd): keep remote
+	# humans alive with ordinary medikits so a long hit-registration run
+	# isn't broken up by deaths.
+	if _medic:
+		for p in HostHits.remote_humans():
+			if is_instance_valid(p) and not bool(p.dead) and float(p.health) < 60.0 \
+					and (_medic_tag == "" or str(p.display_name).contains("«%s»" % _medic_tag)):
+				p.apply_kit("medkit")
+				HostHits.count("medic")
+			# (and grenade throwers in grenades: a kit once they are out)
+			if is_instance_valid(p) and not bool(p.dead) and int(p.grenades) <= 0 \
+					and Time.get_ticks_msec() - int(p.get_meta("smoke_kit_ms", -100000)) > 2000:
+				p.set_meta("smoke_kit_ms", Time.get_ticks_msec())
+				p.apply_kit("grenades")
+				HostHits.count("kits")
+	_rtt_t -= delta
+	if _rtt_t > 0.0:
+		return
+	_rtt_t = RTT_PROBE_SECS
+	var now := Time.get_ticks_msec()
+	# Test / ops visibility: what the host decided and refused (host_hits.gd).
+	if now - _hh_log_ms >= 5000 and OS.get_cmdline_user_args().has("--hosthits-log"):
+		_hh_log_ms = now
+		var rt: PackedStringArray = []
+		for p in _rtt.keys():
+			rt.append("%d:%d" % [int(p), peer_rtt_ms(int(p))])
+		print("HOSTHITS %s rtt=[%s]" % [HostHits.summary(), ",".join(rt)])
+	for pid in ready_peer_ids():
+		if int(pid) == main.multiplayer.get_unique_id() or not main.multiplayer.get_peers().has(int(pid)):
+			continue
+		var sent: Array = _rtt_sent.get(int(pid), [])
+		sent.append(now)
+		if sent.size() > 8:
+			sent.pop_front()
+		_rtt_sent[int(pid)] = sent
+		main.rpc_id(int(pid), "net_rtt_probe", now)
+
+
+func net_rtt_probe(stamp: int) -> void:
+	if Net.is_host() or main.multiplayer.get_remote_sender_id() != 1:
+		return
+	main.rpc_id(1, "net_rtt_echo", stamp)
+	# #266: also a host-clock stamp for our shots' view (relayed soldier states
+	# carry one too, but a soldier in a vehicle seat sends none).
+	HostHits.note_view(stamp)
+
+
+func net_rtt_echo(stamp: int) -> void:
+	if not Net.is_host():
+		return
+	var pid := main.multiplayer.get_remote_sender_id()
+	var sent: Array = _rtt_sent.get(pid, [])
+	var at := sent.find(stamp)
+	if at < 0:
+		return
+	_rtt_sent[pid] = sent.slice(at + 1)
+	var sample := Time.get_ticks_msec() - stamp
+	if sample < 0 or sample > 3000:
+		return
+	_rtt[pid] = float(sample) if not _rtt.has(pid) else lerpf(float(_rtt[pid]), float(sample), 0.2)
+
+
+## Host: round trip to `pid` in ms (0 if unknown).
+func peer_rtt_ms(pid: int) -> int:
+	var app := int(round(float(_rtt.get(pid, -1.0))))
+	var enet_rtt := -1
+	var mp = main.multiplayer.multiplayer_peer
+	# (Only a connected remote peer has one: the host itself — a bot's or
+	# the host player's "peer" — or a peer that just left has none.)
+	if mp is ENetMultiplayerPeer and pid != main.multiplayer.get_unique_id() and main.multiplayer.get_peers().has(pid):
+		var pc := (mp as ENetMultiplayerPeer).get_peer(pid)
+		if pc != null:
+			enet_rtt = int(pc.get_statistic(ENetPacketPeer.PEER_ROUND_TRIP_TIME))
+	if app < 0:
+		return maxi(0, enet_rtt)
+	if enet_rtt >= 0:
+		return mini(app, enet_rtt + 80)
+	return app
 
 
 # Friends list: remember the people you play with online (newest first, 40

@@ -54,10 +54,6 @@ var weapon_index := 2   # default primary = AK-74 (Soldat's #3)
 var secondary_index := 0  # default secondary = USSOCOM
 var using_secondary := false
 var fire_cd := 0.0
-# #243/#254: host-side fire-rate gate for net_shoot RPCs from clients —
-# keyed per weapon so a legit weapon-swap opener isn't measured against the
-# previous weapon's rate.
-var _last_net_shot_ms: Dictionary = {}
 
 
 ## Weapon dict for a net_shoot slot index (≥100 = secondaries); {} if invalid.
@@ -72,22 +68,9 @@ func _weapon_for_slot(weapon_i: int) -> Dictionary:
 	return weapons[weapon_i]
 
 
-## #243: fire-rate sanity. The owner's fire_cd never reaches the host, so a
-## modded client could fire any weapon as fast as it liked (ranked farming,
-## knife spray). Enforce the weapon's own rate host-side with slack for
-## network jitter; local/host shots (sender 0/1) skip the check.
-func _shot_rate_ok(w: Dictionary) -> bool:
-	var shot_sender := multiplayer.get_remote_sender_id() if multiplayer.multiplayer_peer != null else 0
-	if shot_sender == 0 or shot_sender == 1:
-		return true
-	var wname := str(w.get("name", ""))
-	var min_gap: float = maxf(0.03, float(w.get("rate", 0.1)) * 0.6)
-	var now_ms := Time.get_ticks_msec()
-	var last: int = int(_last_net_shot_ms.get(wname, -100000))
-	if now_ms - last < int(min_gap * 1000.0):
-		return false
-	_last_net_shot_ms[wname] = now_ms
-	return true
+# (#243's minimum gap between a client's shots is now the host's long-run
+# rate check in TrustGuard.stamp_check, #266: the gap also dropped honest shots
+# the network had bunched together.)
 var spin_up_t := 0.0    # ramps up while LMB held for weapons with a startup wind-up (Barrett, Minigun)
 var lmb_prev := false   # prev-frame LMB state — resets spin_up_t when the trigger releases
 var reloading := false
@@ -148,6 +131,14 @@ var ceasefire_t := 0.0
 const CEASEFIRE_SECS := 3.0
 # Host-side checks on a remote human's reported state (see trust_guard.gd).
 var _trust: TrustGuard = null
+# #266 (host_hits.gd): on the host, hits on a remote human are decided here and
+# sent to the owner (net_hit). Per-frame damage (the BR ring) is batched.
+var _hit_pending := 0.0
+var _hit_sent_ms := -100000
+# Host: shots whose direction disagreed with the last streamed aim wait for
+# the next aim sample before their hits count ({ms, dir, spread, a0, hits, done}).
+var _aim_pending: Array = []
+const HIT_BATCH_MS := 100
 # Release-gate only: simulate a modified client (see Net --smoke-cheat).
 var test_cheat := ""
 # How long the dead body lingers as an inert husk for late packets (see _die).
@@ -313,6 +304,11 @@ func _ready() -> void:
 	# Release the per-instance skeleton state dict when this node is freed so long
 	# sessions don't leak dict entries in Gostek._states.
 	tree_exited.connect(func() -> void: Gostek.forget(self))
+	# #266: the host tests remote humans against rewound hitboxes.
+	if Net.is_networked() and Net.is_host() and multiplayer.has_multiplayer_peer() and not is_multiplayer_authority():
+		HostHits.register(self)
+		tree_exiting.connect(func() -> void: HostHits.unregister(self))
+		_trust_guard()
 	for w in weapons:
 		ammo.append(int(w["mag"]))
 	for w in secondary:
@@ -393,7 +389,19 @@ func _physics_process(delta: float) -> void:
 
 ## Non-authority replica: state is set by net_state RPCs; just visual bookkeeping.
 func _physics_replica(delta: float) -> void:
-	_net_smooth(delta)
+	# A soldier in a vehicle seat sits where this peer's copy of the vehicle
+	# puts it (buggy._place_occupants); pulling it toward its own stream as
+	# well left it between two places.
+	if _vehicle_seat() < 0:
+		_net_smooth(delta)
+	if _trust != null:
+		# Host (#266): where this body was, for rewound hit tests; batched hits
+		# and shots waiting on an aim sample.
+		_record_hitbox()
+		if _hit_pending > 0.0 and Time.get_ticks_msec() - _hit_sent_ms >= HIT_BATCH_MS:
+			_send_hit(_hit_pending, "", "Zone", -1)
+		if not _aim_pending.is_empty():
+			_resolve_aim(false)
 	muzzle_t = maxf(0.0, muzzle_t - delta * 10.0)
 	if gesture_t > 0.0:
 		gesture_t = maxf(0.0, gesture_t - delta)
@@ -941,10 +949,10 @@ func _send_state(delta: float) -> void:
 			var m := get_parent()
 			if m != null and m.has_method("ready_peer_ids"):
 				for pid in m.ready_peer_ids():
-					rpc_id(pid, "net_state", position, velocity, aim_dir, facing, jet_on, health, fuel, weapon_index, ammo[weapon_index], reloading, grenades, secondary_index, secondary_ammo[secondary_index], using_secondary, crouching, prone, climbing)
+					rpc_id(pid, "net_state", position, velocity, aim_dir, facing, jet_on, health, fuel, weapon_index, ammo[weapon_index], reloading, grenades, secondary_index, secondary_ammo[secondary_index], using_secondary, crouching, prone, climbing, Time.get_ticks_msec())
 		else:
 			# To the host only; it relays to ready peers (see net_state).
-			rpc_id(1, "net_state", position, velocity, aim_dir, facing, jet_on, health, fuel, weapon_index, ammo[weapon_index], reloading, grenades, secondary_index, secondary_ammo[secondary_index], using_secondary, crouching, prone, climbing)
+			rpc_id(1, "net_state", position, velocity, aim_dir, facing, jet_on, health, fuel, weapon_index, ammo[weapon_index], reloading, grenades, secondary_index, secondary_ammo[secondary_index], using_secondary, crouching, prone, climbing, 0, HostHits.game_ms())
 
 
 # ── /command console (gestures) ────────────────────────
@@ -1231,6 +1239,8 @@ func _apply_gg_weapon() -> void:
 	spin_up_t = 0.0
 	lmb_prev = true
 	_semi_armed = false
+	if _trust != null:
+		_trust.refill_all()   # the new rung starts with a full magazine
 
 
 func _active_weapon() -> Dictionary:
@@ -1351,7 +1361,7 @@ func _shoot() -> void:
 		# per pellet so each rocket gets a unique node path on every peer (#61).
 		var base_id := _next_proj_id
 		_next_proj_id += maxi(1, int(w["pellets"]))
-		_cast("net_shoot", [muzzle, dirs, slot, base_id])
+		_cast("net_shoot", [muzzle, dirs, slot, base_id, HostHits.view_now(), HostHits.game_ms()])
 	else:
 		net_shoot(muzzle, dirs, slot, 0)
 	if _active_mag() <= 0:
@@ -1375,7 +1385,7 @@ func _perform_melee() -> void:
 	# up from the weapon dict on the receiving side.
 	var dirs := PackedVector2Array([aim_dir])
 	if Net.is_networked():
-		_cast("net_shoot", [muzzle, dirs, slot, 0])
+		_cast("net_shoot", [muzzle, dirs, slot, 0, HostHits.view_now(), HostHits.game_ms()])
 	else:
 		net_shoot(muzzle, dirs, slot, 0)
 	# Show a brief punch pose (bije) on each swing — clears itself in _physics_process.
@@ -1437,13 +1447,13 @@ static func find_ladder_overlap(tree: SceneTree, pos: Vector2) -> Node2D:
 	return closest
 
 
-# Run over by a buggy or tank: the host decides, the victim's own peer applies it.
+# Run over by a buggy or tank: the host decides (the damage arrives as
+# net_hit, #266); the victim's own peer takes the knock-back.
 @rpc("any_peer", "call_remote", "reliable")
-func net_vehicle_hurt(dmg: float, killer: String, killer_team: int, vel: Vector2, weapon: String) -> void:
+func net_vehicle_hurt(_dmg: float, _killer: String, _killer_team: int, vel: Vector2, _weapon: String) -> void:
 	if multiplayer.get_remote_sender_id() != 1 or not is_multiplayer_authority():
 		return
 	ceasefire_t = 0.0
-	take_damage(dmg, killer, weapon if weapon in ["Buggy", "Tank", "Heli"] else "Buggy", killer_team)
 	if not dead:
 		velocity = Vector2(vel.x * 0.9, -260.0)
 
@@ -1714,7 +1724,7 @@ func _explode_in_hand() -> void:
 	if Net.is_networked():
 		var pid := _next_proj_id
 		_next_proj_id += 1
-		_cast("net_grenade", [global_position + Vector2(0, -8), Vector2.ZERO, 0.0, _cook_cluster, pid, fuse_left])
+		_cast("net_grenade", [global_position + Vector2(0, -8), Vector2.ZERO, 0.0, _cook_cluster, pid, fuse_left, HostHits.game_ms()])
 	else:
 		net_grenade(global_position + Vector2(0, -8), Vector2.ZERO, 0.0, _cook_cluster, 0, fuse_left)
 	# A grenade going off in your fist is not survivable (the blast alone
@@ -1745,7 +1755,7 @@ func _throw_grenade(cook: float = 0.0) -> void:
 	if Net.is_networked():
 		var pid := _next_proj_id
 		_next_proj_id += 1
-		_cast("net_grenade", [g_pos, g_vel, g_ang, _cook_cluster, pid, fuse_left])
+		_cast("net_grenade", [g_pos, g_vel, g_ang, _cook_cluster, pid, fuse_left, HostHits.game_ms()])
 	else:
 		net_grenade(g_pos, g_vel, g_ang, _cook_cluster, 0, fuse_left)
 
@@ -1818,7 +1828,7 @@ func _die() -> void:
 		if Net.is_networked() and multiplayer.has_multiplayer_peer() and is_multiplayer_authority():
 			var pid := _next_proj_id
 			_next_proj_id += 1
-			_cast("net_grenade", [global_position + Vector2(0, -8), Vector2(0, -60), 0.0, _cook_cluster, pid, left])
+			_cast("net_grenade", [global_position + Vector2(0, -8), Vector2(0, -60), 0.0, _cook_cluster, pid, left, HostHits.game_ms()])
 		elif not Net.is_networked():
 			net_grenade(global_position + Vector2(0, -8), Vector2(0, -60), 0.0, _cook_cluster, 0, left)
 	Sfx.gib(global_position)
@@ -1922,30 +1932,53 @@ func restore_for_round() -> void:
 # rpc() broadcast went through Godot's server relay to every peer, including
 # ones still loading the match ("Node not found: Main/Player_N" spam).
 @rpc("any_peer", "call_remote", "unreliable_ordered")
-func net_state(pos: Vector2, vel: Vector2, aim: Vector2, face: float, jetting: bool, hp: float, fuel_val: float, wi: int, mag: int, is_reloading: bool, grens: int, sec_i: int, sec_mag: int, use_sec: bool, crouch_f: bool, prone_f: bool, climb_f: bool = false) -> void:
+func net_state(pos: Vector2, vel: Vector2, aim: Vector2, face: float, jetting: bool, hp: float, fuel_val: float, wi: int, mag: int, is_reloading: bool, grens: int, sec_i: int, sec_mag: int, use_sec: bool, crouch_f: bool, prone_f: bool, climb_f: bool = false, host_ms: int = 0, gstamp: int = 0) -> void:
 	var sender := multiplayer.get_remote_sender_id()
 	var auth := get_multiplayer_authority()
 	if sender != auth and sender != 1:
 		return   # only the owner (or the host relaying it) may move this body
+	# #266: the host stamps what it sends with its clock; our shots tell it
+	# which of its moments we were looking at (view_ms in net_shoot).
+	if sender == 1 and host_ms > 0 and not Net.is_host():
+		HostHits.note_view(host_ms)
 	if dead:
 		return
 	if Net.is_host() and sender == auth and auth != 1:
 		# Check the owner's story before anyone else hears it (trust_guard.gd).
 		fuel_val = clampf(fuel_val, 0.0, 100.0)
 		var g := _trust_guard()
+		TrustGuard.clock_note(auth, gstamp)
 		if g != null:
-			var bow := wi >= 0 and wi < weapons.size() and not use_sec and str(weapons[wi].get("name", "")) == "Rambo Bow" \
-					and Settings.game_mode == Settings.MODE_RM
-			var verdict: Dictionary = g.check_state(pos, hp, bow, _trust_world(), _trust_riding())
-			hp = float(verdict["hp"])
-			if str(verdict["force"]) != "":
-				_trust_force_death(str(verdict["force"]))
+			var riding := _trust_riding()
+			var force := g.check_move(pos, _trust_world(), riding, gstamp)
+			# Health is the host's ledger (#266): the client's figure is only
+			# compared, and corrected when it drifts. (A client running behind
+			# — a stall, a starved machine — may still show older values.)
+			if g.check_hp(hp, health, _owner_rtt(), display_name, TrustGuard.clock_late(auth, gstamp, 5000)):
+				_send_hit(0.0, "", "", -1)
+			hp = health
+			var mj: float = MatchConfig.mod_jet()
+			var fv: Dictionary = g.check_fuel(jetting, fuel_val, JET_DRAIN / maxf(0.1, mj), JET_REGEN * mj, 0.0 if Settings.realistic else 100.0)
+			fuel_val = float(fv["fuel"])
+			if force == "":
+				force = str(fv["force"])
+			g.note_aim(aim)
+			g.note_track(gstamp, pos, vel, aim)
+			# A reload the host saw refills that magazine (shot checks, #266).
+			var slot := (100 + sec_i) if use_sec else wi
+			var rw := _weapon_for_slot(slot)
+			if not rw.is_empty():
+				g.note_reload(slot, is_reloading, int(rw["mag"]), float(rw["reload"]), gstamp)
+			if force != "":
+				_trust_force_death(force)
 				return
+			if not _aim_pending.is_empty():
+				_resolve_aim(true)
 		var m := get_parent()
 		if m != null and m.has_method("ready_peer_ids"):
 			for pid in m.ready_peer_ids():
 				if int(pid) != auth:
-					rpc_id(int(pid), "net_state", pos, vel, aim, face, jetting, hp, fuel_val, wi, mag, is_reloading, grens, sec_i, sec_mag, use_sec, crouch_f, prone_f, climb_f)
+					rpc_id(int(pid), "net_state", pos, vel, aim, face, jetting, hp, fuel_val, wi, mag, is_reloading, grens, sec_i, sec_mag, use_sec, crouch_f, prone_f, climb_f, Time.get_ticks_msec())
 	net_apply_pos(pos, vel)
 	velocity = vel
 	aim_dir = aim
@@ -1974,16 +2007,29 @@ func net_state(pos: Vector2, vel: Vector2, aim: Vector2, face: float, jetting: b
 
 
 @rpc("any_peer", "call_remote", "reliable")
-func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_proj_id: int = 0) -> void:
+func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_proj_id: int = 0, view_ms: int = 0, stamp: int = 0) -> void:
 	# Resolve the weapon FIRST so the fire-rate gate runs before _net_accept
 	# relays the shot (#254) — a shot the host rejects must not be fanned out
 	# to the other clients either. Slots ≥ 100 are secondaries at (slot - 100).
 	var w := _weapon_for_slot(weapon_i)
 	if w.is_empty():
 		return
-	if not _shot_rate_ok(w):
-		return
-	if not _net_accept("net_shoot", [shot_pos, dirs, weapon_i, base_proj_id]):
+	# #266: the host checks a remote human's shot before it counts or is
+	# relayed (pellets, muzzle at the body, aim, magazine, long-run rate).
+	var spawn_at := shot_pos
+	var hold: Dictionary = {}
+	var rw_shot := -1   # host: rewind for this shot's hits on remote humans
+	if _host_checks_sender():
+		var chk := _host_shot_check(shot_pos, dirs, w, weapon_i, stamp)
+		if not bool(chk["ok"]):
+			return
+		dirs = chk["dirs"]
+		spawn_at = chk["pos"]
+		hold = chk["hold"]
+		rw_shot = HostHits.rewind_from_view(view_ms, _owner_rtt())
+		if OS.get_cmdline_user_args().has("--hosthits-log"):
+			print("HOSTRECV shot=%d rewind=%d by=%s view_age=%d rtt=%d origin=%s" % [base_proj_id, rw_shot, display_name, Time.get_ticks_msec() - view_ms if view_ms > 0 else -1, _owner_rtt(), _origin_note])
+	if not _net_accept("net_shoot", [shot_pos, dirs, weapon_i, base_proj_id, view_ms, stamp]):
 		return
 	_trust_note_attack()
 	var kind := str(w.get("kind", "bullet"))
@@ -2003,8 +2049,15 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_
 		# Berserker bonus (#78) — one-hit-kill melee. 999 blows through vest halving.
 		if bonus_kind == "berserker":
 			dmg = 999.0
-		# Scan soldiers in a short forward arc — apply damage on the authority peer
-		# only (matches how bullet/rocket damage is gated in bullet.gd/rocket.gd).
+		# Scan soldiers in a short forward arc. Whoever decides each body's hits
+		# applies it (host_hits.gd): the host for humans, the owner for bots.
+		# #266: on the host, a remote swinger's reach is measured from where it
+		# says it is, against remote humans as the swinger saw them (rewound).
+		var origin_h := _net_base_pos() if _trust != null else global_position
+		var at_swing = _trust.pos_at_stamp(stamp) if _trust != null else null
+		if at_swing != null:
+			origin_h = at_swing
+		var rw := maxi(0, rw_shot)
 		for s in get_tree().get_nodes_in_group("soldier"):
 			if s == self or not is_instance_valid(s):
 				continue
@@ -2014,17 +2067,10 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_
 			# isn't a thing here (we already skip s == self above).
 			if int(s.get("team")) == team and not MatchConfig.friendly_fire_on():
 				continue
-			var to_s: Vector2 = s.global_position - global_position
-			var d: float = to_s.length()
-			if d > reach or d < 1.0:
+			if not _melee_reaches(s, swing, reach, origin_h, rw):
 				continue
-			if to_s.normalized().dot(swing) < 0.35:  # ~70° arc
-				continue
-			if s.has_method("take_damage") and (multiplayer.multiplayer_peer == null or s.is_multiplayer_authority()):
-				s.take_damage(dmg, display_name, str(w["name"]), team)
-			elif s.has_method("observe_damage"):
-				s.observe_damage(dmg, display_name, str(w["name"]), team)
-			preload("res://scripts/bullet.gd").local_hit_feedback(get_tree(), display_name, s.global_position, dmg, true)
+			HostHits.damage(s, dmg, display_name, str(w["name"]), team)
+			preload("res://scripts/bullet.gd").local_hit_feedback(get_tree(), display_name, s.global_position, dmg, true, s)
 		return
 	for i in dirs.size():
 		var bdir: Vector2 = dirs[i]
@@ -2035,7 +2081,12 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_
 			# dispatch to hit the matching node).
 			if Net.is_networked() and base_proj_id > 0:
 				r.name = "Rocket_%d_%d" % [get_multiplayer_authority(), base_proj_id + i]
-			r.global_position = shot_pos + bdir * 4.0
+			r.global_position = spawn_at + bdir * 4.0
+			if not hold.is_empty():
+				r.hold = hold
+			r.rewind_ms = rw_shot
+			if _trust != null:
+				r.g_late_ms = TrustGuard.clock_late(get_multiplayer_authority(), stamp)
 			r.direction = bdir
 			r.speed = float(w["speed"])
 			r.damage = float(w["damage"]) * MatchConfig.mod_damage()
@@ -2049,7 +2100,11 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_
 				r.set_multiplayer_authority(get_multiplayer_authority())
 		else:
 			var b := bullet_scene.instantiate()
-			b.global_position = shot_pos + bdir * 4.0
+			b.global_position = spawn_at + bdir * 4.0
+			if not hold.is_empty():
+				b.hold = hold
+			b.rewind_override = rw_shot
+			b.shot_id = base_proj_id
 			b.direction = bdir
 			b.speed = float(w["speed"])
 			b.damage = float(w["damage"]) * MatchConfig.mod_damage()
@@ -2071,8 +2126,24 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_
 
 
 @rpc("any_peer", "call_remote", "reliable")
-func net_grenade(g_pos: Vector2, g_vel: Vector2, g_ang: float, cluster: bool = false, proj_id: int = 0, fuse_left: float = -1.0) -> void:
-	if not _net_accept("net_grenade", [g_pos, g_vel, g_ang, cluster, proj_id, fuse_left]):
+func net_grenade(g_pos: Vector2, g_vel: Vector2, g_ang: float, cluster: bool = false, proj_id: int = 0, fuse_left: float = -1.0, stamp: int = 0) -> void:
+	if _host_checks_sender():
+		# #266: no more grenades than the soldier carries, from its own hand,
+		# no harder than a full wind-up throws.
+		var why := ""
+		var off := g_pos.distance_to(_net_base_pos())
+		if not _trust_riding() and not _trust.placed_recently(stamp) and off > 60.0 + _net_vel.length() * 0.1:
+			why = "thrown %.0f px from its body" % off
+		elif g_vel.length() > 700.0 or not is_finite(g_vel.x) or not is_finite(g_vel.y):
+			why = "thrown at %.0f px/s" % g_vel.length()
+		elif not _trust.take_grenade(stamp):
+			why = "more grenades than it carries (or faster than it can throw)"
+		if why != "":
+			if _trust.flag("grenade", why):
+				_trust_force_death("shots (grenades)")
+			return
+		fuse_left = minf(fuse_left, maxf(GRENADE_FUSE, CLUSTER_FUSE))
+	if not _net_accept("net_grenade", [g_pos, g_vel, g_ang, cluster, proj_id, fuse_left, stamp]):
 		return
 	_trust_note_attack()
 	var g := grenade_scene.instantiate()
@@ -2305,11 +2376,13 @@ func _apply_kit_local(kind: String) -> void:
 	_pickup_toast(GameInfo.item_label(kind), "healed to full" if kind == "medkit" else "grenades refilled to 3",
 		Color(0.55, 1.0, 0.55) if kind == "medkit" else Color(0.85, 0.95, 0.55))
 	if kind == "medkit":
-		health = 100.0
+		health = 100.0   # on the host's copy of a remote human: the ledger (#266)
 		if _trust != null:
-			_trust.allow_heal()
+			_trust.note_ledger(health)
 	elif kind == "grenades":
 		grenades = 3
+		if _trust != null:
+			_trust.grenades = 3
 
 
 func apply_bonus(kind: String, duration: float) -> void:
@@ -2455,20 +2528,44 @@ func hitbox_now() -> Rect2:
 
 func _record_hitbox() -> void:
 	var now := Time.get_ticks_msec()
-	pos_hist.append([now, hitbox_now()])
-	while pos_hist.size() > 2 and now - int(pos_hist[0][0]) > 320:
+	var box := hitbox_now()
+	# Riding: the seat on this peer's copy of the vehicle, as every other
+	# screen shows it (#266) — whatever order the two bodies move in.
+	var seat := _vehicle_seat()
+	if seat >= 0:
+		var at: Vector2 = mounted_m2._seat_world(seat)
+		box.position = at + Vector2(-box.size.x * 0.5, -box.size.y)
+	pos_hist.append([now, box])
+	while pos_hist.size() > 2 and now - int(pos_hist[0][0]) > HostHits.HIST_MS:
 		pos_hist.pop_front()
 
 
-# Hitbox as it was `ms_ago` milliseconds ago (nearest recorded frame).
+# Hitbox as it was `ms_ago` milliseconds ago (the newest frame recorded at or
+# before then; the oldest one kept if it is older than the history).
 func hitbox_at(ms_ago: int) -> Rect2:
 	if pos_hist.is_empty():
 		return hitbox_now()
 	var want := Time.get_ticks_msec() - ms_ago
-	for i in range(pos_hist.size() - 1, -1, -1):
-		if int(pos_hist[i][0]) <= want:
-			return pos_hist[i][1]
-	return pos_hist[0][1]
+	var lo := 0
+	var hi := pos_hist.size() - 1
+	if int(pos_hist[hi][0]) <= want:
+		return pos_hist[hi][1]
+	if int(pos_hist[0][0]) > want:
+		return pos_hist[0][1]
+	while hi - lo > 1:
+		var mid := (lo + hi) >> 1
+		if int(pos_hist[mid][0]) <= want:
+			lo = mid
+		else:
+			hi = mid
+	# Between two recorded frames: blend them (same stance shape on both).
+	var a: Rect2 = pos_hist[lo][1]
+	var b: Rect2 = pos_hist[hi][1]
+	var t0 := int(pos_hist[lo][0])
+	var t1 := int(pos_hist[hi][0])
+	if t1 <= t0 or a.size != b.size:
+		return a
+	return Rect2(a.position.lerp(b.position, float(want - t0) / float(t1 - t0)), a.size)
 
 
 # How far back a bullet fired by this (remote) shooter should check the local
@@ -2490,8 +2587,23 @@ func lag_comp_ms() -> int:
 func _trust_guard() -> TrustGuard:
 	if _trust == null and TrustGuard.enabled() and multiplayer.multiplayer_peer != null \
 			and get_multiplayer_authority() != 1:
-		_trust = TrustGuard.new()
+		_trust = TrustGuard.new(int(CEASEFIRE_SECS * 1000.0), _owner_rtt())
 	return _trust
+
+
+## Host: the round trip to this body's owner (0 if unknown).
+func _owner_rtt() -> int:
+	var m := get_parent()
+	if m == null or m.get("_net") == null or not m._net.has_method("peer_rtt_ms"):
+		return 0
+	return int(m._net.peer_rtt_ms(get_multiplayer_authority()))
+
+
+## The vehicle seat this soldier sits in (mounted_m2 is the vehicle), or -1.
+func _vehicle_seat() -> int:
+	if mounted_m2 == null or not is_instance_valid(mounted_m2) or not mounted_m2.has_method("_seat_world"):
+		return -1
+	return int(mounted_m2.seat_of(self))
 
 
 ## Seated in a buggy / tank or on an M2: the body is placed by the vehicle
@@ -2521,20 +2633,377 @@ func _trust_note_attack() -> void:
 		_trust.note_fired()
 
 
-## The host saw damage land on this remote human (the owner applies the real
-## damage; this only feeds the guard). No-op everywhere else.
-func observe_damage(amount: float, killer := "", weapon := "", killer_team := -1) -> void:
-	if dead:
+## Host only (#266): a hit on this remote human, decided by the host's own
+## hit detection (bullets with rewind, melee, splash, vehicles, the BR ring).
+## Mirrors take_damage: spawn protection (unless the caller clears it, like a
+## run-over), the vest halving, then the ledger (this copy's `health`). The
+## owner is told the result; at zero the host declares the death.
+func host_damage(amount: float, killer := "", weapon := "", killer_team := -1, ignore_protection := false, coalesce := false) -> void:
+	if dead or not Net.is_host():
 		return
 	var g := _trust_guard()
-	if g != null:
-		g.observe_hit(amount, killer, weapon, killer_team, display_name, bonus_kind == "vest", CEASEFIRE_SECS)
+	if g == null:
+		return
+	if killer != display_name and not ignore_protection and g.protected():
+		HostHits.count("hits_protected")
+		return
+	if bonus_kind == "vest" and killer != display_name:
+		amount *= 0.5
+	if amount <= 0.0:
+		return
+	health = maxf(0.0, health - amount)
+	g.note_ledger(health)
+	if killer != "":
+		last_killer = killer
+		last_weapon = weapon
+		last_killer_team = killer_team
+		if killer != display_name:
+			g.note_hitter(killer, weapon, killer_team)
+	HostHits.count("hits")
+	HostHits.count("damage", amount)
+	if killer != "" and not coalesce:
+		var rec: Array = HostHits.by_shooter.get(killer, [0, 0.0])
+		HostHits.by_shooter[killer] = [int(rec[0]) + 1, float(rec[1]) + amount]
+	if OS.get_cmdline_user_args().has("--hosthits-log"):
+		print("HOSTHIT %s -> %s %.1f (%s) hp %.1f" % [killer, display_name, amount, weapon, health])
+	if coalesce and health > 0.0:
+		_hit_pending += amount
+		if Time.get_ticks_msec() - _hit_sent_ms >= HIT_BATCH_MS:
+			_send_hit(_hit_pending, "", weapon, -1)
+		return
+	_send_hit(amount + _hit_pending, killer, weapon, killer_team)
+	if health <= 0.0:
+		_host_kill()
 
 
-## Round reset: the owner is about to jump to a spawn at full health.
+## Host only: heal this remote human's ledger (the Rambo bow regen).
+func host_heal(amount: float) -> void:
+	if dead or not Net.is_host() or _trust == null:
+		return
+	health = minf(100.0, health + amount)
+
+
+func _send_hit(amount: float, killer: String, weapon: String, killer_team: int) -> void:
+	_hit_pending = 0.0
+	_hit_sent_ms = Time.get_ticks_msec()
+	if multiplayer.has_multiplayer_peer() and multiplayer.get_peers().has(get_multiplayer_authority()):
+		rpc_id(get_multiplayer_authority(), "net_hit", health, amount, killer, weapon, killer_team)
+
+
+## The ledger reached zero: everyone (the owner included) hears the death
+## from the host, with the credit the ledger holds.
+func _host_kill() -> void:
+	var k := last_killer
+	var kw := last_weapon
+	var kt := last_killer_team
+	if not TrustGuard.kill_credit_ok(k, display_name, int(team)):
+		k = ""
+		kt = -1
+	HostHits.count("deaths")
+	_fanout("net_die", [k, kw, kt], -1)
+	_die()
+
+
+## Owner (#266): the host decided a hit on us (or, with `amount` 0, says what
+## our health is). `hp_after` is the host's ledger; the effects of a hit (bink,
+## shake, credit) play here, the death comes from the host right after.
+@rpc("any_peer", "call_remote", "reliable")
+func net_hit(hp_after: float, amount: float, killer: String, weapon: String, killer_team: int) -> void:
+	if multiplayer.get_remote_sender_id() != 1 or not is_multiplayer_authority() or dead:
+		return
+	# Release-gate only (--smoke-cheat): a modified client that ignores the
+	# host (godmode) or takes half of every hit (partial).
+	if test_cheat == "godmode":
+		return
+	if test_cheat == "partial":
+		health = maxf(1.0, health - amount * 0.5)
+		return
+	HostHits.count("hits_taken")
+	if amount > 0.0:
+		HostHits.count("damage_taken", amount)
+		var bv := _bink_for(weapon)
+		if bv > 0.0:
+			bink_t = minf(100.0, bink_t + bv)
+		_shake(7.0)
+		if killer != "":
+			last_killer = killer
+			last_weapon = weapon
+			last_killer_team = killer_team
+	health = clampf(hp_after, 0.0, 100.0)
+
+
+## Round reset: the owner is about to jump to a spawn at full health (and a
+## fresh magazine, grenades, fuel and spawn protection).
 func trust_amnesty() -> void:
 	if _trust != null:
-		_trust.amnesty()
+		health = 100.0
+		_trust.amnesty(int(CEASEFIRE_SECS * 1000.0), _owner_rtt())
+
+
+## Host: where the owner last said this body is (unsmoothed, extrapolated a
+## little) — the muzzle of a shot it fires is measured from here.
+func _net_base_pos() -> Vector2:
+	if _net_pos == Vector2.INF:
+		return global_position
+	return _net_pos + _net_vel * minf(_net_age, 0.1)
+
+
+## Host: is the RPC being handled the remote owner speaking for this body?
+func _host_checks_sender() -> bool:
+	return _trust != null and Net.is_host() and multiplayer.multiplayer_peer != null and not dead \
+			and multiplayer.get_remote_sender_id() == get_multiplayer_authority()
+
+
+## Melee reach (same arc as ever). On the host a remote human victim is taken
+## where a remote swinger saw it (`rw` ms back) from where the swinger is.
+func _melee_reaches(s: Node, swing: Vector2, reach: float, origin_h: Vector2, rw: int) -> bool:
+	var origin := global_position
+	var pts: Array = [(s as Node2D).global_position]
+	if HostHits.is_remote_human(s):
+		origin = origin_h
+		pts = [HostHits.pos_at(s, rw)]
+	for p in pts:
+		var to_s: Vector2 = (p as Vector2) - origin
+		var d: float = to_s.length()
+		if d > reach or d < 1.0:
+			continue
+		if to_s.normalized().dot(swing) < 0.35:  # ~70° arc
+			continue
+		return true
+	return false
+
+
+## Host (#266): check a remote human's net_shoot before it counts. Returns
+## {ok, dirs (unit), pos (where the host's copy starts), hold (aim re-check)}.
+func _host_shot_check(shot_pos: Vector2, dirs: PackedVector2Array, w: Dictionary, slot: int, stamp: int) -> Dictionary:
+	var no := {"ok": false}
+	var g := _trust
+	var wname := str(w["name"])
+	var kind := str(w.get("kind", "bullet"))
+	var melee := kind == "melee" or kind == "melee_cont"
+	var want: int = 1 if melee else int(w["pellets"])
+	if dirs.size() != want:
+		if g.flag("shot", "%d directions for a %s shot (%d)" % [dirs.size(), wname, want]):
+			_trust_force_death("shots (malformed)")
+		return no
+	var nd := PackedVector2Array()
+	for d in dirs:
+		if not is_finite(d.x) or not is_finite(d.y) or absf(d.length() - 1.0) > 0.02:
+			if g.flag("shot", "%s shot direction of length %.2f" % [wname, d.length()]):
+				_trust_force_death("shots (malformed)")
+			return no
+		nd.append(d.normalized())
+	# Where it was when it fired, by its own clock (else where it last said).
+	var base := _net_base_pos()
+	var at_shot = g.pos_at_stamp(stamp)
+	if at_shot != null:
+		base = at_shot
+	var riding := _trust_riding()
+	var origin_wait := false
+	_origin_note = "riding"
+	if not riding:
+		# Beyond where its own timeline puts the body around that moment.
+		var off := g.origin_off(shot_pos, stamp)
+		_origin_note = "%.0f" % off if off != INF else "none, %.0f px from the body" % shot_pos.distance_to(_net_base_pos())
+		if off == INF:
+			# No state near that moment yet (its stream is running late): the
+			# shot's hits wait for one (`hold`) unless it is at the body anyway.
+			origin_wait = shot_pos.distance_to(_net_base_pos()) > 80.0 + _net_vel.length() * 0.1
+		elif off > 80.0:
+			# Just spawned / reset: the body may have moved to a spot the host
+			# hasn't heard about yet — refuse quietly (no flag) until it has.
+			if g.placed_recently(stamp):
+				if _hosthits_log():
+					print("HOSTORIGIN placed %s %.0f px off (%s)" % [wname, off, g.track_note(stamp)])
+				HostHits.count("refused_origin_quiet")
+				return no
+			if g.flag("origin", "%s fired %.0f px from its body (max 80)" % [wname, off]):
+				_trust_force_death("shots (origin)")
+			return no
+	var rc := g.stamp_check(get_multiplayer_authority(), wname, float(w["rate"]), stamp)
+	if rc != TrustGuard.RATE_OK:
+		if rc == TrustGuard.RATE_FAST and g.flag("rate", "%s fired faster than %.3f s a shot" % [wname, float(w["rate"])]):
+			_trust_force_death("shots (fire rate)")
+		return no
+	if kind != "melee" and not g.take_round(slot, int(w["mag"]), stamp, float(w["reload"])):
+		if g.flag("ammo", "%s fired past its %d-round magazine without a reload (%s)" % [wname, int(w["mag"]), g.mag_note(slot, stamp)]):
+			_trust_force_death("shots (magazine)")
+		return no
+	var hold := {}
+	var spread := float(w["spread"])
+	# The streamed aims either side of the shot's own moment (its game clock).
+	var around: Array = g.aims_around(stamp)
+	# No aim sample yet (just spawned) or one that disagrees: hold the shot's
+	# hits until the next samples show where it was really aiming.
+	if melee:
+		# A swing lands at once and reaches ~34 px, and an aim can reverse in
+		# one frame (stick, flick past the body), so a swing is never refused
+		# on aim — only counted.
+		if g.last_aim() != null and not g.aim_ok_now(nd[0], spread):
+			HostHits.count("melee_aim_off")
+	elif around[0] != null and around[1] != null:
+		# Both samples either side of its own moment are in: it must lie on
+		# the arc they span.
+		var off := TrustGuard.aim_off_arc(nd[0], float(around[0]), float(around[1]))
+		if off > spread + TrustGuard.BINK_MAX + TrustGuard.AIM_ARC_SLACK:
+			_aim_refuse(off, spread, wname, true)
+			return no
+	elif g.last_aim() == null or not g.aim_ok_now(nd[0], spread):
+		# Maybe a flick between two aim samples: its hits wait for the next ones.
+		hold = {"ms": Time.get_ticks_msec(), "dir": nd[0], "spread": spread, "angles": [around[0] if around[0] != null else g.last_aim()],
+				"hits": [], "done": false, "ok": true, "weapon": wname, "stamp": stamp}
+		_aim_pending.append(hold)
+		HostHits.count("aim_held")
+	if origin_wait and not melee:
+		if hold.is_empty():
+			hold = {"ms": Time.get_ticks_msec(), "dir": nd[0], "spread": spread, "angles": [], "aim_ok": true,
+					"hits": [], "done": false, "ok": true, "weapon": wname, "stamp": stamp}
+			_aim_pending.append(hold)
+		hold["origin"] = shot_pos
+		HostHits.count("origin_held")
+	# A muzzle poking through a wall doesn't shoot through it: the host's copy
+	# starts just before the wall.
+	var pos := shot_pos
+	if not melee and not riding:
+		var chest := base + Vector2(0.0, -hitbox_now().size.y * 0.5)
+		var tip := shot_pos + nd[0] * 4.0
+		var hit := HostHits.solid_ray(get_world_2d(), chest, tip)
+		if not hit.is_empty():
+			var u := (tip - chest).normalized()
+			pos = (hit["position"] as Vector2) - u * 2.0 - nd[0] * 4.0
+			HostHits.count("muzzle_in_wall")
+	return {"ok": true, "dirs": nd, "pos": pos, "hold": hold}
+
+
+## Host: settle shots held for an aim re-check. A shot is fine if it lies on
+## the arc the aim swept around it: the streamed aims either side of its own
+## game-clock moment, as soon as the one after it is in (at most AIM_HOLD_MS, or STREAM_WAIT_MS while the stream lags);
+## else the samples that arrived around it, else the one sample there is.
+## Then its hits count or are dropped.
+const AIM_HOLD_MS := 800
+# While the owner's own stream hasn't reached the shot's moment yet (a client
+# running seconds behind on a starved machine), wait this long for it.
+const STREAM_WAIT_MS := 5000
+
+
+var _origin_note := ""   # --hosthits-log: the last shot's origin check
+
+
+static func _hosthits_log() -> bool:
+	return OS.get_cmdline_user_args().has("--hosthits-log")
+
+func _resolve_aim(new_sample: bool) -> void:
+	if _trust == null:
+		_aim_pending.clear()
+		return
+	var now := Time.get_ticks_msec()
+	var a1 = _trust.last_aim()
+	var keep: Array = []
+	for h in _aim_pending:
+		var angles: Array = h["angles"]
+		if new_sample and a1 != null:
+			angles.append(a1)
+		# The samples either side of the shot's own moment, once the one after
+		# it is in (a sample that arrived later may belong to a later moment).
+		var st := int(h.get("stamp", 0))
+		var waited := now - int(h["ms"])
+		# The stream still behind the shot's moment: its own samples are on
+		# the way, wait for them.
+		var behind: bool = st > 0 and _trust.track_newest() < st and waited < STREAM_WAIT_MS
+		# A muzzle with no state near its moment yet: once there is one, it
+		# must be at the body then — bounded across a gap in the stream by what
+		# the body could cover over it (else, at the timeout, where it last was).
+		var origin_off := 0.0
+		if h.has("origin"):
+			origin_off = _trust.origin_off(h["origin"], st)
+			if origin_off == INF and (waited < AIM_HOLD_MS or behind):
+				keep.append(h)
+				continue
+			if origin_off == INF:
+				origin_off = _trust.origin_off(h["origin"], st, TrustGuard.ORIGIN_GAP_MS)
+				if origin_off != INF:
+					HostHits.count("origin_gap")
+			if origin_off == INF:
+				origin_off = maxf(0.0, (h["origin"] as Vector2).distance_to(_net_base_pos()) - _net_vel.length() * 0.1)
+		var around: Array = _trust.aims_around(st) if st > 0 else [null, null]
+		var aim_ok: bool = bool(h.get("aim_ok", false))
+		var stamped: bool = aim_ok or (around[0] != null and around[1] != null)
+		# (A stamped shot waits for the sample after its moment — a stall can
+		# hold that back a while; an unstamped one for two more arrivals.)
+		if not stamped and ((st > 0 and (waited < AIM_HOLD_MS or behind)) or (st <= 0 and angles.size() < 3 and waited < 250)):
+			keep.append(h)
+			continue
+		if origin_off > 80.0:
+			h["done"] = true
+			h["ok"] = false
+			if _hosthits_log():
+				print("HOSTORIGIN held %s %.0f px off after %d ms (%s)" % [str(h["weapon"]), origin_off, waited, _trust.track_note(st)])
+			HostHits.count("refused_origin_quiet")
+			HostHits.count("aim_refused_hits", float((h["hits"] as Array).size()))
+			continue
+		# How far outside the arc the aim swept around the shot.
+		var off := INF
+		if aim_ok:
+			off = 0.0
+		elif stamped:
+			off = TrustGuard.aim_off_arc(h["dir"], float(around[0]), float(around[1]))
+		else:
+			for i in range(angles.size() - 1):
+				if angles[i] != null and angles[i + 1] != null:
+					off = minf(off, TrustGuard.aim_off_arc(h["dir"], float(angles[i]), float(angles[i + 1])))
+			# Still nothing either side: the one sample there is, if any.
+			if off == INF:
+				for a in [around[0], around[1]] + angles:
+					if a != null:
+						off = TrustGuard.aim_off_arc(h["dir"], float(a), float(a))
+						break
+		var tol: float = float(h["spread"]) + TrustGuard.BINK_MAX + TrustGuard.AIM_ARC_SLACK
+		# (INF: nothing to compare with after all. Without the owner's own
+		# samples either side of the shot — its stream ran out the wait — the
+		# shot can't be judged: it stands, counted.)
+		var ok := off == INF or off <= tol or not stamped
+		if off != INF and off > tol and not stamped:
+			HostHits.count("aim_unverified")
+		h["done"] = true
+		h["ok"] = ok
+		if ok:
+			for e in h["hits"]:
+				if is_instance_valid(e[0]):
+					HostHits.damage(e[0], float(e[1]), str(e[2]), str(e[3]), int(e[4]))
+			continue
+		HostHits.count("aim_refused_hits", float((h["hits"] as Array).size()))
+		# (Only the owner's own samples either side of the shot can prove it
+		# off its aim; anything else is refused quietly.)
+		if _aim_refuse(off, float(h["spread"]), str(h["weapon"]), stamped and not aim_ok):
+			return
+	_aim_pending = keep
+
+
+## Count / log a shot refused for lying `off` rad outside the aim arc around
+## it. Only far off is a flag; nearer (odd but possible input), or fired
+## before any aim sample (just spawned), it is refused quietly — no proof of a
+## cheat. Returns true when the refusal ended this life (a forced death).
+func _aim_refuse(off: float, spread: float, wname: String, had_sample: bool) -> bool:
+	var tol: float = spread + TrustGuard.BINK_MAX + TrustGuard.AIM_ARC_SLACK
+	if not had_sample or off < tol + TrustGuard.AIM_FLAG_RAD:
+		HostHits.count("aim_refused_quiet")
+		return false
+	if _trust.flag("aim", "%s shot %.0f° off the aim it streams" % [wname, rad_to_deg(off)]):
+		_trust_force_death("shots (aim)")
+		return true
+	return false
+
+
+## Host: the host routed a weapon pickup to this body's owner (full magazine).
+func host_note_pickup(weapon_name: String) -> void:
+	if _trust == null:
+		return
+	for i in weapons.size():
+		if str(weapons[i]["name"]) == weapon_name:
+			_trust.refill_slot(i)
+	for i in secondary.size():
+		if str(secondary[i]["name"]) == weapon_name:
+			_trust.refill_slot(100 + i)
 
 
 ## Host-side death for a client whose reported state failed the checks.
