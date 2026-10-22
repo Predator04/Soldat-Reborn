@@ -121,7 +121,9 @@ func try_vote_command(raw: String) -> bool:
 			main.request_vote("votekick", arg)
 		return true
 	if lower == "/votecancel":
-		if main.has_method("cancel_vote"):
+		if Net.is_networked() and not Net.is_host():
+			main.rpc_id(1, "net_admin_cmd", "/votecancel")   # #317: a dedicated server's admin
+		elif main.has_method("cancel_vote"):
 			main.cancel_vote()
 		return true
 	return false

@@ -355,24 +355,13 @@ func apply_boot(boot: Dictionary) -> Dictionary:
 	return boot
 
 
-## Settings / MatchConfig values. `all` = also the match-time keys (boot and
-## the start of each match); a live reload passes false.
-func _apply_settings(all: bool) -> void:
-	if has("name"):
-		Settings.server_name = str(values.name).strip_edges().left(48)
-	if has("weapon_bans"):
-		Settings.weapon_bans = (values.weapon_bans as Array).duplicate()
-	if has("friendly_fire"):
-		MatchConfig.host_friendly_fire = bool(values.friendly_fire)
-	if has("bots"):
-		Settings.bot_count = int(values.bots)
-	if has("bot_skill"):
-		Settings.bot_skill = int(values.bot_skill)
-	if has("fill"):
-		Net.fill_target = int(values.fill)
-	if has("idle_pause"):
-		Net._idle_enabled = bool(values.idle_pause) and not ("--no-idle" in (OS.get_cmdline_args() + OS.get_cmdline_user_args()))
-	if not all:
+## Settings / MatchConfig values. `live` = the keys /reloadcfg applies at once
+## (boot + reload only, so an admin's /bots or /ff lasts past a map change);
+## `match_keys` = the per-map ones (boot + every match start).
+func _apply_settings(live: bool, match_keys: bool = true) -> void:
+	if live:
+		_apply_live()
+	if not match_keys:
 		return
 	if has("realistic"):
 		Settings.realistic = bool(values.realistic)
@@ -387,12 +376,29 @@ func _apply_settings(all: bool) -> void:
 			Settings.set("mod_" + k, float(values[k]))
 
 
+func _apply_live() -> void:
+	if has("name"):
+		Settings.server_name = str(values.name).strip_edges().left(48)
+	if has("weapon_bans"):
+		Settings.weapon_bans = (values.weapon_bans as Array).duplicate()
+	if has("friendly_fire"):
+		MatchConfig.host_friendly_fire = bool(values.friendly_fire)
+	if has("bots"):
+		Settings.bot_count = int(values.bots)
+	if has("bot_skill"):
+		Settings.bot_skill = int(values.bot_skill)
+	if has("fill"):
+		Net.fill_target = int(values.fill)
+	if has("idle_pause"):
+		Net._idle_enabled = bool(values.idle_pause) and not ("--no-idle" in (OS.get_cmdline_args() + OS.get_cmdline_user_args()))
+
+
 ## A dedicated match (main.tscn) starts loading (first thing in main._ready):
 ## match-time keys take effect.
 func on_match_start(main: Node) -> void:
 	if not Net.is_dedicated or values.is_empty():
 		return
-	_apply_settings(true)
+	_apply_settings(false)
 	if has("time_limit") and main.get("round_time") != null:
 		var secs := float(values.time_limit) * 60.0
 		main.set("round_time", secs)
@@ -412,7 +418,7 @@ func reload(main: Node) -> String:
 	if not load_file(path):
 		return "Could not read %s; nothing changed." % path.get_file()
 	reloads += 1
-	_apply_settings(false)
+	_apply_settings(true, false)
 	var later: Array = []
 	var restart: Array = []
 	for k in values.keys():
