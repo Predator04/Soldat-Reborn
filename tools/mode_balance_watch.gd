@@ -159,7 +159,13 @@ func _physics_process(delta: float) -> bool:
 		for k in sc.keys():
 			s[str(k)] = int(sc[k])
 		_rounds.append({"w": int(m.winner_team), "t": snappedf(_act - _round_t0, 0.1),
-			"by": "time" if float(m.time_left) <= 0.0 else "score", "s": s, "note": str(m.winner_note)})
+			"by": "time" if float(m.time_left) <= 0.0 else "score", "s": s, "note": str(m.winner_note),
+			"match_over": bool(m.match_over)})
+		# The match is over (winner screen + next-map vote): the run ends here,
+		# before the vote changes the map.
+		if bool(m.match_over):
+			_finish(m)
+			return false
 	elif not _was_active and active:
 		_round_t0 = _act
 		_last = {}
