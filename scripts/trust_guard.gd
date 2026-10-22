@@ -567,7 +567,14 @@ const CLOCK_RISE := 0.05
 const CLOCK_LEARN_SECS := 3.0
 const CLOCK_LEARN_MS := 400.0
 const CLOCK_BANK_MS := 300.0
-static var _clocks: Dictionary = {}   # peer -> [ref, last rise ms, first ms, first lead]
+# A client that started starved (its first states arrived seconds late) and
+# then recovered: every state for CLOCK_STEADY_MS leading the reference by
+# more than the slack moves the reference up to the least of them at once —
+# from a budget of CLOCK_JUMP_MS per minute (a clock that keeps running fast
+# gets a few % out of it, not a faster gun).
+const CLOCK_STEADY_MS := 2000
+const CLOCK_JUMP_MS := 2000.0
+static var _clocks: Dictionary = {}   # peer -> [ref, last rise ms, first ms, first lead, above since, above min, jump budget, budget ms]
 
 
 static func clock_note(peer: int, gstamp: int) -> void:
@@ -577,13 +584,30 @@ static func clock_note(peer: int, gstamp: int) -> void:
 	var lead := float(gstamp - now)
 	var c: Array = _clocks.get(peer, [])
 	if c.is_empty():
-		_clocks[peer] = [lead, now, now, lead]
+		_clocks[peer] = [lead, now, now, lead, 0, 0.0, CLOCK_JUMP_MS, now]
 		return
 	var ref: float = c[0]
+	c[6] = minf(CLOCK_JUMP_MS, float(c[6]) + float(now - int(c[7])) * CLOCK_JUMP_MS / 60000.0)
+	c[7] = now
+	if lead > ref + CLOCK_SLACK_MS:
+		if int(c[4]) == 0:
+			c[4] = now
+			c[5] = lead
+		else:
+			c[5] = minf(float(c[5]), lead)
+			if now - int(c[4]) >= CLOCK_STEADY_MS:
+				var jump := minf(float(c[5]) - ref, float(c[6]))
+				if jump > 0.0:
+					c[0] = ref + jump
+					c[6] = float(c[6]) - jump
+					ref = c[0]
+				c[4] = 0
+	else:
+		c[4] = 0
 	if lead <= ref:
 		return
 	if now - int(c[2]) < int(CLOCK_LEARN_SECS * 1000.0):
-		c[0] = minf(lead, float(c[3]) + CLOCK_LEARN_MS)
+		c[0] = maxf(ref, minf(lead, float(c[3]) + CLOCK_LEARN_MS))
 	else:
 		var allow := minf(CLOCK_BANK_MS, float(now - int(c[1])) * CLOCK_RISE)
 		c[0] = minf(lead, ref + allow)

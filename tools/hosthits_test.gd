@@ -252,6 +252,8 @@ const WEAPON_NAMES := {"ak": ["AK-74"], "spas": ["Spas-12"], "knife": ["Knife"],
 
 # A shooter whose screen runs this far behind its round trip is starved.
 const STARVED_MS := 300.0
+# Refusals that are never a flag (no strike, no forced death).
+const QUIET_REFUSALS := ["refused_origin_quiet", "refused_clock", "refused_burst", "aim_refused_quiet", "aim_refused_hits"]
 
 # Counters that mean the host refused / overrode something a client said.
 const REFUSALS := ["refused_", "aim_refused", "hp_ignored"]
@@ -301,7 +303,7 @@ func _batches(names: Array, parallel: int, first_run: bool, retry: Array) -> voi
 			var agreement_only := not bad.is_empty()
 			for b in bad:
 				var soft := false
-				for k in ["confirmed only", "landed only", "added", "too few predicted", "its screen showed"]:
+				for k in ["confirmed only", "landed only", "added", "too few predicted", "its screen showed", "quiet refusals"]:
 					if str(b).contains(k):
 						soft = true
 				agreement_only = agreement_only and soft
@@ -425,15 +427,25 @@ func _sc_judge(r: Dictionary) -> Array:
 	var hlog := "%s_host.log" % n
 	var st := _stats(hlog)
 	# 1. Nothing an honest client did was refused or overridden.
+	# (Quiet refusals — no flag, nothing counted against the player: a shot
+	# whose moment the host can't check any more, a clock it can't place —
+	# are retried like an agreement miss, and only excused when the
+	# shooter's screen ran far behind (a starved client): see _run.)
 	var refused: Array = []
+	var quiet: Array = []
 	for part in st.split(" "):
 		var kv := part.split("=")
 		if kv.size() == 2:
 			for pre in REFUSALS:
 				if kv[0].begins_with(pre) and float(kv[1]) > 0.0:
-					refused.append(part)
+					if kv[0] in QUIET_REFUSALS:
+						quiet.append(part)
+					else:
+						refused.append(part)
 	if not refused.is_empty():
 		bad.append("refused: %s" % " ".join(refused))
+	if not quiet.is_empty():
+		bad.append("quiet refusals: %s" % " ".join(quiet))
 	var trust := _lines(hlog, "TRUST ")
 	if not trust.is_empty():
 		bad.append("TRUST lines: %s" % str(trust.slice(0, 3)))
