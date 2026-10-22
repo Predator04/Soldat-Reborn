@@ -25,7 +25,11 @@ var aim_dir := Vector2.RIGHT
 # ── Weapons ────────────────────────────────────────────
 # `kind`: "bullet" (default) | "rocket" (slow, straight, explodes) | "launcher" (rocket + gravity arc, e.g. M79) | "melee" (single-swing arc) | "melee_cont" (chainsaw).
 # `startup` (optional, seconds): Barrett/Minigun wind-up before the first shot fires while LMB held.
-var weapons := [
+# #310: PRIMARY_WEAPONS / SECONDARY_WEAPONS are THE weapon numbers — bots
+# (bot.gd `gun_stat`), the duel harness (tools/balance_watch.gd) and host-side
+# hit checks read them from here; change a gun only in these two tables.
+# Balance notes + what differs from classic Soldat: references/weapons-stats.md.
+const PRIMARY_WEAPONS := [
 	{"name": "Deagles",   "damage": 34.0,  "rate": 0.30,  "mag": 14,  "reload": 1.5,  "auto": false, "spread": 0.02,  "speed": 1200.0, "pellets": 1, "color": Color(0.92, 0.78, 0.35), "kind": "bullet", "bink": 30.0},
 	{"name": "MP5",       "damage": 13.0,  "rate": 0.075, "mag": 32,  "reload": 1.8,  "auto": true,  "spread": 0.085, "speed": 950.0,  "pellets": 1, "color": Color(0.5, 0.62, 0.8),   "kind": "bullet", "bink": 20.0},
 	{"name": "AK-74",     "damage": 22.0,  "rate": 0.11,  "mag": 30,  "reload": 2.0,  "auto": true,  "spread": 0.055, "speed": 1050.0, "pellets": 1, "color": Color(0.72, 0.72, 0.78), "kind": "bullet", "bink": 25.0},
@@ -42,12 +46,25 @@ var weapons := [
 	{"name": "Rambo Bow",    "damage": 100.0, "rate": 1.0,   "mag": 1,   "reload": 2.5,  "auto": false, "spread": 0.0,  "speed": 900.0, "pellets": 1, "color": Color(0.6, 0.4, 0.2),  "kind": "arrow", "bink": 0.0, "gravity": 240.0},
 ]
 # Secondary slot — the second weapon the soldier carries (Q to swap primary↔secondary).
-var secondary := [
+const SECONDARY_WEAPONS := [
 	{"name": "USSOCOM",  "damage": 27.0, "rate": 0.167, "mag": 14,  "reload": 1.0,  "auto": false, "spread": 0.0, "speed": 800.0, "pellets": 1, "color": Color(0.85, 0.8, 0.6),   "kind": "bullet", "bink": 25.0},
 	{"name": "Knife",    "damage": 55.0, "rate": 0.5,   "mag": 1,   "reload": 0.05, "auto": false, "spread": 0.0, "speed": 0.0,   "pellets": 0, "color": Color(0.9, 0.9, 0.95),   "kind": "melee",      "range": 34.0, "bink": 0.0},
 	{"name": "Chainsaw", "damage": 9.0,  "rate": 0.10,  "mag": 200, "reload": 1.83, "auto": true,  "spread": 0.0, "speed": 0.0,   "pellets": 0, "color": Color(1.0, 0.7, 0.15),   "kind": "melee_cont", "range": 32.0, "bink": 0.0},
 	{"name": "LAW",      "damage": 90.0, "rate": 1.1,   "mag": 1,   "reload": 3.0,  "auto": false, "spread": 0.0, "speed": 720.0, "pellets": 1, "color": Color(0.85, 0.55, 0.35), "kind": "rocket", "bink": 0.0},
 ]
+var weapons: Array = PRIMARY_WEAPONS.duplicate(true)
+var secondary: Array = SECONDARY_WEAPONS.duplicate(true)
+
+
+## #310: a gun's entry from the weapon tables by name ({} if unknown).
+static func weapon_def(weapon_name: String) -> Dictionary:
+	for w in PRIMARY_WEAPONS:
+		if str(w["name"]) == weapon_name:
+			return w
+	for w in SECONDARY_WEAPONS:
+		if str(w["name"]) == weapon_name:
+			return w
+	return {}
 var ammo: Array[int] = []
 var secondary_ammo: Array[int] = []
 var weapon_index := 2   # default primary = AK-74 (Soldat's #3)

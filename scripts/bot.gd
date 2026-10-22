@@ -122,9 +122,10 @@ const AMMO_STATS := {
 	"Chainsaw":     {"mag": 200, "reload": 1.8},
 }
 
-# Per-weapon combat stats for bots (#80). `damage` + `speed` are mirrored
-# straight from player.gd so a Barrett bullet hurts like a Barrett bullet
-# and a Minigun tracer travels at Minigun speed. `rate` is a BOT cadence
+# Per-weapon combat stats for bots (#80). `damage` + `speed` (and `mag` /
+# `reload` / `gravity` / `pellets` / `spread`) come from player.gd's weapon
+# tables at runtime (#310, `gun_stat`) so a Barrett bullet hurts like a Barrett
+# bullet; the numbers below are only fallbacks. `rate` is a BOT cadence
 # — not the player rate — so bots aren't oppressive at every loadout: AK-74
 # stays at the pre-#80 flat 0.45, Barrett cools to 2.2 between shots (vs the
 # player's 3.75), and slower guns get bot-tuned intervals. Before #80 every
@@ -153,6 +154,35 @@ const WEAPON_STATS := {
 	"Knife":        {"damage": 55.0,  "rate": 0.5,   "speed": 600.0,  "kind": "bullet", "life": 0.10},
 	"Chainsaw":     {"damage": 9.0,   "rate": 0.10,  "speed": 600.0,  "kind": "bullet", "life": 0.10},
 }
+
+## #310: one source of truth for gun numbers — the player's weapon tables.
+## `damage`, `speed`, `gravity`, `pellets`, `spread`, `mag`, `reload` of a gun
+## come from player.gd (melee rungs keep the bot's own bullet stand-in values;
+## `rate` stays the bot cadence above); anything else from WEAPON_STATS.
+static var _gun_cache := {}
+static func gun_stats(weapon_name: String) -> Dictionary:
+	if _gun_cache.has(weapon_name):
+		return _gun_cache[weapon_name]
+	var out: Dictionary = (WEAPON_STATS.get(weapon_name, WEAPON_STATS["AK-74"]) as Dictionary).duplicate()
+	var am: Dictionary = AMMO_STATS.get(weapon_name, AMMO_STATS["AK-74"])
+	out["mag"] = am["mag"]
+	out["reload"] = am["reload"]
+	var pw: Dictionary = PlayerArt.weapon_def(weapon_name)
+	if not pw.is_empty():
+		var melee: bool = str(pw.get("kind", "")) in ["melee", "melee_cont"]
+		out["damage"] = float(pw["damage"])
+		if not melee:
+			out["speed"] = float(pw["speed"])
+			out["mag"] = int(pw["mag"])
+			out["reload"] = float(pw["reload"])
+			if pw.has("gravity") and out.has("gravity"):
+				out["gravity"] = float(pw["gravity"])
+			if int(pw.get("pellets", 1)) > 1:
+				out["pellets"] = int(pw["pellets"])
+				out["spread"] = float(pw["spread"])
+	_gun_cache[weapon_name] = out
+	return out
+
 
 # grenades
 var grenades := 3
@@ -301,8 +331,8 @@ func _ready() -> void:
 			"wskin": ["", "", "", "desert", "woodland", "carbon"][randi() % 6],
 			"jet": ["", "", "", "blue", "green"][randi() % 5],
 		}
-	ammo = int(AMMO_STATS.get(loadout, AMMO_STATS["AK-74"])["mag"])
-	secondary_ammo = int(AMMO_STATS["USSOCOM"]["mag"])
+	ammo = int(gun_stats(loadout)["mag"])
+	secondary_ammo = int(gun_stats("USSOCOM")["mag"])
 	# Gun Game: force loadout to the current rung so every bot starts on level 0.
 	if Settings.game_mode == Settings.MODE_GG:
 		_apply_gg_weapon()
@@ -433,9 +463,7 @@ func _physics_process(delta: float) -> void:
 	# mag is already ≥ half full — no gain to burning the reload window.
 	if _retreat_t > 0.0 and not reloading:
 		var active_mag: int = secondary_ammo if using_secondary else ammo
-		var full_mag: int = int(AMMO_STATS.get(
-			"USSOCOM" if using_secondary else loadout,
-			AMMO_STATS["AK-74"])["mag"])
+		var full_mag: int = int(gun_stats("USSOCOM" if using_secondary else loadout)["mag"])
 		if active_mag < full_mag / 2:
 			_start_reload()
 
@@ -834,9 +862,9 @@ func _physics_process(delta: float) -> void:
 		if reload_t <= 0.0:
 			reloading = false
 			if using_secondary:
-				secondary_ammo = int(AMMO_STATS["USSOCOM"]["mag"])
+				secondary_ammo = int(gun_stats("USSOCOM")["mag"])
 			else:
-				ammo = int(AMMO_STATS.get(loadout, AMMO_STATS["AK-74"])["mag"])
+				ammo = int(gun_stats(loadout)["mag"])
 	elif active_ammo <= 0:
 		# #79: active mag dry. Engaged with a live target + a loaded fallback →
 		# swap to the USSOCOM instead of standing in the open reloading. When
@@ -1143,7 +1171,7 @@ func _apply_gg_weapon() -> void:
 	var wname: String = String(GG_LADDER[mini(gg_level, GG_LADDER.size() - 1)])
 	loadout = wname
 	using_secondary = false
-	ammo = int(AMMO_STATS.get(wname, AMMO_STATS["AK-74"])["mag"])
+	ammo = int(gun_stats(wname)["mag"])
 	reloading = false
 	reload_t = 0.0
 
@@ -1154,7 +1182,7 @@ func _start_reload() -> void:
 	reloading = true
 	# Reload the ACTIVE weapon — the secondary has its own mag + reload time (#79).
 	var wname: String = "USSOCOM" if using_secondary else loadout
-	reload_t = float(AMMO_STATS.get(wname, AMMO_STATS["AK-74"])["reload"])
+	reload_t = float(gun_stats(wname)["reload"])
 	Sfx.reload(wname, global_position)
 
 
@@ -1172,7 +1200,7 @@ func _shoot(to_t: Vector2) -> void:
 			return
 		ammo -= 1
 	var active_weapon: String = "USSOCOM" if using_secondary else loadout
-	var stats: Dictionary = WEAPON_STATS.get(active_weapon, WEAPON_STATS["AK-74"])
+	var stats: Dictionary = gun_stats(active_weapon)
 	var aim := to_t.normalized()
 	if String(stats["kind"]) == "launcher":
 		var lob := _lob_aim(to_t, float(stats["speed"]), float(stats.get("gravity", 980.0)) * MatchConfig.mod_gravity())
@@ -1243,10 +1271,10 @@ func _shoot(to_t: Vector2) -> void:
 @rpc("authority", "call_local", "reliable")
 func net_bot_shoot(muzzle: Vector2, aim: Vector2, proj_id: int = 0, weapon: String = "") -> void:
 	# Active weapon = USSOCOM secondary if the bot has swapped, else primary loadout (#79).
-	# Damage/speed come from the WEAPON_STATS table (#80) — before that fix, every
+	# Damage/speed come from gun_stats (#80, #310: the player weapon tables) — before that fix, every
 	# non-LAW bot fired AK-74 damage at BULLET_SPEED regardless of loadout.
 	var active_weapon: String = weapon if weapon != "" else ("USSOCOM" if using_secondary else loadout)
-	var stats: Dictionary = WEAPON_STATS.get(active_weapon, WEAPON_STATS["AK-74"])
+	var stats: Dictionary = gun_stats(active_weapon)
 	Sfx.shoot(active_weapon, muzzle)
 	muzzle_t = 0.08
 	if get_parent() != null and String(stats["kind"]) != "melee":
@@ -1342,7 +1370,7 @@ func try_pickup_weapon(weapon_name: String, mag: int = -1) -> bool:
 		loadout = weapon_name
 		# Mirrors player.try_pickup_weapon: preserve the thrown mag if the pickup
 		# was dropped mid-fight; -1 (world pickup / legacy) means full mag.
-		var full: int = int(AMMO_STATS.get(loadout, AMMO_STATS["AK-74"])["mag"])
+		var full: int = int(gun_stats(loadout)["mag"])
 		ammo = full if mag < 0 else clampi(mag, 0, full)
 		using_secondary = false
 		reloading = false
@@ -1458,8 +1486,8 @@ func restore_for_round() -> void:
 	health = 100.0
 	fuel = 100.0
 	velocity = Vector2.ZERO
-	ammo = int(AMMO_STATS.get(loadout, AMMO_STATS["AK-74"])["mag"])
-	secondary_ammo = int(AMMO_STATS["USSOCOM"]["mag"])
+	ammo = int(gun_stats(loadout)["mag"])
+	secondary_ammo = int(gun_stats("USSOCOM")["mag"])
 	using_secondary = false
 	reloading = false
 	reload_t = 0.0
