@@ -347,8 +347,9 @@ func _apply_rim() -> void:
 	if want:
 		_rim_mat.set_shader_parameter("rim_strength", 0.6 if _night() > 0.5 else 0.4)
 	# Classic + Medium/High: soldiers still get a (shared) material carrying the
-	# Phase B damage-flash instance uniform; Low gets none.
-	var flash_ok := not want and Gfx.on(Gfx.MEDIUM)
+	# Phase B damage-flash instance uniform; Low gets none — except in team
+	# modes, where it carries the #306 team outline (Low's cheap fallback).
+	var flash_ok := not want and (Gfx.on(Gfx.MEDIUM) or Settings.is_team_mode())
 	if flash_ok and _flash_mat == null:
 		_flash_mat = ShaderMaterial.new()
 		_flash_mat.shader = FLASH_SHADER

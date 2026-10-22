@@ -14,8 +14,12 @@ Layers per part, drawn in order with one transform by scripts/gostek.gd:
                      trousers, skin, helmet / vest paint); parts listed in
                      gostek.gd HD_UNTINTED (gloves, hair) are real colours
   <part>_trim.png    gear in real colours (plate carrier, belt, pads, headset)
-  <part>_acc.png     accents tinted with the bright team colour (visor slit,
-                     shoulder stripe, chest patch, IR strobe, jetpack light)
+  <part>_acc.png     TEAM PAINT (#306), drawn between the base and the gear:
+                     helmet dome, cap crown, plate-carrier / vest plates,
+                     shoulder pads + arm band, neck gaiter, jetpack cover —
+                     big, readable panels tinted with the saturated team
+                     colour in team modes (gostek.gd), so friend / foe reads
+                     at a glance; painted near-white so the tint keeps its hue
   <part>_wound.png   blood, faded in below 60 HP
   <name>_n.png       normal map of each of those (OpenGL convention, green =
                      up) for the dynamic lighting pass (#282)
@@ -69,6 +73,11 @@ SILVER = (0.72, 0.74, 0.78)
 GOLD = (0.95, 0.74, 0.3)
 BLOOD = (0.42, 0.02, 0.03)
 GREY = lambda v: (v, v, v)
+# #306 team paint: near-white albedo (the in-game tint carries the colour) and
+# a little self-light so the colour still reads on night maps / in shadow.
+TEAM_ALB = 0.86
+TEAM_EMIT = 0.22
+LENS_GLOW = (0.62, 0.86, 1.0)   # visor / goggle glint (real colour, no longer team)
 
 
 def smooth(m, r):
@@ -391,22 +400,25 @@ def d_klata():
     b.stitch([(3.4, -1.2), (4.6, -0.6), (5.45, 0.2)])
     b.stitch([(-0.5, 1.6), (-0.4, 4.0), (-0.05, 6.0)])
     t = b.like()
+    acc = b.like()
     body = b.erode(torso, 0.06)
     front = b.rrect(3.4, 0.3, 5.98, 4.6, 0.45) * b.dilate(torso, 0.15)
     back = b.rrect(-0.72, 0.2, 0.75, 4.3, 0.4) * b.dilate(torso, 0.12)
-    cumm = body * b.band(2.9, 4.6)
+    # #306: the front / back plates are TEAM PAINT (acc layer, under the gear);
+    # the cummerbund between them stays carrier grey.
+    cumm = body * b.band(2.9, 4.6) * (1 - front) * (1 - back)
     t.fill(np.clip(cumm, 0, 1), CARRIER, z=0.5, height=0.45, bevel=0.25)
     t.carve(cumm * t.band(3.35, 3.48), 0.06, 0.6)
     t.carve(cumm * t.band(3.95, 4.08), 0.06, 0.6)
-    t.fill(back, CARRIER, z=0.6, height=0.6, bevel=0.3)
-    t.fill(front, CARRIER, z=0.7, height=0.75, bevel=0.35)
-    t.molle(front, 0.55, 2.4, 3)
-    t.stitch([(3.55, 0.45), (5.82, 0.45), (5.82, 4.45), (3.55, 4.45), (3.55, 0.45)], light=1.5)
-    t.stitch([(-0.6, 0.35), (0.62, 0.35), (0.62, 4.15)], light=1.5)
+    acc.fill(back, GREY(TEAM_ALB), z=0.6, height=0.6, bevel=0.3, spec=0.25, emit=TEAM_EMIT)
+    acc.fill(front, GREY(TEAM_ALB), z=0.7, height=0.75, bevel=0.35, spec=0.25, emit=TEAM_EMIT)
+    acc.molle(front, 0.55, 2.4, 3)
+    acc.stitch([(3.55, 0.45), (5.82, 0.45), (5.82, 4.45), (3.55, 4.45), (3.55, 0.45)], light=1.25)
+    acc.stitch([(-0.6, 0.35), (0.62, 0.35), (0.62, 4.15)], light=1.25)
     t.molle(cumm, 2.95, 4.55, 2)
-    t.edgewear(front, 0.06, 1.45)
-    t.edgewear(back, 0.06, 1.4)
-    t.scratches(front, 14, seed=13)
+    acc.edgewear(front, 0.06, 1.25)
+    acc.edgewear(back, 0.06, 1.2)
+    acc.scratches(front, 14, seed=13, bright=1.2)
     strap = t.line([(0.2, 0.35), (1.35, -0.62), (3.1, -0.68), (4.15, 0.45)], 0.7) * b.dilate(torso, 0.1)
     t.fill(strap, WEB, z=0.6, height=0.35, bevel=0.15)
     t.webbing(strap)
@@ -426,10 +438,10 @@ def d_klata():
     t.fill(t.line([(-0.42, 0.95), (-0.62, -1.2), (-0.82, -2.45)], 0.16), WEB, z=1.2, height=0.12, bevel=0.06)
     t.fill(t.ell(-0.82, -2.45, 0.12, 0.12), WEB, z=1.2, height=0.12, bevel=0.06)
     t.noise(0.05, 0.04, 0.008, seed=12)
-    acc = b.like()
-    acc.fill(acc.rrect(3.85, 0.55, 5.45, 1.22, 0.12), GREY(1.0), height=0.1, bevel=0.05, emit=0.75)
-    acc.fill(acc.rrect(-0.6, 0.38, 0.55, 0.62, 0.08), GREY(1.0), height=0.06, bevel=0.04, emit=0.75)
+    acc.noise(0.03, 0.05, 0.006, seed=14)
+    acc.shadow_from(t, strength=0.35)
     b.shadow_from(t)
+    b.shadow_from(acc, strength=0.3)
     return {"": b, "_trim": t, "_acc": acc, "_wound": wound_layer(b, 111, 6)}
 
 
@@ -446,12 +458,22 @@ def d_kamizelka():
     for y in (1.2, 2.6, 4.0):
         b.carve(front * b.band(y, y + 0.12), 0.1, 0.62)
     b.noise(0.03, 0.05, 0.01, seed=21)
+    # #306: the front plate is team paint over the vest's own paint (which
+    # still shows on the back plate, cummerbund and collar).
+    acc = b.like()
+    plate = front * (1 - collar)
+    acc.fill(plate, GREY(TEAM_ALB), z=0.5, height=1.0, bevel=0.45, spec=0.2, emit=TEAM_EMIT)
+    for y in (1.2, 2.6, 4.0):
+        acc.carve(plate * acc.band(y, y + 0.12), 0.1, 0.62)
+    acc.edgewear(plate, 0.06, 1.2)
+    acc.noise(0.03, 0.05, 0.01, seed=22)
     t = b.like()
     for i in range(4):
         t.fill(t.ell(5.9, 0.4 + i * 1.3, 0.13, 0.13), METAL, z=1.6, height=0.1, bevel=0.06, spec=0.9)
     t.fill(t.rrect(3.6, 0.2, 5.6, 0.75, 0.1), WEB, z=1.6, height=0.12, bevel=0.05)
+    acc.shadow_from(t, strength=0.35)
     b.shadow_from(t)
-    return {"": b, "_trim": t}
+    return {"": b, "_acc": acc, "_trim": t}
 
 
 def d_biodro():
@@ -555,13 +577,21 @@ def d_ramie():
     t = b.like()
     pad = t.ell(0.05, -0.2, 1.32, 1.3) * t.band(-2, 1.0)
     pad = smooth(pad, 0.12)
-    t.fill(pad, PAD, z=0.7, height=0.75, bevel=0.55, spec=0.5)
-    t.carve(pad * t.band(0.62, 0.72), 0.05, 0.65)
-    t.edgewear(pad, 0.07, 1.55)
-    t.scratches(pad, 10, seed=73)
+    # #306: shoulder pad + an arm band in team paint (acc, under the gear)
     acc = b.like()
-    acc.fill(pad * acc.band(-0.08, 0.36), GREY(1.0), height=0.06, bevel=0.03, emit=0.7)
-    b.shadow_from(t, dy=0.15)
+    acc.fill(pad, GREY(TEAM_ALB), z=0.7, height=0.75, bevel=0.55, spec=0.35, emit=TEAM_EMIT)
+    acc.carve(pad * acc.band(0.62, 0.72), 0.05, 0.65)
+    acc.edgewear(pad, 0.07, 1.25)
+    acc.scratches(pad, 10, seed=73, bright=1.2)
+    armband = b.dilate(arm, 0.05) * acc.band(1.3, 2.15)
+    acc.fill(armband, GREY(TEAM_ALB), z=0.55, height=0.25, bevel=0.1, emit=TEAM_EMIT)
+    acc.weave(armband, 0.05)
+    strap = b.dilate(pad, 0.02) * t.band(0.5, 0.86)
+    t.fill(strap, WEB, z=1.45, height=0.12, bevel=0.05)
+    t.webbing(strap)
+    t.fill(t.rrect(-0.2, 0.46, 0.3, 0.9, 0.06), METAL, z=1.6, height=0.08, bevel=0.04, spec=0.9)
+    acc.shadow_from(t, dy=0.1, strength=0.35)
+    b.shadow_from(acc, dy=0.15)
     return {"": b, "_trim": t, "_acc": acc, "_wound": wound_layer(b, 171, 2)}
 
 
@@ -633,19 +663,23 @@ def d_morda():
     b.tone(b.rrect(-0.92, 0.2, 0.88, 1.65, 0.3) * head, 0.85)               # neck in shade
     b.noise(0.025, 0.05, 0.008, seed=101)
     t = b.like()
+    # #306: the neck gaiter is team paint (acc) — reads even on bare heads
+    acc = b.like()
     gaiter = smooth(b.poly([(-0.95, 0.05), (0.2, 0.45), (1.15, 0.5), (0.95, 1.7), (-0.98, 1.7)]), 0.15) * b.dilate(head, 0.06)
-    t.fill(gaiter, (0.16, 0.165, 0.17), z=0.8, height=0.35, bevel=0.25)
+    acc.fill(gaiter, GREY(TEAM_ALB * 0.9), z=0.8, height=0.35, bevel=0.25, emit=TEAM_EMIT)
+    acc.weave(gaiter, 0.05)
     for y in (0.55, 0.95, 1.35):
-        t.carve(gaiter * t.band(y, y + 0.07), 0.05, 0.7)
+        acc.carve(gaiter * acc.band(y, y + 0.07), 0.05, 0.7)
     t.fill(t.rrect(-0.85, -1.75, 0.22, -0.52, 0.35), HEADSET, z=1.0, height=0.45, bevel=0.25, spec=0.4)
     t.fill(t.line([(-0.05, -0.68), (0.7, -0.22), (1.62, -0.02)], 0.1), HEADSET, z=1.2, height=0.08, bevel=0.04)
     t.fill(t.ell(1.66, -0.02, 0.13, 0.12), HEADSET, z=1.25, height=0.1, bevel=0.06)
     gl = t.poly([(1.05, -1.5), (1.98, -1.42), (2.0, -1.08), (1.12, -1.0)], r=0.04)
     t.fill(gl, LENS, z=1.1, height=0.2, bevel=0.08, spec=1.0)
     t.fill(t.line([(1.05, -1.3), (0.15, -1.25)], 0.08), HEADSET, z=1.1, height=0.06, bevel=0.03)
-    acc = b.like()
-    acc.fill(acc.line([(1.2, -1.36), (1.86, -1.32)], 0.06) * gl, GREY(1.0), height=0.03, bevel=0.02, emit=0.45)
+    t.fill(t.line([(1.2, -1.36), (1.86, -1.32)], 0.06) * gl, LENS_GLOW, z=1.35, height=0.03, bevel=0.02, emit=0.45)
+    acc.shadow_from(t, dx=-0.1, dy=0.12, strength=0.3)
     b.shadow_from(t, dx=-0.1, dy=0.12, strength=0.35)
+    b.shadow_from(acc, dx=-0.1, dy=0.12, strength=0.3)
     return {"": b, "_trim": t, "_acc": acc, "_wound": wound_layer(b, 191, 2)}
 
 
@@ -678,10 +712,23 @@ def d_helm():
     t.paint(t.line([(1.3, -1.62), (2.25, -1.82)], 0.07) * vis, (0.55, 0.6, 0.7), 0.5)   # reflection streak
     t.fill(t.line([(1.05, -1.75), (2.3, -1.98)], 0.2), HEADSET, z=1.3, height=0.15, bevel=0.07)
     t.fill(t.ell(1.12, -1.55, 0.2, 0.2), METAL, z=1.35, height=0.12, bevel=0.08, spec=0.9)
+    t.fill(t.poly([(1.4, -1.43), (2.42, -1.55), (2.44, -1.27), (1.45, -1.17)], r=0.03), LENS_GLOW, z=1.5, height=0.04, bevel=0.03, emit=1.0)
+    strobe = t.rrect(-1.7, -3.4, -1.15, -2.97, 0.08)                # IR strobe
+    t.fill(strobe, HEADSET, z=1.15, height=0.14, bevel=0.06, spec=0.4)
+    t.fill(t.ell(-1.42, -3.18, 0.09, 0.09), (0.3, 1.0, 0.45), z=1.3, height=0.04, bevel=0.03, emit=0.9)
     t.noise(0.04, 0.04, 0.006, seed=202)
+    # #306: the dome above the headset band is team paint (acc); the paint
+    # cosmetic (base layer) keeps the brim / lower rim.
     acc = b.like()
-    acc.fill(acc.poly([(1.4, -1.43), (2.42, -1.55), (2.44, -1.27), (1.45, -1.17)], r=0.03), GREY(1.0), height=0.04, bevel=0.03, emit=1.0)
-    acc.fill(acc.rrect(-1.65, -3.35, -1.2, -3.02, 0.06), GREY(1.0), height=0.04, bevel=0.03, emit=0.95)
+    dome = shell * acc.poly([(-2.6, -4.5), (2.7, -4.5), (2.7, -2.12), (0.5, -2.08), (-0.55, -2.02), (-0.88, -1.32),
+                             (-2.6, -1.26)], r=0.05)
+    acc.fill(dome, GREY(TEAM_ALB), height=1.0, bevel=0.9, spec=0.3, emit=TEAM_EMIT)
+    acc.carve(acc.line([(-0.3, -3.95), (-0.45, -1.9)], 0.07) * dome, 0.04, 0.85)
+    acc.noise(0.02, 0.06, 0.012, seed=201)
+    acc.velcro(dome, 0.07, seed=203)
+    acc.edgewear(shell, 0.06, 1.2)
+    acc.scratches(dome, 18, seed=204, bright=1.2)
+    acc.shadow_from(t, dx=-0.1, dy=0.12, strength=0.3)
     b.shadow_from(t, dx=-0.1, dy=0.12, strength=0.35)
     return {"": b, "_trim": t, "_acc": acc}
 
@@ -696,9 +743,17 @@ def d_kap():
     b.carve(b.line([(-0.2, -3.75), (-0.1, -1.6)], 0.07) * crown, 0.05, 0.8)
     b.carve(band * b.band(-1.62, -1.55), 0.05, 0.75)
     b.noise(0.02, 0.06, 0.012, seed=211)
+    # #306: the crown is team paint; band + brim keep the paint cosmetic
     acc = b.like()
-    acc.fill(acc.rrect(0.75, -2.55, 1.35, -2.1, 0.06) * crown, GREY(1.0), height=0.04, bevel=0.03, emit=0.6)
-    return {"": b, "_acc": acc}
+    acc.fill(crown, GREY(TEAM_ALB), height=0.75, bevel=0.6, emit=TEAM_EMIT)
+    acc.carve(acc.line([(-0.2, -3.75), (-0.1, -1.6)], 0.07) * crown, 0.05, 0.8)
+    acc.weave(crown, 0.05)
+    acc.noise(0.02, 0.06, 0.012, seed=212)
+    t = b.like()
+    logo = t.rrect(0.75, -2.55, 1.35, -2.1, 0.06) * crown
+    t.fill(logo, POUCH, z=0.9, height=0.05, bevel=0.03)
+    t.velcro(logo, 0.25, seed=213)
+    return {"": b, "_acc": acc, "_trim": t}
 
 
 def hair_layer(style):
@@ -827,8 +882,15 @@ def d_jetpack():
     heat = b.vband(7.9, 8.9) * b.poly([(7.3, 1.3), (8.0, 1.12), (8.8, 0.82), (8.8, 3.92), (8.0, 3.55), (7.3, 3.35)])
     b.paint(heat, (0.36, 0.3, 0.42), 0.45)                          # heat-blued nozzle
     b.fill(b.ell(0.45, 2.3, 0.45, 0.45), METAL, z=1.0, height=0.25, bevel=0.15, spec=0.9)
+    # #306: a team-paint cover over the rear half of the near tank
     acc = b.like()
-    acc.fill(acc.rrect(3.2, 2.75, 4.55, 3.28, 0.12), GREY(1.0), height=0.05, bevel=0.03, emit=0.9)
+    cover = near * b.vband(5.0, 7.0)
+    acc.fill(cover, GREY(TEAM_ALB * 0.92), z=0.3, height=0.95, bevel=0.95, spec=0.6, emit=TEAM_EMIT)
+    acc.carve(cover * acc.band(3.15, 3.25), 0.06, 0.7)
+    acc.edgewear(cover, 0.08, 1.2)
+    acc.scratches(cover, 12, seed=302, bright=1.2)
+    for x in (5.3, 6.0, 6.7):
+        acc.rivet(x, 1.2, 0.05)
     return {"": b, "_acc": acc}
 
 

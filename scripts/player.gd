@@ -279,6 +279,7 @@ var bullet_scene := preload("res://scenes/bullet.tscn")
 var grenade_scene := preload("res://scenes/grenade.tscn")
 var rocket_scene := preload("res://scenes/rocket.tscn")
 const SoldierArt = preload("res://scripts/soldier_art.gd")
+const TeamColors = preload("res://scripts/team_colors.gd")
 const Gostek = preload("res://scripts/gostek.gd")
 const WeaponPickup = preload("res://scripts/weapon_pickup.gd")
 const TouchControls = preload("res://scripts/touch_controls.gd")
@@ -2194,7 +2195,9 @@ func _draw() -> void:
 	# secondary, the primary rides back; otherwise the chosen secondary does.
 	var back_wn: String = str(weapons[weapon_index]["name"]) if using_secondary else str(secondary[secondary_index]["name"])
 	var ds := _draw_state
-	ds.body_color = color
+	# #306: live team colour (palette changes apply at once); berserker keeps red.
+	ds.body_color = color if bonus_kind == "berserker" else TeamColors.body_for(team, color)
+	ds.team = TeamColors.team_of(team)
 	ds.facing = facing
 	ds.aim_dir = aim_dir
 	ds.vel = vel_for_pose

@@ -58,6 +58,9 @@ static func _atmo() -> Script:
 	return _atmo_script
 
 const Gostek = preload("res://scripts/gostek.gd")
+const TeamColors = preload("res://scripts/team_colors.gd")   # #306
+const RIM_SHADER = preload("res://scripts/gfx/rim_light.gdshader")
+const FLASH_SHADER = preload("res://scripts/gfx/soldier_flash.gdshader")
 const WeaponGfx = preload("res://scripts/weapon_gfx.gd")   # #284 HD weapon sprites
 
 
@@ -124,9 +127,11 @@ static func draw_soldier(node: CanvasItem, st: SoldierDrawState) -> void:
 		"back_weapon": st.back_weapon_name,
 		"grenades": st.grenade_count,
 		"use_cluster": st.use_cluster,
+		"team": st.team,
 	}
 	if has_xf:
 		gs["xf"] = xf
+	_sync_team_rim(node, st)
 	Gostek.draw_body(node, gs, body_color)
 
 	# Weapon sprite along aim_dir, mounted at the animated right wrist
@@ -178,6 +183,23 @@ static func draw_soldier(node: CanvasItem, st: SoldierDrawState) -> void:
 		var pulse: float = 0.35 + 0.25 * sin(Time.get_ticks_msec() * 0.012)
 		node.draw_arc(Vector2(0, -8.0), 20.0, 0.0, TAU, 32, Color(0.4, 0.85, 1.0, pulse), 1.6)
 		node.draw_arc(Vector2(0, -8.0), 24.0, 0.0, TAU, 32, Color(0.4, 0.85, 1.0, pulse * 0.55), 1.0)
+
+
+## #306: the team outline is the `team_rim` instance uniform of the soldier's
+## shared rim (cinematic) / flash (classic, any quality in team modes)
+## material — set only when it changes (or the material was swapped).
+static func _sync_team_rim(node: CanvasItem, st: SoldierDrawState) -> void:
+	var rc := TeamColors.rim(st.team) if not st.dead else Color(0, 0, 0, 0)
+	var mat := node.material
+	if rc == st._rim_sent and mat == st._rim_mat:
+		return
+	st._rim_mat = mat
+	var sm := mat as ShaderMaterial
+	if sm == null or (sm.shader != RIM_SHADER and sm.shader != FLASH_SHADER):
+		st._rim_sent = Color(0, 0, 0, -1.0)
+		return
+	node.set_instance_shader_parameter("team_rim", rc)
+	st._rim_sent = rc
 
 
 # Returns the barrel-tip position in the node's local space so callers can

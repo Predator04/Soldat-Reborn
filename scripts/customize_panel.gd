@@ -16,7 +16,7 @@ var _rows_box: VBoxContainer
 
 
 class Preview extends Node2D:
-	var team_color := Color(0.35, 0.55, 1.0)
+	var team := 1   # #306: the preview shows that team's paint
 	var weapon := "AK-74"
 	var t := 0.0
 	var _draw_state := SoldierDrawState.new()
@@ -30,7 +30,8 @@ class Preview extends Node2D:
 		var cos: Dictionary = PlayerScript.my_cosmetics()
 		var jet := true
 		var ds := _draw_state
-		ds.body_color = team_color
+		ds.body_color = preload("res://scripts/team_colors.gd").for_team(team)
+		ds.team = team
 		ds.facing = 1.0
 		ds.aim_dir = aim
 		ds.vel = Vector2.ZERO
@@ -90,10 +91,10 @@ func _ready() -> void:
 	var teams := HBoxContainer.new()
 	teams.add_theme_constant_override("separation", 6)
 	left.add_child(teams)
-	for t in [[1, "BLUE", Color(0.35, 0.55, 1.0)], [2, "RED", preload("res://scripts/team_colors.gd").red()]]:
+	for t in [[1, "BLUE"], [2, "RED"]]:
 		var b := UITheme.make_small_button(t[1], 110, 32)
-		var col: Color = t[2]
-		b.pressed.connect(func() -> void: _preview.team_color = col)
+		var tid: int = t[0]
+		b.pressed.connect(func() -> void: _preview.team = tid)
 		teams.add_child(b)
 	var lvl := Label.new()
 	var lp: Array = Stats.level_progress()

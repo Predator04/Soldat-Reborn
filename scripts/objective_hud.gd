@@ -73,7 +73,7 @@ func _flag_name(team: int) -> String:
 
 func _flag_color(team: int) -> Color:
 	if team == 1:
-		return Color(0.35, 0.6, 1.0)
+		return preload("res://scripts/team_colors.gd").blue(true)
 	if team == 2:
 		return preload("res://scripts/team_colors.gd").red(true)
 	return Color(1.0, 0.85, 0.3)

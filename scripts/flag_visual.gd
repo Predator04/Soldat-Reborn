@@ -41,7 +41,7 @@ func _process(delta: float) -> void:
 
 func _team_color() -> Color:
 	match team:
-		1: return Color(0.22, 0.46, 1.0)   # BLUE
+		1: return preload("res://scripts/team_colors.gd").blue()   # BLUE
 		2: return preload("res://scripts/team_colors.gd").red()  # RED
 		_: return Color(0.98, 0.78, 0.18)  # neutral (INF / HTF)
 

@@ -112,7 +112,10 @@ Player Name,Nombre del jugador,Nome do jogador,Spielername,Nom du joueur
 Bot skill,Habilidad de los bots,Habilidade dos bots,Bot-Stärke,Niveau des bots
 Check for updates when the game starts,Buscar actualizaciones al iniciar,Procurar atualizações ao iniciar,Beim Start nach Updates suchen,Chercher des mises à jour au démarrage
 "Pause when the game loses focus (alt-tab, phone home button)","Pausar al perder el foco (alt-tab, botón de inicio)","Pausar ao perder o foco (alt-tab, botão início)","Pausieren, wenn das Spiel den Fokus verliert (Alt-Tab, Home-Taste)","Pause quand le jeu perd le focus (alt-tab, bouton accueil)"
-Colour-blind friendly teams (red team shows orange; next match),Equipos para daltónicos (el rojo se ve naranja; próxima partida),Equipes para daltônicos (vermelho vira laranja; próxima partida),Farbenblind-freundliche Teams (Rot wird Orange; nächstes Match),Équipes pour daltoniens (le rouge devient orange ; prochaine partie)
+Team colours,Colores de equipo,Cores das equipes,Teamfarben,Couleurs des équipes
+Classic (blue vs red),Clásico (azul contra rojo),Clássico (azul contra vermelho),Klassisch (Blau gegen Rot),Classique (bleu contre rouge)
+Colour-blind (blue vs orange),Daltónicos (azul contra naranja),Daltônicos (azul contra laranja),Farbenblind (Blau gegen Orange),Daltoniens (bleu contre orange)
+High contrast,Alto contraste,Alto contraste,Hoher Kontrast,Contraste élevé
 Bot chatter (bots taunt in chat),Charla de bots (se burlan en el chat),Conversa dos bots (provocam no chat),Bot-Gerede (Bots sticheln im Chat),Bavardage des bots (ils chambrent dans le chat)
 Vehicles: buggies on maps with room (host decides online),Vehículos: buggies en mapas con espacio (el anfitrión decide en línea),Veículos: buggies em mapas com espaço (o host decide online),Fahrzeuge: Buggys auf Karten mit Platz (online entscheidet der Host),Véhicules : buggys sur les cartes assez grandes (l'hôte décide en ligne)
 REPORT A BUG,REPORTAR UN ERROR,REPORTAR UM BUG,FEHLER MELDEN,SIGNALER UN BUG

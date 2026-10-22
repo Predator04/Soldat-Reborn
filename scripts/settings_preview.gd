@@ -141,6 +141,7 @@ class Puppet extends Node2D:
 	func _draw() -> void:
 		var t: float = stage.get("t")
 		ds.body_color = TeamColors.blue() if team == 1 else TeamColors.red()
+		ds.team = team
 		ds.facing = facing
 		ds.aim_dir = Vector2(facing, -0.04).normalized()
 		ds.vel = Vector2.ZERO
@@ -283,7 +284,7 @@ func _process(_d: float) -> void:
 			q[clampi(int(Settings.gfx_quality), 0, 2)], float(Settings.blood_intensity), float(Settings.screen_shake_intensity)]
 	if bool(Settings.hit_stop):
 		txt += " · hit-stop"
-	if bool(Settings.colorblind):
-		txt += " · colour-blind teams"
+	if str(Settings.team_colors) != "classic":
+		txt += " · %s teams" % ("colour-blind" if str(Settings.team_colors) == "colorblind" else "high-contrast")
 	if _caption.text != txt:
 		_caption.text = txt

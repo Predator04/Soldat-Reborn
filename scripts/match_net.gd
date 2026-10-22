@@ -487,7 +487,7 @@ func net_spawn_player(peer_id: int, spawn_pos: Vector2, display_name: String, as
 		t = peer_id
 	p.team = t
 	if t == main.TEAM_BLUE:
-		p.color = Color(0.35, 0.55, 1.0)
+		p.color = preload("res://scripts/team_colors.gd").blue()
 	elif t == main.TEAM_RED:
 		p.color = preload("res://scripts/team_colors.gd").red()
 	p.set_multiplayer_authority(peer_id)
