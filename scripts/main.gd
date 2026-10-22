@@ -704,7 +704,7 @@ func _spawn_player() -> void:
 	# In team modes player joins BLUE (team 1); in DM/RM she's team 0 (FFA).
 	if Settings.is_team_mode():
 		p.team = TEAM_BLUE
-		p.color = Color(0.35, 0.55, 1.0)
+		p.color = preload("res://scripts/team_colors.gd").blue()
 	else:
 		p.team = 0
 	p.display_name = Settings.display_name()

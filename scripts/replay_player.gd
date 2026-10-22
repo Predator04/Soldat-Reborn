@@ -41,10 +41,12 @@ class Puppet extends Node2D:
 		if st.is_empty():
 			return
 		var bits: int = int(st[7])
-		var col := Color.html(str(info.get("color", "ffffff")))
+		var tc = preload("res://scripts/team_colors.gd")
+		var col: Color = tc.body_for(int(info.get("team", 0)), Color.html(str(info.get("color", "ffffff"))))
 		var aim := Vector2.RIGHT.rotated(float(st[3]))
 		var ds := _draw_state
 		ds.body_color = col
+		ds.team = tc.team_of(int(info.get("team", 0)))
 		ds.facing = float(st[4]) if float(st[4]) != 0.0 else 1.0
 		ds.aim_dir = aim
 		ds.vel = Vector2(float(st[5]), float(st[6]))
@@ -374,7 +376,7 @@ func _draw() -> void:
 	# Flags.
 	for f in a[3]:
 		var fp := Vector2(float(f[1]), float(f[2]))
-		var fc := Color(0.35, 0.55, 1.0) if int(f[0]) == 1 else Color(0.95, 0.3, 0.25)
+		var fc: Color = preload("res://scripts/team_colors.gd").for_team(int(f[0]), false, Color(0.98, 0.78, 0.18))
 		draw_line(fp, fp + Vector2(0, -26), Color(0.85, 0.85, 0.85), 2.0)
 		draw_colored_polygon(PackedVector2Array([fp + Vector2(1, -26), fp + Vector2(16, -21), fp + Vector2(1, -16)]), fc)
 	# Vehicles (simple silhouettes).

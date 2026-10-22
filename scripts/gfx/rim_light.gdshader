@@ -12,6 +12,10 @@ uniform float bounce_strength = 0.18;
 // Phase B (#271): per-soldier damage flash (soldier_feel.gd sets it for ~2
 // frames through set_instance_shader_parameter, so the material stays shared).
 instance uniform float flash = 0.0;
+// #306: team outline (rgb = team colour, a = strength; 0 = none), set per
+// soldier by soldier_art.gd in team modes — painted on every silhouette edge
+// whatever the light direction, so friend / foe reads on dark / busy maps.
+instance uniform vec4 team_rim = vec4(0.0);
 
 void fragment() {
 	// COLOR already carries the texture sample (Godot 4); multiplying it in
@@ -27,6 +31,7 @@ void fragment() {
 		float back = clamp(-dot(n, normalize(light_from)), 0.0, 1.0);
 		c.rgb += rim_col * edge * key * rim_strength * c.a;
 		c.rgb += bounce_col * edge * back * bounce_strength * c.a;
+		c.rgb = mix(c.rgb, team_rim.rgb, clamp(e * 2.0, 0.0, 1.0) * team_rim.a);
 	}
 	c.rgb = mix(c.rgb, vec3(1.0), flash * 0.85);
 	COLOR = c;

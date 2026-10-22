@@ -1273,13 +1273,13 @@ func _team_display_info(team_id: int) -> Dictionary:
 		# INF: fixed defender / attacker labels.
 		if Settings.game_mode == Settings.MODE_INF:
 			if team_id == 1:
-				return {"name": "DEFENDERS", "color": Color(0.4, 0.6, 1.0)}
+				return {"name": "DEFENDERS", "color": preload("res://scripts/team_colors.gd").blue(true)}
 			if team_id == 2:
 				return {"name": "ATTACKERS", "color": preload("res://scripts/team_colors.gd").red(true)}
 		# Team modes generally: fixed BLUE/RED colors + labels.
 		if Settings.game_mode != Settings.MODE_DM and Settings.game_mode != Settings.MODE_RM:
 			if team_id == 1:
-				return {"name": "BLUE", "color": Color(0.4, 0.6, 1.0)}
+				return {"name": "BLUE", "color": preload("res://scripts/team_colors.gd").blue(true)}
 			if team_id == 2:
 				return {"name": "RED", "color": preload("res://scripts/team_colors.gd").red(true)}
 		if team_id == 0:

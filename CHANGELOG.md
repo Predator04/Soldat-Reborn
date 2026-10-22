@@ -4,6 +4,12 @@ All notable changes to Soldat Reborn.
 
 ## [Unreleased]
 
+### Improved — telling the teams apart (#306)
+- **Friend and foe now read at a glance (#306).** In team modes every soldier wears big panels of strong team paint — helmet, plate carrier, shoulder pads and an arm band, neck gaiter, cap, vest front, jetpack cover — in a clear cyan-blue or red-orange (the blue side lighter, the red side deeper), so the teams stay distinct on night maps, in smoke and explosions, on the HD terrain and on a phone screen. Your helmet and vest paint still show on the rest of the helmet / vest, and in free-for-all modes (Deathmatch, Rambo, Battle Royale, Gun Game) everyone keeps their own colours.
+- **Thin team-coloured outline on every soldier in team modes** — a bit stronger on enemies than on your teammates. It works on every graphics preset, Low included, and in the classic soldier look, where the helmet and vest now also take the team colour.
+- **Teammate markers:** a small chevron in your team's colour floats over each teammate, with their name while they're near you. Enemy names only pop up when you aim at them or they get close (never for someone cloaked by the Predator power-up).
+- **Settings → Video → Team colours:** Classic (blue vs red), Colour-blind (blue vs orange) or High contrast (cyan vs magenta-red, stronger outlines). It applies at once, mid-match, to soldiers, outlines, markers, vehicles, flags, the score strip, the kill feed and objective markers. (Replaces the old "Colour-blind friendly teams" switch; your choice carries over.)
+
 ## [1.39.0] — 2026-10-21 — Featured levels
 
 ### Added — drop your power-up (#303)

@@ -34,6 +34,12 @@ var back_weapon_name := ""
 var grenade_count := 0
 var use_cluster := false
 var is_local := false
+# #306: the team this soldier SHOWS (1 / 2; 0 = free-for-all / none) — callers
+# resolve it with TeamColors.team_of(team) (previews set it directly). Drives
+# the team paint, the team outline and nothing else.
+var team := 0
+var _rim_sent := Color(0, 0, 0, -1.0)   # last team_rim handed to the material
+var _rim_mat: Material = null
 var show_hp := true
 # Phase B (#271) visual-only offsets, filled by SoldierFeel (squash-and-
 # stretch, recoil). soldier_art.gd applies them to the DRAWN sprite about the

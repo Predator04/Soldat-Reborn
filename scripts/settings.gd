@@ -39,7 +39,9 @@ var show_fps := false          # overlay FPS counter on the HUD
 var pause_on_focus_loss := true  # open the pause menu when the window / app loses focus
 var check_updates := true      # look for a newer release on GitHub at startup
 var discord_status := true     # #223: show what you're playing in Discord (desktop; scripts/discord/)
-var colorblind := false        # red team drawn orange (blue / orange)
+# #306 Team colours palette (TeamColors.STYLES): "classic" (blue vs red-orange),
+# "colorblind" (blue vs orange), "contrast" (cyan vs red-magenta, stronger outlines).
+var team_colors := "classic"
 var soldier_look := "operator"  # #280: "operator" (3x gear sprites) | "classic" (original soldiers)
 var visual_style := "cinematic" # "cinematic" (dark, high-contrast grade + new sky) | "classic" (original look)
 var impact_aberration := true  # brief colour split on nearby explosions / when hit
@@ -304,7 +306,11 @@ func load_settings() -> void:
 	pause_on_focus_loss = bool(cf.get_value("game", "pause_on_focus_loss", true))
 	check_updates = bool(cf.get_value("game", "check_updates", true))
 	discord_status = bool(cf.get_value("game", "discord_status", true))
-	colorblind = bool(cf.get_value("video", "colorblind", false))
+	# v1.23 "colorblind" bool -> the #306 palette setting
+	var tc_old := "colorblind" if bool(cf.get_value("video", "colorblind", false)) else "classic"
+	team_colors = str(cf.get_value("video", "team_colors", tc_old))
+	if not ["classic", "colorblind", "contrast"].has(team_colors):
+		team_colors = "classic"
 	visual_style = "classic" if str(cf.get_value("video", "visual_style", "cinematic")) == "classic" else "cinematic"
 	soldier_look = "classic" if str(cf.get_value("video", "soldier_look", "operator")) == "classic" else "operator"
 	impact_aberration = bool(cf.get_value("video", "impact_aberration", true))
@@ -448,7 +454,7 @@ func _write_file() -> void:
 	cf.set_value("game", "pause_on_focus_loss", pause_on_focus_loss)
 	cf.set_value("game", "check_updates", check_updates)
 	cf.set_value("game", "discord_status", discord_status)
-	cf.set_value("video", "colorblind", colorblind)
+	cf.set_value("video", "team_colors", team_colors)
 	cf.set_value("video", "visual_style", visual_style)
 	cf.set_value("video", "soldier_look", soldier_look)
 	cf.set_value("video", "impact_aberration", impact_aberration)

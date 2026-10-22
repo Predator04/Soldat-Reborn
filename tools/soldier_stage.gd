@@ -11,6 +11,11 @@ extends SceneTree
 ## --classic-weapons: Operator soldiers holding the classic weapon sprites
 ## (before / after pairs of the weapon art alone). --skins: cycle the weapon skins.
 ## --cols=N: weapon grid width (default 4; 2 suits --zoom=14).
+## --teams (#306): a blue squad facing a red squad (mixed poses + cosmetics,
+## team mode) for team-readability before / after shots: teams_<tag>.png at
+## --zoom plus teams1x_<tag>.png at true 1x. --busy adds explosion glows and
+## smoke behind them; --quality=0|1|2 picks the graphics preset (Low = classic
+## sprites + the cheap team edge); --palette=classic|colorblind|contrast.
 var _out := "."
 var _tag := "shot"
 var _zoom := 4.0
@@ -28,6 +33,10 @@ var _classic_weapons := false
 var _skins := false
 var _cols := 4          # --cols=N: weapon grid width (2 for --zoom=14 close-ups)
 var _t0 := 0
+var _teams := false   # --teams (#306)
+var _busy := false
+var _quality := -1
+var _palette := ""
 
 const PUPPET_SRC := """
 extends Node2D
@@ -95,6 +104,10 @@ func _initialize() -> void:
 		elif a == "--classic-weapons": _classic_weapons = true
 		elif a == "--skins": _skins = true
 		elif a.begins_with("--cols="): _cols = maxi(1, int(a.substr(7)))
+		elif a == "--teams": _teams = true
+		elif a == "--busy": _busy = true
+		elif a.begins_with("--quality="): _quality = int(a.substr(10))
+		elif a.begins_with("--palette="): _palette = a.substr(10)
 
 
 func _blue() -> Color:
@@ -123,6 +136,46 @@ func _poses() -> Array:
 	]
 
 
+## #306: two squads in a team mode. "team" is ignored by builds without the
+## SoldierDrawState.team field (the "before" shots).
+func _team_poses() -> Array:
+	var B := _blue()
+	var R := _red()
+	var out := []
+	var blue := [
+		{"weapon_name": "AK-74", "grenade_count": 2, "back_weapon_name": "USSOCOM"},
+		{"weapon_name": "MP5", "vel": Vector2(215, 0), "cosmetics": {"head": "kap", "finish": "night", "vest": true, "vfinish": "desert"}},
+		{"weapon_name": "LAW", "jet_on": true, "on_floor": false, "vel": Vector2(80, -200), "aim_dir": Vector2(0.8, -0.6), "cosmetics": {"head": "hair2", "skin": "brown", "pants": "black"}},
+		{"weapon_name": "Barrett", "crouching": true, "aim_dir": Vector2(0.94, -0.2), "cosmetics": {"finish": "gold", "vest": true, "vfinish": "night"}},
+		{"weapon_name": "Minimi", "prone": true},
+	]
+	var red := [
+		{"weapon_name": "Spas-12", "cosmetics": {"head": "kap", "vest": true, "vfinish": "night", "pants": "black", "finish": "urban"}},
+		{"weapon_name": "Minigun", "vel": Vector2(-215, 0), "cosmetics": {"finish": "night"}},
+		{"weapon_name": "M79", "jet_on": true, "on_floor": false, "vel": Vector2(-80, -200), "aim_dir": Vector2(-0.8, -0.6), "cosmetics": {"head": "hair4", "dreadlocks": true}},
+		{"weapon_name": "Ruger 77", "crouching": true, "aim_dir": Vector2(-0.94, -0.2), "health": 35.0, "cosmetics": {"vest": true, "vfinish": "gold"}},
+		{"weapon_name": "Deagles", "cosmetics": {"head": "helm", "finish": "desert", "pants": "desert"}},
+	]
+	for i in blue.size():
+		var p: Dictionary = blue[i]
+		p["body_color"] = B
+		p["team"] = 1
+		p["_x"] = -150.0 + i * 26.0
+		p["_y"] = -34.0 if p.get("jet_on", false) else 0.0
+		out.append(p)
+	for i in red.size():
+		var p: Dictionary = red[i]
+		p["body_color"] = R
+		p["team"] = 2
+		p["facing"] = -1.0
+		if not p.has("aim_dir"):
+			p["aim_dir"] = Vector2.LEFT
+		p["_x"] = 46.0 + i * 26.0
+		p["_y"] = -34.0 if p.get("jet_on", false) else 0.0
+		out.append(p)
+	return out
+
+
 func _process(_d: float) -> bool:
 	_n += 1
 	var st = root.get_node_or_null("Settings")
@@ -130,6 +183,17 @@ func _process(_d: float) -> bool:
 		return false
 	if _n == 2:
 		_build(st)
+		return false
+	if _teams:
+		if _n == 40:
+			root.get_texture().get_image().save_png("%s/teams_%s.png" % [_out, _tag])
+			print("SSTAGE saved teams_%s" % _tag)
+			var cam: Camera2D = root.get_node("Stage/Cam")
+			cam.zoom = Vector2.ONE
+		if _n == 60:
+			root.get_texture().get_image().save_png("%s/teams1x_%s.png" % [_out, _tag])
+			print("SSTAGE saved teams1x_%s" % _tag)
+			quit(0)
 		return false
 	if _weapons:
 		return _weapon_shots()
@@ -162,6 +226,12 @@ func _build(st) -> void:
 		st.visual_style = _style
 	if _look != "":
 		st.soldier_look = _look
+	if _quality >= 0:
+		st.set_gfx_quality(_quality)
+	if _palette != "" and st.get("team_colors") != null:
+		st.team_colors = _palette
+	if _teams:
+		st.game_mode = st.MODE_CTF
 	var stage := Node2D.new()
 	stage.name = "Stage"
 	root.add_child(stage)
@@ -188,7 +258,8 @@ func _build(st) -> void:
 	tr.position = bg.position
 	stage.add_child(tr)
 	var floor_line := Line2D.new()
-	floor_line.points = PackedVector2Array([Vector2(-2000, 20.5), Vector2(2000, 20.5)])
+	var fy := 20.5 if not _teams else 7.0
+	floor_line.points = PackedVector2Array([Vector2(-2000, fy), Vector2(2000, fy)])
 	floor_line.width = 1.0
 	floor_line.default_color = Color(0.4, 0.42, 0.45, 0.6) if _bg != "day" else Color(0.3, 0.26, 0.2)
 	stage.add_child(floor_line)
@@ -198,10 +269,16 @@ func _build(st) -> void:
 	scr.source_code = PUPPET_SRC
 	scr.reload()
 	var rim = null
-	if _style == "cinematic":
+	if _style == "cinematic" and (_quality < 0 or _quality >= 1):
 		rim = ShaderMaterial.new()
 		rim.shader = load("res://scripts/gfx/rim_light.gdshader")
 		rim.set_shader_parameter("rim_strength", 0.5)
+	elif _teams:
+		# what atmosphere.gd gives soldiers in the classic look (#271 / #306)
+		rim = ShaderMaterial.new()
+		rim.shader = load("res://scripts/gfx/soldier_flash.gdshader")
+	if _teams and _busy:
+		_add_busy(stage)
 	if _weapons:
 		_build_weapons(stage, scr, art, dsc, rim)
 		var wcam := Camera2D.new()
@@ -210,7 +287,7 @@ func _build(st) -> void:
 		stage.add_child(wcam)
 		wcam.make_current()
 		return
-	var poses := _poses()
+	var poses := _poses() if not _teams else _team_poses()
 	if _debug:
 		poses = [poses[0], poses[2]]
 	if _bench:
@@ -227,6 +304,10 @@ func _build(st) -> void:
 		p.pose = poses[i]
 		p.debug = _debug
 		p.position = Vector2((i - (poses.size() - 1) * 0.5) * gap, 0)
+		if poses[i].has("_x"):
+			p.position = Vector2(float(poses[i]["_x"]), float(poses[i]["_y"]))
+			poses[i].erase("_x")
+			poses[i].erase("_y")
 		if rim != null:
 			p.material = rim
 		p.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
@@ -259,9 +340,37 @@ func _build(st) -> void:
 	var cam := Camera2D.new()
 	cam.name = "Cam"
 	cam.zoom = Vector2.ONE * _zoom
-	cam.position = Vector2(0, -6)
+	cam.position = Vector2(0, -6) if not _teams else Vector2(0, -16)
 	stage.add_child(cam)
 	cam.make_current()
+
+
+## --busy: explosion glows, fire and smoke behind the squads (#306).
+func _add_busy(stage: Node2D) -> void:
+	var g := Gradient.new()
+	g.set_color(0, Color(1, 1, 1, 1))
+	g.set_color(1, Color(1, 1, 1, 0))
+	var gt := GradientTexture2D.new()
+	gt.gradient = g
+	gt.fill = GradientTexture2D.FILL_RADIAL
+	gt.fill_from = Vector2(0.5, 0.5)
+	gt.fill_to = Vector2(1.0, 0.5)
+	gt.width = 128
+	gt.height = 128
+	var blobs := [[Vector2(-95, -10), 70.0, Color(1.0, 0.55, 0.2, 0.75)], [Vector2(85, -18), 60.0, Color(1.0, 0.4, 0.15, 0.7)],
+		[Vector2(-10, -30), 90.0, Color(0.5, 0.5, 0.55, 0.55)], [Vector2(140, 5), 50.0, Color(0.95, 0.85, 0.5, 0.6)],
+		[Vector2(-160, -40), 55.0, Color(0.35, 0.36, 0.4, 0.6)], [Vector2(30, 10), 40.0, Color(1.0, 0.7, 0.3, 0.6)]]
+	for b in blobs:
+		var s := Sprite2D.new()
+		s.texture = gt
+		s.position = b[0]
+		s.scale = Vector2.ONE * float(b[1]) / 64.0
+		s.modulate = b[2]
+		stage.add_child(s)
+	var ground := Polygon2D.new()
+	ground.polygon = PackedVector2Array([Vector2(-400, 7.0), Vector2(400, 7.0), Vector2(400, 200), Vector2(-400, 200)])
+	ground.color = Color(0.16, 0.14, 0.12)
+	stage.add_child(ground)
 
 
 const WEAPON_GAP := Vector2(44, 62)

@@ -183,10 +183,27 @@ func _build_video(box: VBoxContainer) -> void:
 			Settings.fullscreen = on
 			Settings.save()
 			Settings.apply_display()))
-	box.add_child(_check_button("Colour-blind friendly teams (red team shows orange; next match)", Settings.colorblind,
-		func(on: bool) -> void:
-			Settings.colorblind = on
-			Settings.save()))
+	# #306: team palette — soldiers, outlines, markers, vehicles, flags and the
+	# HUD all read TeamColors, so a change applies live, mid-match.
+	var tc_keys := ["classic", "colorblind", "contrast"]
+	var tc_row := HBoxContainer.new()
+	var tc_lbl := Label.new()
+	tc_lbl.text = "Team colours"
+	tc_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	UITheme.style_body(tc_lbl)
+	tc_row.add_child(tc_lbl)
+	var tc_pick := OptionButton.new()
+	tc_pick.name = "TeamColours"
+	for t in ["Classic (blue vs red)", "Colour-blind (blue vs orange)", "High contrast"]:
+		tc_pick.add_item(t)
+	tc_pick.selected = maxi(0, tc_keys.find(str(Settings.team_colors)))
+	UITheme.style_option_button(tc_pick)
+	tc_pick.item_selected.connect(func(i: int) -> void:
+		Settings.team_colors = str(tc_keys[clampi(i, 0, 2)])
+		Settings.save()
+		preload("res://scripts/team_colors.gd").invalidate())
+	tc_row.add_child(tc_pick)
+	box.add_child(tc_row)
 	# Graphics preset (gfx.gd): Low = the old Lo-fi mode.
 	var gq_row := HBoxContainer.new()
 	var gq_lbl := Label.new()
