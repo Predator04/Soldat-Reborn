@@ -611,7 +611,6 @@ func boom_local(at: Vector2) -> void:
 		Gfx.explosion(main, at + off, 120.0)
 	Gfx.scorch(main, at, 140.0)
 	Sfx.explode(at)
-	var host_side: bool = Net.is_networked() and Net.is_host()
 	for s in main.get_tree().get_nodes_in_group("soldier"):
 		if not _alive(s):
 			continue
@@ -619,10 +618,9 @@ func boom_local(at: Vector2) -> void:
 		if d >= BLAST_RADIUS:
 			continue
 		var dmg := BLAST_DMG if d <= BLAST_KILL else BLAST_DMG * (1.0 - (d - BLAST_KILL) / (BLAST_RADIUS - BLAST_KILL))
-		if main.multiplayer.multiplayer_peer == null or s.is_multiplayer_authority():
-			s.take_damage(dmg, "", "Bomb", -1)
-		elif host_side and s.has_method("observe_damage"):
-			s.observe_damage(dmg, "", "Bomb", -1)
+		# #266: whoever decides this body's hits applies it — the host for
+		# every human online (its ledger), the owner for bots / single player.
+		HostHits.damage(s, dmg, "", "Bomb", -1)
 	preload("res://scripts/buggy.gd").splash(main.get_tree(), at, BLAST_RADIUS * 0.6, BLAST_DMG, "", "Bomb", -1)
 
 

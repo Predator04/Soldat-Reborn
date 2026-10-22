@@ -560,12 +560,17 @@ func _fire_rockets(me: Node2D) -> void:
 	rocket_cd = ROCKET_CD
 	var main := get_parent()
 	if Net.is_networked() and main != null and main.has_method("vehicle_send"):
-		main.vehicle_send("net_vehicle_fire_seat", [vehicle_id, 0, muzzle, dir], true)
+		main.vehicle_send("net_vehicle_fire_seat", [vehicle_id, 0, muzzle, dir, HostHits.game_ms()], true)
 		return
 	apply_fire_seat(0, muzzle, dir)
 
 
 ## Host rate check for a client's salvo (match_vehicles, before relaying).
+## Seconds between salvos from `seat` (host checks, #266).
+func seat_fire_rate(_seat: int) -> float:
+	return ROCKET_CD
+
+
 func fire_seat_ready(seat: int) -> bool:
 	if seat != 0:
 		return false

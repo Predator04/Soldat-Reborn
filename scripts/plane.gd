@@ -753,7 +753,7 @@ func _fire(me: Node2D) -> void:
 	fire_cd = GUN_RATE
 	var main := get_parent()
 	if Net.is_networked() and main != null and main.has_method("vehicle_send"):
-		main.vehicle_send("net_vehicle_fire", [vehicle_id, muzzle, dir], true)
+		main.vehicle_send("net_vehicle_fire", [vehicle_id, muzzle, dir, HostHits.game_ms()], true)
 		return
 	apply_fire(muzzle, dir)
 
@@ -774,6 +774,9 @@ func apply_fire(muzzle: Vector2, dir: Vector2) -> void:
 	b.killer_name = str(shooter.get("display_name"))
 	b.weapon_name = "Plane MG"
 	b.ignore_bodies = [self] + seats.filter(func(o): return is_instance_valid(o))
+	# #266: not predicted (its shooter sees the round once the host relays
+	# it), so the host tests it where it has bodies now — see buggy.apply_fire.
+	b.rewind_override = 0
 	get_parent().add_child(b)
 	Gfx.muzzle(get_parent(), muzzle, false, dir)
 	_gun_kick = 2.0
@@ -793,9 +796,14 @@ func _drop_bomb(me: Node2D) -> void:
 	bomb_cd = BOMB_CD
 	var main := get_parent()
 	if Net.is_networked() and main != null and main.has_method("vehicle_send"):
-		main.vehicle_send("net_vehicle_fire_seat", [vehicle_id, 0, at, dir], true)
+		main.vehicle_send("net_vehicle_fire_seat", [vehicle_id, 0, at, dir, HostHits.game_ms()], true)
 		return
 	apply_fire_seat(0, at, dir)
+
+
+## Seconds between bombs (host checks by the pilot's game clock, #266).
+func seat_fire_rate(_seat: int) -> float:
+	return BOMB_CD
 
 
 ## Host rate check for a client's bomb (match_vehicles, before relaying).

@@ -119,6 +119,9 @@ const MATCH_SYNC_HZ := 5.0           # host → clients broadcast rate for score
 
 var scores: Dictionary = {}          # team_id -> int
 var time_left := ROUND_TIME
+# Release-gate tests (#266, --smoke-round-secs=N on a host): short rounds so a
+# run sees the round end, the next-map vote and the map change.
+var round_time := ROUND_TIME
 var round_active := true
 var winner_team := -1
 # Human-readable subtitle explaining the end (draws especially — "no scores",
@@ -418,6 +421,9 @@ func _attach(h: Node, n: String) -> Node:
 
 
 func _ready() -> void:
+	if Net._smoke_arg("--smoke-round-secs") != "":
+		round_time = maxf(10.0, float(Net._smoke_arg("--smoke-round-secs")))
+		time_left = round_time
 	TrustGuard.reset_match()
 	# Dev override: `--mode=N` on the command line sets game_mode for headless smoke tests.
 	# `--map=N` forces a specific MAPS index (useful for verifying each classic).
@@ -532,7 +538,11 @@ func _ready() -> void:
 			# Send to Net autoload (always present) — it forwards to Main or buffers
 			# if the host's main.tscn is still loading (#118).
 			Net.disconnected.connect(_on_lost_host)
-			Net.rpc_id(1, "net_client_ready", Settings.display_name(), str(ProjectSettings.get_setting("application/config/version", "")), Net.session_token)
+			# (--smoke-net-version=X: the gate plays an older build's handshake.)
+			var nv: String = preload("res://scripts/game_info.gd").net_version()
+			if Net._smoke_arg("--smoke-net-version") != "":
+				nv = Net._smoke_arg("--smoke-net-version")
+			Net.rpc_id(1, "net_client_ready", Settings.display_name(), nv, Net.session_token)
 			Net.rpc_id(1, "net_profile", Settings.profile_id)
 	else:
 		_spawn_player()
@@ -662,8 +672,8 @@ func net_m2_state(m2_id: int, aim_dir: Vector2) -> void:
 
 
 @rpc("any_peer", "call_local", "reliable")
-func net_m2_fire(m2_id: int, muzzle: Vector2, aim_dir: Vector2, shooter_team: int, shooter_name: String) -> void:
-	_vehicles_sys.net_m2_fire(m2_id, muzzle, aim_dir, shooter_team, shooter_name)
+func net_m2_fire(m2_id: int, muzzle: Vector2, aim_dir: Vector2, shooter_team: int, shooter_name: String, stamp: int = 0) -> void:
+	_vehicles_sys.net_m2_fire(m2_id, muzzle, aim_dir, shooter_team, shooter_name, stamp)
 
 
 # ── Singleplayer spawn path ───────────────────────────
@@ -1098,6 +1108,8 @@ func _build_hud() -> void:
 	add_child(hud)
 	hud.player = player
 	hud.map_name = str(_map["name"])
+	if OS.get_cmdline_user_args().has("--hosthits-log"):
+		print("HOSTHITS-MAP %s" % str(_map["name"]))   # (tools/hosthits_test.gd: map changes)
 	kill.connect(hud._on_kill)
 	# Spectator (#75) — created alongside the HUD so it exists before any player
 	# dies. Camera stays disabled until activate() is called on local death.
@@ -1359,6 +1371,17 @@ func net_pings(table: Dictionary) -> void:
 	_net.net_pings(table)
 
 
+# #266: round-trip probes (host -> client -> host) for the host's rewind.
+@rpc("authority", "call_remote", "unreliable")
+func net_rtt_probe(stamp: int) -> void:
+	_net.net_rtt_probe(stamp)
+
+
+@rpc("any_peer", "call_remote", "unreliable")
+func net_rtt_echo(stamp: int) -> void:
+	_net.net_rtt_echo(stamp)
+
+
 ## #287: build the bot graph in the background (pure data, no scene access).
 func _start_runtime_nav() -> void:
 	if _nav_task >= 0:
@@ -1399,6 +1422,7 @@ func _process(delta: float) -> void:
 	if replay_mode:
 		return
 	_net._tick_pings(delta)
+	_net._tick_rtt(delta)
 	_net._tick_recent_players(delta)
 	# Vote timer + cooldown ticks — before the client early-return so the vote
 	# countdown reads smoothly on every peer between host state broadcasts (#77).
@@ -1414,13 +1438,9 @@ func _process(delta: float) -> void:
 	_stats_round_active = round_active
 	# Client: state is driven entirely by host's net_match_state RPCs.
 	if Net.is_networked() and not Net.is_host():
-		# BR ring damage is applied by each soldier's authority; the host can't
-		# damage a client-owned body, so the client burns its own (zone state
-		# arrives via the host snapshot).
-		if Settings.game_mode == Settings.MODE_BR and round_active and player != null \
-				and is_instance_valid(player) and not bool(player.get("dead")) \
-				and player.global_position.distance_to(_br_zone_center) > _br_zone_radius:
-			player.take_damage(BR_ZONE_DPS * delta, "", "Zone", -1)
+		# BR ring damage on a client's own body is decided by the host (#266,
+		# host_hits.gd). The Rambo bow's regen shows here at once; the host's
+		# ledger regenerates too and corrects any drift.
 		if Settings.game_mode == Settings.MODE_RM and player != null and is_instance_valid(player) \
 				and not bool(player.get("dead")) and player.has_method("current_weapon_name") \
 				and str(player.current_weapon_name()) == "Rambo Bow":
@@ -1747,13 +1767,13 @@ func net_vehicle_spawn(vid: int, spawn: Vector2, pos: Vector2, hp_v: float, aliv
 
 
 @rpc("any_peer", "call_remote", "unreliable_ordered")
-func net_vehicle_state(vid: int, pos: Vector2, vel: Vector2, tilt: float, f: float, aim: Vector2) -> void:
-	_vehicles_sys.net_vehicle_state(vid, pos, vel, tilt, f, aim)
+func net_vehicle_state(vid: int, pos: Vector2, vel: Vector2, tilt: float, f: float, aim: Vector2, gstamp: int = 0) -> void:
+	_vehicles_sys.net_vehicle_state(vid, pos, vel, tilt, f, aim, gstamp)
 
 
 @rpc("any_peer", "call_remote", "reliable")
-func net_vehicle_fire(vid: int, muzzle: Vector2, dir: Vector2) -> void:
-	_vehicles_sys.net_vehicle_fire(vid, muzzle, dir)
+func net_vehicle_fire(vid: int, muzzle: Vector2, dir: Vector2, stamp: int = 0) -> void:
+	_vehicles_sys.net_vehicle_fire(vid, muzzle, dir, stamp)
 
 
 @rpc("any_peer", "call_remote", "reliable")
@@ -1769,8 +1789,8 @@ func net_vehicle_destroy(vid: int, at: Vector2, killer: String, killer_team: int
 # #277: a seat-specific weapon (the helicopter pilot's rockets — the gunner's
 # MG stays on net_vehicle_fire).
 @rpc("any_peer", "call_remote", "reliable")
-func net_vehicle_fire_seat(vid: int, seat: int, muzzle: Vector2, dir: Vector2) -> void:
-	_vehicles_sys.net_vehicle_fire_seat(vid, seat, muzzle, dir)
+func net_vehicle_fire_seat(vid: int, seat: int, muzzle: Vector2, dir: Vector2, stamp: int = 0) -> void:
+	_vehicles_sys.net_vehicle_fire_seat(vid, seat, muzzle, dir, stamp)
 
 
 # #277: the simulating peer reports a hard landing / wall hit / rotor strike /

@@ -684,7 +684,9 @@ case " $NETSEL " in *" respawn "*)
 case " $NETSEL " in *" trust "*)
   trustcase teleport 18 2 60 "^TRUST kick: "
   trustcase credit 18 2 20 "^TRUST kill credit stripped: Nobody_Fake"
-  trustcase godmode 18 0 90 "^TRUST forced death: .*ignored damage"
+  # (#266: the host decides hits; a client ignoring them is logged, and the
+  # host's ledger kills it anyway.)
+  trustcase godmode 18 0 90 "^TRUST hp: .*host hits ignored"
 ;; esac
 case " $NETSEL " in *" drop "*)
   # Drop the power-up (#303): the host (--smoke-bonus) gives both clients a
@@ -912,6 +914,8 @@ if has F; then
   ft fxbench fx_bench.gd 90 FX-BENCH "graphics Phase B (#271): FX benchmark, 8 gibbings + minigun + 4 explosions, node count flat, FX ms / frame"
   ft killcam killcam_test.gd 60 KILLCAM-TEST "kill cam: rewind w/ slow-mo, respawn waits, skip, live follow"
   ft lagcomp lagcomp_test.gd 60 LAGCOMP-TEST "lag compensation: hits where the shooter saw you, capped"
+  ft hosthits hosthits_test.gd 2400 HOSTHITS-TEST "host-decided hits (#266): honest duels over 50-250 ms links with jitter, loss, stalls and a slow PC (AK, Spas, knife, LAW, M79, grenades, buggy gun; strafing / jetting / driving victims; a join after a map change) — zero refusals, the host confirms what each shooter saw, damage exact, victims told the same; an old-protocol client is refused cleanly" "--case=honest --out=$OUT/hosthits"
+  ft hostcheat hosthits_test.gd 1300 HOSTHITS-TEST "host-decided hits (#266): 10x damage / 3x fire rate / endless magazine / rounds spawned at the target / silent aim / infinite fuel refused or corrected (counters + TRUST lines); half-damage / godmode victims logged and still killed by the host" "--case=cheats --out=$OUT/hostcheat"
   ft quickplay quickplay_test.gd 60 QUICKPLAY-TEST "quick play: no game online -> bot match"
   ft name name_test.gd 60 NAME-TEST "name required before Training / online, easy rename"
   if fon updater; then

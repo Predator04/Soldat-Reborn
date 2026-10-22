@@ -364,6 +364,9 @@ func _tick_rambo() -> void:
 			if main.multiplayer.multiplayer_peer == null or s.is_multiplayer_authority():
 				var hp: float = float(s.get("health"))
 				s.set("health", minf(100.0, hp + 40.0 * main.get_process_delta_time()))
+			elif s.has_method("host_heal"):
+				# #266: the host's ledger of a remote carrier regenerates too.
+				s.host_heal(40.0 * main.get_process_delta_time())
 			break
 	# Cooldown gate (#38): if the previous frame had a carrier and we now have none,
 	# they died — hold off the bow's map-center respawn for a few seconds so an
@@ -510,9 +513,9 @@ func _tick_battle_royale(delta: float) -> void:
 		alive.append(s)
 		var d: float = s.global_position.distance_to(main._br_zone_center)
 		if d > main._br_zone_radius and s.has_method("take_damage"):
-			# Non-authority replicas will refuse — matches CFG for other damage paths.
-			if main.multiplayer.multiplayer_peer == null or s.is_multiplayer_authority():
-				s.take_damage(main.BR_ZONE_DPS * delta, "", "Zone", -1)
+			# The host burns its own bodies and (#266) the remote humans'
+			# ledgers, batched into a few net_hit packets a second.
+			HostHits.damage(s, main.BR_ZONE_DPS * delta, "", "Zone", -1, false, true)
 	# Winner: only one soldier alive.
 	if alive.size() == 1:
 		var lone: Node = alive[0]
@@ -730,6 +733,10 @@ func _gg_set(display_name: String, level: int) -> void:
 		if not s.has_method("_apply_gg_weapon"):
 			continue
 		if main.multiplayer.multiplayer_peer != null and not s.is_multiplayer_authority():
+			# Host's copy of a remote human (#266): the owner refills its new
+			# rung's magazine, so the host's magazine count does too.
+			if s.get("_trust") != null:
+				s._trust.refill_all()
 			continue
 		s.gg_level = clamped
 		s._apply_gg_weapon()
@@ -866,7 +873,7 @@ func _reset_round() -> void:
 	# #279: a fresh clock only after a whole match; mid-match rounds keep it
 	# running. Clients take the host's clock from the match-state stream.
 	if main.match_over and (not Net.is_networked() or Net.is_host()):
-		main.time_left = main.ROUND_TIME
+		main.time_left = main.round_time
 	main.match_over = false
 	main.winner_team = -1
 	main.winner_note = ""

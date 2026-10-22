@@ -125,7 +125,7 @@ func net_m2_state(m2_id: int, aim_dir: Vector2) -> void:
 	m2.net_apply_state(aim_dir)
 
 
-func net_m2_fire(m2_id: int, muzzle: Vector2, aim_dir: Vector2, shooter_team: int, shooter_name: String) -> void:
+func net_m2_fire(m2_id: int, muzzle: Vector2, aim_dir: Vector2, shooter_team: int, shooter_name: String, stamp: int = 0) -> void:
 	var m2 := find_m2(m2_id)
 	if m2 == null or not m2.has_method("net_apply_fire"):
 		return
@@ -146,7 +146,55 @@ func net_m2_fire(m2_id: int, muzzle: Vector2, aim_dir: Vector2, shooter_team: in
 			return
 		op_team = int(op.get("team"))
 		op_name = str(op.get("display_name"))
-	m2.net_apply_fire(muzzle, aim_dir, op_team, op_name)
+		# #266: a remote gunner's rounds leave this turret's barrel, no faster
+		# than it fires.
+		if sender != 0 and Net.is_host() and not _gun_ok(op, "M2", m2.RATE, muzzle, (m2 as Node2D).global_position, 60.0, stamp):
+			return
+	m2.net_apply_fire(muzzle, aim_dir.normalized(), op_team, op_name)
+
+
+## Host (#266): a remote shooter's vehicle / turret round: muzzle on the gun,
+## no faster than the gun fires — by the shooter's game clock (`stamp`, as for
+## personal weapons: a clump the network delivered at once still shows its
+## real spacing), else a token bucket. Refusals are counted on the shooter.
+## `v`: the vehicle — its muzzle may be by anywhere its copy here has been
+## over the last round trip + 0.6 s (a copy pulled back to the stream after a
+## reset or a dropped packet is no reason to refuse the driver's rounds).
+func _gun_ok(shooter: Node, gun: String, rate: float, muzzle: Vector2, at: Vector2, reach: float, stamp := 0, v: Node = null) -> bool:
+	var g = shooter.get("_trust")
+	if g == null:
+		return true
+	var off := muzzle.distance_to(at)
+	# The driver's own gun: where its own stream put the vehicle at the
+	# shot's moment (its game clock).
+	var tracked := false
+	if off > reach and stamp > 0 and v != null and v.has_method("gun_origin_off"):
+		var o: float = v.gun_origin_off(_peer_of(shooter), muzzle, stamp)
+		if o != INF:
+			off = minf(off, o)
+			tracked = true
+	if off > reach and v != null and v.has_method("min_dist_recent"):
+		off = minf(off, float(v.min_dist_recent(muzzle, 600 + int(main._net.peer_rtt_ms(_peer_of(shooter))))))
+	if off > reach:
+		# The vehicle's stream (or the shooter's own) is running late — a
+		# stall held its states back while the rounds came through: its copy
+		# here is not where the driver is. Refuse quietly (no flag).
+		var now := Time.get_ticks_msec()
+		var stale: bool = not tracked and v != null and v.has_meta("state_ms") and now - int(v.get_meta("state_ms")) > 200
+		if stale:
+			HostHits.count("refused_origin_quiet")
+			if OS.get_cmdline_user_args().has("--hosthits-log"):
+				print("HOSTORIGIN %s %.0f px off (max %.0f), vehicle state %d ms old" % [gun, off, reach, now - int(v.get_meta("state_ms"))])
+			return false
+		if g.flag("origin", "%s fired %.0f px from the gun (max %.0f; muzzle (%.0f, %.0f), gun (%.0f, %.0f))" % [gun, off, reach, muzzle.x, muzzle.y, at.x, at.y]):
+			shooter._trust_force_death("shots (%s)" % gun)
+		return false
+	var rc: int = g.stamp_check(int(shooter.get_multiplayer_authority()), gun, rate, stamp) if stamp > 0 else g.rate_check(gun, rate)
+	if rc == TrustGuard.RATE_OK:
+		return true
+	if rc == TrustGuard.RATE_FAST and g.flag("rate", "%s fired faster than %.3f s a round" % [gun, rate]):
+		shooter._trust_force_death("shots (%s)" % gun)
+	return false
 
 
 func _spawn_vehicles() -> void:
@@ -319,32 +367,56 @@ func net_vehicle_spawn(vid: int, spawn: Vector2, pos: Vector2, hp_v: float, aliv
 	_make_vehicle(vid, spawn, pos, hp_v, alive_v, kind)
 
 
-func net_vehicle_state(vid: int, pos: Vector2, vel: Vector2, tilt: float, f: float, aim: Vector2) -> void:
+func net_vehicle_state(vid: int, pos: Vector2, vel: Vector2, tilt: float, f: float, aim: Vector2, gstamp: int = 0) -> void:
 	var v := find_vehicle(vid)
 	if v == null:
 		return
 	if _relay_drop(v, pos):
 		return
-	if _vehicle_relay("net_vehicle_state", [vid, pos, vel, tilt, f, aim], int(v.sim_peer())):
+	if _vehicle_relay("net_vehicle_state", [vid, pos, vel, tilt, f, aim, gstamp], int(v.sim_peer())):
 		return
 	if Net.is_networked() and not Net.is_host() and main.multiplayer.get_remote_sender_id() != 1:
 		return
 	v.apply_state(pos, vel, tilt, f, aim)
+	v.set_meta("state_ms", Time.get_ticks_msec())   # (host: how fresh its copy is — _gun_ok)
+	# #266: the driver's own timeline of its vehicle (its game clock), so
+	# the driver's gun rounds are checked against where the vehicle was when
+	# they were fired, however the stream was bunched on the way.
+	if Net.is_networked() and Net.is_host() and gstamp > 0 and v.has_method("note_gtrack"):
+		v.note_gtrack(main.multiplayer.get_remote_sender_id(), gstamp, pos, vel)
 
 
-func net_vehicle_fire(vid: int, muzzle: Vector2, dir: Vector2) -> void:
+## How far from a vehicle's copy here its gun's muzzle may be: the copy
+## trails the driver's own by the trip here (the shooter's measured round
+## trip on the host; half a second elsewhere), more the faster it moves.
+func _gun_reach(v: Node, base: float, shooter: Node = null) -> float:
+	var vel = v.get("velocity")
+	if not vel is Vector2:
+		return base
+	var secs := 0.85
+	if Net.is_host() and shooter != null and main.get("_net") != null and main._net.has_method("peer_rtt_ms"):
+		secs = 0.35 + float(main._net.peer_rtt_ms(_peer_of(shooter))) / 1000.0
+	return base + (vel as Vector2).length() * secs
+
+
+func net_vehicle_fire(vid: int, muzzle: Vector2, dir: Vector2, stamp: int = 0) -> void:
 	var v := find_vehicle(vid)
 	if v == null:
 		return
 	var shooter: Node = v.gunner() if v.gunner() != null else v.driver()
 	if shooter == null:
 		return
-	if _vehicle_relay("net_vehicle_fire", [vid, muzzle, dir], _peer_of(shooter)):
+	if Net.is_networked() and Net.is_host():
+		var snd := main.multiplayer.get_remote_sender_id()
+		if snd != 0 and snd != main.multiplayer.get_unique_id() and snd == _peer_of(shooter) \
+				and not _gun_ok(shooter, "%s gun" % str(v.get("kind")), float(v.get("GUN_RATE")), muzzle, (v as Node2D).global_position, _gun_reach(v, float(v.get("FIRE_REACH")), shooter), stamp, v):
+			return
+	if _vehicle_relay("net_vehicle_fire", [vid, muzzle, dir, stamp], _peer_of(shooter)):
 		return
 	if Net.is_networked() and not Net.is_host() and main.multiplayer.get_remote_sender_id() != 1:
 		return
 	# The muzzle must be on the buggy (no firing from across the map).
-	if muzzle.distance_to((v as Node2D).global_position) > float(v.get("FIRE_REACH")):
+	if muzzle.distance_to((v as Node2D).global_position) > _gun_reach(v, float(v.get("FIRE_REACH")), shooter):
 		return
 	v.apply_fire(muzzle, dir.normalized())
 
@@ -392,7 +464,7 @@ func _relay_note(v: Node, why: String) -> void:
 		print("TRUST vehicle %s state dropped: %s" % [str(v.name), why])
 
 
-func net_vehicle_fire_seat(vid: int, seat: int, muzzle: Vector2, dir: Vector2) -> void:
+func net_vehicle_fire_seat(vid: int, seat: int, muzzle: Vector2, dir: Vector2, stamp: int = 0) -> void:
 	var v := find_vehicle(vid)
 	if v == null or not v.has_method("apply_fire_seat"):
 		return
@@ -403,13 +475,20 @@ func net_vehicle_fire_seat(vid: int, seat: int, muzzle: Vector2, dir: Vector2) -
 	if Net.is_networked() and Net.is_host():
 		var sender := main.multiplayer.get_remote_sender_id()
 		if sender != 0 and sender != main.multiplayer.get_unique_id():
-			if sender != _peer_of(shooter) or not v.fire_seat_ready(seat):
+			if sender != _peer_of(shooter):
 				return
-	if _vehicle_relay("net_vehicle_fire_seat", [vid, seat, muzzle, dir], _peer_of(shooter)):
+			# #266: spacing by the pilot's game clock when it says (a stall
+			# bunching two salvos is no reason to drop one), else arrivals.
+			if stamp > 0:
+				if not _gun_ok(shooter, "%s rockets" % str(v.get("kind")), float(v.seat_fire_rate(seat)) if v.has_method("seat_fire_rate") else 3.0, muzzle, (v as Node2D).global_position, _gun_reach(v, maxf(120.0, float(v.get("FIRE_REACH"))), shooter), stamp, v):
+					return
+			elif not v.fire_seat_ready(seat):
+				return
+	if _vehicle_relay("net_vehicle_fire_seat", [vid, seat, muzzle, dir, stamp], _peer_of(shooter)):
 		return
 	if Net.is_networked() and not Net.is_host() and main.multiplayer.get_remote_sender_id() != 1:
 		return
-	if muzzle.distance_to((v as Node2D).global_position) > maxf(120.0, float(v.get("FIRE_REACH"))):
+	if muzzle.distance_to((v as Node2D).global_position) > _gun_reach(v, maxf(120.0, float(v.get("FIRE_REACH"))), shooter):
 		return
 	v.apply_fire_seat(seat, muzzle, dir.normalized())
 
@@ -461,7 +540,10 @@ func vehicle_hit_soldier(s: Node, dmg: float, killer: String, killer_team: int, 
 			s.set("velocity", Vector2(vel.x * 0.9, -260.0))
 		return
 	if s.has_method("net_vehicle_hurt"):
+		# #266: the host's ledger takes the hit (a run-over ignores spawn
+		# protection, like the owner's ceasefire_t = 0); the owner gets the
+		# knock-back.
 		TrustGuard.note_activity(killer, killer_team)
-		if s.has_method("observe_damage"):
-			s.observe_damage(dmg, killer, weapon, killer_team)
-		s.rpc_id(int(s.get_multiplayer_authority()), "net_vehicle_hurt", dmg, killer, killer_team, vel, weapon)
+		HostHits.damage(s, dmg, killer, weapon, killer_team, true)
+		if not bool(s.get("dead")) and main.multiplayer.get_peers().has(int(s.get_multiplayer_authority())):
+			s.rpc_id(int(s.get_multiplayer_authority()), "net_vehicle_hurt", dmg, killer, killer_team, vel, weapon)
