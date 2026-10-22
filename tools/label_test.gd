@@ -17,7 +17,7 @@ func _check_static() -> void:
 	if GI.MODES.size() != menu_modes.size():
 		_bad.append("mode count %d vs menu %d" % [GI.MODES.size(), menu_modes.size()])
 	var M: Dictionary = (load("res://scripts/main.gd") as GDScript).get_script_constant_map()
-	var wants := {0: M.SCORE_TO_WIN, 1: M.SCORE_TO_WIN, 2: M.CTF_SCORE_TO_WIN, 3: M.INF_SCORE_TO_WIN,
+	var wants := {0: M.SCORE_TO_WIN, 1: M.TDM_SCORE_TO_WIN, 2: M.CTF_SCORE_TO_WIN, 3: M.INF_SCORE_TO_WIN,
 		4: M.HTF_SCORE_TO_WIN, 6: M.PM_SCORE_TO_WIN, 7: M.DOM_SCORE_TO_WIN}
 	for i in wants:
 		if not GI.mode_goal(i).contains(str(wants[i])):

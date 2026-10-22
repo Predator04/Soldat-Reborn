@@ -38,6 +38,7 @@ var _kills: Dictionary = {}
 var _obj: Dictionary = {}
 var _done: Dictionary = {}
 var _wall0 := 0
+var _alive: Dictionary = {}   # team -> live soldier samples (team modes, every 10 s)
 
 
 func _initialize() -> void:
@@ -119,7 +120,7 @@ func _physics_process(delta: float) -> bool:
 	if not _ready_run:
 		_ready_run = true
 		_t = 0.0; _act = 0.0; _round_t0 = 0.0; _was_active = true
-		_rounds = []; _cum = {}; _last = {}; _tl = []; _tl_t = 0.0; _kills = {}; _obj = {}
+		_rounds = []; _cum = {}; _last = {}; _tl = []; _tl_t = 0.0; _kills = {}; _obj = {}; _alive = {}
 		_wall0 = Time.get_ticks_msec()
 		if _clock > 0.0:
 			m.round_time = _clock
@@ -167,6 +168,10 @@ func _physics_process(delta: float) -> bool:
 		_tl_t = 0.0
 		if _team_mode():
 			_tl.append([int(_cum.get(1, 0)), int(_cum.get(2, 0))])
+			for s2 in get_nodes_in_group("soldier"):
+				if is_instance_valid(s2) and not bool(s2.get("dead")):
+					var tk := str(int(s2.get("team")))
+					_alive[tk] = int(_alive.get(tk, 0)) + 1
 		else:
 			var top := 0
 			for k in sc.keys():
@@ -184,7 +189,7 @@ func _finish(m: Node) -> void:
 		cum[str(k)] = int(_cum[k])
 	var rec := {"key": _key(_maps[_mi]), "map": str(m.get("_map").get("name", "?")), "mode": _mode, "run": _run,
 		"clock": _clock, "secs": snappedf(_t, 0.1), "active": snappedf(_act, 0.1), "rounds": _rounds,
-		"cum": cum if _team_mode() else {}, "tl": _tl, "kills": _kills, "obj": _obj,
+		"cum": cum if _team_mode() else {}, "tl": _tl, "kills": _kills, "obj": _obj, "alive": _alive,
 		"wall_s": snappedf((Time.get_ticks_msec() - _wall0) / 1000.0, 0.1)}
 	var line := JSON.stringify(rec)
 	print("RUN " + line)

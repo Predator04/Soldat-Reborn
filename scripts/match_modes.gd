@@ -691,7 +691,7 @@ func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: Str
 		for name in unlocked:
 			if main.hud != null and main.hud.has_method("post_chat"):
 				main.hud.post_chat("ADVANCE", "Unlocked: %s" % name, false)
-	if kill_scores and main.scores[killer_team] >= main.SCORE_TO_WIN:
+	if kill_scores and main.scores[killer_team] >= main.kill_limit_for(Settings.game_mode):
 		_end_round(killer_team)
 	elif Settings.survival:
 		# Survival: last team standing ends the round early.
@@ -760,7 +760,10 @@ func _end_round(team: int) -> void:
 	main.winner_team = team
 	main.round_active = false
 	main.winner_end_t = WINNER_DISPLAY
-	main.match_over = main.time_left <= MATCH_VOTE_WINDOW
+	# #311: a round that used at least half the clock is the whole match —
+	# limits are sized for one round per match; a quick blowout starts a
+	# rematch on the same map. (Was: only with <= 2 min left.)
+	main.match_over = main.time_left <= maxf(MATCH_VOTE_WINDOW, main.round_time * 0.5)
 	if not main.match_over and main.time_left > 0.0:
 		var left := "%d:%02d" % [int(main.time_left) / 60, int(main.time_left) % 60]
 		main.winner_note = (main.winner_note + "   ·   " if main.winner_note != "" else "") + "Next round - %s left in the match" % left
