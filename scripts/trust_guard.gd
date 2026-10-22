@@ -135,6 +135,8 @@ var grenades := 3
 var _hist: Array = []      # [ms, pos] of recent state packets
 var _ride_until_ms := 0    # riding (or just got in / out of) a vehicle or M2
 var _got_state := false    # the owner's first state packet has arrived
+var _first_gstamp := 0     # ...its game clock then
+var _first_ms := 0         # ...and the host's
 var _hp_hist: Array = []   # [ms, ledger hp] whenever it changed (and now and then)
 var _hp_off_since := -1
 var _hp_off_n := 0         # state updates while off
@@ -184,9 +186,18 @@ func note_fired() -> void:
 
 ## Just spawned / reset / in or out of a seat: the body may have jumped to a
 ## spot the host hasn't heard about yet, so "where it is" is not reliable.
-func placed_recently() -> bool:
+## `gstamp` (the owner's game clock on the message being judged): a fresh
+## body's grace is also SPAWN_GRACE_MS of ITS OWN time from its first state —
+## a starved client lives its first seconds slower than the host's clock —
+## but never longer than GRACE_STRETCH_MS of host time.
+const GRACE_STRETCH_MS := 10000
+
+func placed_recently(gstamp := 0) -> bool:
 	var now := Time.get_ticks_msec()
-	return now < amnesty_until_ms or now < _ride_until_ms
+	if now < amnesty_until_ms or now < _ride_until_ms:
+		return true
+	return gstamp > 0 and _first_gstamp > 0 and gstamp - _first_gstamp < SPAWN_GRACE_MS \
+			and now < _first_ms + SPAWN_GRACE_MS + GRACE_STRETCH_MS
 
 
 func protected() -> bool:
@@ -271,9 +282,11 @@ func check_move(pos: Vector2, world: Rect2, riding := false, gstamp := 0) -> Str
 		# map change on a slow machine) spawns — and may jump — seconds later.
 		_got_state = true
 		amnesty_until_ms = maxi(amnesty_until_ms, now + SPAWN_GRACE_MS)
+		_first_gstamp = gstamp
+		_first_ms = now
 	if riding:
 		_ride_until_ms = now + 1500   # covers the seat snap in and the eject out
-	if now < amnesty_until_ms or now < _ride_until_ms:
+	if placed_recently(gstamp):
 		_hist = [[now, pos, gstamp]]
 		return ""
 	_hist.append([now, pos, gstamp])

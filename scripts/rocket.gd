@@ -211,7 +211,7 @@ func _ghost_dist(p: Vector2) -> float:
 		# The report may be ahead of the ghost: by GHOST_AHEAD, or by as much
 		# flight as the shooter's reports so far account for (the first 0.2 s into the flight, then 1 / BROADCAST_HZ apart in its game time, however a stall bunched
 		# them) beyond the ghost's own, at most GHOST_AHEAD_MAX.
-		var told := (0.15 + float(_g_reports) / BROADCAST_HZ) if _g_reports > 0 else 0.0
+		var told := (0.2 + float(_g_reports) / BROADCAST_HZ) if _g_reports > 0 else 0.0
 		# (No more than the wall-clock age + GHOST_AHEAD_MAX: spammed reports
 		# buy nothing; but a host whose own physics fell behind real time
 		# lets its ghost catch up that far.)

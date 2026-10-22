@@ -2131,7 +2131,7 @@ func net_grenade(g_pos: Vector2, g_vel: Vector2, g_ang: float, cluster: bool = f
 		# no harder than a full wind-up throws.
 		var why := ""
 		var off := g_pos.distance_to(_net_base_pos())
-		if not _trust_riding() and not _trust.placed_recently() and off > 60.0 + _net_vel.length() * 0.1:
+		if not _trust_riding() and not _trust.placed_recently(stamp) and off > 60.0 + _net_vel.length() * 0.1:
 			why = "thrown %.0f px from its body" % off
 		elif g_vel.length() > 700.0 or not is_finite(g_vel.x) or not is_finite(g_vel.y):
 			why = "thrown at %.0f px/s" % g_vel.length()
@@ -2809,7 +2809,7 @@ func _host_shot_check(shot_pos: Vector2, dirs: PackedVector2Array, w: Dictionary
 		elif off > 80.0:
 			# Just spawned / reset: the body may have moved to a spot the host
 			# hasn't heard about yet — refuse quietly (no flag) until it has.
-			if g.placed_recently():
+			if g.placed_recently(stamp):
 				if _hosthits_log():
 					print("HOSTORIGIN placed %s %.0f px off (%s)" % [wname, off, g.track_note(stamp)])
 				HostHits.count("refused_origin_quiet")
