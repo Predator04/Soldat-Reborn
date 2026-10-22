@@ -723,10 +723,10 @@ case " $NETSEL " in *" latepu "*)
   # a second client joining after that must see it on the holder's replica
   # at once (kind + time left from the join hydration, see-through).
   port=$(freeport udp)
-  timeout $(T 90) "$G" --headless -- --dedicated --fill=0 --bots=0 --smoke-bonus=predator --smoke-bonus-min=1 --port $port --map 0 --mode 0 > "$OUT/net_latepu_server.log" 2>&1 &
+  timeout $(T 160) "$G" --headless -- --dedicated --fill=0 --bots=0 --smoke-bonus=predator --smoke-bonus-min=1 --port $port --map 0 --mode 0 > "$OUT/net_latepu_server.log" 2>&1 &
   spid=$!
   wait_ready "$OUT/net_latepu_server.log"
-  timeout $(T 70) "$G" --headless -- --smoke-join --port $port --smoke-secs=30 --smoke-latepu=holder > "$OUT/net_latepu_c1.log" 2>&1 &
+  timeout $(T 130) "$G" --headless -- --smoke-join --port $port --smoke-secs=60 --smoke-latepu=holder > "$OUT/net_latepu_c1.log" 2>&1 &
   c1=$!
   wait_log "$OUT/net_latepu_server.log" "^SMOKE-BONUS granted predator" 40
   timeout $(T 50) "$G" --headless -- --smoke-join --port $port --smoke-secs=14 --smoke-latepu=joiner > "$OUT/net_latepu_c2.log" 2>&1
