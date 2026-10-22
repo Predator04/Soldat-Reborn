@@ -59,6 +59,8 @@ var _voted := false
 var _seat_t := 0.0
 var _place_until := 0
 var _place_tries := 0
+var _seen_id := 0      # our own body node, and the physics frame it appeared
+var _seen_frame := 0
 var _place_from := 0   # (a few frames in: the level's collision is all in the physics space)
 var _ready_frames := 0     # frames the shooter wanted to fire
 var _blocked_frames := 0   # ...with level geometry between its gun and the target
@@ -152,6 +154,13 @@ func _physics_process(delta: float) -> void:
 		print("SMOKE-DUEL voted next map")
 	if m != null and m.get("next_map_choices") != null and (m.next_map_choices as Array).is_empty():
 		_voted = false
+	# (When our own body appeared, by physics frames — it may exist and stream
+	# well before `player` points at it, e.g. behind a kill-cam replay.)
+	if m != null and multiplayer.has_multiplayer_peer():
+		var own: Node = m.get_node_or_null("Player_%d" % multiplayer.get_unique_id())
+		if own != null and own.get_instance_id() != _seen_id:
+			_seen_id = own.get_instance_id()
+			_seen_frame = Engine.get_physics_frames()
 	var p = m.get("player") if m != null else null
 	if p == null or not is_instance_valid(p) or bool(p.get("dead")):
 		_release_all()
@@ -396,7 +405,8 @@ func _put(p: Node2D, at: Vector2) -> void:
 	# body already over 1.8 s old (spawn protection, 3 s, counts down from
 	# its spawn) stays where it is.
 	var cf = p.get("ceasefire_t")
-	if cf != null and p.global_position.distance_to(at) > 40.0 and float(cf) < 3.0 - 1.8:
+	var age := float(Engine.get_physics_frames() - _seen_frame) / float(Engine.physics_ticks_per_second) if p.get_instance_id() == _seen_id else 0.0
+	if p.global_position.distance_to(at) > 40.0 and (age > 1.8 or (cf != null and float(cf) < 3.0 - 1.8)):
 		set_meta("anchor", p.global_position)
 		print("SMOKE-DUEL placed role=%s at=(%.0f,%.0f) (late: stays put, not at (%.0f,%.0f))" % [role, p.global_position.x, p.global_position.y, at.x, at.y])
 		return

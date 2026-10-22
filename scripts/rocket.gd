@@ -218,7 +218,11 @@ func _ghost_dist(p: Vector2) -> float:
 		# (A shot a stall held back arrives with its flight already under way:
 		# the ghost's age counts from when it was really fired.)
 		var wall := float(Time.get_ticks_msec() - _g_born_ms + g_late_ms) / 1000.0
-		var ahead := clampf(minf(told, wall + GHOST_AHEAD_MAX) - float(_g_path.size()) / float(Engine.physics_ticks_per_second), GHOST_AHEAD, GHOST_AHEAD_MAX + 1.5)
+		# (At least its wall-clock age: on a starved host the ghost's own
+		# physics drops frames, on a starved shooter fewer reports go out —
+		# neither moves the real rocket less. Still only along its own path.)
+		var flown := maxf(told, wall)
+		var ahead := clampf(minf(flown, wall + GHOST_AHEAD_MAX) - float(_g_path.size()) / float(Engine.physics_ticks_per_second), GHOST_AHEAD, GHOST_AHEAD_MAX + 1.5)
 		pts.append_array(_ghost_ahead(ahead))
 	for i in pts.size():
 		if i == 0:
