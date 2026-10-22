@@ -112,7 +112,7 @@ func _draw() -> void:
 	# Respawn wave clock (alive; the death band has its own countdown).
 	if p != null and str(b.phase) != "post":
 		_text_c(caps, cx, 258.0 if str(b.phase) == "planted" else 236.0,
-			tr("NEXT WAVE %d") % maxi(1, int(ceil(float(b.wave_t)))), 12, Color(UITheme.COL_TEXT_DIM, 0.8), 3)
+			tr("NEXT WAVE %d") % maxi(1, int(ceil(float(b.wave_left(int(p.get("team"))))))), 12, Color(UITheme.COL_TEXT_DIM, 0.8), 3)
 	# Plant / defuse progress (yours, or a teammate's you're spectating near).
 	var prog := -1.0
 	var label := ""

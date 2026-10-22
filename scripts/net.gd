@@ -1073,6 +1073,8 @@ func _smoke_auto_start() -> void:
 		get_tree().create_timer(3.0).timeout.connect(_smoke_cheat.bind(_smoke_arg("--smoke-cheat")))
 	if _smoke_arg("--smoke-drop") != "":
 		_smoke_drop_start(_smoke_arg("--smoke-drop"))
+	if _smoke_arg("--smoke-latepu") != "":
+		_smoke_latepu_start(_smoke_arg("--smoke-latepu"))
 	if not "--smoke-auto" in OS.get_cmdline_user_args():
 		return
 	var t := Timer.new()
@@ -1954,6 +1956,55 @@ func _smoke_drop_start(role: String) -> void:
 				elif float(st["t"]) > 5.0:
 					print("SMOKE-DROP fail: still %s" % mine)
 					st["s"] = 4
+	)
+
+
+# (--smoke-latepu=holder|joiner, #305, gate C `latepu`; the dedicated host
+# runs --smoke-bonus=predator --smoke-bonus-min=1.) The holder reports its
+# power-up; the joiner, started after the grant, must see it on the holder's
+# replica straight from the join hydration (kind, time left, see-through).
+func _smoke_latepu_start(role: String) -> void:
+	print("SMOKE-LATEPU start role=%s" % role)
+	var t := Timer.new()
+	t.wait_time = 0.1
+	t.autostart = true
+	add_child(t)
+	var st := {"s": 0, "t": 0.0, "seen_t": -1.0, "kind_t": 0.0}   # lambdas capture locals by value
+	t.timeout.connect(func() -> void:
+		st["t"] = float(st["t"]) + 0.1
+		if int(st["s"]) >= 2:
+			return
+		var mn = get_tree().current_scene
+		var p = mn.get("player") if mn != null else null
+		var pbi = mn.get("_players_by_id") if mn != null else null
+		if p == null or not is_instance_valid(p) or pbi == null:
+			return
+		if role == "holder":
+			if str(p.get("bonus_kind")) == "predator":   # the host's grant (a box picked up on the way doesn't count)
+				print("SMOKE-LATEPU have=%s left=%.1f" % [str(p.get("bonus_kind")), float(p.get("bonus_t"))])
+				st["s"] = 2
+			return
+		var me := local_id()
+		for pid in (pbi as Dictionary).keys():
+			var o = pbi[pid]
+			if int(pid) == me or not is_instance_valid(o):
+				continue
+			if float(st["seen_t"]) < 0.0:
+				st["seen_t"] = float(st["t"])
+			if str(o.get("bonus_kind")) != "":
+				# Report a few ticks later: the replica applies the see-through
+				# alpha in its next physics tick.
+				if int(st["s"]) == 0:
+					st["s"] = 1
+					st["kind_t"] = float(st["t"])
+				elif float(st["t"]) - float(st["kind_t"]) >= 0.3:
+					print("SMOKE-LATEPU saw peer=%d kind=%s left=%.1f alpha=%.2f after=%.1f" % [int(pid), str(o.get("bonus_kind")),
+						float(o.get("bonus_t")), float((o as CanvasItem).modulate.a), float(st["kind_t"]) - float(st["seen_t"])])
+					st["s"] = 2
+				return
+		if float(st["seen_t"]) >= 0.0 and float(st["t"]) - float(st["seen_t"]) > 8.0:
+			print("SMOKE-LATEPU missing: no power-up on the other replica after 8 s")
+			st["s"] = 2
 	)
 
 

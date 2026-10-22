@@ -251,6 +251,11 @@ func _handle_client_ready(sender_id: int, joiner_name: String = "", client_versi
 			continue   # dead husks respawn through the normal broadcast
 		main.rpc_id(sender, "net_spawn_player", existing_id, p.position, p.display_name, int(p.team))
 		p.rpc_id(sender, "net_cosmetics", p.cosmetics)
+		# #305: an active power-up (kind + time left) through the same host
+		# grant path the pickup uses, so the joiner's replica shows it too.
+		var bk := str(p.get("bonus_kind"))
+		if bk != "" and float(p.get("bonus_t")) > 0.0:
+			p.rpc_id(sender, "net_bonus_apply", bk, float(p.get("bonus_t")))
 	# Mirror every live bot to the joining peer so they see the current roster
 	# (dedicated server pre-populates before any client connects — issue #55).
 	for bid in main._bots_by_id.keys():

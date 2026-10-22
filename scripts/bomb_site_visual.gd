@@ -1,9 +1,11 @@
 extends Node2D
 ## A Bomb Defusal site (#304) in the world: a faint zone over the ground,
 ## corner brackets and a big letter over it. Turns red and pulses while the
-## bomb is planted here. Cosmetic only (reads main._bomb).
+## bomb is planted here. Cosmetic only (reads main._bomb, or `src` — the
+## replay viewer's stand-in with phase / planted_site, #309).
 
 var main: Node = null
+var src: Object = null
 var site_name := "A"
 var rect := Rect2()
 var _t := 0.0
@@ -25,8 +27,10 @@ func _draw() -> void:
 	if rect.size == Vector2.ZERO:
 		return
 	var hot := false
-	if main != null and is_instance_valid(main) and main.get("_bomb") != null:
-		var b = main._bomb
+	var b: Object = src
+	if b == null and main != null and is_instance_valid(main) and main.get("_bomb") != null:
+		b = main._bomb
+	if b != null:
 		hot = str(b.phase) == "planted" and str(b.planted_site) == site_name
 	var col := HOT if hot else COL
 	var pulse := 0.5 + 0.5 * sin(_t * (9.0 if hot else 2.0))

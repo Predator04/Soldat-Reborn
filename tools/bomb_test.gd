@@ -11,7 +11,9 @@ extends SceneTree
 ##   wave (and the one after when it's under 2 s away); halftime swap (roles +
 ##   spawns); 7 rounds -> match over (winner screen) -> fresh match.
 ## bots (each Bomb Defusal featured level, 8 bots, the player parked): a plant
-## and then a defuse or detonation within `secs` of match time.
+## and then a defuse or detonation, and (#307 balance smoke) both sides win at
+## least one round, within `secs` of match time per level (default 900; a
+## balanced level takes ~2-4 rounds, ~100-250 s).
 
 const GL = preload("res://tools/gate_load.gd")
 
@@ -21,7 +23,7 @@ var _done := false
 var _log: Array = []
 var _only := ""
 var _maps: Array = ["downtown", "dust_yard", "whiteout"]
-var _secs := 300.0
+var _secs := 900.0
 var _deadline := 0
 var _events: Array = []
 
@@ -321,6 +323,22 @@ func _rules() -> bool:
 	if not await _until(func() -> bool: return b.round_no == 4 and b.phase == "live", 420):
 		return _fail("round 4 never started")
 	await _frames(10)
+	# Bodies respawned earlier came back with their AI on: freeze everyone so
+	# nobody plants during the wave checks (a plant switches the defenders to
+	# their own 15 s waves, #307).
+	for s in get_nodes_in_group("soldier"):
+		if is_instance_valid(s) and s.get("bot_id") != null:
+			s.set_physics_process(false)
+			s.set("bomb_use", false)
+	# #307: once planted, the defenders' waves run on their own clock.
+	b.phase = "planted"
+	b.def_wave_t = 12.5
+	var dw: float = float(b.wave_delay(b.defend_team()))
+	var aw: float = float(b.wave_delay(b.attack_team()))
+	b.phase = "live"
+	if absf(dw - 12.5) > 0.01 or absf(aw - float(b.wave_delay(b.attack_team()))) > 0.01:
+		return _fail("planted waves: defenders %.2f (want 12.5) attackers %.2f" % [dw, aw])
+	_log.append("planted: defenders on their own 15 s wave clock")
 	# Wave respawn: a death 2+ s before the wave comes back on it; one under
 	# 2 s before the wave waits for the next.
 	if not await _until(func() -> bool: return float(b.wave_t) > 5.0 and float(b.wave_t) < 8.5, 600):
@@ -395,6 +413,11 @@ func _bots(level: String) -> bool:
 	var plant_t := -1.0
 	var end_t := -1.0
 	var why := ""
+	var wins := {"att": 0, "def": 0}
+	m.objective.connect(func(kind: String, team: int, _who: String) -> void:
+		if kind == "bomb_round":
+			var side := "att" if team == int(b.attack_team()) else "def"
+			wins[side] = int(wins[side]) + 1)
 	var limit := _secs * 60.0
 	var f := 0
 	while f < int(limit):
@@ -405,14 +428,18 @@ func _bots(level: String) -> bool:
 		t = float(f) / 60.0
 		if plant_t < 0.0 and int(b.stats["plants"]) > 0:
 			plant_t = t
-		if plant_t >= 0.0 and int(b.stats["defuses"]) + int(b.stats["booms"]) > 0:
+		if end_t < 0.0 and plant_t >= 0.0 and int(b.stats["defuses"]) + int(b.stats["booms"]) > 0:
 			end_t = t
 			why = "defuse" if int(b.stats["defuses"]) > 0 else "detonation"
+		if end_t >= 0.0 and int(wins["att"]) > 0 and int(wins["def"]) > 0:
 			break
-	var line := "%s: plant %.0f s, %s %.0f s, rounds %d (plants %d defuses %d booms %d timeouts %d) score %s" % [level, plant_t, why if why != "" else "no resolution",
-		end_t, int(b.stats["rounds"]), int(b.stats["plants"]), int(b.stats["defuses"]), int(b.stats["booms"]), int(b.stats["timeouts"]), str(m.scores)]
+	var line := "%s: plant %.0f s, %s %.0f s, rounds %d won attack %d / defense %d in %.0f s (plants %d defuses %d booms %d timeouts %d)" % [level, plant_t,
+		why if why != "" else "no resolution", end_t, int(b.stats["rounds"]), int(wins["att"]), int(wins["def"]), t, int(b.stats["plants"]),
+		int(b.stats["defuses"]), int(b.stats["booms"]), int(b.stats["timeouts"])]
 	print("BOMB-BOTS " + line)
 	if plant_t < 0.0 or end_t < 0.0:
 		return _fail("bots on %s" % line)
+	if int(wins["att"]) == 0 or int(wins["def"]) == 0:
+		return _fail("balance smoke: one side never won on %s" % line)
 	_log.append(line)
 	return true
