@@ -455,12 +455,15 @@ func _sc_judge(r: Dictionary) -> Array:
 		bad.append("TRUST lines: %s" % str(trust.slice(0, 3)))
 	# 2. Per shooter: the host's hits vs the shooter's own screen.
 	var dmg: float = float(sc.get("damage", 0.0))
+	var dmg_min_mul := 1.0   # shotgun falloff: a pellet may land for less
 	# #310: a gun's per-hit damage is the weapon table's (player.gd), so a
 	# balance change can't leave this test checking a stale number.
 	if str(sc.get("match", "")) == "shot" and WEAPON_NAMES.has(str(sc.get("weapon", ""))):
 		var wdef: Dictionary = load("res://scripts/player.gd").weapon_def(str(WEAPON_NAMES[str(sc["weapon"])][0]))
 		if not wdef.is_empty():
 			dmg = float(wdef["damage"])
+			if wdef.has("falloff"):
+				dmg_min_mul = float((wdef["falloff"] as Array)[2])
 	for sh in r["shooters"]:
 		var tag: String = sh[0]
 		var slog: String = sh[2]
@@ -477,7 +480,12 @@ func _sc_judge(r: Dictionary) -> Array:
 		var wrong := 0
 		for line in hits:
 			var amt := _amount(line)
-			if dmg > 0.0 and absf(amt - dmg) > 0.01 and absf(amt - dmg * 0.5) > 0.01:
+			if dmg > 0.0 and dmg_min_mul < 1.0:
+				# Falloff (#322): anything from the far-range floor to full
+				# damage (or half that through a vest), never more.
+				if amt > dmg + 0.01 or amt < dmg * dmg_min_mul * 0.5 - 0.01:
+					wrong += 1
+			elif dmg > 0.0 and absf(amt - dmg) > 0.01 and absf(amt - dmg * 0.5) > 0.01:
 				wrong += 1
 		if wrong > 0:
 			bad.append("%s: %d hits worth neither %.0f nor %.0f (vest)" % [tag, wrong, dmg, dmg * 0.5])
@@ -491,16 +499,30 @@ func _sc_judge(r: Dictionary) -> Array:
 				var k := int(line.split(" ")[1].substr(5))
 				pred[k] = int(pred.get(k, 0)) + 1
 			var host := {}
-			for line in _lines(hlog, "HOSTSHOT shot="):
-				if line.ends_with("by=«%s» Player" % tag) or line.contains("by=«%s»" % tag):
-					var k2 := int(line.split(" ")[1].substr(5))
-					host[k2] = int(host.get(k2, 0)) + 1
+			# A shot whose hits KILLED the victim on the host (a HOSTHIT ending
+			# "hp 0.0" right after that shot's HOSTSHOT line): pellets past the
+			# lethal one find a dead body on the host, while the shooter's
+			# screen still counted them (#322: the Spas one-shots up close).
+			var lethal := {}
+			var last_k := -1
+			for line in _read(hlog).split("\n"):
+				if line.begins_with("HOSTSHOT shot="):
+					last_k = -1
+					if line.ends_with("by=«%s» Player" % tag) or line.contains("by=«%s»" % tag):
+						var k2 := int(line.split(" ")[1].substr(5))
+						host[k2] = int(host.get(k2, 0)) + 1
+						last_k = k2
+				elif last_k >= 0 and line.begins_with("HOSTHIT «%s»" % tag) and line.strip_edges().ends_with(" hp 0.0"):
+					lethal[last_k] = true
 			var np := 0
 			var nh := 0
 			var both := 0
 			for k in pred.keys():
-				np += int(pred[k])
-				both += mini(int(pred[k]), int(host.get(k, 0)))
+				var pk := int(pred[k])
+				if lethal.has(k):
+					pk = mini(pk, int(host.get(k, 0)))
+				np += pk
+				both += mini(pk, int(host.get(k, 0)))
 			for k in host.keys():
 				nh += int(host[k])
 			var extra := nh - both
