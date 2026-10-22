@@ -3,8 +3,11 @@ extends Node2D
 ## ground when dropped, or planted with a blinking light and a beep that
 ## speeds up as the fuse runs down. Cosmetic only — reads main._bomb on every
 ## peer (sounds through Sfx with its own RNG, nothing touches the match).
+## The replay viewer (#309) sets `src` to an object with the same fields
+## (bomb_state, carrier, bomb_pos, fuse_t, FUSE_TIME).
 
 var main: Node = null
+var src: Object = null
 var _t := 0.0
 var _beep_cd := 0.0
 var _blink := 0.0
@@ -17,10 +20,10 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	_t += delta
 	_blink = maxf(0.0, _blink - delta)
-	if main == null or not is_instance_valid(main) or main.get("_bomb") == null:
+	var b = _b()
+	if b == null:
 		visible = false
 		return
-	var b = main._bomb
 	var st := str(b.bomb_state)
 	visible = st == "carried" or st == "dropped" or st == "planted"
 	if not visible:
@@ -43,10 +46,18 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 
-func _draw() -> void:
+func _b() -> Object:
+	if src != null:
+		return src
 	if main == null or not is_instance_valid(main) or main.get("_bomb") == null:
+		return null
+	return main._bomb
+
+
+func _draw() -> void:
+	var b = _b()
+	if b == null:
 		return
-	var b = main._bomb
 	var st := str(b.bomb_state)
 	var small := st == "carried"
 	var k := 0.7 if small else 1.0

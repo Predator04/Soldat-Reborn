@@ -1,7 +1,9 @@
 extends Node2D
 ## Plays back a recorded match (replay_recorder.gd) on top of its map: every
 ## soldier, shot, flag, vehicle and kill, with play / pause, speed, seeking
-## and a camera that follows any player (or roams freely).
+## and a camera that follows any player (or roams freely). Bomb Defusal
+## replays (#309) also show the sites, the bomb (carried / dropped / planted)
+## with the live game's own visuals, and a status line (fuse, plant / defuse).
 
 const SoldierArt := preload("res://scripts/soldier_art.gd")
 const Recorder := preload("res://scripts/replay_recorder.gd")
@@ -29,12 +31,32 @@ var _speed_btn: Button
 var _play_btn: Button
 var _seeking := false
 var duration := 0.0
+var bomb: ReplayBomb = null      # #309: set when the replay has bomb sites
+var _bomb_lbl: Label = null
+var _bomb_vis: Node2D = null
+
+
+## Stand-in for main._bomb that bomb_visual.gd / bomb_site_visual.gd read.
+class ReplayBomb extends RefCounted:
+	var bomb_state := "spawn"
+	var carrier: Node2D = null
+	var bomb_pos := Vector2.ZERO
+	var fuse_t := 0.0
+	var FUSE_TIME := 40.0
+	var phase := "live"
+	var planted_site := ""
+	var plant_prog := 0.0
+	var defuse_prog := 0.0
+	var planter_id := 0
+	var defuser_id := 0
+	var round_no := 1
 
 
 class Puppet extends Node2D:
 	var st: Array = []           # [id, x, y, aim, facing, vx, vy, bits, weapon, back, hp]
 	var info: Dictionary = {}
 	var label := ""
+	var facing := 1.0            # read by bomb_visual.gd for the carried bomb (#309)
 	var _draw_state := SoldierDrawState.new()
 
 	func _draw() -> void:
@@ -85,6 +107,7 @@ func _ready() -> void:
 	add_child(_cam)
 	_cam.make_current()
 	_build_ui()
+	_build_bomb()
 	# Start on the player who recorded it, if they're in it.
 	var me := str(data.get("header", {}).get("me", ""))
 	for id in who.keys():
@@ -168,6 +191,81 @@ func _build_ui() -> void:
 	help.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	UITheme.style_body(help, 12, UITheme.COL_TEXT_MUTED)
 	_ui.add_child(help)
+
+
+## #309: sites + bomb visuals + status label for a Bomb Defusal replay.
+func _build_bomb() -> void:
+	var raw: Variant = data.get("header", {}).get("bomb_sites", [])
+	if typeof(raw) != TYPE_ARRAY or (raw as Array).size() < 2:
+		return
+	bomb = ReplayBomb.new()
+	for e in raw:
+		if typeof(e) != TYPE_ARRAY or (e as Array).size() < 5:
+			continue
+		var n := Node2D.new()
+		n.name = "ReplaySite%s" % str(e[0])
+		n.set_script(preload("res://scripts/bomb_site_visual.gd"))
+		n.set("src", bomb)
+		n.set("site_name", str(e[0]))
+		n.set("rect", Rect2(float(e[1]), float(e[2]), float(e[3]), float(e[4])))
+		add_child(n)
+	_bomb_vis = Node2D.new()
+	_bomb_vis.name = "ReplayBomb"
+	_bomb_vis.set_script(preload("res://scripts/bomb_visual.gd"))
+	_bomb_vis.set("src", bomb)
+	add_child(_bomb_vis)
+	_bomb_lbl = Label.new()
+	_bomb_lbl.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_bomb_lbl.offset_left = -320
+	_bomb_lbl.offset_right = 320
+	_bomb_lbl.offset_top = 40
+	_bomb_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	UITheme.style_body(_bomb_lbl, 16, Color(1.0, 0.85, 0.3))
+	_ui.add_child(_bomb_lbl)
+
+
+## Copy frame `a`'s bomb entry (index 5) into the stand-in (+ status text).
+func _apply_bomb(a: Array) -> void:
+	if bomb == null:
+		return
+	if a.size() < 6 or typeof(a[5]) != TYPE_ARRAY or (a[5] as Array).size() < 12:
+		bomb.bomb_state = "gone"
+		_bomb_lbl.text = ""
+		return
+	var e: Array = a[5]
+	bomb.bomb_state = str(e[0])
+	var cp: Puppet = _puppets.get(int(e[1]))
+	bomb.carrier = cp if cp != null and cp.visible and bomb.bomb_state == "carried" else null
+	bomb.bomb_pos = Vector2(float(e[2]), float(e[3]))
+	bomb.planted_site = str(e[4])
+	bomb.fuse_t = float(e[5])
+	bomb.plant_prog = float(e[6])
+	bomb.defuse_prog = float(e[7])
+	bomb.planter_id = int(e[8])
+	bomb.defuser_id = int(e[9])
+	bomb.round_no = int(e[10])
+	bomb.phase = str(e[11])
+	_bomb_lbl.text = bomb_status()
+
+
+## The replay's bomb status line ("" = nothing to say).
+func bomb_status() -> String:
+	if bomb == null:
+		return ""
+	var parts: PackedStringArray = PackedStringArray([tr("ROUND %d") % bomb.round_no])
+	match bomb.bomb_state:
+		"carried":
+			var cp: Puppet = bomb.carrier as Puppet
+			parts.append(tr("%s has the bomb") % cp.label if cp != null else tr("BOMB: CARRIED"))
+		"dropped":
+			parts.append(tr("BOMB: DROPPED"))
+		"planted":
+			parts.append("%s  %d:%02d" % [tr("BOMB PLANTED AT %s") % bomb.planted_site, int(bomb.fuse_t) / 60, int(bomb.fuse_t) % 60])
+	if bomb.plant_prog > 0.0:
+		parts.append("%s %d%%" % [tr("PLANTING"), int(bomb.plant_prog * 100.0)])
+	if bomb.defuse_prog > 0.0:
+		parts.append("%s %d%%" % [tr("DEFUSING"), int(bomb.defuse_prog * 100.0)])
+	return "   ·   ".join(parts)
 
 
 func toggle_play() -> void:
@@ -276,6 +374,7 @@ func _process(delta: float) -> void:
 	var span := float(b[0]) - float(a[0])
 	var k := clampf((t - float(a[0])) / span, 0.0, 1.0) if span > 0.0 else 0.0
 	_apply_soldiers(a, b, k)
+	_apply_bomb(a)
 	if not _seeking:
 		_slider.set_value_no_signal(t)
 	_time_lbl.text = "%d:%02d / %d:%02d" % [int(t) / 60, int(t) % 60, int(duration) / 60, int(duration) % 60]
@@ -310,6 +409,7 @@ func _apply_soldiers(a: Array, b: Array, k: float) -> void:
 				s[2] = lerpf(float(st[2]), float(n[2]), k)
 				s[3] = lerp_angle(float(st[3]), float(n[3]), k)
 		p.st = s
+		p.facing = float(s[4]) if float(s[4]) != 0.0 else 1.0
 		p.position = Vector2(float(s[1]), float(s[2]))
 		p.visible = true
 		p.queue_redraw()
@@ -371,6 +471,14 @@ func _draw() -> void:
 				draw_circle(p, 4.0, Color(1.0, 0.55, 0.2))
 			"g":
 				draw_circle(p, 3.0, Color(0.4, 0.6, 0.35))
+	# Bomb Defusal (#309): plant / defuse progress ring over the soldier doing it.
+	if bomb != null:
+		for pair in [[bomb.planter_id, bomb.plant_prog, Color(1.0, 0.55, 0.3)], [bomb.defuser_id, bomb.defuse_prog, Color(0.5, 0.8, 1.0)]]:
+			var pp: Puppet = _puppets.get(int(pair[0]))
+			if pp != null and pp.visible and float(pair[1]) > 0.0:
+				var c := pp.position + Vector2(0, -58)
+				draw_arc(c, 9.0, 0.0, TAU, 24, Color(0, 0, 0, 0.6), 4.0)
+				draw_arc(c, 9.0, -PI * 0.5, -PI * 0.5 + TAU * float(pair[1]), 24, pair[2], 3.0)
 	# Flags.
 	for f in a[3]:
 		var fp := Vector2(float(f[1]), float(f[2]))
