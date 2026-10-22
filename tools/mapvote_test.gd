@@ -11,6 +11,7 @@ var _st := 0
 var _t := 0
 var _saved := []
 var _want := -1
+var _early := 250.0
 var _first_map := -1
 var _log: Array = []
 
@@ -48,7 +49,9 @@ func _process(_d: float) -> bool:
 				return false
 			_first_map = m.cur_map_index
 			# #279: an early round end (e.g. a kill limit at 4:10) is not the match.
-			m.time_left = 250.0
+			# #311: "early" = more than half the clock left.
+			_early = m.round_time * 0.5 + 60.0
+			m.time_left = _early
 			m._end_round(-1)
 			if not m.next_map_choices.is_empty() or m.match_over:
 				return _end(false, "early round end offered a vote: %s" % str(m.next_map_choices))
@@ -63,7 +66,7 @@ func _process(_d: float) -> bool:
 				return false
 			if not m.round_active or m.cur_map_index != _first_map:
 				return _end(false, "early round didn't restart on the same map")
-			if m.time_left > 250.0 or m.time_left < 240.0:
+			if m.time_left > _early or m.time_left < _early - 10.0:
 				return _end(false, "match clock reset on an early round end (%.1f)" % m.time_left)
 			_log.append("early round end -> no vote, clock kept %.0f" % m.time_left)
 			_t = _n
@@ -85,7 +88,7 @@ func _process(_d: float) -> bool:
 				return false
 			if not m.round_active or m.cur_map_index != _first_map:
 				return _end(false, "no-vote round didn't restart on the same map")
-			if m.time_left < 290.0:
+			if m.time_left < m.round_time - 10.0:
 				return _end(false, "new match didn't get a fresh clock (%.1f)" % m.time_left)
 			_log.append("no votes -> same map, fresh clock")
 			m.time_left = 0.0

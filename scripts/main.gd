@@ -86,16 +86,18 @@ static func bot_color_for_team(t: int) -> Color:
 
 # CTF / INF / HTF flag nodes and score-to-win.
 var flags: Array = []
+# #311: limits sized from bot matches (tools/balance_watch.gd, 8 bots) so a
+# typical match ends on score in ~8-10 min; MATCH_TIME is the backstop.
 const CTF_SCORE_TO_WIN := 3
 const INF_SCORE_TO_WIN := 3
-const HTF_SCORE_TO_WIN := 60      # 1 pt/sec while carrying → 60s hold = a win
-const PM_SCORE_TO_WIN := 20
+const HTF_SCORE_TO_WIN := 300     # 1 pt/sec while carrying (was 60: a round in ~90 s with 8 bots)
+const PM_SCORE_TO_WIN := 200      # diamonds (was 20: ~48 s with 8 bots)
 # Rambo bow — the current carrier's id (or 0 for none). Only they can score.
 var _rambo_carrier_id: int = 0
 
 # Domination — control point nodes + per-team hold accumulator.
 var _dom_points: Array = []
-const DOM_SCORE_TO_WIN := 90     # (owned_points × 1 pt/sec) → ~90s of full control wins
+const DOM_SCORE_TO_WIN := 800    # owned points × 1 pt/sec (was 90: ~64 s with 8 bots)
 
 # Battle Royale — shrinking safe zone.
 var _br_zone_radius: float = 2200.0
@@ -113,8 +115,13 @@ var _gg_levels: Dictionary = {}
 var _gg_kills: Dictionary = {}
 
 # ── Match state (host-authoritative in MP) ─────────────
-const SCORE_TO_WIN := 20
-const ROUND_TIME := 300.0
+const SCORE_TO_WIN := 50          # Deathmatch kills (#311: was 20, ~2.7 min with 8 bots)
+const TDM_SCORE_TO_WIN := 120     # team kills (#311: was 20, ~85 s with 8 bots)
+const RM_SCORE_TO_WIN := 25       # bow-carrier kills (#311: was 20, ~7 min with 8 bots)
+const ROUND_TIME := 900.0         # match clock (#311: was 300 for every mode)
+# Per-mode match clock where it differs from ROUND_TIME (#311). Mode ids as in
+# Settings (8 Battle Royale, 9 Gun Game).
+const MATCH_TIME := {8: 600.0, 9: 600.0}
 const MATCH_SYNC_HZ := 5.0           # host → clients broadcast rate for scoreboard
 
 var scores: Dictionary = {}          # team_id -> int
@@ -421,9 +428,6 @@ func _attach(h: Node, n: String) -> Node:
 
 
 func _ready() -> void:
-	if Net._smoke_arg("--smoke-round-secs") != "":
-		round_time = maxf(10.0, float(Net._smoke_arg("--smoke-round-secs")))
-		time_left = round_time
 	TrustGuard.reset_match()
 	# Dev override: `--mode=N` on the command line sets game_mode for headless smoke tests.
 	# `--map=N` forces a specific MAPS index (useful for verifying each classic).
@@ -433,6 +437,10 @@ func _ready() -> void:
 		elif arg.begins_with("--map="):
 			Settings.map_index = int(arg.substr(6))
 			Settings.custom_map_path = ""
+	round_time = match_time_for(Settings.game_mode)
+	if Net._smoke_arg("--smoke-round-secs") != "":
+		round_time = maxf(10.0, float(Net._smoke_arg("--smoke-round-secs")))
+	time_left = round_time
 	# Crosshair cursor = the mouse; aiming follows it (Soldat-style).
 	Input.set_custom_mouse_cursor(load("res://assets/interface-gfx/cursor.png"), Input.CURSOR_ARROW, Vector2(12, 12))
 	PoaLoader.preload_all()
@@ -888,6 +896,21 @@ func request_respawn_ready() -> void:
 func net_respawn_ready() -> void:
 	if Net.is_host():
 		_rs_ready(multiplayer.get_remote_sender_id())
+
+
+## #311: the match clock for a mode (seconds).
+static func match_time_for(mode: int) -> float:
+	return float(MATCH_TIME.get(mode, ROUND_TIME))
+
+
+## #311: the kill limit for the kill-scoring modes (DM, TDM, Rambo; Gun
+## Game / Battle Royale end on the ladder / the last soldier first).
+static func kill_limit_for(mode: int) -> int:
+	if mode == 1:
+		return TDM_SCORE_TO_WIN
+	if mode == 5:
+		return RM_SCORE_TO_WIN
+	return SCORE_TO_WIN
 
 
 func _respawn_delay_for_team(t: int) -> float:

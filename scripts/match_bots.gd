@@ -121,8 +121,12 @@ func _bot_loadout(want_law: bool) -> String:
 func _spawn_bot_at(i: int, desired: int) -> void:
 	var spots: Array = main._map["bot_spawns"]
 	var slot: Vector2 = spots[i % spots.size()]
-	var loadout := _bot_loadout(i == desired - 1)
 	var mode: int = Settings.game_mode
+	# #311: in a split team match the last bot of EACH side brings the LAW.
+	# Only the last bot overall used to — always a red one — and red won
+	# 26 of 32 TDM rounds over 15 maps (46 % of kills blue); per side: 16 / 13.
+	var team_split: bool = Settings.is_team_mode() and mode != Settings.MODE_INF
+	var loadout := _bot_loadout(i == desired - 1 or (team_split and desired >= 4 and i == desired / 2 - 1))
 	if Settings.is_team_mode():
 		if mode == Settings.MODE_INF:
 			# INF: bots are attackers (RED). Player defends solo on BLUE.
