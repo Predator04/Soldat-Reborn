@@ -4,6 +4,14 @@ All notable changes to Soldat Reborn.
 
 ## [Unreleased]
 
+### Added — Zombie mode (#314)
+- **New mode: Zombie** (humans vs zombies, the community favourite from classic Soldat). Each round about one soldier in seven starts as a zombie, everyone else is human. Zombies only claw (four hits turn a healthy human), run a little faster, can't use guns, grenades, power-ups or vehicles — and a human who dies **rises as a zombie** six seconds later. Humans win the round by lasting the **2:30** round clock, zombies by turning everyone. First to **5 rounds** wins the match (winner screen + next-map vote as usual).
+- **A lone zombie is a threat, a horde is fragile:** zombies shrug off hits while they are few and get easier to drop as their numbers grow, so the last humans standing can still fight their way out.
+- Zombies are painted green (colourblind palette: orange), the HUD shows HUMANS / ZOMBIES, humans left and the round clock, with banners for the round start, being turned, the last human and the round result; the scoreboard counts each zombie's turns.
+- Bots play both sides: zombies hunt the nearest human, humans regroup on high ground near their spawn, hold it and back off from zombies that get close.
+- Works online (the host decides every turn, a player who joins mid-round comes in as a zombie), on classic maps (team spawns), in the Maker's test mode, on dedicated servers (`--mode zombie`, `score_limit_zombie` in server.cfg) and on the featured levels Twin Forts, Iron Valley, Frostbite and Hollow Deep. Bots-only test matches: humans won 56 % of 52 rounds across 8 maps.
+- Online protocol 3: Zombie mode needs every player on the same build.
+
 ### Added — standalone dedicated server download (#320)
 - **Run a server without the game.** Every release now also has `TracerfallServer-windows.zip` (47 MB) and `TracerfallServer-linux.tar.gz` (37 MB): a headless server with the graphics and music stripped out (36 MB of game data instead of 168 MB; the full game exe is 277 MB). Unpack, run `start-server.bat` / `./start-server.sh`, done — see `HOSTING.md` inside (ports, admin, service, updating). The game's own downloads (`SoldatReborn.exe/.apk/.pck`) are unchanged.
 - **Runs at boot:** `install-service.bat` (a Windows scheduled task, nothing extra to install; output in `logs\server.log`) or `sudo ./install-service.sh` (systemd unit, `--auto-update` optional).

@@ -29,7 +29,7 @@ const TeamColors = preload("res://scripts/team_colors.gd")
 
 var main: Main
 
-const ROUND_TIME := 180.0      # 3:00 for the humans to survive
+const ROUND_TIME := 150.0      # 2:30 for the humans to survive
 const WAIT_TIME := 3.0         # first round starts this long after the match loads
 const POST_TIME := 6.0         # round result banner before the next round
 const RESPAWN := 6.0           # zombies (and the freshly turned) come back this fast

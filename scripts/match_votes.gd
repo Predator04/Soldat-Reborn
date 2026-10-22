@@ -179,7 +179,7 @@ func run_host_command(cmd: String, body: String) -> String:
 		"/gamemode":
 			var mi: int = hc.resolve_mode_arg(body)
 			if mi < 0:
-				return "Usage: /gamemode <0-9 or name>"
+				return "Usage: /gamemode <0-%d or name>" % (Net.MODE_NAMES.size() - 1)
 			host_restart_to(int(Settings.map_index), mi)
 		"/map":
 			var mp: int = hc.resolve_map_arg(body)
