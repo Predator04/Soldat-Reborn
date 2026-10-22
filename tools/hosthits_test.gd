@@ -499,16 +499,30 @@ func _sc_judge(r: Dictionary) -> Array:
 				var k := int(line.split(" ")[1].substr(5))
 				pred[k] = int(pred.get(k, 0)) + 1
 			var host := {}
-			for line in _lines(hlog, "HOSTSHOT shot="):
-				if line.ends_with("by=«%s» Player" % tag) or line.contains("by=«%s»" % tag):
-					var k2 := int(line.split(" ")[1].substr(5))
-					host[k2] = int(host.get(k2, 0)) + 1
+			# A shot whose hits KILLED the victim on the host (a HOSTHIT ending
+			# "hp 0.0" right after that shot's HOSTSHOT line): pellets past the
+			# lethal one find a dead body on the host, while the shooter's
+			# screen still counted them (#322: the Spas one-shots up close).
+			var lethal := {}
+			var last_k := -1
+			for line in _read(hlog).split("\n"):
+				if line.begins_with("HOSTSHOT shot="):
+					last_k = -1
+					if line.ends_with("by=«%s» Player" % tag) or line.contains("by=«%s»" % tag):
+						var k2 := int(line.split(" ")[1].substr(5))
+						host[k2] = int(host.get(k2, 0)) + 1
+						last_k = k2
+				elif last_k >= 0 and line.begins_with("HOSTHIT «%s»" % tag) and line.strip_edges().ends_with(" hp 0.0"):
+					lethal[last_k] = true
 			var np := 0
 			var nh := 0
 			var both := 0
 			for k in pred.keys():
-				np += int(pred[k])
-				both += mini(int(pred[k]), int(host.get(k, 0)))
+				var pk := int(pred[k])
+				if lethal.has(k):
+					pk = mini(pk, int(host.get(k, 0)))
+				np += pk
+				both += mini(pk, int(host.get(k, 0)))
 			for k in host.keys():
 				nh += int(host[k])
 			var extra := nh - both
