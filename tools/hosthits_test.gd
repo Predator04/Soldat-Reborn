@@ -560,12 +560,13 @@ func _sc_judge(r: Dictionary) -> Array:
 	# (Packets for a body a peer doesn't have (yet / any more) are dropped with
 	# an engine error, as before #266: state packets already on their way to
 	# the old map's bodies after a map change, and on a lossy link a relayed
-	# state that overtakes the re-sent reliable spawn of its body. Counted,
-	# not failed, in those runs only.)
-	var lossy: bool = float(sc.get("loss", 0.0)) > 0.0 or float(sc.get("spike_every", 0.0)) > 0.0
+	# state that overtakes the re-sent reliable spawn of its body — on a
+	# loaded box a relayed (unreliable) state can overtake the (reliable)
+	# spawn of a body that just joined on a clean link too. Counted, not
+	# failed: they're about who has which node, not about hits.)
 	var dropped := 0
 	for f in logs:
-		var drops: bool = bool(sc.get("jip", false)) or lossy
+		var drops := true
 		var e := _errors(f, drops)
 		if drops:
 			dropped += _errors(f, false) - e
