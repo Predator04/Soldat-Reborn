@@ -27,7 +27,7 @@ const HazardArt = preload("res://scripts/maker/hazard_art.gd")
 const GameLists = preload("res://scripts/game_lists.gd")
 const FeaturedLevels = preload("res://scripts/featured_levels.gd")
 const LevelThumb = preload("res://scripts/level_thumb.gd")
-const FEATURED_MODE := {"dm": 0, "tdm": 1, "ctf": 2, "inf": 3, "htf": 4, "rm": 5, "pm": 6, "dom": 7, "br": 8, "gg": 9}
+const FEATURED_MODE := {"dm": 0, "tdm": 1, "ctf": 2, "inf": 3, "htf": 4, "rm": 5, "pm": 6, "dom": 7, "br": 8, "gg": 9, "bomb": 10}
 
 const GRIDS := [10, 20, 40, 80]
 const LONG_PRESS := 0.5
@@ -481,7 +481,7 @@ func place(id: String, w: Vector2) -> Dictionary:
 	var g := snapv(w)
 	var ref := {}
 	match kind:
-		"shape", "hazard", "prop":
+		"shape", "hazard", "prop", "site":
 			var p := Build.new_piece(id, Vector2.ZERO)
 			var sz := Build.piece_size(p)
 			var tl := snapv(w - sz * 0.5)
@@ -1523,6 +1523,8 @@ func _draw_hazards(ci: Node2D) -> void:
 			HazardArt.draw_spikes(ci, h["rect"], int(h.get("dir", 0)))
 	for j in _prev.get("jump_pads", []):
 		HazardArt.draw_pad(ci, j["pos"], float(j.get("power", 1150.0)) > 1400.0)
+	for b in _prev.get("bomb_sites", []):
+		Pieces.draw_site(ci, b["rect"], str(b.get("name", "A")))
 	# Pieces hidden from the preview while dragged: drawn live by _draw_ghosts.
 
 
@@ -1589,7 +1591,7 @@ func _draw_ghosts(ci: Node2D) -> void:
 		return
 	var d := Pieces.def(id)
 	var kind := str(d.get("kind", ""))
-	if kind in ["shape", "hazard", "prop", "pad"]:
+	if kind in ["shape", "hazard", "prop", "pad", "site"]:
 		var p := Build.new_piece(id, Vector2.ZERO)
 		if kind == "pad":
 			var foot := snapv(at)
@@ -1637,6 +1639,8 @@ func _draw_piece_ghost(ci: Node2D, p: Dictionary, alpha: float) -> void:
 			HazardArt.draw_pad(ci, Vector2(float(p["x"]), float(p["y"]) + float(p["h"]) * 0.5), float(d.get("power", 1150.0)) > 1400.0)
 		"prop":
 			Pieces.draw_sprite_fit(ci, str(d.get("tex", "")), Build.piece_rect(p), Color(1, 1, 1, alpha))
+		"site":
+			Pieces.draw_site(ci, Build.piece_rect(p), str(d.get("site", "A")), alpha)
 
 
 func _draw_selection(ci: Node2D) -> void:

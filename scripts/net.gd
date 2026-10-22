@@ -170,6 +170,10 @@ func _maybe_run_dedicated() -> void:
 			stats_url = a.substr(len("--stats="))
 		elif a.begins_with("--fill="):
 			fill_arg = int(a.substr(len("--fill=")))
+		elif a.begins_with("--bots="):
+			# #304: the Bots setting for this run (with --fill=0): -1 = every
+			# spawn, 0 = none (gate C `bomb` starts an empty server).
+			Settings.bot_count = clampi(int(a.substr(len("--bots="))), -1, 16)
 		elif a.begins_with("--name="):
 			# Name shown in Find Games (e.g. the official server). Runtime only.
 			Settings.server_name = a.substr(len("--name=")).strip_edges().left(48)
@@ -216,7 +220,7 @@ func _resolve_mode_arg(v: String, fallback: int = -1) -> int:
 		if String(MODE_NAMES[i]).to_lower() == needle:
 			return i
 	# Common shorthand aliases (dm/tdm/ctf/inf/htf/rm/pm/dom/br) → mode index.
-	var aliases := {"dm": 0, "tdm": 1, "ctf": 2, "inf": 3, "htf": 4, "rm": 5, "pm": 6, "dom": 7, "br": 8, "gg": 9}
+	var aliases := {"dm": 0, "tdm": 1, "ctf": 2, "inf": 3, "htf": 4, "rm": 5, "pm": 6, "dom": 7, "br": 8, "gg": 9, "bomb": 10, "bd": 10}
 	if aliases.has(needle):
 		return int(aliases[needle])
 	print("Dedicated: unknown mode '%s', keeping %s" % [v, str(MODE_NAMES[clampi(fallback, 0, MODE_NAMES.size() - 1)])])
@@ -490,6 +494,10 @@ func _smoke_join() -> void:
 	# out; then watch the empty plane the host now simulates move smoothly.
 	if "--smoke-plane" in OS.get_cmdline_user_args():
 		get_tree().create_timer(0.5).timeout.connect(_smoke_plane.bind(0))
+	# --smoke-bomb=defend|attack|late (#304, gate C `bomb`): see _smoke_bomb_tick.
+	if _smoke_arg("--smoke-bomb") != "":
+		_sb = {"role": _smoke_arg("--smoke-bomb"), "t": 0.0, "ph": 0, "pt": 0.0}
+		get_tree().process_frame.connect(_smoke_bomb_tick)
 	if "--smoke-die" in OS.get_cmdline_user_args():
 		get_tree().create_timer(4.0).timeout.connect(func() -> void:
 			var mn = get_tree().current_scene
@@ -1968,3 +1976,103 @@ func _smoke_cheat(kind: String) -> void:
 					p.ceasefire_t = 0.0
 					p.take_damage(999.0, "Nobody_Fake", "AK-74", 1 - int(p.team))
 	)
+
+
+# ── Bomb Defusal smoke client (#304, gate C `bomb`) ──
+# defend (first to join = BLUE, defends): holds Use before any plant (the
+#   host must log a rejected plant), then reports what it sees: the plant by
+#   the other client and the round result.
+# attack (second = RED): takes the bomb (picks it up if a bot dropped it —
+#   teleports happen inside the host's spawn grace), stands in site A and
+#   holds Use until planted, then holds Use on its own bomb (a rejected defuse).
+# late (joins after the plant = BLUE): must see the planted bomb right away
+#   (join-in-progress hydration), then defuses it.
+var _sb: Dictionary = {}
+
+
+func _smoke_bomb_tick() -> void:
+	var mn = get_tree().current_scene
+	_sb["t"] = float(_sb["t"]) + get_process_delta_time()
+	if mn == null or mn.get("_bomb") == null or not mn._bomb.active() or (mn._bomb.sites as Array).size() < 2:
+		return
+	var b = mn._bomb
+	var p = mn.get("player")
+	var alive: bool = p != null and is_instance_valid(p) and not bool(p.get("dead"))
+	var role := str(_sb["role"])
+	var ph := int(_sb["ph"])
+	var pt := float(_sb["t"]) - float(_sb["pt"])
+	var next := func(n: int) -> void:
+		_sb["ph"] = n
+		_sb["pt"] = float(_sb["t"])
+	match role:
+		"defend":
+			if ph == 0 and alive:
+				mn.bomb_use_input(p, true)
+				next.call(1)
+			elif ph == 1 and pt > 1.0:
+				mn.bomb_use_input(p, false)
+				print("SMOKE-BOMB defend: plant attempt sent as a defender team=%d phase=%s" % [int(p.team), str(b.phase)])
+				next.call(2)
+			elif ph == 2 and str(b.phase) == "planted":
+				print("SMOKE-BOMB-SEEN planted site=%s by=%s" % [str(b.planted_site), str(b.planter_name)])
+				next.call(3)
+			elif ph == 3 and str(b.phase) == "post":
+				print("SMOKE-BOMB-SEEN result=%s team=%d" % [str(b.last_result.get("why", "")), int(b.last_result.get("team", 0))])
+				next.call(9)
+		"attack":
+			if ph == 0 and alive:
+				if b.carrier == p:
+					next.call(2)
+				elif str(b.bomb_state) == "dropped":
+					p.global_position = b.bomb_pos + Vector2(0, -2)
+					p.velocity = Vector2.ZERO
+					next.call(1)
+				elif float(_sb["t"]) > 20.0:
+					print("SMOKE-BOMB attack: never got the bomb (state %s)" % str(b.bomb_state))
+					next.call(9)
+			elif ph == 1:
+				if b.carrier == p:
+					next.call(2)
+				elif pt > 2.0:
+					next.call(0)
+			elif ph == 2:
+				p.global_position = b.site_spot("A") + Vector2(0, -2)
+				p.velocity = Vector2.ZERO
+				next.call(3)
+			elif ph == 3 and pt > 0.3:
+				mn.bomb_use_input(p, true)
+				next.call(4)
+			elif ph == 4:
+				if str(b.phase) == "planted":
+					mn.bomb_use_input(p, false)
+					print("SMOKE-BOMB planted site=%s team=%d" % [str(b.planted_site), int(p.team)])
+					next.call(5)
+				elif pt > 10.0:
+					print("SMOKE-BOMB attack: plant never finished (prog %.2f state %s)" % [float(b.plant_prog), str(b.bomb_state)])
+					next.call(9)
+			elif ph == 5 and pt > 0.5:
+				mn.bomb_use_input(p, true)
+				next.call(6)
+			elif ph == 6 and pt > 1.0:
+				mn.bomb_use_input(p, false)
+				print("SMOKE-BOMB attack: defuse attempt sent as an attacker (defuse %.2f)" % float(b.defuse_prog))
+				next.call(9)
+		"late":
+			if ph == 0 and bool(b.received):
+				print("SMOKE-BOMB-JOIN phase=%s site=%s state=%s fuse=%.0f" % [str(b.phase), str(b.planted_site), str(b.bomb_state), float(b.fuse_t)])
+				next.call(1)
+			elif ph == 1 and alive:
+				p.global_position = b.bomb_pos + Vector2(-14, -2)
+				p.velocity = Vector2.ZERO
+				next.call(2)
+			elif ph == 2 and pt > 0.3:
+				mn.bomb_use_input(p, true)
+				next.call(3)
+			elif ph == 3:
+				if str(b.phase) == "post":
+					mn.bomb_use_input(p, false)
+					print("SMOKE-BOMB defused=%s team=%d" % [str(str(b.last_result.get("why", "")) == "defused"), int(p.team) if alive else -1])
+					next.call(9)
+				elif pt > 14.0:
+					print("SMOKE-BOMB late: defuse never finished (prog %.2f phase %s)" % [float(b.defuse_prog), str(b.phase)])
+					next.call(9)

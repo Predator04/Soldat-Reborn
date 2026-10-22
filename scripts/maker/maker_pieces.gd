@@ -115,6 +115,11 @@ const BASE := {
 		"tip": "Where the Rambo Bow lies (Rambomatch)."},
 	"point": {"tab": "objectives", "label": "Point", "kind": "entity", "key": "point_spawns", "anchor": "center",
 		"tip": "A Pointmatch diamond (+1 point)."},
+	# Bomb Defusal (#304): resizable areas -> map "bomb_sites".
+	"site_a": {"tab": "objectives", "label": "Bomb site A", "kind": "site", "site": "A", "w": 240.0, "h": 150.0, "rot": false, "flip": false,
+		"tip": "Bomb Defusal: attackers plant the bomb inside this area. Stretch it over ground soldiers can stand on."},
+	"site_b": {"tab": "objectives", "label": "Bomb site B", "kind": "site", "site": "B", "w": 240.0, "h": 150.0, "rot": false, "flip": false,
+		"tip": "Bomb Defusal: the second bomb site. Put it somewhere else than A so the defenders have to split."},
 	# ── Items ──
 	"bonus": {"tab": "items", "label": "Bonus box", "kind": "entity", "key": "bonus_spawns", "anchor": "feet",
 		"tip": "A power-up crate spot (Predator / Berserker / Vest / Cluster)."},
@@ -192,12 +197,12 @@ static func ids_for_tab(tab: String) -> Array:
 
 ## Pieces stored in maker.pieces (vs. entities written straight to map keys).
 static func is_piece(id: String) -> bool:
-	return str(def(id).get("kind", "")) in ["shape", "hazard", "pad", "prop"]
+	return str(def(id).get("kind", "")) in ["shape", "hazard", "pad", "prop", "site"]
 
 
 static func can_resize(id: String) -> bool:
 	var d := def(id)
-	return bool(d.get("resize", d.get("kind", "") in ["shape", "hazard", "prop", "ladder", "scenery"]))
+	return bool(d.get("resize", d.get("kind", "") in ["shape", "hazard", "prop", "ladder", "scenery", "site"]))
 
 
 static func can_rotate(id: String) -> bool:
@@ -306,6 +311,8 @@ static func draw_thumb(ci: CanvasItem, id: String, r: Rect2, theme: String) -> v
 			HazardArt.draw_pad(ci, c + Vector2(0, s * 0.3), float(d.get("power", 1150.0)) > 1400.0, 9.0, s / 80.0)
 		"ladder":
 			draw_ladder(ci, Rect2(c.x - s * 0.14, c.y - s * 0.42, s * 0.28, s * 0.84))
+		"site":
+			draw_site(ci, Rect2(c.x - s * 0.44, c.y - s * 0.3, s * 0.88, s * 0.6), str(d.get("site", "A")))
 		"prop", "scenery":
 			draw_sprite_fit(ci, str(d.get("tex", "")), r.grow(-r.size.x * 0.06))
 		"entity":
@@ -358,6 +365,21 @@ static func tint_color(theme: String, tint: String, depth: float) -> Color:
 		"glass":
 			return Color(0.62, 0.86, 1.0, 0.5)
 	return Themes.depth_color(theme, depth)
+
+
+## A bomb site (#304): faint zone, ground strip, corner brackets, its letter.
+static func draw_site(ci: CanvasItem, r: Rect2, letter: String, alpha: float = 1.0) -> void:
+	var col := Color(1.0, 0.62, 0.2, alpha)
+	ci.draw_rect(r, Color(col.r, col.g, col.b, 0.14 * alpha))
+	var lw := maxf(1.0, minf(r.size.x, r.size.y) * 0.03)
+	ci.draw_line(Vector2(r.position.x, r.end.y), r.end, col, lw * 1.6)
+	var L := minf(r.size.x, r.size.y) * 0.22
+	for c in [r.position, Vector2(r.end.x, r.position.y), Vector2(r.position.x, r.end.y), r.end]:
+		var sx := 1.0 if c.x <= r.get_center().x else -1.0
+		var sy := 1.0 if c.y <= r.get_center().y else -1.0
+		ci.draw_line(c, c + Vector2(L * sx, 0), col, lw)
+		ci.draw_line(c, c + Vector2(0, L * sy), col, lw)
+	_text(ci, r.get_center(), letter, int(clampf(minf(r.size.x, r.size.y) * 0.5, 8.0, 64.0)), Color(1, 0.8, 0.5, alpha))
 
 
 static func draw_ladder(ci: CanvasItem, r: Rect2, col: Color = Color(0.82, 0.62, 0.32)) -> void:

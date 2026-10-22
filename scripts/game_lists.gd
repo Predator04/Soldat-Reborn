@@ -37,6 +37,8 @@ const MODE_NAMES := [
 	"Deathmatch", "Teammatch", "Capture the Flag",
 	"Infiltration", "Hold the Flag", "Rambomatch", "Pointmatch",
 	"Domination", "Battle Royale", "Gun Game",
+	# #304: new modes go at the END (indices are persisted / on the wire).
+	"Bomb Defusal",
 ]
 
 ## #256: the full weapon roster in player.gd's table order (12 primaries,

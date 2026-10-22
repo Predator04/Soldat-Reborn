@@ -18,6 +18,10 @@ the classic had and more, with most of Soldat 2's feature list folded in.
 
 <sub>Real frames from the v1.35 build ( bot matches, 1280×720, rendered in software GL — on a GPU it looks the same, only smoother).</sub>
 
+### Coming next (draft)
+
+- **Bomb Defusal** — a new mode: attackers plant the bomb at site A or B, defenders stop it or defuse it; first to 7 rounds, sides swap at halftime, the dead respawn together every 10 s. Three new featured levels built for it (Downtown, Dust Yard, Whiteout), Maker bomb-site pieces to build your own, and bots that plant, guard, retake and defuse.
+
 ### What's new in 1.39 — Featured levels
 
 - **8 featured levels built in** — LEVELS opens on a FEATURED tab (works offline): Twin Forts, Magma Crown, Skyline Tower, Iron Valley, The Bunker, Frostbite, Hollow Deep and Last Ridge. PLAY, HOST ONLINE or EDIT A COPY to learn how they're made; the Maker's New map can start from any of them.

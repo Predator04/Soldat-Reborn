@@ -29,7 +29,7 @@ const GameListsSrc = preload("res://scripts/game_lists.gd")
 ## docs/discord/ has the PNGs. Unknown keys just show no picture.
 const LARGE_IMAGE := "tracerfall"
 const MODE_IMAGES := ["mode_dm", "mode_tdm", "mode_ctf", "mode_inf", "mode_htf",
-	"mode_rm", "mode_pm", "mode_dom", "mode_br", "mode_gg"]
+	"mode_rm", "mode_pm", "mode_dom", "mode_br", "mode_gg", "mode_bomb"]
 const DOWNLOAD_URL := "https://github.com/Predator04/Tracerfall/releases/latest"
 const GG_RUNGS := 16
 const TICK_S := 1.0

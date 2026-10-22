@@ -4,6 +4,14 @@ All notable changes to Soldat Reborn.
 
 ## [Unreleased]
 
+### Added — Bomb Defusal (#304)
+- **New game mode: Bomb Defusal** (mode 10, at the end of every mode list; dedicated `--mode bomb`). RED attacks, BLUE defends, and the sides swap at halftime (after round 6). The attackers carry one bomb to site A or B and plant it (hold **Use** 3 s in the site, standing still — moving or jetting starts it over, getting shot doesn't); the defenders stop them, or defuse a planted bomb (hold Use 7 s on it). A planted bomb beeps faster and faster and blows after 40 s with a big blast around it. A round ends on a detonation (attackers), a defuse (defenders) or the 2:30 clock running out with no plant (defenders); first to 7 rounds wins the match (then the usual winner screen + map vote). The dead come back together in **waves every 10 s** (the death screen counts down to the next one); a new round respawns everyone at once. The carrier drops the bomb where they die; any attacker picks it up, defenders can't.
+- **New control: Use / Plant / Defuse** — C on the keyboard, Y on a gamepad (shared with Reload — reloading while you plant is harmless), remappable in Settings → Controls; on touch screens a USE button appears only when it can do something.
+- **HUD:** site markers A / B in the world and as off-screen arrows, the bomb's position (carried / dropped / planted), the round + side line, the fuse countdown, a plant / defuse progress bar, the "hold Use" hint, the next-wave clock and big banners for plants, defuses, detonations, round results and halftime. Sounds from the existing set (plant, beep, defuse, explosion).
+- **3 featured levels built for it** (FEATURED tab, PLAY / HOST ONLINE / EDIT A COPY): **Downtown** (street site + market-roof site, jump pads, a jet across to the attackers' plateau), **Dust Yard** (loading-dock site + covered-warehouse site, containers, a silo) and **Whiteout** (trench site + ridge site in the snow, an ice tower). Bots carry the bomb to a site, plant, guard it, retake, clear the site and defuse; every map gets two sites placed automatically along the bots' route when it has none of its own.
+- **Maker: Bomb site A / Bomb site B** pieces (Objectives tab, resizable areas). The checks before PLAY / SAVE want both for Bomb Defusal, inside the map and over ground you can stand on; the Maker's test mode can be Bomb Defusal. Maps store them as `bomb_sites`; shared levels with both are tagged BOMB.
+- Online: the host decides everything (who carries the bomb, plant / defuse progress, the fuse); a player only says "I'm holding Use" for their own soldier, so a modified client can't plant or defuse for anyone. Players joining mid-round see the planted bomb and its fuse right away.
+
 ## [1.39.0] — 2026-10-21 — Featured levels
 
 ### Added — drop your power-up (#303)

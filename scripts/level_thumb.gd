@@ -312,4 +312,7 @@ static func mode_hints(m: Dictionary) -> String:
 			out.append(pair[1])
 	if m.get("dom_points") is Array and not (m["dom_points"] as Array).is_empty():
 		out.append("dom")
+	# #304: two bomb sites = built for Bomb Defusal (same rule as the server).
+	if m.get("bomb_sites") is Array and (m["bomb_sites"] as Array).size() >= 2:
+		out.append("bomb")
 	return " ".join(out)

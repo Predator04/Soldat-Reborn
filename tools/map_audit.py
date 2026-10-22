@@ -346,7 +346,40 @@ def audit(m):
         if prob:
             label = kind if i is None else "%s[%d]" % (kind, i)
             problems.append("%s @ (%d, %d): %s" % (label, p[0], p[1], prob))
+    problems += audit_bomb_sites(m, sp)
     return problems
+
+
+def audit_bomb_sites(m, sp):
+    """Bomb Defusal (#304): an A and a B site, inside the world, not buried,
+    with main-arena ground (reachable, not a kill zone) inside each."""
+    sites = m.get("bomb_sites")
+    if not sites:
+        return []
+    out = []
+    names = sorted(str(s.get("name", "?")) for s in sites if isinstance(s, dict))
+    if names != ["A", "B"]:
+        out.append("bomb_sites: need exactly one A and one B (have %s)" % names)
+    good = sp.ground & (sp.lab[0] == sp.main) if sp.main is not None else sp.ground
+    for s in sites:
+        r = s.get("rect") if isinstance(s, dict) else None
+        if not (isinstance(r, (list, tuple)) and len(r) >= 4):
+            out.append("bomb site: bad rect %s" % r)
+            continue
+        x0, y0, w, h = (float(v) for v in r[:4])
+        nm = str(s.get("name", "?"))
+        if x0 < 0 or y0 < 0 or x0 + w > sp.W or y0 + h > sp.H:
+            out.append("bomb site %s @ (%d, %d): outside the world" % (nm, x0, y0))
+            continue
+        cy0, cy1 = int(y0 / R), int((y0 + h) / R) + 1
+        cx0, cx1 = int(x0 / R), int((x0 + w) / R) + 1
+        if sp.solid[cy0:cy1, cx0:cx1].mean() > 0.85:
+            out.append("bomb site %s @ (%d, %d): buried in terrain" % (nm, x0, y0))
+            continue
+        cols = int(np.any(good[cy0 + int(20 / R):cy1 + int(6 / R), cx0:cx1], axis=0).sum())
+        if cols * R < 40.0:
+            out.append("bomb site %s @ (%d, %d): no reachable ground inside it (%d px)" % (nm, x0, y0, cols * R))
+    return out
 
 
 def main(argv):

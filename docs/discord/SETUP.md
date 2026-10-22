@@ -30,7 +30,7 @@ The key is the file name without `.png`; keep it exactly as below:
 | File | Key | Used for |
 |---|---|---|
 | `tracerfall.png` | `tracerfall` | large picture (always) |
-| `mode_dm.png` … `mode_gg.png` | `mode_dm`, `mode_tdm`, `mode_ctf`, `mode_inf`, `mode_htf`, `mode_rm`, `mode_pm`, `mode_dom`, `mode_br`, `mode_gg` | small badge per mode |
+| `mode_dm.png` … `mode_bomb.png` | `mode_dm`, `mode_tdm`, `mode_ctf`, `mode_inf`, `mode_htf`, `mode_rm`, `mode_pm`, `mode_dom`, `mode_br`, `mode_gg`, `mode_bomb` | small badge per mode |
 
 Save. New art can take a few minutes to show up in Discord. A missing key just
 shows no picture; nothing breaks. (`python3 tools/itch/make_art.py` redraws

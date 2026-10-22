@@ -6,7 +6,7 @@ extends SceneTree
 ## spikes / lava / falls), jump-pad launches, vehicle boardings + distance,
 ## how far bots travelled, how often they stood still, final scores.
 
-const MODE_IDX := {"dm": 0, "tdm": 1, "ctf": 2, "inf": 3, "htf": 4, "rm": 5, "pm": 6, "dom": 7, "br": 8, "gg": 9}
+const MODE_IDX := {"dm": 0, "tdm": 1, "ctf": 2, "inf": 3, "htf": 4, "rm": 5, "pm": 6, "dom": 7, "br": 8, "gg": 9, "bomb": 10}
 
 var _level := "twin_forts"
 var _mode := "ctf"
