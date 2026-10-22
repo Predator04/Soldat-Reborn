@@ -2,7 +2,7 @@
 
 All notable changes to Soldat Reborn.
 
-## [Unreleased]
+## [1.40.0] — 2026-10-22 — Bomb Defusal
 
 ### Changed — game mode limits and map balance (#311)
 - **Matches last longer and are decided on score.** Measured with bots, every mode hit its old limit in 1–3 minutes, so a 5-minute match was 2–5 short rounds and usually ended on the clock. New limits: Deathmatch **50** kills (was 20), Team Deathmatch **120** (was 20), Hold the Flag **300** (was 60), Pointmatch **200** (was 20), Domination **800** (was 90), Rambomatch **25** (was 20); Capture the Flag and Infiltration stay at 3. The match clock is now **15 minutes** (10 for Battle Royale and Gun Game; was 5 for every mode). Bot test matches (8 bots) now end on score after about 8–12 minutes (Gun Game 5–7, a ladder or two); fewer players take longer. Capture the Flag ends on score where bots capture, and on the clock on maps where they rarely do.

@@ -18,9 +18,13 @@ the classic had and more, with most of Soldat 2's feature list folded in.
 
 <sub>Real frames from the v1.35 build ( bot matches, 1280×720, rendered in software GL — on a GPU it looks the same, only smoother).</sub>
 
-### Coming next (draft)
+### What's new in 1.40 — Bomb Defusal
 
-- **Bomb Defusal** — a new mode: attackers plant the bomb at site A or B, defenders stop it or defuse it; first to 7 rounds, sides swap at halftime, the dead respawn together every 10 s. Three new featured levels built for it (Downtown, Dust Yard, Whiteout), Maker bomb-site pieces to build your own, and bots that plant, guard, retake and defuse.
+- **Bomb Defusal** — a new mode: attackers plant the bomb at site A or B, defenders stop it or defuse it; first to 7 rounds, sides swap at halftime, the dead respawn together in waves. Three new featured levels built for it (Downtown, Dust Yard, Whiteout), Maker bomb-site pieces to build your own, bots that plant, guard, retake and defuse, and replays that show the bomb.
+- **Cheat-proof online hits** — the server now decides every hit (with lag compensation, so your shots land like before). Taking less damage, dealing extra, firing too fast or through walls no longer works. Everyone needs 1.40 to play online.
+- **Teams you can tell apart at a glance** — strong team paint, a team outline on every soldier, teammate markers, and Colour-blind / High contrast palettes.
+- **Balance pass** — LAW and M79 hits finally kill, a stronger shotgun and MP5, tighter AUG and Minigun, tanks that explosives can actually destroy; longer matches with sensible score limits (15-minute clock), fairer flags and points on side-heavy maps, and one LAW bot per team.
+- **Fixes** — players joining mid-match see power-ups that are already active; a rare crash on dedicated servers is gone.
 
 ### What's new in 1.39 — Featured levels
 
