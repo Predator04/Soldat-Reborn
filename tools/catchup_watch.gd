@@ -133,7 +133,7 @@ func _physics_process(delta: float) -> bool:
 			p.remove_from_group("soldier")
 	if _case == "weak":
 		# Fire cadence: every new cooldown (= a shot) is stretched x --weak-rate.
-		for b in m._bots_by_id.values():
+		for b in get_nodes_in_group("soldier"):
 			if is_instance_valid(b) and str(b.display_name) == "Bot 1":
 				var cd := float(b.get("fire_cd"))
 				if cd > _last_cd + 0.01:
@@ -143,7 +143,7 @@ func _physics_process(delta: float) -> bool:
 		_fix_t -= delta
 		if _fix_t <= 0.0:
 			_fix_t = 0.5
-			for b in m._bots_by_id.values():
+			for b in get_nodes_in_group("soldier"):
 				if is_instance_valid(b) and str(b.display_name) == "Bot 1":
 					# Skill-1 reactions + range, and a much wider aim cone.
 					b.set("_skill_aim_spread", _spread)
