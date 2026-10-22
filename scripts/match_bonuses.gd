@@ -295,9 +295,9 @@ func host_drop_powerup(pid: int) -> bool:
 	return true
 
 
-# Release gate only (C `drop`): a host started with --smoke-bonus=KIND gives
-# every joined human KIND once, after its body has been live for ~2 s, once
-# two humans are in.
+# Release gate only (C `drop` / `latepu`): a host started with
+# --smoke-bonus=KIND gives every joined human KIND once, after its body has
+# been live for ~2 s, once two (--smoke-bonus-min=N: N) humans are in.
 var _smoke_bonus := "?"
 var _smoke_seen: Dictionary = {}     # peer_id -> ticks seen alive (-1 = granted)
 var _smoke_bonus_t := 0.0
@@ -316,8 +316,13 @@ func _smoke_bonus_tick(delta: float) -> void:
 		return
 	_smoke_bonus_t = 1.0
 	var ready: Array = main.ready_peer_ids()
-	# Both clients in first: a late joiner isn't told about power-ups already active.
-	if ready.size() < 2:
+	# Both clients in first (C `drop`); --smoke-bonus-min=1 grants to the
+	# first one alone, so C `latepu` can join a second client after it (#305).
+	var need := 2
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--smoke-bonus-min="):
+			need = maxi(1, int(a.substr(len("--smoke-bonus-min="))))
+	if ready.size() < need:
 		return
 	for pid in main._players_by_id.keys():
 		var p = main._players_by_id[pid]
