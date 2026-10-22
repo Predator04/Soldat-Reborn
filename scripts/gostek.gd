@@ -9,14 +9,18 @@ extends RefCounted
 const PoaLoader = preload("res://scripts/poa_loader.gd")
 const Gfx = preload("res://scripts/gfx.gd")
 const WeaponGfx = preload("res://scripts/weapon_gfx.gd")   # #284 HD weapon sprites
+const TeamColors = preload("res://scripts/team_colors.gd")   # #306 team paint
 
 const DIR := "res://assets/gostek-gfx/"
 # #280 / #281 "Operator" look: modern-proportioned sprites painted by
 # tools/gen_operator_gfx.py on the same skeleton, each with its own rect
 # (texture size / rig px_per_unit) and pivot (assets/gostek-hd/rig.json), up to
-# four layers — base (tinted like the classic part), _trim (gear, untinted),
-# _acc (accents in the bright team colour), _wound (blood below 60 HP) — and a
-# normal map per layer (CanvasTexture) for the dynamic lights.
+# four layers drawn in this order — base (tinted like the classic part), _acc
+# (TEAM PAINT, #306: helmet dome, cap crown, plate carrier / vest plates,
+# shoulder pads + arm band, neck gaiter, jetpack cover — the saturated team
+# colour in team modes, the player's own colours in free-for-all), _trim (gear
+# over the paint, untinted), _wound (blood below 60 HP) — and a normal map per
+# layer (CanvasTexture) for the dynamic lights.
 # Settings.soldier_look picks it; Low quality and headless keep the classic
 # sprites (one draw per part, no mipmapped textures).
 const HD_DIR := "res://assets/gostek-hd/"
@@ -195,6 +199,15 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 	var cos: Dictionary = gs.get("cosmetics", {})
 	var hd := operator_on()
 	var accent := body_color.lerp(Color.WHITE, 0.4) if not dead else body_color.darkened(0.6)
+	# #306: in team modes (gs.team = 1 / 2, resolved by the caller) the team
+	# paint wins over cosmetic paint on the key areas: the _acc panels of the
+	# Operator look, the helmet / cap and the vest of the classic look.
+	var team: int = int(gs.get("team", 0))
+	var team_paint := Color.WHITE
+	if team > 0:
+		team_paint = TeamColors.paint(team)
+		if dead:
+			team_paint = team_paint.darkened(0.55)
 	var trim_col := Color.WHITE if not dead else Color(0.45, 0.45, 0.45)
 	# The 3x sprites are minified ~3-9x on screen: sample their mipmaps.
 	if hd and node.texture_filter != CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS:
@@ -313,13 +326,21 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 				# Helm reads as a distinct piece rather than blending into the body silhouette.
 				col = tint.darkened(0.35) if not dead else tint.darkened(0.6)
 				var fin: String = str(cos.get("finish", ""))
-				if FINISHES.has(fin) and not key.begins_with("hair"):
+				if team > 0 and not hd_key and not key.begins_with("hair"):
+					# #306 classic look: the whole helmet / cap in the team paint.
+					col = team_paint.darkened(0.12)
+				elif FINISHES.has(fin) and not key.begins_with("hair"):
 					col = (FINISHES[fin] as Color) if not dead else (FINISHES[fin] as Color).darkened(0.5)
 			_:
 				# "none" parts (feet) still darken on death so corpses don't have
 				# full-brightness white boots against the darkened body.
 				col = Color(0.4, 0.4, 0.4, 1.0) if dead else Color.WHITE
-		if paint != "" and FINISHES.has(paint):
+		if key == "kamizelka" and team > 0 and not hd_key:
+			# #306 classic look: the (dark grey) vest sprite in the team paint, lifted.
+			var tv := team_paint * 2.6
+			tv.a = 1.0
+			col = tv
+		elif paint != "" and FINISHES.has(paint):
 			# The classic vest sprite is dark grey (~0.3), so lift the paint or it
 			# all reads as near-black. (The Operator vest is painted light.)
 			var vc: Color = (FINISHES[paint] as Color) * (3.0 if not hd_key else 1.0)
@@ -347,12 +368,12 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 			else:
 				node.draw_set_transform(p1, angle, Vector2(sx, 1.0))
 			node.draw_texture_rect(hb, rect, false, col)
+			var ha := _tex_hd(key + "_acc", flip)
+			if ha != null:
+				node.draw_texture_rect(ha, rect, false, _paint_color(key, team, team_paint, accent, col))
 			var ht := _tex_hd(key + "_trim", flip)
 			if ht != null:
 				node.draw_texture_rect(ht, rect, false, trim_col)
-			var ha := _tex_hd(key + "_acc", flip)
-			if ha != null:
-				node.draw_texture_rect(ha, rect, false, accent)
 			if wound_alpha > 0.0:
 				var hwd := _tex_hd(key + "_wound", flip)
 				if hwd != null:
@@ -415,6 +436,18 @@ static func draw_body(node: CanvasItem, gs: Dictionary, body_color: Color) -> vo
 		node.draw_set_transform_matrix(xf)
 	else:
 		node.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+## #306: tint of a part's _acc (team paint) layer. Team modes: the team paint.
+## Free-for-all: the helmet / cap / vest panels take that piece's own colour
+## (helmet / vest paint cosmetic, so the player's look is unchanged); the rest
+## the light body accent.
+static func _paint_color(key: String, team: int, team_paint: Color, accent: Color, part_col: Color) -> Color:
+	if team > 0:
+		return team_paint
+	if key == "helm" or key == "kap" or key == "kamizelka":
+		return part_col
+	return accent
 
 
 # Local-space position of the given .poa joint (1..20) for the CURRENT

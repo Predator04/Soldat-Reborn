@@ -6,8 +6,8 @@ extends RefCounted
 ##
 ## Look: dark gunmetal hulls with a vertical light-to-shadow gradient, panel
 ## lines, grime and wear, a bright team trim plus a team MARK whose shape (not
-## just colour) tells the sides apart (Settings.colorblind already swaps red to
-## orange in TeamColors), a cool rim along the edges that face the key light
+## just colour) tells the sides apart (Settings.team_colors picks the palette in
+## TeamColors, #306), a cool rim along the edges that face the key light
 ## (the same direction the cinematic rim_light.gdshader uses — the shader finds
 ## edges from texture alpha, which flat polygon draws don't have, so vehicles
 ## paint their rim themselves), subtle neon instrument / underglow accents.

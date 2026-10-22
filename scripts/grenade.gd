@@ -28,9 +28,25 @@ var _target_vel: Vector2 = Vector2.ZERO
 var _target_rot: float = 0.0
 var _has_target := false
 var _exploded := false
+# #266 (host_hits.gd): the host's copy of a client's grenade checks the flight
+# the thrower reports — no faster than a grenade can go, never through a wall
+# — and a grenade that broke the rules explodes harmlessly (so do its frags).
+const CHECK_MAX_SPEED := 2500.0   # px/s (a long fall; throws are <= 650)
+var _chk_sum := 0.0                # host: flight time the reports so far account for
+const CHECK_WALL_PX := 20.0       # solid crossed between two reports (corners graze less)
+var harmless := false
+var _check := false
+var _chk_pos := Vector2.ZERO
+var _chk_ms := 0
+var _spawn_pos := Vector2.ZERO
+var _spawn_vel := Vector2.ZERO
+var _spawn_ms := 0
 
 
 func _ready() -> void:
+	_spawn_pos = global_position
+	_spawn_vel = linear_velocity
+	_spawn_ms = Time.get_ticks_msec()
 	add_to_group("grenade")   # match replays
 	# Kill credit is checked against who was attacking (trust_guard.gd).
 	TrustGuard.note_activity(killer_name, team)
@@ -109,6 +125,7 @@ func _physics_process(delta: float) -> void:
 
 @rpc("authority", "call_remote", "reliable")
 func net_projectile_state(pos: Vector2, vel: Vector2, rot: float) -> void:
+	_check_flight(pos)
 	_target_pos = pos
 	_target_vel = vel
 	_target_rot = rot
@@ -119,8 +136,71 @@ func net_projectile_state(pos: Vector2, vel: Vector2, rot: float) -> void:
 func net_explode(pos: Vector2) -> void:
 	# Snap to the authority's exact fuse-out position so the blast damage / SFX
 	# fire from the same spot on every peer. Idempotent via _exploded guard.
+	_check_flight(pos)
 	global_position = pos
 	_explode()
+
+
+## Host (#266): one more point of a client grenade's reported flight.
+func _check_flight(p: Vector2) -> void:
+	if harmless or is_fragment or not (Net.is_networked() and Net.is_host()) \
+			or multiplayer.multiplayer_peer == null or is_multiplayer_authority():
+		return
+	var now := Time.get_ticks_msec()
+	var first := not _check
+	if first:
+		_check = true   # first report: compare with where the throw started
+		_chk_pos = _spawn_pos
+		_chk_ms = _spawn_ms
+	var dt: float = maxf(0.0, float(now - _chk_ms) / 1000.0)
+	# The thrower sends its first report 0.2 s into the flight and the rest
+	# 1 / BROADCAST_HZ apart (its game time), however bunched they arrive —
+	# never more of that than the host's own time since the throw, + 0.5 s.
+	var cadence := 0.2 if first else 1.0 / BROADCAST_HZ
+	if _chk_sum + cadence <= float(now - _spawn_ms) / 1000.0 + 0.5:
+		dt = maxf(dt, cadence)
+	_chk_sum += dt
+	var why := ""
+	var moved := p.distance_to(_chk_pos)
+	if moved > 60.0 + CHECK_MAX_SPEED * dt:
+		why = "moved %.0f px in %.2f s" % [moved, dt]
+	elif _through_wall(_chk_pos, p) and (not first or _arc_through_wall(dt)):
+		# (The first report can be a lob over a ledge: then the straight line
+		# from the hand cuts the corner but the throw's own arc doesn't.)
+		why = "went through a wall"
+	_chk_pos = p
+	_chk_ms = now
+	if why != "":
+		harmless = true
+		HostHits.count("refused_explosive")
+		var m := get_parent()
+		var thrower = m.get_node_or_null("Player_%d" % get_multiplayer_authority()) if m != null else null
+		if thrower != null and thrower.get("_trust") != null and thrower._trust.flag("explosive", "grenade %s" % why):
+			thrower._trust_force_death("shots (explosive)")
+
+
+## The throw's ballistic arc for its first `secs`, in a few chords.
+func _arc_through_wall(secs: float) -> bool:
+	var g := 980.0 * gravity_scale
+	var prev := _spawn_pos
+	for i in range(1, 5):
+		var t := secs * float(i) / 4.0
+		var p := _spawn_pos + _spawn_vel * t + Vector2(0.0, 0.5 * g * t * t)
+		if _through_wall(prev, p):
+			return true
+		prev = p
+	return false
+
+
+func _through_wall(a: Vector2, b: Vector2) -> bool:
+	var w := get_world_2d()
+	var fwd := HostHits.solid_ray(w, a, b)
+	if fwd.is_empty():
+		return false
+	var back := HostHits.solid_ray(w, b, a)
+	if back.is_empty():
+		return false   # ends inside the terrain (resting in a seam): no crossing
+	return (fwd["position"] as Vector2).distance_to(back["position"]) >= CHECK_WALL_PX
 
 
 func _explode() -> void:
@@ -140,10 +220,17 @@ func _explode() -> void:
 	var wname: String = "Cluster" if (cluster or is_fragment) else "Grenade"
 	if get_parent() != null:
 		preload("res://scripts/gfx.gd").explosion(get_parent(), global_position, blast_radius * (0.6 if is_fragment else 1.0))
+	# #266: a client's grenade blasts remote humans as the thrower saw them
+	# (rewound); frags and the host's own grenades use where everyone is now.
+	var rw := 0
+	if _check or (not is_fragment and Net.is_networked() and Net.is_host() and multiplayer.multiplayer_peer != null and not is_multiplayer_authority()):
+		rw = HostHits.rewind_for(get_tree(), killer_name)
 	for s in get_tree().get_nodes_in_group("soldier"):
+		if harmless:
+			break
 		if not is_instance_valid(s):
 			continue
-		var d: float = global_position.distance_to(s.global_position)
+		var d: float = global_position.distance_to(HostHits.pos_at(s, 0 if str(s.get("display_name")) == killer_name else rw))
 		if d < blast_radius:
 			var same_team: bool = int(s.get("team")) == team
 			var is_self: bool = s.get("display_name") == killer_name
@@ -151,13 +238,11 @@ func _explode() -> void:
 				continue
 			var gdmg: float = damage * MatchConfig.mod_damage() * (1.0 - d / blast_radius)
 			var was_alive: bool = not bool(s.get("dead"))
-			if multiplayer.multiplayer_peer == null or s.is_multiplayer_authority():
-				s.take_damage(gdmg, killer_name, wname, team)
-			elif s.has_method("observe_damage"):
-				s.observe_damage(gdmg, killer_name, wname, team)
+			HostHits.damage(s, gdmg, killer_name, wname, team)
 			if not is_self and was_alive:
-				preload("res://scripts/bullet.gd").local_hit_feedback(get_tree(), killer_name, s.global_position, gdmg)
-	preload("res://scripts/buggy.gd").splash(get_tree(), global_position, blast_radius, damage * MatchConfig.mod_damage(), killer_name, wname, team)
+				preload("res://scripts/bullet.gd").local_hit_feedback(get_tree(), killer_name, s.global_position, gdmg, false, s)
+	if not harmless:
+		preload("res://scripts/buggy.gd").splash(get_tree(), global_position, blast_radius, damage * MatchConfig.mod_damage(), killer_name, wname, team)
 	# Lo-fi (#25): skip the CPUParticles2D flame burst. The Sfx call above still fires.
 	if not Settings.lofi:
 		var p := CPUParticles2D.new()
@@ -191,6 +276,7 @@ func _explode() -> void:
 				frag.team = team
 				frag.killer_name = killer_name
 				frag.is_fragment = true
+				frag.harmless = harmless
 				frag.fuse = rng.randf_range(0.4, 0.9)
 				frag.damage = 45.0
 				frag.blast_radius = 90.0

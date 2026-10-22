@@ -158,7 +158,7 @@ func _fire() -> void:
 	if Net.is_networked():
 		var main := get_parent()
 		if main != null and main.has_method("net_m2_fire"):
-			main.rpc("net_m2_fire", m2_id, muzzle, dir, op_team, op_name)
+			main.rpc("net_m2_fire", m2_id, muzzle, dir, op_team, op_name, HostHits.game_ms())
 		return
 	# SP path: apply locally.
 	net_apply_fire(muzzle, dir, op_team, op_name)

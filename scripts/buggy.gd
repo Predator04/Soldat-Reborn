@@ -387,6 +387,7 @@ func _physics_process(delta: float) -> void:
 	else:
 		_follow(delta)
 	_place_occupants()
+	_record_hist()
 	_local_occupant_input()
 	if _is_host_side():
 		_bot_gunner(delta)
@@ -403,6 +404,164 @@ func _physics_process(delta: float) -> void:
 
 func _is_host_side() -> bool:
 	return not Net.is_networked() or Net.is_host()
+
+
+# ── Host-side lag compensation (#266) ──
+# A remote human in a seat is tested where its shooter saw it (rewound), so the
+# vehicle carrying it is too — else the hull, where the host has it now, stops
+# rounds that met the crew on the shooter's screen.
+var _hist: Array = []   # host: [ms, position, collision shape's global transform]
+var _hull: CollisionShape2D = null
+
+
+func _record_hist() -> void:
+	if not Net.is_networked() or not Net.is_host():
+		return
+	if _hull == null:
+		for c in get_children():
+			if c is CollisionShape2D and (c as CollisionShape2D).shape is CapsuleShape2D:
+				_hull = c
+				break
+	var now := Time.get_ticks_msec()
+	_hist.append([now, global_position, _hull.global_transform if _hull != null else Transform2D()])
+	while _hist.size() > 2 and now - int(_hist[0][0]) > maxi(HostHits.HIST_MS, 1600):
+		_hist.pop_front()
+
+
+## Host: index of the newest record at or before `ms_ago` ms ago, and how far
+## toward the next one that moment lies ([i, t]); [-1, 0] with no history.
+func _hist_at(ms_ago: int) -> Array:
+	if _hist.is_empty():
+		return [-1, 0.0]
+	var want := Time.get_ticks_msec() - ms_ago
+	var i := _hist.size() - 1
+	while i > 0 and int(_hist[i][0]) > want:
+		i -= 1
+	if i >= _hist.size() - 1 or int(_hist[i][0]) > want:
+		return [i, 0.0]
+	var t0 := int(_hist[i][0])
+	var t1 := int(_hist[i + 1][0])
+	return [i, float(want - t0) / float(maxi(1, t1 - t0))]
+
+
+## Host: where this vehicle was `ms_ago` ms ago (interpolated).
+func pos_at(ms_ago: int) -> Vector2:
+	var h := _hist_at(ms_ago)
+	if ms_ago <= 0 or int(h[0]) < 0:
+		return global_position
+	var i: int = h[0]
+	if float(h[1]) <= 0.0:
+		return _hist[i][1]
+	return (_hist[i][1] as Vector2).lerp(_hist[i + 1][1], float(h[1]))
+
+
+## Host (#266): the driver's own timeline of this vehicle, by its game clock
+## (`gstamp` on net_vehicle_state): [gstamp, pos, vel], ~3 s, for one peer.
+var _gtrack: Array = []
+var _gtrack_peer := 0
+
+
+func note_gtrack(peer: int, gstamp: int, pos: Vector2, vel: Vector2) -> void:
+	if peer != _gtrack_peer:
+		_gtrack.clear()
+		_gtrack_peer = peer
+	if not _gtrack.is_empty() and gstamp <= int(_gtrack[-1][0]):
+		return
+	_gtrack.append([gstamp, pos, vel])
+	while _gtrack.size() > 2 and gstamp - int(_gtrack[0][0]) > 3000:
+		_gtrack.pop_front()
+
+
+## How far `p` (a muzzle) lies beyond where this vehicle could have been at
+## `peer`'s game-clock moment `stamp`: the driver's samples either side of
+## it, each give or take what the vehicle could cover in between (its speed
+## then plus room to speed up; a stall's gap just widens the bound). INF:
+## nothing from that peer near that moment.
+func gun_origin_off(peer: int, p: Vector2, stamp: int, window := 2500) -> float:
+	if peer != _gtrack_peer or _gtrack.is_empty() or stamp <= 0:
+		return INF
+	var i := _gtrack.size() - 1
+	while i >= 0 and int(_gtrack[i][0]) > stamp:
+		i -= 1
+	var off := -1.0
+	for k in [i, i + 1]:
+		if k < 0 or k >= _gtrack.size():
+			continue
+		var e: Array = _gtrack[k]
+		var dt := float(absi(int(e[0]) - stamp)) / 1000.0
+		if dt * 1000.0 > float(window):
+			continue
+		var reach := ((e[2] as Vector2).length() * 1.25 + 600.0) * dt
+		off = maxf(off, maxf(0.0, p.distance_to(e[1]) - reach))
+	return off if off >= 0.0 else INF
+
+
+## Host: the nearest this vehicle's copy came to `p` over the last `ms` ms.
+func min_dist_recent(p: Vector2, ms: int) -> float:
+	var best := p.distance_to(global_position)
+	var since := Time.get_ticks_msec() - ms
+	for i in range(_hist.size() - 1, -1, -1):
+		if int(_hist[i][0]) < since:
+			break
+		best = minf(best, p.distance_to(_hist[i][1]))
+	return best
+
+
+## Host: a remote human is aboard (its hits are rewound, so this hull is too).
+func carries_remote_human() -> bool:
+	for o in seats:
+		if is_instance_valid(o) and HostHits.is_remote_human(o):
+			return true
+	return false
+
+
+## Where a segment a->b first enters this hull (0..1) — its collision capsule
+## as it was `ms_ago` ms ago, turned as it was (a plane's follows its nose) —
+## or -1.
+func segment_t_at(a: Vector2, b: Vector2, ms_ago: int) -> float:
+	if _hull == null or not _hull.shape is CapsuleShape2D:
+		return -1.0
+	var xf: Transform2D = _hull.global_transform
+	var h := _hist_at(ms_ago)
+	if ms_ago > 0 and int(h[0]) >= 0:
+		var i: int = h[0]
+		xf = _hist[i][2]
+		if float(h[1]) > 0.0:
+			xf = xf.interpolate_with(_hist[i + 1][2], float(h[1]))
+	# In the capsule's own frame it stands upright: a core box with a cap at
+	# each end.
+	var inv := xf.affine_inverse()
+	var la := inv * a
+	var lb := inv * b
+	var cap := _hull.shape as CapsuleShape2D
+	var r := cap.radius
+	var half := maxf(0.0, cap.height * 0.5 - r)
+	var best := -1.0
+	var tr: float = preload("res://scripts/bullet.gd").segment_rect_t(la, lb, Rect2(-r, -half, r * 2.0, half * 2.0))
+	if tr >= 0.0:
+		best = tr
+	for cy in [-half, half]:
+		var tc := _segment_circle_t(la, lb, Vector2(0.0, cy), r)
+		if tc >= 0.0 and (best < 0.0 or tc < best):
+			best = tc
+	return best
+
+
+static func _segment_circle_t(a: Vector2, b: Vector2, c: Vector2, r: float) -> float:
+	var d := b - a
+	var f := a - c
+	var qa := d.dot(d)
+	if qa < 0.000001:
+		return 0.0 if f.length() <= r else -1.0
+	var qb := 2.0 * f.dot(d)
+	var qc := f.dot(f) - r * r
+	if qc <= 0.0:
+		return 0.0   # starts inside
+	var disc := qb * qb - 4.0 * qa * qc
+	if disc < 0.0:
+		return -1.0
+	var t := (-qb - sqrt(disc)) / (2.0 * qa)
+	return t if t >= 0.0 and t <= 1.0 else -1.0
 
 
 ## #259: abandoned or wedged vehicles don't stay that way. Runs on whichever
@@ -597,7 +756,7 @@ func _send_state(delta: float) -> void:
 	_net_t = 0.05
 	var main := get_parent()
 	if main != null and main.has_method("vehicle_send"):
-		main.vehicle_send("net_vehicle_state", [vehicle_id, global_position, velocity, _tilt, face, aim_dir], false)
+		main.vehicle_send("net_vehicle_state", [vehicle_id, global_position, velocity, _tilt, face, aim_dir, HostHits.game_ms()], false)
 
 
 # Remote state (Main.net_vehicle_state).
@@ -700,7 +859,7 @@ func _fire(me: Node2D) -> void:
 	fire_cd = GUN_RATE
 	var main := get_parent()
 	if Net.is_networked() and main != null and main.has_method("vehicle_send"):
-		main.vehicle_send("net_vehicle_fire", [vehicle_id, muzzle, dir], true)
+		main.vehicle_send("net_vehicle_fire", [vehicle_id, muzzle, dir, HostHits.game_ms()], true)
 		return
 	apply_fire(muzzle, dir)
 
@@ -720,6 +879,10 @@ func apply_fire(muzzle: Vector2, dir: Vector2) -> void:
 	b.killer_name = str(shooter.get("display_name"))
 	b.weapon_name = "Buggy MG"
 	b.ignore_bodies = [self] + seats.filter(func(o): return is_instance_valid(o))
+	# #266: the gun isn't predicted — its shooter sees the round only once the
+	# host has relayed it, against bodies one hop behind the host's, i.e. where
+	# the host has them now: no rewind.
+	b.rewind_override = 0
 	get_parent().add_child(b)
 	# Cosmetic: muzzle flash (pooled light + star), brass, the barrel kicks.
 	Gfx.muzzle(get_parent(), muzzle, false, dir)
@@ -1133,10 +1296,7 @@ func apply_destroy(at: Vector2, killer: String, killer_team: int, quiet := false
 			dmg = EXPLODE_DAMAGE * (1.0 - dist / EXPLODE_RADIUS)
 		if dmg <= 0.0:
 			continue
-		if multiplayer.multiplayer_peer == null or s.is_multiplayer_authority():
-			s.take_damage(dmg, kname, WRECK_WEAPON, killer_team)
-		elif s.has_method("observe_damage"):
-			s.observe_damage(dmg, kname, WRECK_WEAPON, killer_team)
+		HostHits.damage(s, dmg, kname, WRECK_WEAPON, killer_team)
 	_respawn_t = RESPAWN_TIME
 	_smoke_t = 0.0
 	velocity = Vector2.ZERO

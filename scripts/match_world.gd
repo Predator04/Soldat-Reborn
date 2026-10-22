@@ -335,6 +335,10 @@ func _build_gfx_world() -> void:
 	# so blood and debris sit behind them) + screen feel (shake, hit-stop).
 	FxWorld.ensure(main)
 	ScreenFeel.install(main)
+	# #306: ally chevrons / names + the viewer's team for the team outlines.
+	var tm: Node2D = preload("res://scripts/gfx/team_markers.gd").new()
+	tm.main = main
+	main.add_child(tm)
 	_build_ambient_fx()
 
 

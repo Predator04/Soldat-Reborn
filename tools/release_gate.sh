@@ -684,7 +684,9 @@ case " $NETSEL " in *" respawn "*)
 case " $NETSEL " in *" trust "*)
   trustcase teleport 18 2 60 "^TRUST kick: "
   trustcase credit 18 2 20 "^TRUST kill credit stripped: Nobody_Fake"
-  trustcase godmode 18 0 90 "^TRUST forced death: .*ignored damage"
+  # (#266: the host decides hits; a client ignoring them is logged, and the
+  # host's ledger kills it anyway.)
+  trustcase godmode 18 0 90 "^TRUST hp: .*host hits ignored"
 ;; esac
 case " $NETSEL " in *" drop "*)
   # Drop the power-up (#303): the host (--smoke-bonus) gives both clients a
@@ -913,7 +915,7 @@ if has F; then
   ft heli heli_test.gd 150 HELI-TEST "helicopter (#277): spin-up gate / climb / hover / fly / soft landing / rockets hit a bot / bullet 0.5x vs explosive / door gunner (human + bot) / spin-out crash kills pilot / respawn on pad / idle return / gentle wreck ejects crew / bot pilot takes off / big-map pads"
   ft vart vehicle_art_test.gd 200 VART-TEST "vehicle art (#276 / #291): every vehicle (buggy, tank, heli, plane) drawn pristine / crewed + firing / 4 damage levels / wreck / respawn at Low / Medium / High in both looks, pooled FX only on Medium+, no node growth, parked bodies unmoved"
   ft rtnav runtime_nav_test.gd 240 RTNAV-TEST "runtime bot nav (#287): maps without a bake get a graph built on a worker thread (no main-thread stall), CTF legs routable, bots travel on it (classic copy + generated map); Maker maps: no node on spikes / lava and no bot dies in them, bots board and drive the buggies (tanks / helis logged); jump pads: the graph routes over a big pad to an island flag and a blue attacker rides it there; merged lava basins (#296): same graph as separate shapes, no DOM stand-off inside each other; overhangs (#297): no climb link under a platform, no repeated underside hits"
-  ft sart soldier_art_test.gd 60 SOLDIER-ART-TEST "Operator soldier art (#280/#281): every rig part in both facings with normal maps + mipmaps, layer mirrors, every head / vest / pose drawn, jet flame from the pack, classic setting wins"
+  ft sart soldier_art_test.gd 60 SOLDIER-ART-TEST "Operator soldier art (#280/#281): every rig part in both facings with normal maps + mipmaps, layer mirrors, every head / vest / pose drawn, jet flame from the pack, classic setting wins; #306 team paint layers + coverage, team vs FFA colours, palettes, ally / enemy outlines, Low team-edge fallback, team markers"
   ft wart weapons_gfx_test.gd 60 WEAPONS-ART-TEST "HD weapon art (#284): every weapon + belt grenade at 6x its classic sprite with mipmaps + normal map, drawn HD in hand / slung / as a pickup, bullet spawn identical in both looks, drawn barrel scales with the 78% gun, classic asks for no HD"
   ft joincode join_code_test.gd 60 JOINCODE-TEST "join codes: round trip, typos, garbage, host shows its code"
   ft replay replay_test.gd 300 REPLAY-TEST "replays: record, save on leave, list, play back in place, seek, exit restores; Bomb Defusal replay keeps the sites + bomb (carried / planted) and the viewer draws them (#309)"
@@ -936,6 +938,8 @@ if has F; then
   ft fxbench fx_bench.gd 90 FX-BENCH "graphics Phase B (#271): FX benchmark, 8 gibbings + minigun + 4 explosions, node count flat, FX ms / frame"
   ft killcam killcam_test.gd 60 KILLCAM-TEST "kill cam: rewind w/ slow-mo, respawn waits, skip, live follow"
   ft lagcomp lagcomp_test.gd 60 LAGCOMP-TEST "lag compensation: hits where the shooter saw you, capped"
+  ft hosthits hosthits_test.gd 2400 HOSTHITS-TEST "host-decided hits (#266): honest duels over 50-250 ms links with jitter, loss, stalls and a slow PC (AK, Spas, knife, LAW, M79, grenades, buggy gun; strafing / jetting / driving victims; a join after a map change) — zero refusals, the host confirms what each shooter saw, damage exact, victims told the same; an old-protocol client is refused cleanly" "--case=honest --out=$OUT/hosthits"
+  ft hostcheat hosthits_test.gd 1300 HOSTHITS-TEST "host-decided hits (#266): 10x damage / 3x fire rate / endless magazine / rounds spawned at the target / silent aim / infinite fuel refused or corrected (counters + TRUST lines); half-damage / godmode victims logged and still killed by the host" "--case=cheats --out=$OUT/hostcheat"
   ft quickplay quickplay_test.gd 60 QUICKPLAY-TEST "quick play: no game online -> bot match"
   ft name name_test.gd 60 NAME-TEST "name required before Training / online, easy rename"
   if fon updater; then

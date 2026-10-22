@@ -611,6 +611,8 @@ func _smoke_join() -> void:
 			print("SMOKE-RECENT ", Settings.recent_players.map(func(e): return str(e.get("name", ""))))
 			var lp = _mn.get("player")
 			print("SMOKE-JOIN-LOCAL alive=%s pings=%s" % [str(lp != null and is_instance_valid(lp) and not bool(lp.get("dead"))), str(_mn.get("peer_pings"))])
+		if _duel != null and is_instance_valid(_duel):
+			_duel.report()
 		leave()
 		get_tree().quit())
 
@@ -1057,7 +1059,16 @@ var _smoke_auto_t: float = 0.0
 var smoke_auto_shots: int = 0
 
 
+var _duel: Node = null
+
+
 func _smoke_auto_start() -> void:
+	# --smoke-role=victim|shooter (#266): a scripted one-on-one with another
+	# smoke client (scripts/smoke_duel.gd; it also plays the duel cheats).
+	if _smoke_arg("--smoke-role") != "":
+		_duel = preload("res://scripts/smoke_duel.gd").new()
+		add_child(_duel)
+		return
 	if _smoke_arg("--smoke-cheat") != "":
 		get_tree().create_timer(3.0).timeout.connect(_smoke_cheat.bind(_smoke_arg("--smoke-cheat")))
 	if _smoke_arg("--smoke-drop") != "":

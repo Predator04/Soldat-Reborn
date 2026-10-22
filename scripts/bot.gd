@@ -262,6 +262,7 @@ var _skill_engage_range := ENGAGE_RANGE
 # #61: shared counter to name bot-fired projectiles consistently across peers.
 var _next_proj_id: int = 1
 const SoldierArt = preload("res://scripts/soldier_art.gd")
+const TeamColors = preload("res://scripts/team_colors.gd")
 const Gostek = preload("res://scripts/gostek.gd")
 
 var jet_particles: CPUParticles2D
@@ -1533,7 +1534,8 @@ func _draw() -> void:
 	if multiplayer.multiplayer_peer != null and not is_multiplayer_authority():
 		on_floor = absf(velocity.y) < 5.0
 	var ds := _draw_state
-	ds.body_color = color
+	ds.body_color = TeamColors.body_for(team, color)   # #306: live team colour
+	ds.team = TeamColors.team_of(team)
 	ds.facing = facing
 	ds.aim_dir = aim
 	ds.vel = velocity
