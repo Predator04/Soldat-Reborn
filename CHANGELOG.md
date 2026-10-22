@@ -4,6 +4,12 @@ All notable changes to Soldat Reborn.
 
 ## [Unreleased]
 
+### Changed — game mode limits and map balance (#311)
+- **Matches last longer and are decided on score.** Measured with bots, every mode hit its old limit in 1–3 minutes, so a 5-minute match was 2–5 short rounds and usually ended on the clock. New limits: Deathmatch **50** kills (was 20), Team Deathmatch **120** (was 20), Hold the Flag **300** (was 60), Pointmatch **200** (was 20), Domination **800** (was 90), Rambomatch **25** (was 20); Capture the Flag and Infiltration stay at 3. The match clock is now **15 minutes** (10 for Battle Royale and Gun Game; was 5 for every mode). Bot test matches (8 bots) now end on score after about 8–12 minutes (Gun Game 5–7, a ladder or two); fewer players take longer. Capture the Flag ends on score where bots capture, and on the clock on maps where they rarely do.
+- **One round is the match:** a round that used at least half the clock ends the match (winner screen + next-map vote). A quick blowout still gets a rematch on the same map with the time that's left.
+- **Bots: one rocket launcher per team.** In team modes only the last bot spawned (always a red one) carried the LAW, which tilted every bot match towards red (red won 26 of 32 Team Deathmatch rounds over 15 maps); now the last bot of each side has one (16 / 13).
+- **Fairer objectives on side-heavy maps** (spots only, no terrain changes): the Hold the Flag flag on **Shau**, **Outpost**, **Fortress** and **Viet** (bots scored 100 % / 28 % / 14 % / 22 % for blue before, 60 % / 44 % / 38 % / 48 % after), the blue Capture the Flag flag on **Fortress** (captures 7–38 → 6–6) and the Domination points on **Blox** (blue scored 81 % → 42 %).
+
 ### Changed — weapon & vehicle balance (#310)
 Measured first: thousands of duels at fixed distances against standing and strafing targets, plus 60 minutes of bot matches with every gun in equal use (Deathmatch, Teammatch, CTF and Bomb Defusal on classic and featured maps). Only the guns and vehicles that stood out for their role changed, each by a small step; movement, jets and soldier health are untouched.
 - **LAW: 90 → 115 damage.** A rocket into the body now kills, like the classic LAW; before, a direct hit left the target alive (~83 damage) and it was the slowest gun to get a kill at any range. The blast still falls off, so a near miss doesn't kill.

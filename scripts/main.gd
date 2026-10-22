@@ -97,7 +97,7 @@ var _rambo_carrier_id: int = 0
 
 # Domination — control point nodes + per-team hold accumulator.
 var _dom_points: Array = []
-const DOM_SCORE_TO_WIN := 700    # owned points × 1 pt/sec (was 90: ~64 s with 8 bots)
+const DOM_SCORE_TO_WIN := 800    # owned points × 1 pt/sec (was 90: ~64 s with 8 bots)
 
 # Battle Royale — shrinking safe zone.
 var _br_zone_radius: float = 2200.0
@@ -117,7 +117,7 @@ var _gg_kills: Dictionary = {}
 # ── Match state (host-authoritative in MP) ─────────────
 const SCORE_TO_WIN := 50          # Deathmatch kills (#311: was 20, ~2.7 min with 8 bots)
 const TDM_SCORE_TO_WIN := 120     # team kills (#311: was 20, ~85 s with 8 bots)
-const RM_SCORE_TO_WIN := 30       # bow-carrier kills (#311: was 20, ~7 min with 8 bots)
+const RM_SCORE_TO_WIN := 25       # bow-carrier kills (#311: was 20, ~7 min with 8 bots)
 const ROUND_TIME := 900.0         # match clock (#311: was 300 for every mode)
 # Per-mode match clock where it differs from ROUND_TIME (#311). Mode ids as in
 # Settings (8 Battle Royale, 9 Gun Game).

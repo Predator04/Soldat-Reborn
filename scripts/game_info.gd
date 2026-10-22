@@ -56,7 +56,7 @@ const MODES := [
 		"The bow holder regenerates health fast. Kill them and take it."],
 	["POINTMATCH", "Collect the gold diamonds — each is +1. First to 200 wins.",
 		"Diamonds come back a few seconds after they're taken. Kills don't score."],
-	["DOMINATION", "Stand on control points to take them. Each point you hold scores every second — 700 wins.",
+	["DOMINATION", "Stand on control points to take them. Each point you hold scores every second — 800 wins.",
 		"Taking a point takes 4 seconds of standing on it. Kills don't score."],
 	["BATTLE ROYALE", "Stay inside the shrinking ring and be the last one standing.",
 		"Outside the ring you lose health every second. Turn on Survival for no respawns."],
