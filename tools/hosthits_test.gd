@@ -157,7 +157,7 @@ func _wait_exit(pid: int, secs: float) -> void:
 func _host(extra: String, logname: String, map := "Arena") -> Array:
 	for _try in 3:
 		var port := 30000 + randi() % 9000
-		var pid := _game("--dedicated --port %d --map %s --mode dm --fill=1 --hosthits-log --smoke-no-bonus %s" % [port, map, extra], 600, logname)
+		var pid := _game("--dedicated --port %d --map %s --mode dm --fill=1 --hosthits-log --smoke-no-bonus --catchup=0 %s" % [port, map, extra], 600, logname)
 		# (The match is loaded at "Dedicated match ready" — #293 — so
 		# clients start then, not after a guessed delay.)
 		if _wait_for(logname, "listening on port %d" % port, 90.0) and _wait_for(logname, "Dedicated match ready", 60.0):

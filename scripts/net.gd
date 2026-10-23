@@ -232,6 +232,14 @@ func _maybe_run_dedicated() -> void:
 			stats_url = a.substr(len("--stats="))
 		elif a.begins_with("--fill="):
 			fill_arg = int(a.substr(len("--fill=")))
+		elif a.begins_with("--catchup=") or a.begins_with("--reserved-names="):
+			# #315 / #318: server.cfg `catchup` / `reserved_names` from the
+			# command line (0 / false / off = off). The hit-agreement tests
+			# (hosthits) run with --catchup=0: they check exact damage.
+			var ck := "catchup" if a.begins_with("--catchup=") else "reserved_names"
+			# (Stored as a file value — cli_keys would hide it from rule() — so a
+			# /reloadcfg of a server.cfg that sets the key wins over the flag.)
+			server_cfg.values[ck] = not (a.substr(a.find("=") + 1).to_lower() in ["0", "false", "off", "no"])
 		elif a.begins_with("--bots="):
 			# #304: the Bots setting for this run (with --fill=0): -1 = every
 			# spawn, 0 = none (gate C `bomb` starts an empty server).
