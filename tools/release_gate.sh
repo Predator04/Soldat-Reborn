@@ -42,7 +42,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 G="${GODOT_BIN:-$HOME/godot/Godot_v4.7.2-stable_linux.x86_64}"
 QUICK=0; OUT="build/gate"; ONLY="A B N C D R F E"; MODESEL="0 1 2 3 4 5 6 7 8 9 10 11"
-NETSEL="ctf dm dedboot selfcheck srvcfg srvbuild two trust drop latepu fill ranked friends news featured respawn killcam drive heli plane bomb zombie rejoin relay host listen lan soak m3 m7 m9 m2"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
+NETSEL="ctf dm dedboot selfcheck srvcfg srvbuild two trust drop latepu fill ranked friends news names catchup featured respawn killcam drive heli plane bomb zombie rejoin relay host listen lan soak m3 m7 m9 m2"; SWEEP=""; FSEL=""; KEEP=0; FINAL=0; MSWEEP=""; MVERDICT=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --quick) QUICK=1;; --out) OUT="$2"; shift;; --only) ONLY="$2"; shift;;
@@ -602,6 +602,66 @@ case " $NETSEL " in *" news "*)
   if echo "$line" | grep -q "NEWS-TEST ok" && [ "$(errs "$OUT/net_news.log")" = "0" ]; then pass "C net menu news line (#261): $(echo "$line" | cut -c1-140)"; else fail "C net menu news line: '${line:-no result}' errors=$(errs "$OUT/net_news.log")"; fi
   fi
 ;; esac
+case " $NETSEL " in *" names "*)
+  # #318 reserved names, real dedicated server listed on a fake master
+  # (tools/names_fake_master.py: same /names API as names.go, so the case
+  # doesn't depend on the master build in SERVER_DIR) with "Alice" reserved
+  # by profile A. The owner joins as Alice; profile B joining as "4lice" is
+  # renamed Player#### and told why; with the master gone (port closed) B
+  # joins as Alice unchecked (fail open). One client at a time.
+  nport=$(freeport tcp); port=$(freeport udp)
+  ida=a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1; idb=b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2
+  python3 tools/names_fake_master.py --port $nport --secs $(T 120) --reserve "Alice=$ida" > "$OUT/net_names_master.log" 2>&1 &
+  npid=$!; wait_http $nport 10
+  timeout $(T 75) "$G" --headless -- --dedicated --port $port --map 19 --mode 0 --register http://127.0.0.1:$nport > "$OUT/net_names_server.log" 2>&1 &
+  spid=$!
+  wait_ready "$OUT/net_names_server.log"
+  sleep 1
+  timeout $(T 30) "$G" --headless -- --smoke-join --port $port --smoke-secs=8 --smoke-name=Alice --smoke-profile=$ida --smoke-chat-log > "$OUT/net_names_owner.log" 2>&1
+  timeout $(T 30) "$G" --headless -- --smoke-join --port $port --smoke-secs=8 --smoke-name=4lice --smoke-profile=$idb --smoke-chat-log > "$OUT/net_names_impostor.log" 2>&1
+  kill $spid $npid 2>/dev/null; wait $spid $npid 2>/dev/null
+  port=$(freeport udp)
+  timeout $(T 60) "$G" --headless -- --dedicated --port $port --map 19 --mode 0 --register http://127.0.0.1:$nport > "$OUT/net_names_off_server.log" 2>&1 &
+  spid=$!
+  wait_ready "$OUT/net_names_off_server.log"
+  sleep 1
+  timeout $(T 30) "$G" --headless -- --smoke-join --port $port --smoke-secs=8 --smoke-name=Alice --smoke-profile=$idb --smoke-chat-log > "$OUT/net_names_off.log" 2>&1
+  kill $spid 2>/dev/null; wait $spid 2>/dev/null
+  own=$(grep -m1 "^SMOKE-SELF-NAME " "$OUT/net_names_owner.log" | sed 's/^SMOKE-SELF-NAME /name=/')
+  imp=$(grep -m1 "^SMOKE-SELF-NAME " "$OUT/net_names_impostor.log" | sed 's/^SMOKE-SELF-NAME /name=/')
+  off=$(grep -m1 "^SMOKE-SELF-NAME " "$OUT/net_names_off.log" | sed 's/^SMOKE-SELF-NAME /name=/')
+  msg=$(grep -m1 "SMOKE-CHAT SERVER: The name \"4lice\" is reserved" "$OUT/net_names_impostor.log")
+  e=0; for f in net_names_server net_names_owner net_names_impostor net_names_off_server net_names_off; do e=$(( e + $(errs "$OUT/$f.log") )); done
+  if [ "$own" = "name=Alice" ] && echo "$imp" | grep -qE "^name=Player[0-9]{4}$" && [ -n "$msg" ] && [ "$off" = "name=Alice" ] \
+      && grep -q "^NAMES owner peer=.* Alice" "$OUT/net_names_server.log" && grep -q '^NAMES impostor peer=.* "4lice" -> "Player' "$OUT/net_names_server.log" \
+      && grep -q "^NAMES master unreachable" "$OUT/net_names_off_server.log" && [ "$e" = "0" ]; then
+    pass "C net reserved names (#318): owner $own, impostor $imp + told, master offline -> $off (fail open)"
+  else
+    fail "C net reserved names: owner='$own' impostor='$imp' msg='${msg:0:60}' offline='$off' errors=$e $(grep -h '^NAMES' "$OUT"/net_names_*server.log | tr '\n' ' ' | cut -c1-200)"
+  fi
+;; esac
+case " $NETSEL " in *" catchup "*)
+  # #315 new-player protection, host-decided online: every joiner starts 3
+  # deaths in (--smoke-catchup-streak, gate hook) on a dedicated DM server
+  # with bots; the host tells the client (CATCHUP note) and cuts the bots'
+  # hits on it in its ledger (CATCHUP-HIT lines); no TRUST line.
+  port=$(freeport udp)
+  timeout $(T 60) "$G" --headless -- --dedicated --port $port --map 19 --mode 0 --fill=4 --catchup-log --smoke-catchup-streak=3 > "$OUT/net_catchup_server.log" 2>&1 &
+  spid=$!
+  wait_ready "$OUT/net_catchup_server.log"
+  sleep 1
+  timeout $(T 45) "$G" --headless -- --smoke-join --port $port --smoke-secs=25 --smoke-auto > "$OUT/net_catchup_client.log" 2>&1
+  kill $spid 2>/dev/null; wait $spid 2>/dev/null
+  hits=$(grep -c "^CATCHUP-HIT " "$OUT/net_catchup_server.log" 2>/dev/null || true)
+  note=$(grep -m1 "CATCHUP note -" "$OUT/net_catchup_client.log")
+  tr=$(grep -c "^TRUST " "$OUT/net_catchup_server.log" 2>/dev/null || true)
+  e=$(( $(errs "$OUT/net_catchup_server.log") + $(errs "$OUT/net_catchup_client.log") ))
+  if grep -q "^CATCHUP seeded" "$OUT/net_catchup_server.log" && [ -n "$note" ] && [ "${hits:-0}" -ge 1 ] && [ "$tr" = "0" ] && [ "$e" = "0" ]; then
+    pass "C net catch-up (#315) host-applied: $note, $hits cut hits on the host ledger ($(grep -m1 '^CATCHUP-HIT' "$OUT/net_catchup_server.log" | cut -c1-60)), no TRUST"
+  else
+    fail "C net catch-up: note='$note' hits=$hits trust=$tr errors=$e $(grep -m1 '^CATCHUP' "$OUT/net_catchup_server.log")"
+  fi
+;; esac
 case " $NETSEL " in *" featured "*)
   # #264 weekly featured server: the deploy script turns featured.json into
   # the unit's ExecStart; the dedicated server starts in that mode / map with
@@ -1102,6 +1162,14 @@ if has F; then
   ft ui ui_test.gd 90 UI-TEST "graphics Phase C (#272): menu transitions + Reduce motion, button hover / press scale, D-pad focus, settings preview lifetime, no node growth over 3 passes of every screen, HUD vitals / strip / toast / death band / UI scale"
   ft trailer trailer.gd 120 TRAILER-TEST "trailer director (#263): staged bot beats pick their highlight (rocket in flight near a crowd, crewed helicopter airborne) and log kills / explosions while filming" "--smoke"
   ft levels levels_test.gd 90 LEVELS-TEST "level sharing (#288): Hot / New / Most played / Top liked order, search by title + share code, course-code box, like on / off, bookmark saved + listed (also offline), offline message, flat node count over open / close, editor Publish round trip + title filter, editor LEVELS overlay, PLAY -> bot match on the level + play counted (in-process fake level server)"
+  if fon names; then
+    # #318 / #315: Settings "RESERVE MY NAME" against tools/names_fake_master.py + catch-up rules.
+    nfport=$(freeport tcp)
+    python3 tools/names_fake_master.py --port $nfport --secs $(T 150) > "$OUT/names_fake.log" 2>&1 &
+    nfpid=$!; wait_http $nfport 10
+    ft names names_test.gd 120 NAMES-TEST "reserved names (#318) + catch-up (#315): name keys / impostor name, Settings RESERVE MY NAME free -> reserved -> taken for another profile -> offline; catch-up starts after 3 deaths, grows, caps at 20 %, ends on a kill, never for bots / Gun Game / single player / when off / self-damage, real hit path 30 -> 24" "--master=http://127.0.0.1:$nfport"
+    kill $nfpid 2>/dev/null; wait $nfpid 2>/dev/null
+  fi
   ft featured featured_test.gd 480 FEATURED-TEST "featured levels (#295): all 8 bundled Maker levels load, recompile identically, validate clean for their modes, pass map_audit, runtime nav routes every CTF / DOM / HTF / INF / RM leg; LEVELS opens on FEATURED offline (8 cards, no server request), detail = modes + EDIT A COPY, PLAY / HOST ONLINE, EDIT A COPY -> unsaved Maker copy, Maker New map Start from Empty / Starter / featured, editor overlay edits in place; new strings translate (es / pt_BR / de / fr); short bot match per level: bots travel, objectives progress, pads / vehicles used, few hazard deaths"
   ft zombie zombie_test.gd 600 ZOMBIE-TEST "Zombie (#314): strings + mode 11 appended, wait -> round 1 with 1 zombie of 5 (teams = the pick, claws only), a mid-round spawn is a zombie, horde-scaled zombie toughness, a claw kill turns a human who rises as a zombie, a zombie player can't switch / throw / pick up (a human can), clock out -> humans +1, every human turned -> zombies +1, the winning round -> match over -> fresh match; bots: a bot zombie claws a human and a round ends"
   ft bomb bomb_test.gd 1500 BOMB-TEST "Bomb Defusal (#304): carrier handed out, a defender's Use rejected, plant 3 s (moving resets, damage doesn't), fuse -> detonation kills + attackers win, next round after the banner, drop + attacker-only pickup, attacker can't defuse, defuse 7 s, clock out -> defenders, wave respawns (next wave / the one after), halftime swap of roles + spawns, 7 rounds -> match over -> fresh match; bots on Downtown / Dust Yard / Whiteout plant, the plant ends in a defuse or detonation, and both sides win a round (#307)"

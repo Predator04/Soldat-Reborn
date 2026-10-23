@@ -10,7 +10,18 @@ All notable changes to Soldat Reborn.
 - Zombies are painted green (colourblind palette: orange), the HUD shows HUMANS / ZOMBIES, humans left and the round clock, with banners for the round start, being turned, the last human and the round result; the scoreboard counts each zombie's turns.
 - Bots play both sides: zombies hunt the nearest human, humans regroup on high ground near their spawn, hold it and back off from zombies that get close.
 - Works online (the host decides every turn, a player who joins mid-round comes in as a zombie), on classic maps (team spawns), in the Maker's test mode, on dedicated servers (`--mode zombie`, `score_limit_zombie` in server.cfg) and on the featured levels Twin Forts, Iron Valley, Frostbite and Hollow Deep. Bots-only test matches: humans won 56 % of 52 rounds across 8 maps.
-- Online protocol 3: Zombie mode needs every player on the same build.
+- Online protocol 4: Zombie mode needs every player on the same build.
+
+### Added — reserved names (#318)
+- **Nobody can play under your name any more.** Settings → Game has a **RESERVE MY NAME** button: your name is reserved on the master server against your player profile, with a clear status (reserved / not reserved yet / taken by someone else / offline). Online servers that list on the master check every joining name; someone else joining under a reserved name — also spelled differently, like "4l1ce" for "Alice" or with other capitals — plays as **Player####** and is told why in chat. No more AntiFake scripts.
+- One reserved name per player, changeable every 3 days. Offensive names and the names the game uses itself (Player…, Bot…, SERVER) can't be reserved. Clan tags don't count towards the name.
+- If the master server can't be reached, players get in under their own name (nothing is blocked by an outage). Server admins can turn the check off with `reserved_names = false` in server.cfg.
+- Needs the updated master server (the `/names` API); older master servers simply have no reserved names.
+
+### Added — new-player protection (#315)
+- **A light catch-up for players who keep getting crushed:** after **3 deaths in a row without a kill** you take **10 % less damage** (15 % after 4, 20 % from 5 on — at most a quarter more staying power) until you score your next kill. A toast tells you when it's on. Decided by the host, so it's the same for everyone and can't be faked.
+- **Measured with bots** (catch-up switched on for bots just for the test, 8 classic maps x 3 runs x 3 minutes, each run played with it off and on): between equal sides nothing changes — blue's share of the kills in Teammatch 52.1 % off / 51.8 % on (paired difference +0.8 ± 4.1 points), kills per minute 22.8 / 23.8 (paired +0.1 ± 3.0). A clearly outclassed player (a Deathmatch bot with skill-1 reactions, a wide aim cone and a slower trigger) goes from 0.11 to 0.19 kills per death and from 1.8 % to 2.9 % of the kills, better in 15 of 22 paired runs; everyone else's K:D stays 1.08 / 1.07. It softens a beating; it doesn't turn one around.
+- Never for bots, never in Gun Game. On by default for hosted games and dedicated servers; turn it off with "Catch-up for new players" on the Host screen or `catchup = false` in server.cfg (for competitive events).
 
 ### Added — standalone dedicated server download (#320)
 - **Run a server without the game.** Every release now also has `TracerfallServer-windows.zip` (47 MB) and `TracerfallServer-linux.tar.gz` (37 MB): a headless server with the graphics and music stripped out (36 MB of game data instead of 168 MB; the full game exe is 277 MB). Unpack, run `start-server.bat` / `./start-server.sh`, done — see `HOSTING.md` inside (ports, admin, service, updating). The game's own downloads (`SoldatReborn.exe/.apk/.pck`) are unchanged.
@@ -37,7 +48,7 @@ All notable changes to Soldat Reborn.
 Measured first: thousands of duels at fixed distances against standing and strafing targets, plus 60 minutes of bot matches with every gun in equal use (Deathmatch, Teammatch, CTF and Bomb Defusal on classic and featured maps). Only the guns and vehicles that stood out for their role changed, each by a small step; movement, jets and soldier health are untouched.
 - **LAW: 90 → 115 damage.** A rocket into the body now kills, like the classic LAW; before, a direct hit left the target alive (~83 damage) and it was the slowest gun to get a kill at any range. The blast still falls off, so a near miss doesn't kill.
 - **M79: 90 → 115 damage, shell speed 470 → 640 (the classic speed).** A direct hit kills, and the grenade now reaches mid range: before, it couldn't land a shell 230 px away on flat ground.
-- **Spas-12: 9 → 11 damage per pellet.** The shotgun is the close-range king again; before, every assault rifle beat it at 100 px.
+- **Spas-12 reworked: a real close-range killer (#310, #322).** A tighter pellet fan (±0.26 → ±0.10 rad) and 9 → 17 damage per pellet, with pellets losing damage past ~160 px (down to 35 % at 420 px and beyond). Up close one shot now kills (out to ~150 px), at 200 px it still beats the rifles, and from 300 px on the rifles win. Before, most pellets missed anyone more than a few steps away — it took two or three shots even point-blank.
 - **Steyr AUG: spread 0.075 → 0.05.** It's the accurate rifle now (as in classic) and beats the AK-74 at long range; the AK still wins up close. Before, the AUG was worse than the AK at every distance.
 - **MP5: 13 → 15 damage.** The SMG holds its own up close (it lost to the AK-74 even at 100 px).
 - **Minigun: spread 0.3 → 0.24.** Still a hose with a spin-up, but it kills at close range instead of spraying past the target.

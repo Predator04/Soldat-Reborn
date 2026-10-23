@@ -180,6 +180,8 @@ static func gun_stats(weapon_name: String) -> Dictionary:
 			if int(pw.get("pellets", 1)) > 1:
 				out["pellets"] = int(pw["pellets"])
 				out["spread"] = float(pw["spread"])
+			if pw.has("falloff"):
+				out["falloff"] = pw["falloff"]
 	_gun_cache[weapon_name] = out
 	return out
 
@@ -1330,6 +1332,9 @@ func net_bot_shoot(muzzle: Vector2, aim: Vector2, proj_id: int = 0, weapon: Stri
 			b.direction = dir
 			b.speed = float(stats["speed"])
 			b.damage = float(stats["damage"]) * dmg_mul
+			if stats.has("falloff"):
+				var fo: Array = stats["falloff"]
+				b.falloff = Vector3(float(fo[0]), float(fo[1]), float(fo[2]))
 			if active_weapon == ZR.CLAW_WEAPON and _zombie():
 				b.damage = ZR.CLAW_DAMAGE * dmg_mul   # #314 claws
 			b.weapon_name = active_weapon
@@ -1424,6 +1429,11 @@ func take_damage(amount: float, killer := "", weapon := "", killer_team := -1) -
 		return
 	if ceasefire_t > 0.0 and killer != display_name:
 		return
+	# #315: catch-up never applies to bots (only for the measuring tool).
+	var m := get_parent()
+	var cu = m.get("_catchup") if m != null else null
+	if cu != null:
+		amount = cu.scale(self, amount, killer)
 	health -= amount
 	var bv: float = float(BINK_BY_WEAPON.get(weapon, 0.0))
 	if bv > 0.0:

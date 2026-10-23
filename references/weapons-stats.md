@@ -46,7 +46,7 @@ hitbox multipliers (the Realistic setting makes head hits lethal instead).
 | MP5 | **15** | 0.075 | 32 | 1.8 | 0.085 | 950 | #310: 13 → 15. Classic 19 dmg at 0.1 s; ours fires faster, so less per bullet — at 13 the SMG lost to the AK even at 100 px (0.83 s vs 0.53 s to kill) |
 | AK-74 | 22 | 0.11 | 30 | 2.0 | 0.055 | 1050 | faster + tighter than classic (26.6 at 0.183 s, 0.09); the default rifle |
 | Steyr AUG | 18 | 0.117 | 25 | 2.08 | **0.05** | 1150 | #310: spread 0.075 → 0.05. Classic AUG is the accurate rifle (0.075 vs the AK's 0.09); with our tighter AK it was worse than the AK at every range (0.87 / 1.30 / 2.90 / 7.6 s vs 0.53 / 0.97 / 2.18 / 3.27 at 100 / 300 / 600 / 1000 px). Now: AK wins up close, AUG at range |
-| Spas-12 | **11** ×8 | 0.6 | 8 | 2.5 | 0.26 | 850 | #310: pellet 9 → 11. Classic Spas is the close-range king; at 9 it took 1.28 s at 100 px (every auto rifle was faster) |
+| Spas-12 | **17** ×8 | 0.6 | 8 | 2.5 | **0.10** | 850 | #310 / #322: pellet 9 → 11 → 17, spread 0.26 → 0.10, `falloff` [160, 420, 0.35] (full damage to 160 px flown, 35 % from 420 px; classic pellets lose damage as they slow). Duel TTK (stand): 50 px 0.62 → 0.02 s, 100 px 1.28 → 0.08, 200 px 2.60 → 0.80, 300 px 4.52 → 1.52, 600 px → 8.0 (AK 0.48 / 0.53 / 1.10 / 0.95 / 2.18) |
 | Ruger 77 | 82 | 0.65 | 4 | 1.4 | 0 | 1450 | = classic (2.49×33) |
 | M79 | **115** splash 130 | 0.10 | 1 | 2.97 | 0 | **640** | #310: 90 → 115 (a direct hit kills, as in classic, where it shares the LAW's explosive damage) and 470 → 640 px/s = classic 10.7 px/tick: at 470 with 980 gravity the shell could not reach 230 px on flat ground |
 | Barrett | 245 | 3.75 | 10 | 1.17 | 0 | 2400 | ≈ classic, wind-up 0.32 s; one shot, one kill |

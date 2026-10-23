@@ -232,6 +232,14 @@ func _maybe_run_dedicated() -> void:
 			stats_url = a.substr(len("--stats="))
 		elif a.begins_with("--fill="):
 			fill_arg = int(a.substr(len("--fill=")))
+		elif a.begins_with("--catchup=") or a.begins_with("--reserved-names="):
+			# #315 / #318: server.cfg `catchup` / `reserved_names` from the
+			# command line (0 / false / off = off). The hit-agreement tests
+			# (hosthits) run with --catchup=0: they check exact damage.
+			var ck := "catchup" if a.begins_with("--catchup=") else "reserved_names"
+			# (Stored as a file value — cli_keys would hide it from rule() — so a
+			# /reloadcfg of a server.cfg that sets the key wins over the flag.)
+			server_cfg.values[ck] = not (a.substr(a.find("=") + 1).to_lower() in ["0", "false", "off", "no"])
 		elif a.begins_with("--bots="):
 			# #304: the Bots setting for this run (with --fill=0): -1 = every
 			# spawn, 0 = none (gate C `bomb` starts an empty server).
@@ -519,6 +527,14 @@ func _smoke_host() -> void:
 func _smoke_join() -> void:
 	if _smoke_arg("--clan") != "":
 		Settings.clan_tag = Settings.clean_tag(_smoke_arg("--clan"))
+	# #318 gate C `names`: join under this name / profile id; --smoke-chat-log
+	# prints every chat line (the host's rename notice) as SMOKE-CHAT.
+	if _smoke_arg("--smoke-name") != "":
+		Settings.player_name = _smoke_arg("--smoke-name")
+	if _smoke_arg("--smoke-profile") != "":
+		Settings.profile_id = _smoke_arg("--smoke-profile").to_lower()
+	if "--smoke-chat-log" in OS.get_cmdline_user_args():
+		smoke_chat_log = true
 	if _smoke_arg("--cos-skin") != "":
 		Settings.cos_skin = _smoke_arg("--cos-skin")
 	var ch := _smoke_arg("--cos-head")
@@ -688,7 +704,8 @@ func _smoke_join() -> void:
 			print("SMOKE-JOIN-BOTLOOK keys=%d" % _bk)
 			print("SMOKE-RECENT ", Settings.recent_players.map(func(e): return str(e.get("name", ""))))
 			var lp = _mn.get("player")
-			print("SMOKE-JOIN-LOCAL alive=%s pings=%s" % [str(lp != null and is_instance_valid(lp) and not bool(lp.get("dead"))), str(_mn.get("peer_pings"))])
+			print("SMOKE-JOIN-LOCAL alive=%s pings=%s name=%s" % [str(lp != null and is_instance_valid(lp) and not bool(lp.get("dead"))), str(_mn.get("peer_pings")),
+				str(lp.get("display_name")) if lp != null and is_instance_valid(lp) else "-"])
 		if _duel != null and is_instance_valid(_duel):
 			_duel.report()
 		leave()

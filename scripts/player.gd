@@ -34,7 +34,7 @@ const PRIMARY_WEAPONS := [
 	{"name": "MP5",       "damage": 15.0,  "rate": 0.075, "mag": 32,  "reload": 1.8,  "auto": true,  "spread": 0.085, "speed": 950.0,  "pellets": 1, "color": Color(0.5, 0.62, 0.8),   "kind": "bullet", "bink": 20.0},
 	{"name": "AK-74",     "damage": 22.0,  "rate": 0.11,  "mag": 30,  "reload": 2.0,  "auto": true,  "spread": 0.055, "speed": 1050.0, "pellets": 1, "color": Color(0.72, 0.72, 0.78), "kind": "bullet", "bink": 25.0},
 	{"name": "Steyr AUG", "damage": 18.0,  "rate": 0.117, "mag": 25,  "reload": 2.08, "auto": true,  "spread": 0.05,  "speed": 1150.0, "pellets": 1, "color": Color(0.72, 0.68, 0.55), "kind": "bullet", "bink": 20.0},
-	{"name": "Spas-12",   "damage": 11.0,  "rate": 0.6,   "mag": 8,   "reload": 2.5,  "auto": false, "spread": 0.26,  "speed": 850.0,  "pellets": 8, "color": Color(0.88, 0.58, 0.3),  "kind": "bullet", "bink": 45.0},
+	{"name": "Spas-12",   "damage": 17.0,  "rate": 0.6,   "mag": 8,   "reload": 2.5,  "auto": false, "spread": 0.10,  "speed": 850.0,  "pellets": 8, "color": Color(0.88, 0.58, 0.3),  "kind": "bullet", "bink": 45.0, "falloff": [160.0, 420.0, 0.35]},
 	{"name": "Ruger 77",  "damage": 82.0,  "rate": 0.65,  "mag": 4,   "reload": 1.4,  "auto": false, "spread": 0.0,   "speed": 1450.0, "pellets": 1, "color": Color(0.78, 0.68, 0.5),  "kind": "bullet", "bink": 50.0},
 	{"name": "M79",       "damage": 115.0, "rate": 0.10,  "mag": 1,   "reload": 2.97, "auto": false, "spread": 0.0,   "speed": 640.0,  "pellets": 1, "color": Color(0.55, 0.5, 0.32),  "kind": "launcher", "gravity": 980.0, "bink": 0.0},
 	{"name": "Barrett",   "damage": 245.0, "rate": 3.75,  "mag": 10,  "reload": 1.17, "auto": false, "spread": 0.0,   "speed": 2400.0, "pellets": 1, "color": Color(0.55, 0.55, 0.6),  "kind": "bullet", "startup": 0.32, "bink": 65.0},
@@ -1837,6 +1837,7 @@ func take_damage(amount: float, killer := "", weapon := "", killer_team := -1) -
 	# (harakiri / suicide gestures) still applies at full so /kill still works.
 	if bonus_kind == "vest" and killer != display_name:
 		amount *= 0.5
+	amount = _catchup_scale(amount, killer)
 	health -= amount
 	# Bink kick: apply extra spread proportional to the weapon's Bink stat while active.
 	# bink_t caps at 100 so successive hits don't stack past the max penalty.
@@ -2150,6 +2151,9 @@ func net_shoot(shot_pos: Vector2, dirs: PackedVector2Array, weapon_i: int, base_
 			b.direction = bdir
 			b.speed = float(w["speed"])
 			b.damage = float(w["damage"]) * MatchConfig.mod_damage()
+			if w.has("falloff"):
+				var fo: Array = w["falloff"]
+				b.falloff = Vector3(float(fo[0]), float(fo[1]), float(fo[2]))
 			b.team = team
 			b.killer_name = display_name
 			b.weapon_name = str(w["name"])
@@ -2691,6 +2695,7 @@ func host_damage(amount: float, killer := "", weapon := "", killer_team := -1, i
 		return
 	if bonus_kind == "vest" and killer != display_name:
 		amount *= 0.5
+	amount = _catchup_scale(amount, killer)
 	if amount <= 0.0:
 		return
 	health = maxf(0.0, health - amount)
@@ -2716,6 +2721,14 @@ func host_damage(amount: float, killer := "", weapon := "", killer_team := -1, i
 	_send_hit(amount + _hit_pending, killer, weapon, killer_team)
 	if health <= 0.0:
 		_host_kill()
+
+
+## #315 new-player protection: the host's catch-up cut (Main helper
+## `_catchup`; 1.0 x off a match, for self-damage and when it's off).
+func _catchup_scale(amount: float, killer: String) -> float:
+	var m := get_parent()
+	var c = m.get("_catchup") if m != null else null
+	return c.scale(self, amount, killer) if c != null else amount
 
 
 ## Host only: heal this remote human's ledger (the Rambo bow regen).

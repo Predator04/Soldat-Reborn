@@ -33,6 +33,7 @@ const KEYS := {
 	"admin_password": ["str", "live", "password for /login <password> (empty = no password login)"],
 	"admins": ["ids", "live", "player ids that are admins without a password (a player sees theirs with /myid)"],
 	"idle_pause": ["bool", "live", "pause the match while nobody is connected"],
+	"reserved_names": ["bool", "live", "rename anyone joining under a name another player reserved on the master server (joins are let through if it can't be reached)"],
 	# ── rotation
 	"map": ["map", "boot", "first map when there is no rotation"],
 	"mode": ["mode", "match", "game mode for rotation entries that don't name one"],
@@ -65,6 +66,7 @@ const KEYS := {
 	"kit_respawn": ["float", "live", "seconds before a taken kit comes back"],
 	"weapon_bans": ["list", "live", "weapons removed from the match, comma separated"],
 	"vehicles": ["bool", "match", "vehicles on maps that have them"],
+	"catchup": ["bool", "live", "new-player protection: less damage taken after 3+ deaths in a row without a kill, until the next kill (never in Gun Game)"],
 	"gravity": ["float", "match", "gravity modifier 0.5-2.0"],
 	"jet": ["float", "match", "jet refill modifier 0.5-2.0"],
 	"damage": ["float", "match", "damage modifier 0.5-2.0"],

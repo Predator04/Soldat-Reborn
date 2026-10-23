@@ -51,6 +51,7 @@ var language := ""             # "" = system language; else "en", "es", "pt_BR",
 const LANGUAGES := [["", "Auto (system)"], ["en", "English"], ["es", "Español"], ["pt_BR", "Português (Brasil)"], ["de", "Deutsch"], ["fr", "Français"]]
 var last_seen_version := ""    # "what's new" shows once per new version
 var vehicles := true   # buggies on maps with room (host decides in multiplayer)
+var catchup := true    # #315 new-player protection on games I host (server.cfg `catchup` on dedicated)
 var vsync := true
 var max_fps := 0                # 0 = unlimited (VSync still caps it)
 var damage_numbers := true     # floating damage numbers when you land a hit
@@ -324,6 +325,7 @@ func load_settings() -> void:
 	language = str(cf.get_value("game", "language", ""))
 	last_seen_version = str(cf.get_value("game", "last_seen_version", ""))
 	vehicles = bool(cf.get_value("game", "vehicles", true))
+	catchup = bool(cf.get_value("game", "catchup", true))
 	bot_chatter = bool(cf.get_value("game", "bot_chatter", true))
 	camera_lead = bool(cf.get_value("controls", "camera_lead", true))
 	help_seen = int(cf.get_value("game", "help_seen", 0))
@@ -468,6 +470,7 @@ func _write_file() -> void:
 	cf.set_value("game", "language", language)
 	cf.set_value("game", "last_seen_version", last_seen_version)
 	cf.set_value("game", "vehicles", vehicles)
+	cf.set_value("game", "catchup", catchup)
 	cf.set_value("game", "bot_chatter", bot_chatter)
 	cf.set_value("controls", "camera_lead", camera_lead)
 	cf.set_value("game", "help_seen", help_seen)

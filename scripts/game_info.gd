@@ -15,9 +15,10 @@ const TITLE_UPPER := "TRACERFALL"
 
 ## Online protocol. Builds with a different protocol (or game version) refuse
 ## each other at the join handshake with a readable reason instead of
-## desyncing. 2 = host-decided hits (#266), 3 = Zombie mode (#314: mode 11,
-## Main.net_zombie_sync). Bump whenever RPCs change meaning.
-const NET_PROTOCOL := 3
+## desyncing. 2 = host-decided hits (#266), 3 = Main.net_catchup (#315),
+## 4 = Zombie mode (#314: mode 11, Main.net_zombie_sync). Bump whenever RPCs
+## change meaning.
+const NET_PROTOCOL := 4
 
 
 ## What a client sends (and the host compares) in the join handshake.
