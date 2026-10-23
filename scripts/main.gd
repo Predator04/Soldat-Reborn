@@ -31,6 +31,8 @@ const MatchBots = preload("res://scripts/match_bots.gd")
 const MatchWorld = preload("res://scripts/match_world.gd")
 const MatchHazards = preload("res://scripts/match_hazards.gd")
 const MatchBomb = preload("res://scripts/match_bomb.gd")
+const NameGuard = preload("res://scripts/name_guard.gd")     # #318 reserved names
+const Catchup = preload("res://scripts/catchup.gd")         # #315 new-player protection
 var _vehicles_sys: MatchVehicles = null   # match_vehicles.gd
 var _bonuses: MatchBonuses = null   # match_bonuses.gd
 var _votes: MatchVotes = null   # match_votes.gd
@@ -40,6 +42,8 @@ var _bots: MatchBots = null   # match_bots.gd
 var _world: MatchWorld = null   # match_world.gd
 var _hazards: MatchHazards = null   # match_hazards.gd (#286 spikes / lava / jump pads)
 var _bomb: MatchBomb = null   # match_bomb.gd (#304 Bomb Defusal)
+var _names: NameGuard = null  # name_guard.gd (#318 reserved names, host)
+var _catchup: Catchup = null  # catchup.gd (#315 new-player protection, host)
 
 var player: Node2D = null            # LOCAL player (whichever peer owns us)
 var hud: CanvasLayer = null
@@ -416,6 +420,8 @@ func _init() -> void:
 	_world = _attach(MatchWorld.new(), "MatchWorld")
 	_hazards = _attach(MatchHazards.new(), "MatchHazards")
 	_bomb = _attach(MatchBomb.new(), "MatchBomb")
+	_names = _attach(NameGuard.new(), "NameGuard")
+	_catchup = _attach(Catchup.new(), "Catchup")
 
 
 ## A system helper is an internal child: freed with Main, invisible to
@@ -1573,6 +1579,13 @@ func br_zone() -> Dictionary:
 
 func _on_kill_scored(killer_name: String, victim_name: String, _weapon_name: String, killer_team: int, victim_team: int) -> void:
 	_modes._on_kill_scored(killer_name, victim_name, _weapon_name, killer_team, victim_team)
+	_catchup.on_kill(killer_name, victim_name, killer_team, victim_team)
+
+
+## #315: the host tells a player their catch-up level (percent less damage).
+@rpc("authority", "call_remote", "reliable")
+func net_catchup(pct: int) -> void:
+	_catchup.show_note(pct)
 
 
 @rpc("authority", "call_local", "reliable")

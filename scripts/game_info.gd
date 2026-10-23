@@ -15,8 +15,9 @@ const TITLE_UPPER := "TRACERFALL"
 
 ## Online protocol. Builds with a different protocol (or game version) refuse
 ## each other at the join handshake with a readable reason instead of
-## desyncing. 2 = host-decided hits (#266). Bump whenever RPCs change meaning.
-const NET_PROTOCOL := 2
+## desyncing. 2 = host-decided hits (#266), 3 = Main.net_catchup (#315).
+## Bump whenever RPCs change meaning.
+const NET_PROTOCOL := 3
 
 
 ## What a client sends (and the host compares) in the join handshake.

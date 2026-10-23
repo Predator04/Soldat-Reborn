@@ -370,7 +370,9 @@ func _build_game(box: VBoxContainer) -> void:
 			var clean := t.strip_edges().left(24)
 			Settings.player_name = clean if clean != "" else "Player"
 			Settings.name_set = clean != "" and clean.to_lower() != "player"
-			Settings.save()))
+			Settings.save()
+			_names_refresh_auto()))
+	box.add_child(_build_names_row())
 	var tag_row := _text_field("Clan Tag (optional)", Settings.clan_tag,
 		func(t: String) -> void:
 			Settings.clan_tag = Settings.clean_tag(t)
@@ -617,6 +619,87 @@ func _labelled_slider(label_text: String, mn: float, mx: float, step: float,
 		Settings._slider_burst = false)
 	slider.drag_ended.connect(func(_changed: bool) -> void: Settings.save())
 	return row
+
+
+# ── Reserved names (#318) ─────────────────────────────────
+
+var names_api: Node = null      # names_api.gd, made on first use
+var names_status: Label = null
+var names_button: Button = null
+var names_state := ""           # last status: reserved / free / taken / offline / ...
+
+
+func _build_names_row() -> Control:
+	var row := HBoxContainer.new()
+	row.name = "ReservedNames"
+	row.add_theme_constant_override("separation", 12)
+	names_button = _make_button("RESERVE MY NAME")
+	names_button.name = "ReserveName"
+	names_button.custom_minimum_size = Vector2(220, 40)
+	names_button.tooltip_text = tr("Reserve your player name on the master server: online servers then rename anyone else who joins under it. One name per player; you can change it every 3 days.")
+	names_button.pressed.connect(names_reserve)
+	row.add_child(names_button)
+	names_status = Label.new()
+	names_status.name = "ReserveStatus"
+	names_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	names_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	names_status.custom_minimum_size = Vector2(240, 0)
+	names_status.add_theme_font_size_override("font_size", 13)
+	names_status.add_theme_color_override("font_color", UITheme.COL_TEXT_DIM)
+	names_status.text = tr("Reserve your name so nobody can play under it online.")
+	row.add_child(names_status)
+	_names_refresh_auto.call_deferred()
+	return row
+
+
+## Automatic status checks (screen built, name edited) — not headless, where
+## the gate's screens must not reach for the real master; tests set
+## names_api.gd's url_override and drive it.
+func _names_refresh_auto() -> void:
+	var NamesApi := preload("res://scripts/names_api.gd")
+	if DisplayServer.get_name() != "headless" or NamesApi.url_override != "":
+		_names_refresh()
+
+
+func _names_ensure_api() -> Node:
+	if names_api == null or not is_instance_valid(names_api):
+		names_api = preload("res://scripts/names_api.gd").new()
+		names_api.name = "NamesApi"
+		add_child(names_api)
+	return names_api
+
+
+## Shows whether your current name is reserved (by you / someone else).
+func _names_refresh() -> void:
+	if names_status == null or not is_inside_tree():
+		return
+	_names_ensure_api().check_mine(_names_show)
+
+
+func names_reserve() -> void:
+	if names_button != null:
+		names_button.disabled = true
+	names_status.text = tr("Asking the master server...")
+	_names_ensure_api().reserve(func(d: Dictionary) -> void:
+		if names_button != null and is_instance_valid(names_button):
+			names_button.disabled = false
+		_names_show(d))
+
+
+func _names_show(d: Dictionary) -> void:
+	if names_status == null or not is_instance_valid(names_status):
+		return
+	names_state = str(d.get("state", ""))
+	names_status.text = str(d.get("text", ""))
+	var col := UITheme.COL_TEXT_DIM
+	match names_state:
+		"reserved":
+			col = Color(0.55, 1.0, 0.6)
+		"taken", "invalid", "cooldown":
+			col = Color(1.0, 0.6, 0.45)
+	names_status.add_theme_color_override("font_color", col)
+	if names_button != null and is_instance_valid(names_button):
+		names_button.text = tr("RESERVED") if names_state == "reserved" else tr("RESERVE MY NAME")
 
 
 func _check_button(text: String, val: bool, on_change: Callable) -> CheckButton:

@@ -201,7 +201,8 @@ func _handle_client_ready(sender_id: int, joiner_name: String = "", client_versi
 		return
 	var sender := sender_id
 	# One ready per connection — a repeat call used to be a free respawn/rename.
-	if main._connected_peers.has(sender):
+	# (#318: also while its name is being looked up on the master.)
+	if main._connected_peers.has(sender) or main._names.is_pending(sender):
 		return
 	# Version handshake: mismatched builds desync maps/nav/RPCs in odd ways, so
 	# refuse them with a readable reason instead.
@@ -224,6 +225,17 @@ func _handle_client_ready(sender_id: int, joiner_name: String = "", client_versi
 	var clean_name: String = str(joiner_name).strip_edges().replace("[", "(").replace("]", ")").left(32)
 	if clean_name == "":
 		clean_name = "Player %d" % sender
+	# #318 reserved names: the master says whether this name belongs to
+	# someone else (name_guard.gd); an impostor joins as "Player####". The
+	# body is spawned only once that's settled (at once when nothing to ask).
+	main._names.vet(sender, clean_name, func(final_name: String) -> void:
+		_accept_client(sender, final_name, token))
+
+
+func _accept_client(sender: int, clean_name: String, token: String) -> void:
+	if not Net.is_host() or main._connected_peers.has(sender) or not main.multiplayer.has_multiplayer_peer() \
+			or not main.multiplayer.get_peers().has(sender):
+		return
 	# Rejoin after a drop: the host may not have timed the old connection out
 	# yet. Same name from the same address = the same player coming back, so
 	# retire the stale peer now (keeps their name, score and team).
@@ -286,6 +298,7 @@ func _handle_client_ready(sender_id: int, joiner_name: String = "", client_versi
 	main.rpc_id(sender, "net_stats_sync", main.player_stats)
 	# then spawn a body for the new peer on everyone
 	_spawn_networked_player(sender)
+	main._catchup.on_join(sender, str(main._peer_names.get(sender, clean_name)))
 	if main.ranked != null:
 		main.ranked.player_joined(sender)
 	Net.heartbeat_soon()
@@ -511,6 +524,8 @@ func net_spawn_player(peer_id: int, spawn_pos: Vector2, display_name: String, as
 		p.gg_level = main._modes._gg_get(display_name)
 	if peer_id == Net.local_id():
 		main._apply_spawn_loadout(p)
+		if Net.smoke_chat_log:
+			print("SMOKE-SELF-NAME %s" % display_name)   # #318 gate C `names`
 	main.add_child(p)
 	# Re-apply after add_child so children created in _ready (cam, jet_particles) inherit authority.
 	p.set_multiplayer_authority(peer_id, true)

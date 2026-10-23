@@ -1815,6 +1815,7 @@ func take_damage(amount: float, killer := "", weapon := "", killer_team := -1) -
 	# (harakiri / suicide gestures) still applies at full so /kill still works.
 	if bonus_kind == "vest" and killer != display_name:
 		amount *= 0.5
+	amount = _catchup_scale(amount, killer)
 	health -= amount
 	# Bink kick: apply extra spread proportional to the weapon's Bink stat while active.
 	# bink_t caps at 100 so successive hits don't stack past the max penalty.
@@ -2669,6 +2670,7 @@ func host_damage(amount: float, killer := "", weapon := "", killer_team := -1, i
 		return
 	if bonus_kind == "vest" and killer != display_name:
 		amount *= 0.5
+	amount = _catchup_scale(amount, killer)
 	if amount <= 0.0:
 		return
 	health = maxf(0.0, health - amount)
@@ -2694,6 +2696,14 @@ func host_damage(amount: float, killer := "", weapon := "", killer_team := -1, i
 	_send_hit(amount + _hit_pending, killer, weapon, killer_team)
 	if health <= 0.0:
 		_host_kill()
+
+
+## #315 new-player protection: the host's catch-up cut (Main helper
+## `_catchup`; 1.0 x off a match, for self-damage and when it's off).
+func _catchup_scale(amount: float, killer: String) -> float:
+	var m := get_parent()
+	var c = m.get("_catchup") if m != null else null
+	return c.scale(self, amount, killer) if c != null else amount
 
 
 ## Host only: heal this remote human's ledger (the Rambo bow regen).

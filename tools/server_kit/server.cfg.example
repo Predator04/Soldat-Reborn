@@ -50,6 +50,13 @@ admin_password =
 # so an idle server costs almost nothing. [live]  Default: true
 #idle_pause = true
 
+# Reserved names (#318): players can reserve their name on the master
+# server; someone else joining under it plays as "Player####" and is told
+# why. Asked only while the server lists on a master (register). If the
+# master can't be reached, joins are let through unchecked. [live]
+# Default: true
+#reserved_names = true
+
 [rotation]
 # Maps played in order, each "Map" or "Map:mode" (mode names or short forms
 # dm tdm ctf inf htf rm pm dom br gg bomb). When a match ends the next entry
@@ -133,6 +140,12 @@ rotation = Ascent:ctf, Nuubia:ctf, Arena:dm, Viet:inf, Warehouse:tdm
 # Buggies, tanks, helicopters and planes on maps that have them. [next]
 # Default: true
 #vehicles = true
+
+# New-player protection (#315): after 3 deaths in a row without a kill a
+# player takes 10 % less damage (15 % after 4, 20 % from 5 on) until they
+# score a kill. Never for bots, never in Gun Game. Turn it off for
+# competitive events. [live]  Default: true
+#catchup = true
 
 # Modifiers (1 = normal). [next]
 #gravity = 1.0
